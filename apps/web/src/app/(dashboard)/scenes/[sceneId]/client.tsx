@@ -636,7 +636,7 @@ export default function SceneEditorPage() {
   // -----------------------------------------------------------------------
 
   useEffect(() => {
-    if (!token || !sceneId) return
+    if (!token || !sceneId || sceneId === '_') return
     api.getScene(sceneId)
       .then(data => { setScene(data.scene); setLoading(false) })
       .catch(err => { setError(err.message); setLoading(false) })

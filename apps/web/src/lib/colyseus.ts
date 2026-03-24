@@ -10,7 +10,7 @@ export function useSceneRoom(sceneId: string | null, token: string | null) {
   const roomRef = useRef<Room | null>(null)
 
   useEffect(() => {
-    if (!sceneId || !token) return
+    if (!sceneId || sceneId === '_' || !token) return
 
     const connect = async () => {
       try {

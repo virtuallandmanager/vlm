@@ -31,6 +31,7 @@ export default function CompanionUploadClient() {
 
   // Validate token on mount
   useEffect(() => {
+    if (!code || code === '_') return
     fetch(`${API_URL}/api/upload/${code}`)
       .then((res) => {
         if (!res.ok) throw new Error(res.status === 404 ? 'Invalid or expired code' : 'Upload limit reached')
