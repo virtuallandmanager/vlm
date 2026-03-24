@@ -23,6 +23,7 @@ export const elementTypeEnum = pgEnum('element_type', [
   'sound',
   'widget',
   'custom',
+  'model',
 ])
 
 // ── Users ────────────────────────────────────────────────────────────────────
