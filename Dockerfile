@@ -47,7 +47,6 @@ COPY --from=builder /app/apps/server/drizzle ./drizzle
 # The standalone output includes a minimal Node server + all required node_modules
 COPY --from=builder /app/apps/web/.next/standalone ./dashboard-standalone
 COPY --from=builder /app/apps/web/.next/static ./dashboard-standalone/apps/web/.next/static
-COPY --from=builder /app/apps/web/public ./dashboard-standalone/apps/web/public
 
 # Copy production node_modules for the server
 # (pruned — only production deps, no devDependencies)
