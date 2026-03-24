@@ -1,5 +1,6 @@
 'use client'
 import { useAuth } from '@/lib/auth'
+import { API_URL } from '@/lib/config'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
@@ -71,6 +72,19 @@ export default function Home() {
             {submitting ? '...' : mode === 'login' ? 'Sign In' : 'Create Account'}
           </button>
         </form>
+
+        <div className="flex items-center gap-3 my-4"><div className="flex-1 border-t border-gray-700" /><span className="text-xs text-gray-500">or</span><div className="flex-1 border-t border-gray-700" /></div>
+
+        <div className="space-y-3">
+          <a href={`${API_URL}/api/auth/google`}
+            className="block w-full rounded-lg bg-white py-2 text-center font-medium text-gray-900 hover:bg-gray-100">
+            Continue with Google
+          </a>
+          <a href={`${API_URL}/api/auth/discord`}
+            className="block w-full rounded-lg bg-[#5865F2] py-2 text-center font-medium text-white hover:bg-[#4752C4]">
+            Continue with Discord
+          </a>
+        </div>
 
         <p className="mt-4 text-center text-sm text-gray-500">
           {mode === 'login' ? (

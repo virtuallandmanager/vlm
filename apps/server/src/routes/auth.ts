@@ -366,4 +366,157 @@ export default async function authRoutes(app: FastifyInstance) {
       }
     },
   )
+
+  // ── GET /api/auth/discord — Redirect to Discord OAuth consent screen ──────
+
+  app.get('/api/auth/discord', async (request, reply) => {
+    if (!config.discordClientId || !config.discordClientSecret) {
+      return reply.status(501).send({ error: 'Discord OAuth is not configured' })
+    }
+
+    const redirectUri = `${config.oauthCallbackUrl}/api/auth/discord/callback`
+
+    const params = new URLSearchParams({
+      client_id: config.discordClientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'identify email',
+    })
+
+    return reply.redirect(`https://discord.com/api/oauth2/authorize?${params.toString()}`)
+  })
+
+  // ── GET /api/auth/discord/callback — Handle the OAuth callback ────────────
+
+  app.get<{ Querystring: { code?: string; error?: string } }>(
+    '/api/auth/discord/callback',
+    async (request, reply) => {
+      if (!config.discordClientId || !config.discordClientSecret) {
+        return reply.status(501).send({ error: 'Discord OAuth is not configured' })
+      }
+
+      const { code, error: oauthError } = request.query
+
+      if (oauthError || !code) {
+        return reply.redirect(`${config.publicUrl}/auth/callback?error=${oauthError || 'missing_code'}`)
+      }
+
+      const redirectUri = `${config.oauthCallbackUrl}/api/auth/discord/callback`
+
+      try {
+        // Exchange code for access token
+        const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: config.discordClientId,
+            client_secret: config.discordClientSecret,
+            code,
+            grant_type: 'authorization_code',
+            redirect_uri: redirectUri,
+          }),
+        })
+
+        if (!tokenRes.ok) {
+          request.log.error({ status: tokenRes.status }, 'Discord token exchange failed')
+          return reply.redirect(`${config.publicUrl}/auth/callback?error=token_exchange_failed`)
+        }
+
+        const tokenData = (await tokenRes.json()) as { access_token: string; token_type: string }
+
+        // Get user profile from Discord
+        const userRes = await fetch('https://discord.com/api/users/@me', {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        })
+
+        if (!userRes.ok) {
+          request.log.error({ status: userRes.status }, 'Discord user fetch failed')
+          return reply.redirect(`${config.publicUrl}/auth/callback?error=user_fetch_failed`)
+        }
+
+        const discordUser = (await userRes.json()) as {
+          id: string
+          username: string
+          email: string | null
+          avatar: string | null
+        }
+
+        const discordUserId = discordUser.id
+        const email = discordUser.email || null
+        const displayName = discordUser.username || 'Discord User'
+        const identifier = `discord:${discordUserId}`
+
+        // Look up existing auth method
+        let authMethod = await db.query.userAuthMethods.findFirst({
+          where: and(
+            eq(userAuthMethods.type, 'oauth'),
+            eq(userAuthMethods.identifier, identifier),
+          ),
+          with: { user: true },
+        })
+
+        let dbUser
+
+        if (authMethod) {
+          // Existing user — log them in
+          dbUser = authMethod.user
+        } else {
+          // New user — create account
+
+          // Auto-promote the first user to admin in single/scalable mode
+          let role: 'admin' | 'creator' = 'creator'
+          if (config.autoPromoteFirstUser) {
+            const userCount = await db.query.users.findFirst()
+            if (!userCount) {
+              role = 'admin'
+            }
+          }
+
+          const [newUser] = await db
+            .insert(users)
+            .values({
+              displayName,
+              email: email?.toLowerCase() || null,
+              role,
+            })
+            .returning()
+
+          await db.insert(userAuthMethods).values({
+            userId: newUser.id,
+            type: 'oauth',
+            identifier,
+            metadata: {
+              provider: 'discord',
+              discordUserId,
+              email,
+              username: discordUser.username,
+              avatar: discordUser.avatar,
+            },
+          })
+
+          dbUser = newUser
+        }
+
+        const accessToken = app.jwt.sign(
+          { id: dbUser.id, email: dbUser.email, role: dbUser.role, orgId: dbUser.activeOrgId || null },
+          { expiresIn: config.jwtAccessExpiry },
+        )
+        const refreshToken = app.jwt.sign(
+          { id: dbUser.id, email: dbUser.email, role: dbUser.role, refresh: true },
+          { expiresIn: config.jwtRefreshExpiry },
+        )
+
+        // Redirect to frontend with tokens
+        const params = new URLSearchParams({
+          token: accessToken,
+          refresh: refreshToken,
+        })
+
+        return reply.redirect(`${config.publicUrl}/auth/callback?${params.toString()}`)
+      } catch (err) {
+        request.log.error(err, 'Discord OAuth callback error')
+        return reply.redirect(`${config.publicUrl}/auth/callback?error=oauth_failed`)
+      }
+    },
+  )
 }

@@ -18,6 +18,15 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null)
 
+  // API Keys state
+  const [apiKeys, setApiKeys] = useState<any[]>([])
+  const [apiKeysLoading, setApiKeysLoading] = useState(true)
+  const [newKeyName, setNewKeyName] = useState('')
+  const [createdKey, setCreatedKey] = useState<string | null>(null)
+  const [keyCopied, setKeyCopied] = useState(false)
+  const [showCreateKey, setShowCreateKey] = useState(false)
+  const [deletingKeyId, setDeletingKeyId] = useState<string | null>(null)
+
   useEffect(() => {
     if (!token) return
     api.getOrgs()
@@ -30,6 +39,50 @@ export default function SettingsPage() {
       })
       .catch(() => setLoading(false))
   }, [token])
+
+  // Fetch API keys
+  useEffect(() => {
+    if (!token) return
+    api.getApiKeys()
+      .then(data => {
+        setApiKeys(data.keys)
+        setApiKeysLoading(false)
+      })
+      .catch(() => setApiKeysLoading(false))
+  }, [token])
+
+  const handleCreateApiKey = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newKeyName.trim()) return
+    setError(null)
+    try {
+      const { key, apiKey } = await api.createApiKey(newKeyName.trim())
+      setApiKeys(prev => [apiKey, ...prev])
+      setCreatedKey(key)
+      setKeyCopied(false)
+      setNewKeyName('')
+      setShowCreateKey(false)
+    } catch (err: any) {
+      setError(err.message)
+    }
+  }
+
+  const handleCopyKey = async () => {
+    if (!createdKey) return
+    await navigator.clipboard.writeText(createdKey)
+    setKeyCopied(true)
+  }
+
+  const handleDeleteApiKey = async (keyId: string) => {
+    setError(null)
+    try {
+      await api.deleteApiKey(keyId)
+      setApiKeys(prev => prev.filter(k => k.id !== keyId))
+      setDeletingKeyId(null)
+    } catch (err: any) {
+      setError(err.message)
+    }
+  }
 
   const handleCreateOrg = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -220,6 +273,91 @@ export default function SettingsPage() {
                     )}
                   </div>
                 )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* API Keys */}
+      <section className="mt-10">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">API Keys</h2>
+          <button onClick={() => { setShowCreateKey(!showCreateKey); setCreatedKey(null) }}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700">
+            + Create API Key
+          </button>
+        </div>
+
+        {/* Newly created key banner */}
+        {createdKey && (
+          <div className="mb-6 rounded-xl border border-yellow-700 bg-yellow-900/30 p-4">
+            <p className="text-sm font-medium text-yellow-300 mb-2">
+              This key will only be shown once. Copy it now.
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 rounded-lg bg-gray-900 px-4 py-2 text-sm text-white font-mono select-all break-all">
+                {createdKey}
+              </code>
+              <button onClick={handleCopyKey}
+                className="shrink-0 rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-600 transition-colors">
+                {keyCopied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <button onClick={() => setCreatedKey(null)}
+              className="mt-3 text-xs text-gray-400 hover:text-gray-300 transition-colors">
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Create key form */}
+        {showCreateKey && (
+          <form onSubmit={handleCreateApiKey} className="mb-6 flex gap-2">
+            <input type="text" value={newKeyName} onChange={e => setNewKeyName(e.target.value)}
+              placeholder="Key name (e.g. production, ci/cd)" autoFocus
+              className="flex-1 rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500" />
+            <button type="submit" className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700">Create</button>
+            <button type="button" onClick={() => setShowCreateKey(false)} className="rounded-lg bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700">Cancel</button>
+          </form>
+        )}
+
+        {apiKeysLoading ? (
+          <p className="text-gray-400">Loading API keys...</p>
+        ) : apiKeys.length === 0 ? (
+          <p className="text-gray-500">No API keys yet. Create one to get started.</p>
+        ) : (
+          <div className="space-y-3">
+            {apiKeys.map(key => (
+              <div key={key.id} className="flex items-center justify-between rounded-xl border border-gray-800 bg-gray-900 p-4">
+                <div className="min-w-0">
+                  <p className="font-medium text-white">{key.name}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-400">
+                    <span className="font-mono">{key.prefix ? `${key.prefix}...` : '---'}</span>
+                    <span>Created {key.createdAt ? new Date(key.createdAt).toLocaleDateString() : '---'}</span>
+                    <span>Last used {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleDateString() : 'Never'}</span>
+                  </div>
+                </div>
+                <div className="shrink-0 ml-4">
+                  {deletingKeyId === key.id ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-red-400">Delete?</span>
+                      <button onClick={() => handleDeleteApiKey(key.id)}
+                        className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors">
+                        Confirm
+                      </button>
+                      <button onClick={() => setDeletingKeyId(null)}
+                        className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium hover:bg-gray-700 transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setDeletingKeyId(key.id)}
+                      className="rounded-lg bg-red-900/50 border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900 transition-colors">
+                      Delete
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

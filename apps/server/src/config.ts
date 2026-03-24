@@ -37,6 +37,10 @@ export const config = {
   googleClientSecret: env('GOOGLE_CLIENT_SECRET'),
   oauthCallbackUrl: env('OAUTH_CALLBACK_URL') || env('PUBLIC_URL') || 'http://localhost:3010',
 
+  // ── Discord OAuth ────────────────────────────────────────────────────────
+  discordClientId: env('DISCORD_CLIENT_ID'),
+  discordClientSecret: env('DISCORD_CLIENT_SECRET'),
+
   // ── Colyseus Presence ───────────────────────────────────────────────────
   // single: in-memory (no Redis needed)
   // scalable/cloud: Redis required for cross-server room routing
