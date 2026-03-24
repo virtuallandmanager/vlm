@@ -259,14 +259,33 @@ function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
 // Image Element Editor
 // ---------------------------------------------------------------------------
 
-function ImageElementEditor({ element, onUpdateElement, onUpdateInstance, onDeleteInstance, onAddInstance }: {
+function ImageElementEditor({ element, onUpdateElement, onUpdateInstance, onDeleteInstance, onAddInstance, api }: {
   element: Element
   onUpdateElement: (id: string, data: Record<string, any>) => void
   onUpdateInstance: (id: string, data: Partial<Instance>) => void
   onDeleteInstance: (id: string) => void
   onAddInstance: (elementId: string) => void
+  api: ReturnType<typeof import('@/lib/api').useApi>
 }) {
   const props = element.properties || {}
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const buffer = await file.arrayBuffer()
+      const base64 = btoa(new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), ''))
+      const { asset } = await api.uploadMedia(file.name, file.type, base64)
+      onUpdateElement(element.id, { properties: { ...props, textureSrc: asset.publicUrl } })
+    } catch (err: any) {
+      console.error('Upload failed:', err)
+    }
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ''
+  }
 
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
@@ -280,8 +299,24 @@ function ImageElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
         </label>
       </div>
 
-      <TextInput label="Texture URL" value={props.textureSrc || ''}
-        onChange={v => onUpdateElement(element.id, { properties: { ...props, textureSrc: v } })} />
+      {props.textureSrc && (
+        <div className="rounded-lg overflow-hidden border border-gray-700 bg-gray-800">
+          <img src={props.textureSrc} alt={element.name}
+            className="max-h-40 w-full object-contain" />
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <TextInput label="Texture URL" value={props.textureSrc || ''}
+          onChange={v => onUpdateElement(element.id, { properties: { ...props, textureSrc: v } })} />
+        <div className="flex items-center gap-2">
+          <label className={`rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 transition-colors cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+            {uploading ? 'Uploading...' : 'Upload Image'}
+            <input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} className="hidden" />
+          </label>
+          <span className="text-xs text-gray-500">or paste a URL above</span>
+        </div>
+      </div>
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -1048,7 +1083,7 @@ export default function SceneEditorPage() {
 
               switch (el.type) {
                 case 'video': return <VideoElementEditor key={el.id} {...editorProps} />
-                case 'image': return <ImageElementEditor key={el.id} {...editorProps} />
+                case 'image': return <ImageElementEditor key={el.id} {...editorProps} api={api} />
                 case 'model': return <ModelElementEditor key={el.id} {...editorProps} />
                 case 'sound': return <SoundElementEditor key={el.id} {...editorProps} />
                 default: return null
