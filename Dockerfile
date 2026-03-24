@@ -14,9 +14,12 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json tsconfig.base.json ./
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
+COPY apps/streaming/package.json apps/streaming/
+COPY apps/docs/package.json apps/docs/
 COPY packages/vlm-shared/package.json packages/vlm-shared/
 COPY packages/vlm-core/package.json packages/vlm-core/
 COPY packages/vlm-client/package.json packages/vlm-client/
+COPY packages/vlm-hud/package.json packages/vlm-hud/
 COPY packages/vlm-adapter-dcl/package.json packages/vlm-adapter-dcl/
 COPY packages/vlm-adapter-hyperfy/package.json packages/vlm-adapter-hyperfy/
 
