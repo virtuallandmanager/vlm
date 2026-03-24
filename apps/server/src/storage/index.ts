@@ -10,8 +10,10 @@ export interface StorageProvider {
 export function createStorage(): StorageProvider {
   const provider = process.env.STORAGE_PROVIDER || 'local'
   switch (provider) {
+    case 's3':
+    case 'r2':
+      return new S3Storage()
     case 'local':
-      return new LocalStorage()
     default:
       return new LocalStorage()
   }
@@ -47,5 +49,56 @@ class LocalStorage implements StorageProvider {
 
   getPublicUrl(key: string): string {
     return `${this.baseUrl}/${key}`
+  }
+}
+
+class S3Storage implements StorageProvider {
+  private bucket: string
+  private publicBase: string
+  private client: import('@aws-sdk/client-s3').S3Client | null = null
+
+  constructor() {
+    this.bucket = process.env.S3_BUCKET || ''
+    if (!this.bucket) throw new Error('S3_BUCKET is required when using s3/r2 storage')
+
+    // CDN_URL takes priority, then construct from endpoint + bucket
+    const endpoint = process.env.S3_ENDPOINT || ''
+    this.publicBase = process.env.CDN_URL
+      || (endpoint ? `${endpoint.replace(/\/$/, '')}/${this.bucket}` : `https://${this.bucket}.s3.amazonaws.com`)
+  }
+
+  private async getClient() {
+    if (this.client) return this.client
+    const { S3Client } = await import('@aws-sdk/client-s3')
+    this.client = new S3Client({
+      region: process.env.S3_REGION || 'auto',
+      ...(process.env.S3_ENDPOINT ? { endpoint: process.env.S3_ENDPOINT, forcePathStyle: true } : {}),
+    })
+    return this.client
+  }
+
+  async upload(key: string, data: Buffer, contentType: string): Promise<string> {
+    const client = await this.getClient()
+    const { PutObjectCommand } = await import('@aws-sdk/client-s3')
+    await client.send(new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      Body: data,
+      ContentType: contentType,
+    }))
+    return this.getPublicUrl(key)
+  }
+
+  async delete(key: string): Promise<void> {
+    const client = await this.getClient()
+    const { DeleteObjectCommand } = await import('@aws-sdk/client-s3')
+    await client.send(new DeleteObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+    }))
+  }
+
+  getPublicUrl(key: string): string {
+    return `${this.publicBase}/${key}`
   }
 }
