@@ -53,5 +53,8 @@ ENV PORT=3010
 
 EXPOSE 3010
 
-# Run from the monorepo — pnpm workspace resolution stays intact
-CMD ["node", "apps/server/dist/index.js"]
+# Make entrypoint executable
+RUN chmod +x apps/server/entrypoint.sh
+
+# Entrypoint: sync DB schema then start server
+CMD ["apps/server/entrypoint.sh"]

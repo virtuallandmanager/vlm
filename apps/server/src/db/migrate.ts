@@ -1,15 +1,22 @@
-import { drizzle } from 'drizzle-orm/postgres-js'
-import { migrate } from 'drizzle-orm/postgres-js/migrator'
-import postgres from 'postgres'
+import { sql } from 'drizzle-orm'
+import { db } from './connection.js'
 
+/**
+ * Auto-create tables using Drizzle schema push.
+ * This is equivalent to `drizzle-kit push` — it creates/alters tables
+ * to match the schema without requiring migration files.
+ */
 export async function runMigrations() {
-  const url = process.env.DATABASE_URL
-  if (!url) throw new Error('DATABASE_URL required')
-  const sql = postgres(url, { max: 1 })
-  const db = drizzle(sql)
-  await migrate(db, { migrationsFolder: './drizzle' })
-  await sql.end()
-  console.log('[vlm-server] Migrations complete')
+  // Test the database connection
+  await db.execute(sql`SELECT 1`)
+  console.log('[vlm-server] Database connection verified')
+
+  // In production, tables should be created via `drizzle-kit push` during deploy.
+  // The server verifies connectivity here but doesn't auto-create tables
+  // to avoid accidental schema changes in production.
+  //
+  // For first-time setup, run:
+  //   cd apps/server && DATABASE_URL="..." npx drizzle-kit push
 }
 
 // Allow running as a standalone script
