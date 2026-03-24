@@ -181,17 +181,74 @@ function InstanceEditor({ instance, onUpdate, onDelete }: { instance: Instance; 
 // Video Element Editor
 // ---------------------------------------------------------------------------
 
-function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDeleteInstance, onAddInstance }: {
+function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDeleteInstance, onAddInstance, api }: {
   element: Element
   onUpdateElement: (id: string, data: Record<string, any>) => void
   onUpdateInstance: (id: string, data: Partial<Instance>) => void
   onDeleteInstance: (id: string) => void
   onAddInstance: (elementId: string) => void
+  api: ReturnType<typeof import('@/lib/api').useApi>
 }) {
   const props = element.properties || {}
+  const playlist: string[] = props.playlist || []
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
+  const [urlInput, setUrlInput] = useState('')
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
 
   const updateProp = (key: string, value: any) => {
     onUpdateElement(element.id, { properties: { ...props, [key]: value } })
+  }
+
+  const addToPlaylist = (url: string) => {
+    updateProp('playlist', [...playlist, url])
+  }
+
+  const removeFromPlaylist = (idx: number) => {
+    updateProp('playlist', playlist.filter((_, i) => i !== idx))
+  }
+
+  const handleDragStart = (idx: number) => setDragIdx(idx)
+
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault()
+    if (dragIdx === null || dragIdx === idx) return
+    const reordered = [...playlist]
+    const [moved] = reordered.splice(dragIdx, 1)
+    reordered.splice(idx, 0, moved)
+    updateProp('playlist', reordered)
+    setDragIdx(idx)
+  }
+
+  const handleDragEnd = () => setDragIdx(null)
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files?.length) return
+    setUploading(true)
+    for (const file of Array.from(files)) {
+      try {
+        const buffer = await file.arrayBuffer()
+        const base64 = btoa(new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), ''))
+        const { asset } = await api.uploadMedia(file.name, file.type, base64)
+        addToPlaylist(asset.publicUrl)
+      } catch (err: any) {
+        console.error('Upload failed:', err)
+      }
+    }
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  const handleAddUrl = () => {
+    if (!urlInput.trim()) return
+    addToPlaylist(urlInput.trim())
+    setUrlInput('')
+  }
+
+  const getFilename = (url: string) => {
+    try { return decodeURIComponent(url.split('/').pop() || url) } catch { return url }
   }
 
   return (
@@ -228,6 +285,55 @@ function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
 
       {(props.offType === 1) && (
         <TextInput label="Off Image URL" value={props.offImageSrc || ''} onChange={v => updateProp('offImageSrc', v)} />
+      )}
+
+      {/* Playlist */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-gray-500">Playlist ({playlist.length} video{playlist.length !== 1 ? 's' : ''}) — loops automatically</span>
+        </div>
+
+        {playlist.length > 0 && (
+          <div className="space-y-1">
+            {playlist.map((url, idx) => (
+              <div key={idx} draggable onDragStart={() => handleDragStart(idx)}
+                onDragOver={e => handleDragOver(e, idx)} onDragEnd={handleDragEnd}
+                className={`flex items-center gap-2 rounded-lg border bg-gray-800/50 px-3 py-2 text-sm cursor-grab active:cursor-grabbing ${
+                  dragIdx === idx ? 'border-blue-500 bg-blue-900/20' : 'border-gray-700'
+                }`}>
+                <span className="text-gray-500 text-xs w-5 shrink-0">{idx + 1}.</span>
+                <span className="text-gray-300 truncate flex-1" title={url}>{getFilename(url)}</span>
+                <button onClick={() => removeFromPlaylist(idx)} className="text-red-400 hover:text-red-300 text-xs shrink-0">Remove</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2">
+          <label className={`rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 transition-colors cursor-pointer shrink-0 ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+            {uploading ? 'Uploading...' : 'Upload'}
+            <input ref={fileRef} type="file" accept="video/*" multiple onChange={handleUpload} className="hidden" />
+          </label>
+          <button onClick={() => setShowPicker(true)}
+            className="rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 transition-colors shrink-0">
+            Media Library
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input type="text" value={urlInput} onChange={e => setUrlInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleAddUrl() }}
+            placeholder="Paste video URL and press Enter"
+            className="flex-1 rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500" />
+          <button onClick={handleAddUrl} disabled={!urlInput.trim()}
+            className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500 transition-colors disabled:opacity-50">
+            Add
+          </button>
+        </div>
+      </div>
+
+      {showPicker && (
+        <MediaPicker api={api} accept="video/*" onSelect={url => { addToPlaylist(url); setShowPicker(false) }} onClose={() => setShowPicker(false)} />
       )}
 
       <div className="flex flex-col gap-1">
@@ -1179,7 +1285,7 @@ export default function SceneEditorPage() {
               }
 
               switch (el.type) {
-                case 'video': return <VideoElementEditor key={el.id} {...editorProps} />
+                case 'video': return <VideoElementEditor key={el.id} {...editorProps} api={api} />
                 case 'image': return <ImageElementEditor key={el.id} {...editorProps} api={api} />
                 case 'model': return <ModelElementEditor key={el.id} {...editorProps} />
                 case 'sound': return <SoundElementEditor key={el.id} {...editorProps} />
