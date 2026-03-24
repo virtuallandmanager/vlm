@@ -104,11 +104,55 @@ export function useApi() {
     deleteAccount: (password: string) =>
       apiFetch('/api/auth/account', { method: 'DELETE', body: JSON.stringify({ password }) }),
 
+    // Admin
+    getAdminStats: () => apiFetch<{
+      totalUsers: number; totalOrgs: number; totalScenes: number;
+      totalMedia: number; totalStorageBytes: number;
+      activeSubscriptionsByTier: Record<string, number>;
+    }>('/api/admin/stats'),
+    getAdminUsers: (params?: { limit?: number; offset?: number; search?: string }) => {
+      const query = new URLSearchParams()
+      if (params?.limit) query.set('limit', String(params.limit))
+      if (params?.offset) query.set('offset', String(params.offset))
+      if (params?.search) query.set('search', params.search)
+      const qs = query.toString()
+      return apiFetch<{ users: any[]; total: number; limit: number; offset: number }>(
+        `/api/admin/users${qs ? `?${qs}` : ''}`,
+      )
+    },
+    getAdminUser: (id: string) => apiFetch<{ user: any; subscription: any }>(`/api/admin/users/${id}`),
+    updateUserRole: (userId: string, role: string) =>
+      apiFetch<{ user: any }>(`/api/admin/users/${userId}/role`, { method: 'PUT', body: JSON.stringify({ role }) }),
+    deleteUser: (userId: string) =>
+      apiFetch(`/api/admin/users/${userId}`, { method: 'DELETE' }),
+    getAdminOrgs: (params?: { limit?: number; offset?: number; search?: string }) => {
+      const query = new URLSearchParams()
+      if (params?.limit) query.set('limit', String(params.limit))
+      if (params?.offset) query.set('offset', String(params.offset))
+      if (params?.search) query.set('search', params.search)
+      const qs = query.toString()
+      return apiFetch<{ organizations: any[]; total: number; limit: number; offset: number }>(
+        `/api/admin/orgs${qs ? `?${qs}` : ''}`,
+      )
+    },
+    deleteOrg: (orgId: string) =>
+      apiFetch(`/api/admin/orgs/${orgId}`, { method: 'DELETE' }),
+
     // Billing
     getBillingUsage: () => apiFetch<{ tier: string; limits: any; usage: any }>('/api/billing/usage'),
     getBillingSubscription: () => apiFetch<{ tier: string; status: string; billingEnabled?: boolean; limits: any }>('/api/billing/subscription'),
     createCheckout: (priceId: string) => apiFetch<{ url: string }>('/api/billing/checkout', { method: 'POST', body: JSON.stringify({ priceId }) }),
     getPortalUrl: () => apiFetch<{ url: string }>('/api/billing/portal', { method: 'POST', body: JSON.stringify({}) }),
+
+    // Streaming
+    getStreamingServers: () => apiFetch<{ servers: any[] }>('/api/streaming'),
+    getStreamingServer: (id: string) => apiFetch<{ server: any }>(`/api/streaming/${id}`),
+    provisionStreamingServer: (data: { name: string; type?: 'shared' | 'dedicated'; region?: string; sceneId?: string }) =>
+      apiFetch<{ server: any; instructions: any }>('/api/streaming/provision', { method: 'POST', body: JSON.stringify(data) }),
+    deleteStreamingServer: (id: string) =>
+      apiFetch<{ terminated: boolean }>(`/api/streaming/${id}`, { method: 'DELETE' }),
+    getStreamingSessions: (serverId: string) =>
+      apiFetch<{ sessions: any[] }>(`/api/streaming/${serverId}/sessions`),
 
     // Events
     getEvents: () => apiFetch<{ events: any[] }>('/api/events'),

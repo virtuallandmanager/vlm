@@ -1,14 +1,15 @@
 'use client'
 import { useAuth } from '@/lib/auth'
 import { useRouter, usePathname } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import Link from 'next/link'
 
-const navItems = [
+const baseNavItems = [
   { href: '/scenes', label: 'Scenes' },
   { href: '/events', label: 'Events' },
   { href: '/giveaways', label: 'Giveaways' },
   { href: '/media', label: 'Media' },
+  { href: '/streaming', label: 'Streaming' },
   { href: '/analytics', label: 'Analytics' },
   { href: '/settings', label: 'Settings' },
 ]
@@ -17,6 +18,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, loading, logout } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
+
+  const navItems = useMemo(() => {
+    const items = [...baseNavItems]
+    if (user?.role === 'admin') {
+      items.push({ href: '/admin', label: 'Admin' })
+    }
+    return items
+  }, [user?.role])
 
   useEffect(() => {
     if (!loading && !user) router.push('/')

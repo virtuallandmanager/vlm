@@ -4,6 +4,7 @@ import crypto from 'node:crypto'
 import { db } from '../db/connection.js'
 import { organizations, orgMembers, orgInvites, users } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
+import { sendOrgInviteEmail } from '../services/email.js'
 
 export default async function organizationRoutes(app: FastifyInstance) {
   // ── GET /api/orgs — list user's organizations ───────────────────────────
@@ -143,6 +144,11 @@ export default async function organizationRoutes(app: FastifyInstance) {
         token,
         expiresAt,
       }).returning()
+
+      // Send invite email
+      const [org] = await db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, orgId))
+      const [inviter] = await db.select({ displayName: users.displayName }).from(users).where(eq(users.id, request.user.id))
+      await sendOrgInviteEmail(email.toLowerCase(), org?.name || 'an organization', inviter?.displayName || 'Someone', token)
 
       return reply.status(201).send({ invite })
     },

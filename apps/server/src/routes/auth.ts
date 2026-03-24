@@ -7,6 +7,7 @@ import { db } from '../db/connection.js'
 import { users, userAuthMethods, passwordResetTokens } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { config } from '../config.js'
+import { sendPasswordResetEmail } from '../services/email.js'
 
 interface RegisterBody {
   email: string
@@ -628,10 +629,10 @@ export default async function authRoutes(app: FastifyInstance) {
         expiresAt,
       })
 
-      // TODO: Send email with reset link. For now, return token in response.
+      await sendPasswordResetEmail(email.toLowerCase(), token)
+
       return reply.send({
         message: 'If an account with that email exists, a reset link has been sent.',
-        token, // Remove this once email sending is implemented
       })
     },
   )

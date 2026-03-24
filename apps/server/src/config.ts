@@ -101,6 +101,13 @@ export const config = {
     ...(env('CORS_ORIGINS') ? env('CORS_ORIGINS')!.split(',').map((s) => s.trim()).filter(Boolean) : []),
   ],
 
+  // ── Email ──────────────────────────────────────────────────────────────
+  smtpHost: env('SMTP_HOST'),
+  smtpPort: parseInt(env('SMTP_PORT') || '587'),
+  smtpUser: env('SMTP_USER'),
+  smtpPass: env('SMTP_PASS'),
+  emailFrom: env('EMAIL_FROM') || 'noreply@vlm.gg',
+
   // ── Limits ──────────────────────────────────────────────────────────────
   maxRoomsPerServer: parseInt(env('MAX_ROOMS') || (mode === 'single' ? '50' : '500')),
   maxUploadSize: parseInt(env('MAX_UPLOAD_MB') || '100') * 1024 * 1024,

@@ -1,6 +1,8 @@
 import Fastify from 'fastify'
 import fastifyCors from '@fastify/cors'
 import fastifyStatic from '@fastify/static'
+import fastifySwagger from '@fastify/swagger'
+import fastifySwaggerUi from '@fastify/swagger-ui'
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 const _require = createRequire(import.meta.url)
@@ -23,6 +25,7 @@ import billingRoutes from './routes/billing.js'
 import companionUploadRoutes from './routes/companion-upload.js'
 import organizationRoutes from './routes/organizations.js'
 import apiKeyRoutes from './routes/api-keys.js'
+import adminRoutes from './routes/admin.js'
 import { startHookCrons } from './integrations/platform-hooks.js'
 import { VLMSceneRoom } from './ws/VLMSceneRoom.js'
 import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
@@ -71,6 +74,35 @@ async function main() {
   // JWT
   await registerJwt(app, config.jwtSecret)
 
+  // Swagger / OpenAPI docs
+  await app.register(fastifySwagger, {
+    openapi: {
+      info: {
+        title: 'VLM API',
+        description: 'Virtual Land Manager API',
+        version: '2.0.0',
+      },
+      servers: [{ url: config.publicUrl }],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+            description: 'JWT access token or API key (vlm_...)',
+          },
+        },
+      },
+      security: [{ bearerAuth: [] }],
+    },
+  })
+
+  await app.register(fastifySwaggerUi, {
+    routePrefix: '/api/docs',
+  })
+
+  console.log('[vlm-server] API docs available at /api/docs')
+
   // ── API Routes ───────────────────────────────────────────────────────────
   // Auth routes get stricter rate limits to mitigate brute-force attacks
   await app.register(async (scope) => {
@@ -96,6 +128,7 @@ async function main() {
   await app.register(companionUploadRoutes)
   await app.register(organizationRoutes)
   await app.register(apiKeyRoutes)
+  await app.register(adminRoutes)
 
   // Health check
   app.get('/api/health', async (_request, reply) => {
