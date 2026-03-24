@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
-import { db } from '../db/connection'
+import { db } from '../db/connection.js'
 import {
   scenes,
   scenePresets,
   sceneElements,
   sceneElementInstances,
-} from '../db/schema'
-import { authenticate } from '../middleware/auth'
+} from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
 
 interface CreateSceneBody {
   name: string

@@ -7,15 +7,15 @@
 
 import { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
-import { db } from '../db/connection'
+import { db } from '../db/connection.js'
 import {
   events,
   eventSceneLinks,
   scenes,
   sceneDeployments,
-} from '../db/schema'
-import { authenticate } from '../middleware/auth'
-import { dispatchPlatformCallbacks } from '../integrations/platform-hooks'
+} from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
+import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 
 export default async function commandCenterRoutes(app: FastifyInstance) {
   // ── Event Status ──────────────────────────────────────────────────────

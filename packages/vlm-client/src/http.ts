@@ -1,6 +1,6 @@
 import type { Scene, AuthProof } from 'vlm-shared'
-import type { AuthResponse, MediaAsset } from './types'
-import { VLMAuth } from './auth'
+import type { AuthResponse, MediaAsset } from './types.js'
+import { VLMAuth } from './auth.js'
 
 export class VLMHttpClient {
   private baseUrl: string

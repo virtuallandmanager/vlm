@@ -6,9 +6,9 @@
  */
 
 import { eq } from 'drizzle-orm'
-import { db } from '../db/connection'
-import { subscriptions, users } from '../db/schema'
-import { config } from '../config'
+import { db } from '../db/connection.js'
+import { subscriptions, users } from '../db/schema.js'
+import { config } from '../config.js'
 
 // ---------------------------------------------------------------------------
 // Stripe client (lazy-loaded to avoid crash when key is missing)

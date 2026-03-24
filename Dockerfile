@@ -29,8 +29,11 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm turbo build
 
-# Use pnpm deploy to create a standalone server bundle with all deps resolved
-RUN pnpm --filter vlm-server deploy /app/server-bundle --prod
+# Remove source files to reduce image size (keep dist + node_modules)
+RUN find apps/server/src -name '*.ts' -delete 2>/dev/null; \
+    find packages -name '*.ts' -not -path '*/node_modules/*' -delete 2>/dev/null; \
+    rm -rf apps/web/src apps/docs/src apps/streaming/src test-scenes .git; \
+    true
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM node:20-alpine
@@ -39,11 +42,8 @@ WORKDIR /app
 # Optional: FFmpeg for HLS streaming support
 RUN apk add --no-cache ffmpeg
 
-# Copy the standalone server bundle (includes node_modules with real files, not symlinks)
-COPY --from=builder /app/server-bundle ./
-
-# Copy the compiled server code
-COPY --from=builder /app/apps/server/dist ./dist
+# Copy the entire built monorepo (preserves pnpm symlink structure)
+COPY --from=builder /app ./
 
 # Create uploads directory for local storage
 RUN mkdir -p /app/uploads
@@ -53,4 +53,5 @@ ENV PORT=3010
 
 EXPOSE 3010
 
-CMD ["node", "dist/index.js"]
+# Run from the monorepo — pnpm workspace resolution stays intact
+CMD ["node", "apps/server/dist/index.js"]

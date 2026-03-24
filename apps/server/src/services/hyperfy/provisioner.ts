@@ -11,13 +11,13 @@
 
 import { randomBytes } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { db } from '../../db/connection'
-import { sceneDeployments } from '../../db/schema'
+import { db } from '../../db/connection.js'
+import { sceneDeployments } from '../../db/schema.js'
 import {
   createInfrastructureProvider,
   type InfrastructureProvider,
   type InstanceInfo,
-} from './infrastructure'
+} from './infrastructure.js'
 
 export interface ProvisionRequest {
   sceneId: string

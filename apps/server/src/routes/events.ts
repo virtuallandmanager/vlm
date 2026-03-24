@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { eq, and } from 'drizzle-orm'
-import { db } from '../db/connection'
-import { events, eventSceneLinks, eventGiveawayLinks } from '../db/schema'
-import { authenticate } from '../middleware/auth'
+import { db } from '../db/connection.js'
+import { events, eventSceneLinks, eventGiveawayLinks } from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
 
 interface CreateEventBody {
   name: string

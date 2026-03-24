@@ -1,4 +1,4 @@
-export { VideoManager } from './VideoManager'
-export { ImageManager } from './ImageManager'
-export { MeshManager } from './MeshManager'
-export { SoundManager } from './SoundManager'
+export { VideoManager } from './VideoManager.js'
+export { ImageManager } from './ImageManager.js'
+export { MeshManager } from './MeshManager.js'
+export { SoundManager } from './SoundManager.js'

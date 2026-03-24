@@ -12,10 +12,10 @@
 import { FastifyInstance } from 'fastify'
 import { randomBytes } from 'node:crypto'
 import { eq, and, gt } from 'drizzle-orm'
-import { db } from '../db/connection'
-import { uploadTokens, assetLibraryItems } from '../db/schema'
-import { authenticate } from '../middleware/auth'
-import { createStorage } from '../storage'
+import { db } from '../db/connection.js'
+import { uploadTokens, assetLibraryItems } from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
+import { createStorage } from '../storage/index.js'
 
 /** Generate a short alphanumeric code (6 chars, easy to type on mobile). */
 function generateCode(): string {

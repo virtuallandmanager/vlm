@@ -16,13 +16,13 @@ import type {
 } from 'vlm-shared'
 import { HUDPanelType } from 'vlm-shared'
 import type { VLMHttpClient, ColyseusManager } from 'vlm-client'
-import { PanelRegistry } from './PanelRegistry'
-import { AssetBrowserPanel } from './panels/AssetBrowserPanel'
-import { SceneLayoutPanel } from './panels/SceneLayoutPanel'
-import { EventControlPanel } from './panels/EventControlPanel'
-import { StreamControlPanel } from './panels/StreamControlPanel'
-import { WorldStatusPanel } from './panels/WorldStatusPanel'
-import { NotificationPanel } from './panels/NotificationPanel'
+import { PanelRegistry } from './PanelRegistry.js'
+import { AssetBrowserPanel } from './panels/AssetBrowserPanel.js'
+import { SceneLayoutPanel } from './panels/SceneLayoutPanel.js'
+import { EventControlPanel } from './panels/EventControlPanel.js'
+import { StreamControlPanel } from './panels/StreamControlPanel.js'
+import { WorldStatusPanel } from './panels/WorldStatusPanel.js'
+import { NotificationPanel } from './panels/NotificationPanel.js'
 
 export interface HUDManagerOptions {
   renderer: HUDRenderer

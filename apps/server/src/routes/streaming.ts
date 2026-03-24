@@ -12,13 +12,13 @@
 import { FastifyInstance } from 'fastify'
 import { randomBytes } from 'node:crypto'
 import { eq, desc } from 'drizzle-orm'
-import { db } from '../db/connection'
+import { db } from '../db/connection.js'
 import {
   streamingServers,
   streamingSessions,
-} from '../db/schema'
-import { authenticate } from '../middleware/auth'
-import { config } from '../config'
+} from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
+import { config } from '../config.js'
 
 export default async function streamingRoutes(app: FastifyInstance) {
   // ── Provision ─────────────────────────────────────────────────────────
@@ -209,7 +209,7 @@ export default async function streamingRoutes(app: FastifyInstance) {
       // If linked to a scene, broadcast video status to the Colyseus room
       // This triggers the scene's video elements to show the live stream
       if (server.sceneId) {
-        const { dispatchPlatformCallbacks } = await import('../integrations/platform-hooks')
+        const { dispatchPlatformCallbacks } = await import('../integrations/platform-hooks.js')
         dispatchPlatformCallbacks(server.sceneId, {
           action: 'video_status',
           isLive: true,
@@ -244,7 +244,7 @@ export default async function streamingRoutes(app: FastifyInstance) {
 
       // Notify scene that stream is offline
       if (server.sceneId) {
-        const { dispatchPlatformCallbacks } = await import('../integrations/platform-hooks')
+        const { dispatchPlatformCallbacks } = await import('../integrations/platform-hooks.js')
         dispatchPlatformCallbacks(server.sceneId, {
           action: 'video_status',
           isLive: false,

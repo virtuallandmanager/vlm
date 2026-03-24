@@ -9,7 +9,7 @@
   },
   "devDependencies": {
     "@dcl/sdk": "~7.7.9",
-    "@dcl/js-runtime": "~7.6.3"
+    "@dcl/js-runtime": "7.7.9"
   },
   "dependencies": {
     "vlm-adapter-dcl": "file:../../packages/vlm-adapter-dcl",

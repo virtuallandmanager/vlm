@@ -10,8 +10,8 @@
  */
 
 import { eq, lt, and } from 'drizzle-orm'
-import { db } from '../db/connection'
-import { platformCallbacks } from '../db/schema'
+import { db } from '../db/connection.js'
+import { platformCallbacks } from '../db/schema.js'
 
 /**
  * Dispatch a payload to all registered callbacks for a scene.

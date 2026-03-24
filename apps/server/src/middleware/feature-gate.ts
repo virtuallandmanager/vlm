@@ -11,8 +11,8 @@
  */
 
 import type { FastifyRequest, FastifyReply } from 'fastify'
-import { config } from '../config'
-import { getSubscription } from '../integrations/stripe'
+import { config } from '../config.js'
+import { getSubscription } from '../integrations/stripe.js'
 
 /** Known features that can be gated. */
 export type GatedFeature =

@@ -3,19 +3,19 @@ const _require = createRequire(import.meta.url)
 const { Room } = _require('colyseus') as any
 type Client = any
 import { eq } from 'drizzle-orm'
-import { db } from '../db/connection'
+import { db } from '../db/connection.js'
 import {
   scenes,
   scenePresets,
   sceneElements,
   sceneElementInstances,
-} from '../db/schema'
+} from '../db/schema.js'
 import {
   serializePreset,
   serializeSingleElement,
   serializeSingleInstance,
-} from '../services/scene-serializer'
-import { dispatchPlatformCallbacks } from '../integrations/platform-hooks'
+} from '../services/scene-serializer.js'
+import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 
 interface JoinOptions {
   sessionToken: string

@@ -1,9 +1,9 @@
 import type { VLMPlatformAdapter, VLMStorage } from 'vlm-shared'
-import { VideoManager } from './managers/VideoManager'
-import { ImageManager } from './managers/ImageManager'
-import { MeshManager } from './managers/MeshManager'
-import { SoundManager } from './managers/SoundManager'
-import { EventBus } from './events/EventBus'
+import { VideoManager } from './managers/VideoManager.js'
+import { ImageManager } from './managers/ImageManager.js'
+import { MeshManager } from './managers/MeshManager.js'
+import { SoundManager } from './managers/SoundManager.js'
+import { EventBus } from './events/EventBus.js'
 
 // Manager interface — shared by all element managers
 interface ElementManager {

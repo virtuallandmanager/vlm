@@ -1,8 +1,8 @@
 import type { VLMPlatformAdapter, VLMInitConfig, VLMStorage as VLMStorageType, HUDRenderer, BudgetLimits } from 'vlm-shared'
 import { VLMHttpClient, ColyseusManager } from 'vlm-client'
-import { SceneManager } from './SceneManager'
-import { VLMStorageImpl } from './storage'
-import { EventBus } from './events/EventBus'
+import { SceneManager } from './SceneManager.js'
+import { VLMStorageImpl } from './storage.js'
+import { EventBus } from './events/EventBus.js'
 
 // Default API URLs by environment
 const API_URLS: Record<string, string> = {

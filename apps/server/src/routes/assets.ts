@@ -11,10 +11,10 @@
 
 import { FastifyInstance } from 'fastify'
 import { eq, ilike, and, or, sql, arrayContains } from 'drizzle-orm'
-import { db } from '../db/connection'
-import { assetLibraryItems } from '../db/schema'
-import { authenticate } from '../middleware/auth'
-import { createStorage } from '../storage'
+import { db } from '../db/connection.js'
+import { assetLibraryItems } from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
+import { createStorage } from '../storage/index.js'
 
 export default async function assetRoutes(app: FastifyInstance) {
   const storage = createStorage()

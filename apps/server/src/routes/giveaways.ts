@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { eq, sql } from 'drizzle-orm'
-import { db } from '../db/connection'
-import { giveaways, giveawayItems, giveawayClaims } from '../db/schema'
-import { authenticate } from '../middleware/auth'
+import { db } from '../db/connection.js'
+import { giveaways, giveawayItems, giveawayClaims } from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
 
 interface CreateGiveawayBody {
   name: string

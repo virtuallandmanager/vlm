@@ -14,14 +14,14 @@ const _require = createRequire(import.meta.url)
 const { Room } = _require('colyseus') as any
 type Client = any
 import { eq } from 'drizzle-orm'
-import { db } from '../db/connection'
+import { db } from '../db/connection.js'
 import {
   events,
   eventSceneLinks,
   scenes,
   sceneDeployments,
-} from '../db/schema'
-import { dispatchPlatformCallbacks } from '../integrations/platform-hooks'
+} from '../db/schema.js'
+import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 
 interface JoinOptions {
   sessionToken: string

@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 import bcrypt from 'bcryptjs'
 import { eq, and } from 'drizzle-orm'
-import { db } from '../db/connection'
-import { users, userAuthMethods } from '../db/schema'
-import { authenticate } from '../middleware/auth'
-import { config } from '../config'
+import { db } from '../db/connection.js'
+import { users, userAuthMethods } from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
+import { config } from '../config.js'
 
 interface RegisterBody {
   email: string

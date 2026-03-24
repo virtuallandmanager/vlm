@@ -10,16 +10,16 @@
 
 import { FastifyInstance } from 'fastify'
 import { eq, sql } from 'drizzle-orm'
-import { db } from '../db/connection'
-import { mediaAssets, scenes, streamingSessions } from '../db/schema'
-import { authenticate } from '../middleware/auth'
-import { config } from '../config'
+import { db } from '../db/connection.js'
+import { mediaAssets, scenes, streamingSessions } from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
+import { config } from '../config.js'
 import {
   createCheckoutSession,
   createPortalSession,
   handleWebhookEvent,
   getSubscription,
-} from '../integrations/stripe'
+} from '../integrations/stripe.js'
 
 export default async function billingRoutes(app: FastifyInstance) {
   // ── Create Checkout Session ───────────────────────────────────────────

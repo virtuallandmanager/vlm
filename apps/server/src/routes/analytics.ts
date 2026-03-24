@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { eq, and, gte, isNull, sql } from 'drizzle-orm'
-import { db } from '../db/connection'
-import { analyticsSessions, analyticsActions, scenes } from '../db/schema'
-import { authenticate } from '../middleware/auth'
+import { db } from '../db/connection.js'
+import { analyticsSessions, analyticsActions, scenes } from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
 
 export default async function analyticsRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)

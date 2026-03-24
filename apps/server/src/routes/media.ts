@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
-import { db } from '../db/connection'
-import { mediaAssets } from '../db/schema'
-import { authenticate } from '../middleware/auth'
-import { createStorage } from '../storage/index'
+import { db } from '../db/connection.js'
+import { mediaAssets } from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
+import { createStorage } from '../storage/index.js'
 import { randomUUID } from 'crypto'
 
 const storage = createStorage()

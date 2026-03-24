@@ -12,13 +12,13 @@
 
 import { FastifyInstance } from 'fastify'
 import { eq, and } from 'drizzle-orm'
-import { db } from '../db/connection'
+import { db } from '../db/connection.js'
 import {
   platformCallbacks,
   scenes,
   scenePresets,
   sceneElements,
-} from '../db/schema'
+} from '../db/schema.js'
 
 export default async function hookRoutes(app: FastifyInstance) {
   // ── POST /hook/register ─────────────────────────────────────────────────

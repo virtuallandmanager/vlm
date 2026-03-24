@@ -14,14 +14,14 @@
 
 import { FastifyInstance } from 'fastify'
 import { eq, desc } from 'drizzle-orm'
-import { db } from '../db/connection'
+import { db } from '../db/connection.js'
 import {
   sceneDeployments,
   deploymentWallets,
   scenes,
-} from '../db/schema'
-import { authenticate } from '../middleware/auth'
-import { HyperfyProvisioner } from '../services/hyperfy/provisioner'
+} from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
+import { HyperfyProvisioner } from '../services/hyperfy/provisioner.js'
 
 export default async function deployRoutes(app: FastifyInstance) {
   // ── Start Deployment ──────────────────────────────────────────────────
