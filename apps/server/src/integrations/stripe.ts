@@ -16,14 +16,13 @@ import { config } from '../config.js'
 
 let _stripe: any = null
 
-function getStripe(): any {
+async function getStripe(): Promise<any> {
   if (!config.stripeSecretKey) {
     throw new Error('Stripe is not configured (STRIPE_SECRET_KEY missing)')
   }
   if (!_stripe) {
-    // Dynamic import to avoid requiring stripe when billing is disabled
-    const Stripe = require('stripe')
-    _stripe = new Stripe(config.stripeSecretKey, { apiVersion: '2024-12-18.acacia' })
+    const { default: Stripe } = await import('stripe')
+    _stripe = new Stripe(config.stripeSecretKey, { apiVersion: '2024-12-18.acacia' as any })
   }
   return _stripe
 }
@@ -183,7 +182,7 @@ export async function createCheckoutSession(options: {
   successUrl: string
   cancelUrl: string
 }): Promise<{ url: string }> {
-  const stripe = getStripe()
+  const stripe = await getStripe()
 
   // Find or create Stripe customer
   let sub = await db.query.subscriptions.findFirst({
@@ -234,7 +233,7 @@ export async function createPortalSession(options: {
   userId: string
   returnUrl: string
 }): Promise<{ url: string }> {
-  const stripe = getStripe()
+  const stripe = await getStripe()
 
   const sub = await db.query.subscriptions.findFirst({
     where: eq(subscriptions.userId, options.userId),
@@ -310,7 +309,7 @@ async function activateSubscription(
   stripeSubscriptionId: string,
   stripeCustomerId: string,
 ): Promise<void> {
-  const stripe = getStripe()
+  const stripe = await getStripe()
   const stripeSub = await stripe.subscriptions.retrieve(stripeSubscriptionId)
   const priceId = stripeSub.items.data[0]?.price?.id || ''
   const tier = tierFromPriceId(priceId)

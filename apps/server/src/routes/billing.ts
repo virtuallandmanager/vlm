@@ -157,8 +157,8 @@ export default async function billingRoutes(app: FastifyInstance) {
 
       if (webhookSecret && sig) {
         try {
-          const Stripe = require('stripe')
-          const stripe = new Stripe(config.stripeSecretKey)
+          const { default: Stripe } = await import('stripe')
+          const stripe = new Stripe(config.stripeSecretKey!)
           event = stripe.webhooks.constructEvent(
             (request as any).rawBody || request.body,
             sig,

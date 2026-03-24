@@ -30,7 +30,8 @@ COPY . .
 RUN pnpm turbo build
 
 # Remove source files to reduce image size (keep dist + node_modules)
-RUN find apps/server/src -name '*.ts' -delete 2>/dev/null; \
+# Keep apps/server/src/db/schema.ts — drizzle-kit push needs it at runtime
+RUN find apps/server/src -name '*.ts' -not -path '*/db/schema.ts' -delete 2>/dev/null; \
     find packages -name '*.ts' -not -path '*/node_modules/*' -delete 2>/dev/null; \
     rm -rf apps/web/src apps/docs/src apps/streaming/src test-scenes .git; \
     true
