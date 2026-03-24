@@ -1,12 +1,24 @@
 'use client'
 import { useApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
-import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { useEffect, useState, Suspense } from 'react'
+import SceneEditorPage from './[sceneId]/client'
 
 export default function ScenesPage() {
+  return (
+    <Suspense fallback={<p className="text-gray-400">Loading...</p>}>
+      <ScenesContent />
+    </Suspense>
+  )
+}
+
+function ScenesContent() {
   const { token } = useAuth()
   const api = useApi()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const selectedSceneId = searchParams.get('id')
   const [scenes, setScenes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
@@ -24,6 +36,19 @@ export default function ScenesPage() {
     setScenes(prev => [scene, ...prev])
     setNewName('')
     setShowCreate(false)
+  }
+
+  // Show scene editor when ?id= is present
+  if (selectedSceneId) {
+    return (
+      <div>
+        <button onClick={() => router.push('/scenes')}
+          className="mb-4 text-sm text-gray-400 hover:text-white">
+          ← Back to scenes
+        </button>
+        <SceneEditorPage />
+      </div>
+    )
   }
 
   if (loading) return <p className="text-gray-400">Loading scenes...</p>
@@ -53,12 +78,12 @@ export default function ScenesPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {scenes.map(scene => (
-            <Link key={scene.id} href={`/scenes/${scene.id}`}
-              className="rounded-xl border border-gray-800 bg-gray-900 p-4 hover:border-gray-600 transition-colors">
+            <button key={scene.id} onClick={() => router.push(`/scenes?id=${scene.id}`)}
+              className="rounded-xl border border-gray-800 bg-gray-900 p-4 hover:border-gray-600 transition-colors text-left">
               <h3 className="font-semibold">{scene.name}</h3>
               <p className="mt-1 text-sm text-gray-400">{scene.description || 'No description'}</p>
               <p className="mt-2 text-xs text-gray-600">ID: {scene.id}</p>
-            </Link>
+            </button>
           ))}
         </div>
       )}

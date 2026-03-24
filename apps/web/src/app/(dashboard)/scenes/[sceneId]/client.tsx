@@ -2,7 +2,7 @@
 import { useApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useSceneRoom } from '@/lib/colyseus'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
 
 
@@ -620,7 +620,8 @@ function ModerationPanel({ sendMessage }: { sendMessage: (type: string, payload:
 
 export default function SceneEditorPage() {
   const params = useParams()
-  const sceneId = params.sceneId as string
+  const searchParams = useSearchParams()
+  const sceneId = (searchParams.get('id') || params.sceneId) as string
   const { token } = useAuth()
   const api = useApi()
   const { room, connected, sendUpdate, sendMessage } = useSceneRoom(sceneId, token)
