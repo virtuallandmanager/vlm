@@ -24,7 +24,7 @@ import { startHookCrons } from './integrations/platform-hooks.js'
 import { VLMSceneRoom } from './ws/VLMSceneRoom.js'
 import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
 import { runMigrations } from './db/migrate.js'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 
 async function main() {
@@ -113,10 +113,11 @@ async function main() {
 
       // Walk up the path looking for a _/index.html placeholder
       for (let i = segments.length; i >= 1; i--) {
-        const parent = segments.slice(0, i - 1).join('/')
-        const candidate = join(dashboardPath, parent, '_', 'index.html')
-        if (existsSync(candidate)) {
-          return reply.sendFile(join(parent, '_', 'index.html'))
+        const parent = segments.slice(0, i - 1)
+        const placeholderPath = [...parent, '_', 'index.html'].join('/')
+        const fullPath = resolve(dashboardPath, placeholderPath)
+        if (existsSync(fullPath)) {
+          return reply.type('text/html').send(readFileSync(fullPath))
         }
       }
 
