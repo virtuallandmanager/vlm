@@ -1,9 +1,9 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  // Use standalone output for production (embeddable in server container)
-  // Dynamic routes like /scenes/[sceneId] require server-side rendering
-  output: 'standalone',
+  // Static export — embedded in the server container as the dashboard SPA.
+  // All data fetching is client-side so no SSR needed.
+  output: 'export',
   trailingSlash: true,
 }
 

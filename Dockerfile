@@ -29,6 +29,9 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm turbo build
 
+# Copy the Next.js static export into the server's dashboard directory
+RUN cp -r apps/web/out apps/server/dashboard
+
 # Remove source files to reduce image size (keep dist + node_modules)
 # Keep apps/server/src/db/schema.ts — drizzle-kit push needs it at runtime
 RUN find apps/server/src -name '*.ts' -not -path '*/db/schema.ts' -delete 2>/dev/null; \

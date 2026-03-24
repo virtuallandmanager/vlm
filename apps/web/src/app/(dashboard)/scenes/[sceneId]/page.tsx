@@ -5,6 +5,11 @@ import { useSceneRoom } from '@/lib/colyseus'
 import { useParams } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
 
+// Required for static export with dynamic routes — actual ID comes from useParams
+export function generateStaticParams() {
+  return []
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

@@ -12,6 +12,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 
+// Required for static export with dynamic routes — actual code comes from useParams
+export function generateStaticParams() {
+  return []
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3010'
 
 interface TokenInfo {
