@@ -8,5 +8,9 @@ if (!config.databaseUrl) {
   process.exit(1)
 }
 
-const sql = postgres(config.databaseUrl)
+const sql = postgres(config.databaseUrl, {
+  max: config.dbPoolMax,
+  idle_timeout: 20,        // seconds before an idle connection is closed
+  connect_timeout: 10,     // seconds to wait for a new connection
+})
 export const db = drizzle(sql, { schema })

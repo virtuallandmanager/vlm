@@ -7,6 +7,7 @@ import Link from 'next/link'
 const navItems = [
   { href: '/scenes', label: 'Scenes' },
   { href: '/media', label: 'Media' },
+  { href: '/settings', label: 'Settings' },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

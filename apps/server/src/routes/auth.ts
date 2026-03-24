@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import bcrypt from 'bcryptjs'
+import { OAuth2Client } from 'google-auth-library'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { users, userAuthMethods } from '../db/schema.js'
@@ -216,7 +217,7 @@ export default async function authRoutes(app: FastifyInstance) {
       }
 
       const accessToken = app.jwt.sign(
-        { id: dbUser.id, email: dbUser.email, role: dbUser.role },
+        { id: dbUser.id, email: dbUser.email, role: dbUser.role, orgId: dbUser.activeOrgId || null },
         { expiresIn: config.jwtAccessExpiry },
       )
       const refreshToken = app.jwt.sign(
@@ -229,6 +230,140 @@ export default async function authRoutes(app: FastifyInstance) {
         accessToken,
         refreshToken,
       })
+    },
+  )
+
+  // ── GET /api/auth/google — Redirect to Google OAuth consent screen ───────
+
+  app.get('/api/auth/google', async (request, reply) => {
+    if (!config.googleClientId || !config.googleClientSecret) {
+      return reply.status(501).send({ error: 'Google OAuth is not configured' })
+    }
+
+    const redirectUri = `${config.oauthCallbackUrl}/api/auth/google/callback`
+
+    const params = new URLSearchParams({
+      client_id: config.googleClientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'email profile',
+      access_type: 'offline',
+      prompt: 'consent',
+    })
+
+    return reply.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`)
+  })
+
+  // ── GET /api/auth/google/callback — Handle the OAuth callback ────────────
+
+  app.get<{ Querystring: { code?: string; error?: string } }>(
+    '/api/auth/google/callback',
+    async (request, reply) => {
+      if (!config.googleClientId || !config.googleClientSecret) {
+        return reply.status(501).send({ error: 'Google OAuth is not configured' })
+      }
+
+      const { code, error: oauthError } = request.query
+
+      if (oauthError || !code) {
+        return reply.redirect(`${config.publicUrl}/auth/callback?error=${oauthError || 'missing_code'}`)
+      }
+
+      const redirectUri = `${config.oauthCallbackUrl}/api/auth/google/callback`
+      const oauthClient = new OAuth2Client(config.googleClientId, config.googleClientSecret, redirectUri)
+
+      try {
+        // Exchange code for tokens
+        const { tokens } = await oauthClient.getToken(code)
+        oauthClient.setCredentials(tokens)
+
+        // Verify and decode the id_token
+        const ticket = await oauthClient.verifyIdToken({
+          idToken: tokens.id_token!,
+          audience: config.googleClientId,
+        })
+        const payload = ticket.getPayload()
+
+        if (!payload || !payload.sub) {
+          return reply.redirect(`${config.publicUrl}/auth/callback?error=invalid_token`)
+        }
+
+        const googleUserId = payload.sub
+        const email = payload.email || null
+        const displayName = payload.name || payload.email || 'Google User'
+        const identifier = `google:${googleUserId}`
+
+        // Look up existing auth method
+        let authMethod = await db.query.userAuthMethods.findFirst({
+          where: and(
+            eq(userAuthMethods.type, 'oauth'),
+            eq(userAuthMethods.identifier, identifier),
+          ),
+          with: { user: true },
+        })
+
+        let dbUser
+
+        if (authMethod) {
+          // Existing user — log them in
+          dbUser = authMethod.user
+        } else {
+          // New user — create account
+
+          // Auto-promote the first user to admin in single/scalable mode
+          let role: 'admin' | 'creator' = 'creator'
+          if (config.autoPromoteFirstUser) {
+            const userCount = await db.query.users.findFirst()
+            if (!userCount) {
+              role = 'admin'
+            }
+          }
+
+          const [newUser] = await db
+            .insert(users)
+            .values({
+              displayName,
+              email: email?.toLowerCase() || null,
+              role,
+            })
+            .returning()
+
+          await db.insert(userAuthMethods).values({
+            userId: newUser.id,
+            type: 'oauth',
+            identifier,
+            metadata: {
+              provider: 'google',
+              googleUserId,
+              email,
+              name: payload.name,
+              picture: payload.picture,
+            },
+          })
+
+          dbUser = newUser
+        }
+
+        const accessToken = app.jwt.sign(
+          { id: dbUser.id, email: dbUser.email, role: dbUser.role, orgId: dbUser.activeOrgId || null },
+          { expiresIn: config.jwtAccessExpiry },
+        )
+        const refreshToken = app.jwt.sign(
+          { id: dbUser.id, email: dbUser.email, role: dbUser.role, refresh: true },
+          { expiresIn: config.jwtRefreshExpiry },
+        )
+
+        // Redirect to frontend with tokens
+        const params = new URLSearchParams({
+          token: accessToken,
+          refresh: refreshToken,
+        })
+
+        return reply.redirect(`${config.publicUrl}/auth/callback?${params.toString()}`)
+      } catch (err) {
+        request.log.error(err, 'Google OAuth callback error')
+        return reply.redirect(`${config.publicUrl}/auth/callback?error=oauth_failed`)
+      }
     },
   )
 }

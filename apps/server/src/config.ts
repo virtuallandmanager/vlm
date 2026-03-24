@@ -25,11 +25,17 @@ export const config = {
 
   // ── Database ────────────────────────────────────────────────────────────
   databaseUrl: env('DATABASE_URL')!,
+  dbPoolMax: parseInt(env('DB_POOL_MAX') || (mode === 'single' ? '10' : '20')),
 
   // ── Auth ─────────────────────────────────────────────────────────────────
   jwtSecret: env('JWT_SECRET') || 'dev-secret-change-me',
   jwtAccessExpiry: env('JWT_ACCESS_EXPIRY') || '15m',
   jwtRefreshExpiry: env('JWT_REFRESH_EXPIRY') || '7d',
+
+  // ── Google OAuth ──────────────────────────────────────────────────────────
+  googleClientId: env('GOOGLE_CLIENT_ID'),
+  googleClientSecret: env('GOOGLE_CLIENT_SECRET'),
+  oauthCallbackUrl: env('OAUTH_CALLBACK_URL') || env('PUBLIC_URL') || 'http://localhost:3010',
 
   // ── Colyseus Presence ───────────────────────────────────────────────────
   // single: in-memory (no Redis needed)

@@ -736,6 +736,32 @@ export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
   }),
 }))
 
+// ── API Keys ────────────────────────────────────────────────────────────────
+
+export const apiKeys = pgTable('api_keys', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  keyHash: text('key_hash').notNull(), // SHA-256 hash of the key
+  keyPrefix: text('key_prefix').notNull(), // first 8 chars for identification (e.g., "vlm_k1_a")
+  scopes: text('scopes').array(), // ['scenes:read', 'scenes:write', 'media:read', 'media:write']
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
+  user: one(users, {
+    fields: [apiKeys.userId],
+    references: [users.id],
+  }),
+  org: one(organizations, {
+    fields: [apiKeys.orgId],
+    references: [organizations.id],
+  }),
+}))
+
 // ── Upload Tokens (Companion Upload Flow) ──────────────────────────────────
 
 export const uploadTokens = pgTable('upload_tokens', {

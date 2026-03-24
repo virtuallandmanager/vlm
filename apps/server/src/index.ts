@@ -21,6 +21,7 @@ import streamingRoutes from './routes/streaming.js'
 import billingRoutes from './routes/billing.js'
 import companionUploadRoutes from './routes/companion-upload.js'
 import organizationRoutes from './routes/organizations.js'
+import apiKeyRoutes from './routes/api-keys.js'
 import { startHookCrons } from './integrations/platform-hooks.js'
 import { VLMSceneRoom } from './ws/VLMSceneRoom.js'
 import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
@@ -89,6 +90,7 @@ async function main() {
   await app.register(billingRoutes)
   await app.register(companionUploadRoutes)
   await app.register(organizationRoutes)
+  await app.register(apiKeyRoutes)
 
   // Health check
   app.get('/api/health', async () => ({
