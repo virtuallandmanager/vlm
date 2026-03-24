@@ -84,6 +84,7 @@ export const config = {
 
   // ── Limits ──────────────────────────────────────────────────────────────
   maxRoomsPerServer: parseInt(env('MAX_ROOMS') || (mode === 'single' ? '50' : '500')),
+  maxUploadSize: parseInt(env('MAX_UPLOAD_MB') || '100') * 1024 * 1024,
 
   // ── Dashboard ───────────────────────────────────────────────────────────
   dashboardDir: env('DASHBOARD_DIR') || './dashboard',

@@ -45,7 +45,7 @@ async function main() {
     logger: {
       level: config.logLevel,
     },
-    bodyLimit: 100 * 1024 * 1024, // 100MB — uploads are base64 encoded
+    bodyLimit: config.maxUploadSize, // default 100MB, set MAX_UPLOAD_MB to override
   })
 
   // CORS
