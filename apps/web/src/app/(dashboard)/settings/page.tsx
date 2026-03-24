@@ -3,6 +3,47 @@ import { useApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useEffect, useState } from 'react'
 
+function formatBytes(bytes: number): string {
+  if (bytes === Infinity) return 'Unlimited'
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const value = bytes / Math.pow(1024, i)
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`
+}
+
+function UsageBar({ label, current, limit, formatValue }: {
+  label: string
+  current: number
+  limit: number
+  formatValue: (v: number) => string
+}) {
+  const isUnlimited = limit === Infinity || limit === null
+  const pct = isUnlimited ? 0 : Math.min((current / limit) * 100, 100)
+  const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-green-500'
+
+  return (
+    <div>
+      <div className="flex items-center justify-between text-sm mb-1">
+        <span className="text-gray-400">{label}</span>
+        <span className="text-gray-300">
+          {formatValue(current)} / {isUnlimited ? 'Unlimited' : formatValue(limit)}
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-gray-800 overflow-hidden">
+        {isUnlimited ? (
+          <div className="h-full w-full bg-green-500/30 rounded-full" />
+        ) : (
+          <div
+            className={`h-full rounded-full transition-all ${barColor}`}
+            style={{ width: `${pct}%` }}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function SettingsPage() {
   const { user, token } = useAuth()
   const api = useApi()
@@ -27,6 +68,14 @@ export default function SettingsPage() {
   const [showCreateKey, setShowCreateKey] = useState(false)
   const [deletingKeyId, setDeletingKeyId] = useState<string | null>(null)
 
+  // Billing state
+  const [billingEnabled, setBillingEnabled] = useState<boolean | null>(null)
+  const [billingTier, setBillingTier] = useState<string>('free')
+  const [billingUsage, setBillingUsage] = useState<any>(null)
+  const [billingLimits, setBillingLimits] = useState<any>(null)
+  const [billingLoading, setBillingLoading] = useState(true)
+  const [billingActionLoading, setBillingActionLoading] = useState<string | null>(null)
+
   useEffect(() => {
     if (!token) return
     api.getOrgs()
@@ -49,6 +98,20 @@ export default function SettingsPage() {
         setApiKeysLoading(false)
       })
       .catch(() => setApiKeysLoading(false))
+  }, [token])
+
+  // Fetch billing info
+  useEffect(() => {
+    if (!token) return
+    Promise.all([api.getBillingSubscription(), api.getBillingUsage()])
+      .then(([sub, usage]) => {
+        setBillingEnabled(sub.billingEnabled !== false)
+        setBillingTier(usage.tier)
+        setBillingUsage(usage.usage)
+        setBillingLimits(usage.limits)
+        setBillingLoading(false)
+      })
+      .catch(() => setBillingLoading(false))
   }, [token])
 
   const handleCreateApiKey = async (e: React.FormEvent) => {
@@ -275,6 +338,145 @@ export default function SettingsPage() {
                 )}
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      {/* Billing & Usage */}
+      <section className="mt-10">
+        <h2 className="text-lg font-semibold mb-4">Billing & Usage</h2>
+        {billingLoading ? (
+          <p className="text-gray-400">Loading billing info...</p>
+        ) : billingEnabled === false ? (
+          <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="rounded-full bg-green-900/50 border border-green-700 px-3 py-1 text-sm font-medium text-green-400">Self-Hosted</span>
+            </div>
+            <p className="text-gray-300">All features unlocked. Billing is not enabled on this instance.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Current Plan */}
+            <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-400">Current Plan</span>
+                  <span className={`rounded-full px-3 py-1 text-sm font-medium border ${
+                    billingTier === 'free' ? 'bg-gray-800 border-gray-600 text-gray-300' :
+                    billingTier === 'creator' ? 'bg-blue-900/50 border-blue-700 text-blue-400' :
+                    billingTier === 'pro' ? 'bg-purple-900/50 border-purple-700 text-purple-400' :
+                    billingTier === 'studio' ? 'bg-amber-900/50 border-amber-700 text-amber-400' :
+                    billingTier === 'enterprise' ? 'bg-emerald-900/50 border-emerald-700 text-emerald-400' :
+                    'bg-gray-800 border-gray-600 text-gray-300'
+                  }`}>
+                    {billingTier.charAt(0).toUpperCase() + billingTier.slice(1)}
+                  </span>
+                </div>
+                {billingTier !== 'free' && (
+                  <button
+                    disabled={billingActionLoading === 'portal'}
+                    onClick={async () => {
+                      setBillingActionLoading('portal')
+                      try {
+                        const { url } = await api.getPortalUrl()
+                        window.location.href = url
+                      } catch (err: any) {
+                        setError(err.message)
+                        setBillingActionLoading(null)
+                      }
+                    }}
+                    className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-600 transition-colors disabled:opacity-50"
+                  >
+                    {billingActionLoading === 'portal' ? 'Redirecting...' : 'Manage Subscription'}
+                  </button>
+                )}
+              </div>
+
+              {/* Usage Stats */}
+              {billingUsage && billingLimits && (
+                <div className="space-y-3">
+                  <UsageBar
+                    label="Scenes"
+                    current={billingUsage.scenes}
+                    limit={billingLimits.scenes}
+                    formatValue={(v: number) => String(v)}
+                  />
+                  <UsageBar
+                    label="Storage"
+                    current={billingUsage.storageBytes}
+                    limit={billingLimits.storageBytes}
+                    formatValue={formatBytes}
+                  />
+                  {billingLimits.streamMinutes > 0 && (
+                    <UsageBar
+                      label="Streaming Minutes"
+                      current={billingUsage.streamMinutes}
+                      limit={billingLimits.streamMinutes}
+                      formatValue={(v: number) => String(v)}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Upgrade Options */}
+            {billingTier !== 'enterprise' && (
+              <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+                <h3 className="text-sm font-medium text-gray-300 mb-3">Upgrade Plan</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {(['creator', 'pro', 'studio', 'enterprise'] as const)
+                    .filter(t => {
+                      const order = { free: 0, creator: 1, pro: 2, studio: 3, enterprise: 4 }
+                      return (order[t] || 0) > (order[billingTier as keyof typeof order] || 0)
+                    })
+                    .map(tier => (
+                      <button
+                        key={tier}
+                        disabled={billingActionLoading === tier}
+                        onClick={async () => {
+                          if (tier === 'enterprise') {
+                            window.open('mailto:sales@vlm.gg?subject=Enterprise%20Plan', '_blank')
+                            return
+                          }
+                          setBillingActionLoading(tier)
+                          try {
+                            const priceEnvKey = `price_${tier}`
+                            const { url } = await api.createCheckout(priceEnvKey)
+                            window.location.href = url
+                          } catch (err: any) {
+                            setError(err.message)
+                            setBillingActionLoading(null)
+                          }
+                        }}
+                        className={`rounded-xl border p-4 text-left transition-colors disabled:opacity-50 ${
+                          tier === 'creator' ? 'border-blue-800 hover:bg-blue-900/20' :
+                          tier === 'pro' ? 'border-purple-800 hover:bg-purple-900/20' :
+                          tier === 'studio' ? 'border-amber-800 hover:bg-amber-900/20' :
+                          'border-emerald-800 hover:bg-emerald-900/20'
+                        }`}
+                      >
+                        <span className={`text-sm font-semibold ${
+                          tier === 'creator' ? 'text-blue-400' :
+                          tier === 'pro' ? 'text-purple-400' :
+                          tier === 'studio' ? 'text-amber-400' :
+                          'text-emerald-400'
+                        }`}>
+                          {tier.charAt(0).toUpperCase() + tier.slice(1)}
+                        </span>
+                        <p className="mt-1 text-xs text-gray-400">
+                          {tier === 'creator' && 'Up to 20 scenes, 10 GB storage'}
+                          {tier === 'pro' && 'Up to 100 scenes, 50 GB storage'}
+                          {tier === 'studio' && 'Unlimited scenes, 500 GB storage'}
+                          {tier === 'enterprise' && 'Custom limits, dedicated support'}
+                        </p>
+                        <span className="mt-2 inline-block text-xs font-medium text-gray-300">
+                          {billingActionLoading === tier ? 'Redirecting...' : tier === 'enterprise' ? 'Contact Sales' : 'Upgrade'}
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>

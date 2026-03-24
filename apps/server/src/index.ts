@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 import fastifyCors from '@fastify/cors'
 import fastifyStatic from '@fastify/static'
+import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 const _require = createRequire(import.meta.url)
 const { Server: ColyseusServer } = _require('colyseus') as any
@@ -26,8 +27,11 @@ import { startHookCrons } from './integrations/platform-hooks.js'
 import { VLMSceneRoom } from './ws/VLMSceneRoom.js'
 import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
 import { runMigrations } from './db/migrate.js'
+import { db } from './db/connection.js'
+import { sql } from 'drizzle-orm'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { register, httpRequestsTotal, httpRequestDurationSeconds } from './metrics.js'
 
 async function main() {
   console.log(`[vlm-server] Starting in "${config.mode}" mode`)
@@ -47,6 +51,7 @@ async function main() {
     logger: {
       level: config.logLevel,
     },
+    genReqId: () => randomUUID(),
     bodyLimit: config.maxUploadSize, // default 100MB, set MAX_UPLOAD_MB to override
   })
 
@@ -93,12 +98,69 @@ async function main() {
   await app.register(apiKeyRoutes)
 
   // Health check
-  app.get('/api/health', async () => ({
-    status: 'ok',
-    mode: config.mode,
-    version: '2.0.0',
-    timestamp: new Date().toISOString(),
-  }))
+  app.get('/api/health', async (_request, reply) => {
+    let postgresStatus = 'ok'
+    try {
+      await db.execute(sql`SELECT 1`)
+    } catch (err) {
+      postgresStatus = `error: ${(err as Error).message}`
+    }
+
+    let redisStatus: string
+    if (config.useRedisPresence && config.redisUrl) {
+      redisStatus = 'configured'
+    } else {
+      redisStatus = 'not_configured'
+    }
+
+    const isHealthy = postgresStatus === 'ok'
+
+    const body = {
+      status: isHealthy ? 'ok' : 'degraded',
+      mode: config.mode,
+      version: '2.0.0',
+      timestamp: new Date().toISOString(),
+      checks: {
+        postgres: postgresStatus,
+        redis: redisStatus,
+        storage: config.storageProvider,
+      },
+      uptime: process.uptime(),
+    }
+
+    return reply.status(isHealthy ? 200 : 503).send(body)
+  })
+
+  // ── Prometheus Metrics ─────────────────────────────────────────────────────
+  if (config.metricsEnabled) {
+    // Request counting & duration hooks (skip /metrics to avoid recursion)
+    app.addHook('onRequest', async (request) => {
+      if (request.url === '/metrics') return
+      ;(request as any).__metricsStart = process.hrtime.bigint()
+    })
+
+    app.addHook('onResponse', async (request, reply) => {
+      if (request.url === '/metrics') return
+      const start: bigint | undefined = (request as any).__metricsStart
+      const route = request.routeOptions?.url || request.url
+      const method = request.method
+      const statusCode = String(reply.statusCode)
+
+      httpRequestsTotal.inc({ method, route, status_code: statusCode })
+
+      if (start !== undefined) {
+        const durationNs = Number(process.hrtime.bigint() - start)
+        httpRequestDurationSeconds.observe({ method, route }, durationNs / 1e9)
+      }
+    })
+
+    app.get('/metrics', async (_request, reply) => {
+      const metrics = await register.metrics()
+      return reply.type(register.contentType).send(metrics)
+    })
+
+    console.log(`[vlm-server] Prometheus metrics enabled at /metrics`)
+  }
 
   // ── Static Dashboard ─────────────────────────────────────────────────────
   const dashboardPath = resolve(config.dashboardDir)
