@@ -24,8 +24,8 @@ import { startHookCrons } from './integrations/platform-hooks.js'
 import { VLMSceneRoom } from './ws/VLMSceneRoom.js'
 import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
 import { runMigrations } from './db/migrate.js'
-import { existsSync, readFileSync } from 'node:fs'
-import { resolve, join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 async function main() {
   console.log(`[vlm-server] Starting in "${config.mode}" mode`)
@@ -99,28 +99,12 @@ async function main() {
       })
     }
 
-    // SPA fallback: serve the closest pre-rendered page for unmatched routes.
-    // Dynamic routes like /scenes/[id] only have a placeholder at /scenes/_/,
-    // so we serve that HTML and let the client-side router handle the real param.
+    // SPA fallback: serve index.html for unmatched non-API routes.
+    // The client-side Next.js router handles routing from there.
     app.setNotFoundHandler(async (request, reply) => {
       if (request.url.startsWith('/api/')) {
         return reply.status(404).send({ error: 'Not found' })
       }
-
-      // Try to find a pre-rendered placeholder for dynamic routes
-      const url = request.url.split('?')[0].replace(/\/$/, '')
-      const segments = url.split('/').filter(Boolean)
-
-      // Walk up the path looking for a _/index.html placeholder
-      for (let i = segments.length; i >= 1; i--) {
-        const parent = segments.slice(0, i - 1)
-        const placeholderPath = [...parent, '_', 'index.html'].join('/')
-        const fullPath = resolve(dashboardPath, placeholderPath)
-        if (existsSync(fullPath)) {
-          return reply.type('text/html').send(readFileSync(fullPath))
-        }
-      }
-
       return reply.sendFile('index.html')
     })
   } else {
