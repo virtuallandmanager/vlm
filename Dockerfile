@@ -27,6 +27,14 @@ RUN pnpm install --frozen-lockfile
 
 # Copy source and build everything
 COPY . .
+
+# NEXT_PUBLIC_* vars are inlined at build time by Next.js.
+# Set via Railway env vars or --build-arg.
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WSS_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_WSS_URL=$NEXT_PUBLIC_WSS_URL
+
 RUN pnpm turbo build
 
 # Copy the Next.js static export into the dashboard directory
