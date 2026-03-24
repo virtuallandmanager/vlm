@@ -855,6 +855,45 @@ export default function SceneEditorPage() {
   // Widget: Add / Delete
   // -----------------------------------------------------------------------
 
+  const handleAddElement = useCallback(async (type: ElementType) => {
+    if (!activePreset) return
+    const count = elements.filter(e => e.type === type).length + 1
+    const defaults: Record<ElementType, Record<string, any>> = {
+      video: { liveSrc: '', offType: 0, volume: 1, isLive: false },
+      image: { textureSrc: '' },
+      model: { modelSrc: '' },
+      sound: { audioSrc: '', volume: 1, loop: false },
+      widget: { controlType: 1, value: false, order: 0 },
+    }
+    try {
+      const { element } = await api.createElement(activePreset.id, {
+        type,
+        name: `${type.charAt(0).toUpperCase() + type.slice(1)} ${count}`,
+        enabled: true,
+        properties: defaults[type],
+      })
+      const { instance } = await api.createInstance(element.id, {
+        position: { x: 8, y: 1, z: 8 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+        enabled: true,
+      })
+      setScene(prev => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          presets: prev.presets.map(preset => {
+            if (preset.id !== activePreset.id) return preset
+            return { ...preset, elements: [...preset.elements, { ...element, instances: [instance] }] }
+          }),
+        }
+      })
+      sendUpdate({ action: 'add_element', element: type, elementData: { ...element, instances: [instance] } })
+    } catch (err: any) {
+      console.error(`Failed to add ${type}:`, err)
+    }
+  }, [api, activePreset, elements, sendUpdate])
+
   const handleAddWidget = useCallback(async () => {
     if (!activePreset) return
     try {
@@ -988,6 +1027,13 @@ export default function SceneEditorPage() {
       {/* Element list (video/image/model/sound) */}
       {activeTab !== 'moderation' && activeTab !== 'widget' && (
         <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-400">{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}s ({filteredElements.length})</p>
+            <button onClick={() => handleAddElement(activeTab as ElementType)}
+              className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 transition-colors">
+              + Add {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+            </button>
+          </div>
           {filteredElements.length === 0 ? (
             <p className="text-gray-500 text-sm py-8 text-center">No {activeTab} elements in this preset.</p>
           ) : (
