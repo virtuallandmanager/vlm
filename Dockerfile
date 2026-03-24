@@ -32,11 +32,6 @@ RUN pnpm turbo build
 # Use pnpm deploy to create a standalone server bundle with all deps resolved
 RUN pnpm --filter vlm-server deploy /app/server-bundle --prod
 
-# Copy compiled workspace package dist into the bundle's node_modules
-RUN cp -r packages/vlm-shared/dist server-bundle/node_modules/vlm-shared/ && \
-    cp -r packages/vlm-core/dist server-bundle/node_modules/vlm-core/ && \
-    cp -r packages/vlm-client/dist server-bundle/node_modules/vlm-client/
-
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM node:20-alpine
 WORKDIR /app
