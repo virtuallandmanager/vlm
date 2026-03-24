@@ -45,7 +45,7 @@ function UsageBar({ label, current, limit, formatValue }: {
 }
 
 export default function SettingsPage() {
-  const { user, token } = useAuth()
+  const { user, token, updateUser, logout } = useAuth()
   const api = useApi()
   const [orgs, setOrgs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -58,6 +58,21 @@ export default function SettingsPage() {
   const [inviteRole, setInviteRole] = useState('member')
   const [error, setError] = useState<string | null>(null)
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null)
+
+  // Account state
+  const [displayName, setDisplayName] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileSuccess, setProfileSuccess] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordSaving, setPasswordSaving] = useState(false)
+  const [passwordSuccess, setPasswordSuccess] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   // API Keys state
   const [apiKeys, setApiKeys] = useState<any[]>([])
@@ -75,6 +90,11 @@ export default function SettingsPage() {
   const [billingLimits, setBillingLimits] = useState<any>(null)
   const [billingLoading, setBillingLoading] = useState(true)
   const [billingActionLoading, setBillingActionLoading] = useState<string | null>(null)
+
+  // Initialize display name from user
+  useEffect(() => {
+    if (user?.displayName) setDisplayName(user.displayName)
+  }, [user?.displayName])
 
   useEffect(() => {
     if (!token) return
@@ -218,6 +238,67 @@ export default function SettingsPage() {
     return org.role === 'owner' || org.role === 'admin'
   }
 
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!displayName.trim()) return
+    setProfileSaving(true)
+    setProfileSuccess(false)
+    setError(null)
+    try {
+      const { user: updated } = await api.updateProfile(displayName.trim())
+      updateUser({ displayName: updated.displayName })
+      setProfileSuccess(true)
+      setTimeout(() => setProfileSuccess(false), 3000)
+    } catch (err: any) {
+      setError(err.message)
+    }
+    setProfileSaving(false)
+  }
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPasswordError(null)
+    setPasswordSuccess(false)
+
+    if (newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match')
+      return
+    }
+
+    setPasswordSaving(true)
+    try {
+      await api.changePassword(currentPassword, newPassword)
+      setPasswordSuccess(true)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setTimeout(() => setPasswordSuccess(false), 3000)
+    } catch (err: any) {
+      setPasswordError(err.message)
+    }
+    setPasswordSaving(false)
+  }
+
+  const handleDeleteAccount = async () => {
+    setDeleteError(null)
+    if (!deletePassword) {
+      setDeleteError('Password is required')
+      return
+    }
+    setDeleteLoading(true)
+    try {
+      await api.deleteAccount(deletePassword)
+      logout()
+    } catch (err: any) {
+      setDeleteError(err.message)
+      setDeleteLoading(false)
+    }
+  }
+
   if (loading) return <p className="text-gray-400">Loading organizations...</p>
 
   return (
@@ -229,6 +310,131 @@ export default function SettingsPage() {
       {error && (
         <div className="mb-4 rounded-lg bg-red-900/50 border border-red-700 px-4 py-2 text-sm text-red-300">
           {error}
+        </div>
+      )}
+
+      {/* Account */}
+      <section className="mb-10">
+        <h2 className="text-lg font-semibold mb-4">Account</h2>
+        <div className="space-y-6">
+          {/* Display Name */}
+          <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+            <h3 className="text-sm font-medium text-gray-300 mb-3">Display Name</h3>
+            <form onSubmit={handleUpdateProfile} className="flex gap-3">
+              <input
+                type="text"
+                value={displayName}
+                onChange={e => setDisplayName(e.target.value)}
+                placeholder="Your display name"
+                className="flex-1 rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="submit"
+                disabled={profileSaving || displayName.trim() === (user?.displayName || '')}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {profileSaving ? 'Saving...' : profileSuccess ? 'Saved!' : 'Save'}
+              </button>
+            </form>
+          </div>
+
+          {/* Change Password */}
+          <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+            <h3 className="text-sm font-medium text-gray-300 mb-3">Change Password</h3>
+            {passwordError && (
+              <div className="mb-3 rounded-lg bg-red-900/50 border border-red-700 px-4 py-2 text-sm text-red-300">
+                {passwordError}
+              </div>
+            )}
+            {passwordSuccess && (
+              <div className="mb-3 rounded-lg bg-green-900/50 border border-green-700 px-4 py-2 text-sm text-green-300">
+                Password changed successfully
+              </div>
+            )}
+            <form onSubmit={handleChangePassword} className="space-y-3">
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={e => setCurrentPassword(e.target.value)}
+                placeholder="Current password"
+                className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="password"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                placeholder="New password"
+                className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+                className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="submit"
+                disabled={passwordSaving || !currentPassword || !newPassword || !confirmPassword}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {passwordSaving ? 'Changing...' : 'Change Password'}
+              </button>
+            </form>
+          </div>
+
+          {/* Danger Zone */}
+          <div className="rounded-xl border border-red-900 bg-gray-900 p-6">
+            <h3 className="text-sm font-medium text-red-400 mb-2">Danger Zone</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Once you delete your account, there is no going back. All your data will be permanently removed.
+            </p>
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+            >
+              Delete Account
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Delete Account Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-white mb-2">Delete Account</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              This action is irreversible. Enter your password to confirm.
+            </p>
+            {deleteError && (
+              <div className="mb-3 rounded-lg bg-red-900/50 border border-red-700 px-4 py-2 text-sm text-red-300">
+                {deleteError}
+              </div>
+            )}
+            <input
+              type="password"
+              value={deletePassword}
+              onChange={e => setDeletePassword(e.target.value)}
+              placeholder="Your password"
+              className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-red-500 mb-4"
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setShowDeleteModal(false); setDeletePassword(''); setDeleteError(null) }}
+                className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium hover:bg-gray-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteLoading || !deletePassword}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {deleteLoading ? 'Deleting...' : 'Delete My Account'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

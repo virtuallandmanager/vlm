@@ -169,4 +169,45 @@ export default async function giveawayRoutes(app: FastifyInstance) {
       return reply.status(204).send()
     },
   )
+
+  // ── DELETE /api/giveaways/:giveawayId — delete giveaway ─────────────────
+
+  app.delete<{ Params: { giveawayId: string } }>(
+    '/api/giveaways/:giveawayId',
+    async (request, reply) => {
+      const { giveawayId } = request.params
+
+      const giveaway = await db.query.giveaways.findFirst({ where: eq(giveaways.id, giveawayId) })
+      if (!giveaway) return reply.status(404).send({ error: 'Giveaway not found' })
+      if (giveaway.ownerId !== request.user.id && request.user.role !== 'admin') {
+        return reply.status(403).send({ error: 'Forbidden' })
+      }
+
+      await db.delete(giveaways).where(eq(giveaways.id, giveawayId))
+      return reply.status(204).send()
+    },
+  )
+
+  // ── GET /api/giveaways/:giveawayId/claims — list claims ────────────────
+
+  app.get<{ Params: { giveawayId: string } }>(
+    '/api/giveaways/:giveawayId/claims',
+    async (request, reply) => {
+      const { giveawayId } = request.params
+
+      const giveaway = await db.query.giveaways.findFirst({ where: eq(giveaways.id, giveawayId) })
+      if (!giveaway) return reply.status(404).send({ error: 'Giveaway not found' })
+      if (giveaway.ownerId !== request.user.id && request.user.role !== 'admin') {
+        return reply.status(403).send({ error: 'Forbidden' })
+      }
+
+      const claims = await db.query.giveawayClaims.findMany({
+        where: eq(giveawayClaims.giveawayId, giveawayId),
+        with: { item: true },
+        orderBy: (c, { desc }) => [desc(c.claimedAt)],
+      })
+
+      return reply.send({ claims })
+    },
+  )
 }

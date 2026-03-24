@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 import bcrypt from 'bcryptjs'
+import crypto from 'node:crypto'
 import { OAuth2Client } from 'google-auth-library'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { users, userAuthMethods } from '../db/schema.js'
+import { users, userAuthMethods, passwordResetTokens } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { config } from '../config.js'
 
@@ -524,6 +525,204 @@ export default async function authRoutes(app: FastifyInstance) {
         request.log.error(err, 'Discord OAuth callback error')
         return reply.redirect(`${config.publicUrl}/auth/callback?error=oauth_failed`)
       }
+    },
+  )
+
+  // ── PUT /api/auth/profile — Update display name ──────────────────────────
+
+  app.put<{ Body: { displayName: string } }>(
+    '/api/auth/profile',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const { displayName } = request.body
+
+      if (!displayName || !displayName.trim()) {
+        return reply.status(400).send({ error: 'displayName is required' })
+      }
+
+      const [updated] = await db
+        .update(users)
+        .set({ displayName: displayName.trim(), updatedAt: new Date() })
+        .where(eq(users.id, request.user.id))
+        .returning()
+
+      return reply.send({
+        user: { id: updated.id, displayName: updated.displayName, email: updated.email, role: updated.role },
+      })
+    },
+  )
+
+  // ── PUT /api/auth/password — Change password ─────────────────────────────
+
+  app.put<{ Body: { currentPassword: string; newPassword: string } }>(
+    '/api/auth/password',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const { currentPassword, newPassword } = request.body
+
+      if (!currentPassword || !newPassword) {
+        return reply.status(400).send({ error: 'currentPassword and newPassword are required' })
+      }
+
+      if (newPassword.length < 8) {
+        return reply.status(400).send({ error: 'New password must be at least 8 characters' })
+      }
+
+      // Find email auth method for this user
+      const authMethod = await db.query.userAuthMethods.findFirst({
+        where: and(
+          eq(userAuthMethods.userId, request.user.id),
+          eq(userAuthMethods.type, 'email'),
+        ),
+      })
+
+      if (!authMethod || !authMethod.credentialHash) {
+        return reply.status(400).send({ error: 'No password-based auth method found for this account' })
+      }
+
+      const valid = await bcrypt.compare(currentPassword, authMethod.credentialHash)
+      if (!valid) {
+        return reply.status(401).send({ error: 'Current password is incorrect' })
+      }
+
+      const newHash = await bcrypt.hash(newPassword, 12)
+
+      await db
+        .update(userAuthMethods)
+        .set({ credentialHash: newHash, updatedAt: new Date() })
+        .where(eq(userAuthMethods.id, authMethod.id))
+
+      return reply.send({ success: true })
+    },
+  )
+
+  // ── POST /api/auth/forgot-password — Request password reset ──────────────
+
+  app.post<{ Body: { email: string } }>(
+    '/api/auth/forgot-password',
+    async (request, reply) => {
+      const { email } = request.body
+
+      // Always return 200 to prevent email enumeration
+      if (!email) {
+        return reply.send({ message: 'If an account with that email exists, a reset link has been sent.' })
+      }
+
+      const authMethod = await db.query.userAuthMethods.findFirst({
+        where: and(
+          eq(userAuthMethods.type, 'email'),
+          eq(userAuthMethods.identifier, email.toLowerCase()),
+        ),
+      })
+
+      if (!authMethod) {
+        return reply.send({ message: 'If an account with that email exists, a reset link has been sent.' })
+      }
+
+      const token = crypto.randomBytes(32).toString('hex')
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
+
+      await db.insert(passwordResetTokens).values({
+        userId: authMethod.userId,
+        token,
+        expiresAt,
+      })
+
+      // TODO: Send email with reset link. For now, return token in response.
+      return reply.send({
+        message: 'If an account with that email exists, a reset link has been sent.',
+        token, // Remove this once email sending is implemented
+      })
+    },
+  )
+
+  // ── POST /api/auth/reset-password — Reset password with token ────────────
+
+  app.post<{ Body: { token: string; newPassword: string } }>(
+    '/api/auth/reset-password',
+    async (request, reply) => {
+      const { token, newPassword } = request.body
+
+      if (!token || !newPassword) {
+        return reply.status(400).send({ error: 'token and newPassword are required' })
+      }
+
+      if (newPassword.length < 8) {
+        return reply.status(400).send({ error: 'New password must be at least 8 characters' })
+      }
+
+      const resetToken = await db.query.passwordResetTokens.findFirst({
+        where: eq(passwordResetTokens.token, token),
+      })
+
+      if (!resetToken) {
+        return reply.status(400).send({ error: 'Invalid or expired reset token' })
+      }
+
+      if (resetToken.usedAt) {
+        return reply.status(400).send({ error: 'This reset token has already been used' })
+      }
+
+      if (new Date(resetToken.expiresAt) < new Date()) {
+        return reply.status(400).send({ error: 'Invalid or expired reset token' })
+      }
+
+      const newHash = await bcrypt.hash(newPassword, 12)
+
+      // Update credential hash on the user's email auth method
+      await db
+        .update(userAuthMethods)
+        .set({ credentialHash: newHash, updatedAt: new Date() })
+        .where(
+          and(
+            eq(userAuthMethods.userId, resetToken.userId),
+            eq(userAuthMethods.type, 'email'),
+          ),
+        )
+
+      // Invalidate the token
+      await db
+        .update(passwordResetTokens)
+        .set({ usedAt: new Date() })
+        .where(eq(passwordResetTokens.id, resetToken.id))
+
+      return reply.send({ success: true })
+    },
+  )
+
+  // ── DELETE /api/auth/account — Delete account ────────────────────────────
+
+  app.delete<{ Body: { password: string } }>(
+    '/api/auth/account',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const { password } = request.body
+
+      if (!password) {
+        return reply.status(400).send({ error: 'Password is required to delete account' })
+      }
+
+      // Find email auth method for this user
+      const authMethod = await db.query.userAuthMethods.findFirst({
+        where: and(
+          eq(userAuthMethods.userId, request.user.id),
+          eq(userAuthMethods.type, 'email'),
+        ),
+      })
+
+      if (!authMethod || !authMethod.credentialHash) {
+        return reply.status(400).send({ error: 'No password-based auth method found for this account' })
+      }
+
+      const valid = await bcrypt.compare(password, authMethod.credentialHash)
+      if (!valid) {
+        return reply.status(401).send({ error: 'Incorrect password' })
+      }
+
+      // Delete user — cascading deletes handle related data
+      await db.delete(users).where(eq(users.id, request.user.id))
+
+      return reply.status(204).send()
     },
   )
 }

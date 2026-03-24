@@ -6,7 +6,10 @@ import Link from 'next/link'
 
 const navItems = [
   { href: '/scenes', label: 'Scenes' },
+  { href: '/events', label: 'Events' },
+  { href: '/giveaways', label: 'Giveaways' },
   { href: '/media', label: 'Media' },
+  { href: '/analytics', label: 'Analytics' },
   { href: '/settings', label: 'Settings' },
 ]
 

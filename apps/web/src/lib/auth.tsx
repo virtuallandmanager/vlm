@@ -16,6 +16,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, displayName: string) => Promise<void>
   logout: () => void
+  updateUser: (updates: Partial<User>) => void
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -82,8 +83,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('vlm_auth')
   }, [])
 
+  const updateUser = useCallback((updates: Partial<User>) => {
+    setUser(prev => {
+      if (!prev) return prev
+      const updated = { ...prev, ...updates }
+      // Sync to localStorage
+      const stored = localStorage.getItem('vlm_auth')
+      if (stored) {
+        try {
+          const data = JSON.parse(stored)
+          data.user = updated
+          localStorage.setItem('vlm_auth', JSON.stringify(data))
+        } catch {}
+      }
+      return updated
+    })
+  }, [])
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   )

@@ -69,10 +69,59 @@ export function useApi() {
     createApiKey: (name: string, scopes?: string[]) => apiFetch<{ key: string; apiKey: any }>('/api/keys', { method: 'POST', body: JSON.stringify({ name, scopes }) }),
     deleteApiKey: (keyId: string) => apiFetch(`/api/keys/${keyId}`, { method: 'DELETE' }),
 
+    // Analytics
+    getSceneAnalyticsRecent: (sceneId: string) =>
+      apiFetch<{ visitors: number; actions: number; activeSessions: number; recentSessions: any[] }>(`/api/analytics/scenes/${sceneId}/recent`),
+    getSceneAnalyticsSessions: (sceneId: string, params?: { limit?: number; offset?: number }) => {
+      const query = new URLSearchParams()
+      if (params?.limit) query.set('limit', String(params.limit))
+      if (params?.offset) query.set('offset', String(params.offset))
+      const qs = query.toString()
+      return apiFetch<{ sessions: any[] }>(`/api/analytics/scenes/${sceneId}/sessions${qs ? `?${qs}` : ''}`)
+    },
+
+    // Giveaways
+    getGiveaways: () => apiFetch<{ giveaways: any[] }>('/api/giveaways'),
+    getGiveaway: (id: string) => apiFetch<{ giveaway: any }>(`/api/giveaways/${id}`),
+    createGiveaway: (data: { name: string; enabled?: boolean; claimLimit?: number }) =>
+      apiFetch<{ giveaway: any }>('/api/giveaways', { method: 'POST', body: JSON.stringify(data) }),
+    updateGiveaway: (id: string, data: { name?: string; enabled?: boolean; claimLimit?: number }) =>
+      apiFetch<{ giveaway: any }>(`/api/giveaways/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteGiveaway: (id: string) =>
+      apiFetch(`/api/giveaways/${id}`, { method: 'DELETE' }),
+    addGiveawayItem: (giveawayId: string, data: { name?: string; imageUrl?: string; contractAddress?: string; tokenId?: string; metadata?: unknown }) =>
+      apiFetch<{ item: any }>(`/api/giveaways/${giveawayId}/items`, { method: 'POST', body: JSON.stringify(data) }),
+    deleteGiveawayItem: (giveawayId: string, itemId: string) =>
+      apiFetch(`/api/giveaways/${giveawayId}/items/${itemId}`, { method: 'DELETE' }),
+    getGiveawayClaims: (giveawayId: string) =>
+      apiFetch<{ claims: any[] }>(`/api/giveaways/${giveawayId}/claims`),
+
+    // Account
+    updateProfile: (displayName: string) =>
+      apiFetch<{ user: any }>('/api/auth/profile', { method: 'PUT', body: JSON.stringify({ displayName }) }),
+    changePassword: (currentPassword: string, newPassword: string) =>
+      apiFetch<{ success: boolean }>('/api/auth/password', { method: 'PUT', body: JSON.stringify({ currentPassword, newPassword }) }),
+    deleteAccount: (password: string) =>
+      apiFetch('/api/auth/account', { method: 'DELETE', body: JSON.stringify({ password }) }),
+
     // Billing
     getBillingUsage: () => apiFetch<{ tier: string; limits: any; usage: any }>('/api/billing/usage'),
     getBillingSubscription: () => apiFetch<{ tier: string; status: string; billingEnabled?: boolean; limits: any }>('/api/billing/subscription'),
     createCheckout: (priceId: string) => apiFetch<{ url: string }>('/api/billing/checkout', { method: 'POST', body: JSON.stringify({ priceId }) }),
     getPortalUrl: () => apiFetch<{ url: string }>('/api/billing/portal', { method: 'POST', body: JSON.stringify({}) }),
+
+    // Events
+    getEvents: () => apiFetch<{ events: any[] }>('/api/events'),
+    getEvent: (id: string) => apiFetch<{ event: any }>(`/api/events/${id}`),
+    createEvent: (data: { name: string; description?: string; startTime?: string; endTime?: string; timezone?: string }) =>
+      apiFetch<{ event: any }>('/api/events', { method: 'POST', body: JSON.stringify(data) }),
+    updateEvent: (id: string, data: { name?: string; description?: string; startTime?: string; endTime?: string; timezone?: string }) =>
+      apiFetch<{ event: any }>(`/api/events/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteEvent: (id: string) =>
+      apiFetch(`/api/events/${id}`, { method: 'DELETE' }),
+    linkSceneToEvent: (eventId: string, sceneId: string) =>
+      apiFetch<{ link: any }>(`/api/events/${eventId}/link-scene`, { method: 'POST', body: JSON.stringify({ sceneId }) }),
+    unlinkSceneFromEvent: (eventId: string, sceneId: string) =>
+      apiFetch(`/api/events/${eventId}/unlink-scene/${sceneId}`, { method: 'DELETE' }),
   }
 }
