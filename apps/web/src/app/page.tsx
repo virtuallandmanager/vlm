@@ -13,10 +13,15 @@ export default function Home() {
   const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [providers, setProviders] = useState<{ google: boolean; discord: boolean }>({ google: false, discord: false })
 
   useEffect(() => {
     if (!loading && user) router.push('/scenes')
   }, [user, loading, router])
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/auth/providers`).then(r => r.json()).then(setProviders).catch(() => {})
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -73,18 +78,25 @@ export default function Home() {
           </button>
         </form>
 
-        <div className="flex items-center gap-3 my-4"><div className="flex-1 border-t border-gray-700" /><span className="text-xs text-gray-500">or</span><div className="flex-1 border-t border-gray-700" /></div>
-
-        <div className="space-y-3">
-          <a href={`${API_URL}/api/auth/google`}
-            className="block w-full rounded-lg bg-white py-2 text-center font-medium text-gray-900 hover:bg-gray-100">
-            Continue with Google
-          </a>
-          <a href={`${API_URL}/api/auth/discord`}
-            className="block w-full rounded-lg bg-[#5865F2] py-2 text-center font-medium text-white hover:bg-[#4752C4]">
-            Continue with Discord
-          </a>
-        </div>
+        {(providers.google || providers.discord) && (
+          <>
+            <div className="flex items-center gap-3 my-4"><div className="flex-1 border-t border-gray-700" /><span className="text-xs text-gray-500">or</span><div className="flex-1 border-t border-gray-700" /></div>
+            <div className="space-y-3">
+              {providers.google && (
+                <a href={`${API_URL}/api/auth/google`}
+                  className="block w-full rounded-lg bg-white py-2 text-center font-medium text-gray-900 hover:bg-gray-100">
+                  Continue with Google
+                </a>
+              )}
+              {providers.discord && (
+                <a href={`${API_URL}/api/auth/discord`}
+                  className="block w-full rounded-lg bg-[#5865F2] py-2 text-center font-medium text-white hover:bg-[#4752C4]">
+                  Continue with Discord
+                </a>
+              )}
+            </div>
+          </>
+        )}
 
         <p className="mt-4 text-center text-sm text-gray-500">
           {mode === 'login' ? (

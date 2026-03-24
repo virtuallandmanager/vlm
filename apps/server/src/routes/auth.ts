@@ -19,6 +19,13 @@ interface LoginBody {
 }
 
 export default async function authRoutes(app: FastifyInstance) {
+  // ── GET /api/auth/providers — which OAuth providers are configured ──────
+
+  app.get('/api/auth/providers', async () => ({
+    google: !!(config.googleClientId && config.googleClientSecret),
+    discord: !!(config.discordClientId && config.discordClientSecret),
+  }))
+
   // ── POST /api/auth/register ──────────────────────────────────────────────
 
   app.post<{ Body: RegisterBody }>('/api/auth/register', async (request, reply) => {
