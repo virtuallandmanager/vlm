@@ -256,6 +256,91 @@ function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
 }
 
 // ---------------------------------------------------------------------------
+// Media Library Picker
+// ---------------------------------------------------------------------------
+
+function MediaPicker({ api, accept, onSelect, onClose }: {
+  api: ReturnType<typeof import('@/lib/api').useApi>
+  accept?: string
+  onSelect: (url: string) => void
+  onClose: () => void
+}) {
+  const [assets, setAssets] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+
+  useEffect(() => {
+    api.getMedia().then(data => {
+      const filtered = accept
+        ? data.assets.filter((a: any) => a.contentType?.startsWith(accept.replace('/*', '/')))
+        : data.assets
+      setAssets(filtered)
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [])
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const buffer = await file.arrayBuffer()
+      const base64 = btoa(new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), ''))
+      const { asset } = await api.uploadMedia(file.name, file.type, base64)
+      setAssets(prev => [asset, ...prev])
+    } catch (err: any) {
+      console.error('Upload failed:', err)
+    }
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div className="w-full max-w-2xl max-h-[80vh] rounded-xl border border-gray-700 bg-gray-900 shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
+          <h3 className="font-semibold">Media Library</h3>
+          <div className="flex items-center gap-2">
+            <label className={`rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500 transition-colors cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+              {uploading ? 'Uploading...' : 'Upload New'}
+              <input ref={fileRef} type="file" accept={accept} onChange={handleUpload} className="hidden" />
+            </label>
+            <button onClick={onClose} className="text-gray-400 hover:text-white text-lg px-2">&times;</button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <p className="text-gray-400 text-sm text-center py-8">Loading...</p>
+          ) : assets.length === 0 ? (
+            <p className="text-gray-500 text-sm text-center py-8">No media yet. Upload one above.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-3">
+              {assets.map((asset: any) => (
+                <button key={asset.id} onClick={() => { onSelect(asset.publicUrl); onClose() }}
+                  className="rounded-lg border border-gray-700 bg-gray-800 overflow-hidden hover:border-blue-500 transition-colors text-left group">
+                  {asset.contentType?.startsWith('image/') ? (
+                    <img src={asset.publicUrl} alt={asset.filename}
+                      className="w-full h-24 object-cover" />
+                  ) : (
+                    <div className="w-full h-24 flex items-center justify-center text-gray-500 text-2xl">
+                      {asset.contentType?.startsWith('video/') ? 'V' : asset.contentType?.startsWith('audio/') ? 'A' : 'F'}
+                    </div>
+                  )}
+                  <div className="px-2 py-1.5">
+                    <p className="text-xs text-gray-300 truncate">{asset.filename}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Image Element Editor
 // ---------------------------------------------------------------------------
 
@@ -270,6 +355,7 @@ function ImageElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
   const props = element.properties || {}
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -285,6 +371,10 @@ function ImageElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
     }
     setUploading(false)
     if (fileRef.current) fileRef.current.value = ''
+  }
+
+  const setTexture = (url: string) => {
+    onUpdateElement(element.id, { properties: { ...props, textureSrc: url } })
   }
 
   return (
@@ -307,16 +397,23 @@ function ImageElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
       )}
 
       <div className="space-y-2">
-        <TextInput label="Texture URL" value={props.textureSrc || ''}
-          onChange={v => onUpdateElement(element.id, { properties: { ...props, textureSrc: v } })} />
+        <TextInput label="Texture URL" value={props.textureSrc || ''} onChange={setTexture} />
         <div className="flex items-center gap-2">
           <label className={`rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 transition-colors cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
-            {uploading ? 'Uploading...' : 'Upload Image'}
+            {uploading ? 'Uploading...' : 'Upload'}
             <input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} className="hidden" />
           </label>
+          <button onClick={() => setShowPicker(true)}
+            className="rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 transition-colors">
+            Media Library
+          </button>
           <span className="text-xs text-gray-500">or paste a URL above</span>
         </div>
       </div>
+
+      {showPicker && (
+        <MediaPicker api={api} accept="image/*" onSelect={setTexture} onClose={() => setShowPicker(false)} />
+      )}
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
