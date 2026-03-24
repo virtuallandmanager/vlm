@@ -21,13 +21,14 @@ import {
   scenes,
 } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
+import { requireFeature } from '../middleware/feature-gate.js'
 import { HyperfyProvisioner } from '../services/hyperfy/provisioner.js'
 
 export default async function deployRoutes(app: FastifyInstance) {
   // ── Start Deployment ──────────────────────────────────────────────────
   app.post(
     '/api/deploy',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireFeature('deployment')] },
     async (request, reply) => {
       const body = request.body as {
         sceneId: string
@@ -164,7 +165,7 @@ export default async function deployRoutes(app: FastifyInstance) {
   // ── Redeploy ──────────────────────────────────────────────────────────
   app.post(
     '/api/deploy/:id/redeploy',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireFeature('deployment')] },
     async (request, reply) => {
       const { id } = request.params as { id: string }
 
@@ -276,7 +277,7 @@ export default async function deployRoutes(app: FastifyInstance) {
   /** Provision a new Hyperfy world (convenience endpoint). */
   app.post(
     '/api/deploy/hyperfy/provision',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireFeature('deployment')] },
     async (request, reply) => {
       const body = request.body as {
         sceneId: string

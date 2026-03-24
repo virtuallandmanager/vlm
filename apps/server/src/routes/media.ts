@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { mediaAssets } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
+import { config } from '../config.js'
+import { getSubscription } from '../integrations/stripe.js'
 import { createStorage } from '../storage/index.js'
 import { randomUUID } from 'crypto'
 
@@ -23,6 +25,29 @@ export default async function mediaRoutes(app: FastifyInstance) {
       }
 
       const buffer = Buffer.from(data, 'base64')
+
+      // Enforce storage quota based on subscription tier (skip in self-hosted mode)
+      if (!config.allFeaturesUnlocked) {
+        const sub = await getSubscription(request.user.id)
+        const storageLimit = sub.limits.storageBytes
+
+        const [{ usedBytes }] = await db
+          .select({ usedBytes: sql<number>`coalesce(sum(${mediaAssets.sizeBytes}), 0)::int` })
+          .from(mediaAssets)
+          .where(eq(mediaAssets.ownerId, request.user.id))
+
+        if (usedBytes + buffer.length > storageLimit) {
+          return reply.status(403).send({
+            error: 'storage_limit_reached',
+            message: `Your ${sub.tier} plan allows up to ${Math.round(storageLimit / 1024 / 1024)} MB of storage. This upload would exceed your quota.`,
+            currentUsageBytes: usedBytes,
+            uploadSizeBytes: buffer.length,
+            limitBytes: storageLimit,
+            tier: sub.tier,
+          })
+        }
+      }
+
       const ext = filename.split('.').pop() || 'bin'
       const key = `${request.user.id}/${randomUUID()}.${ext}`
 

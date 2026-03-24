@@ -20,6 +20,7 @@ import commandCenterRoutes from './routes/command-center.js'
 import streamingRoutes from './routes/streaming.js'
 import billingRoutes from './routes/billing.js'
 import companionUploadRoutes from './routes/companion-upload.js'
+import organizationRoutes from './routes/organizations.js'
 import { startHookCrons } from './integrations/platform-hooks.js'
 import { VLMSceneRoom } from './ws/VLMSceneRoom.js'
 import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
@@ -48,17 +49,33 @@ async function main() {
     bodyLimit: config.maxUploadSize, // default 100MB, set MAX_UPLOAD_MB to override
   })
 
-  // CORS
+  // CORS — lock down origins in production, allow all in development
+  const isProduction = process.env.NODE_ENV === 'production'
   await app.register(fastifyCors, {
-    origin: true,
+    origin: isProduction ? [...config.corsOrigins] : true,
     credentials: true,
+  })
+
+  // Rate limiting (global)
+  await app.register(import('@fastify/rate-limit'), {
+    max: config.rateLimitMax,
+    timeWindow: '1 minute',
   })
 
   // JWT
   await registerJwt(app, config.jwtSecret)
 
   // ── API Routes ───────────────────────────────────────────────────────────
-  await app.register(authRoutes)
+  // Auth routes get stricter rate limits to mitigate brute-force attacks
+  await app.register(async (scope) => {
+    scope.addHook('onRoute', (routeOptions) => {
+      routeOptions.config = {
+        ...((routeOptions.config as Record<string, unknown>) || {}),
+        rateLimit: { max: 20, timeWindow: '1 minute' },
+      }
+    })
+    await scope.register(authRoutes)
+  })
   await app.register(sceneRoutes)
   await app.register(analyticsRoutes)
   await app.register(eventRoutes)
@@ -71,6 +88,7 @@ async function main() {
   await app.register(streamingRoutes)
   await app.register(billingRoutes)
   await app.register(companionUploadRoutes)
+  await app.register(organizationRoutes)
 
   // Health check
   app.get('/api/health', async () => ({
@@ -122,12 +140,27 @@ async function main() {
   // ── Colyseus WebSocket server ────────────────────────────────────────────
   const httpServer = app.server
 
+  let presence: any
+  let driver: any
+
+  if (config.useRedisPresence && config.redisUrl) {
+    const { RedisPresence } = _require('@colyseus/redis-presence') as any
+    const { RedisDriver } = _require('@colyseus/redis-driver') as any
+    presence = new RedisPresence(config.redisUrl)
+    driver = new RedisDriver(config.redisUrl)
+    console.log(`[vlm-server] Redis presence enabled`)
+  } else {
+    console.log(`[vlm-server] In-memory presence (single instance)`)
+  }
+
   const gameServer = new ColyseusServer({
     transport: new WebSocketTransport({
       server: httpServer,
       pingInterval: 5000,
       pingMaxRetries: 3,
     }),
+    ...(presence ? { presence } : {}),
+    ...(driver ? { driver } : {}),
   })
 
   // Register rooms

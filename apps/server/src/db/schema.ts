@@ -26,6 +26,90 @@ export const elementTypeEnum = pgEnum('element_type', [
   'model',
 ])
 
+export const orgRoleEnum = pgEnum('org_role', ['owner', 'admin', 'member'])
+export const inviteStatusEnum = pgEnum('invite_status', ['pending', 'accepted', 'declined', 'expired'])
+
+// ── Organizations ───────────────────────────────────────────────────────────
+
+export const organizations = pgTable('organizations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  billingOwnerId: uuid('billing_owner_id'), // set after users table exists via migration
+  logoUrl: text('logo_url'),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const organizationsRelations = relations(organizations, ({ one, many }) => ({
+  members: many(orgMembers),
+  scenes: many(scenes),
+  mediaAssets: many(mediaAssets),
+  events: many(events),
+  giveaways: many(giveaways),
+  subscriptions: many(subscriptions),
+}))
+
+// ── Organization Members ────────────────────────────────────────────────────
+
+export const orgMembers = pgTable(
+  'org_members',
+  {
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: orgRoleEnum('role').notNull().default('member'),
+    joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.orgId, table.userId] }),
+  }),
+)
+
+export const orgMembersRelations = relations(orgMembers, ({ one }) => ({
+  org: one(organizations, {
+    fields: [orgMembers.orgId],
+    references: [organizations.id],
+  }),
+  user: one(users, {
+    fields: [orgMembers.userId],
+    references: [users.id],
+  }),
+}))
+
+// ── Organization Invites ────────────────────────────────────────────────────
+
+export const orgInvites = pgTable('org_invites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  role: orgRoleEnum('role').notNull().default('member'),
+  invitedBy: uuid('invited_by')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  status: inviteStatusEnum('status').notNull().default('pending'),
+  token: text('token').notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const orgInvitesRelations = relations(orgInvites, ({ one }) => ({
+  org: one(organizations, {
+    fields: [orgInvites.orgId],
+    references: [organizations.id],
+  }),
+  inviter: one(users, {
+    fields: [orgInvites.invitedBy],
+    references: [users.id],
+  }),
+}))
+
 // ── Users ────────────────────────────────────────────────────────────────────
 
 export const users = pgTable('users', {
@@ -33,15 +117,21 @@ export const users = pgTable('users', {
   displayName: text('display_name').notNull(),
   email: text('email'),
   role: userRoleEnum('role').notNull().default('creator'),
+  activeOrgId: uuid('active_org_id'), // current org context (FK added via migration to avoid circular)
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
   authMethods: many(userAuthMethods),
   scenes: many(scenes),
   collaborations: many(sceneCollaborators),
   mediaAssets: many(mediaAssets),
+  orgMemberships: many(orgMembers),
+  activeOrg: one(organizations, {
+    fields: [users.activeOrgId],
+    references: [organizations.id],
+  }),
 }))
 
 // ── User Auth Methods ────────────────────────────────────────────────────────
@@ -70,6 +160,7 @@ export const userAuthMethodsRelations = relations(userAuthMethods, ({ one }) => 
 
 export const scenes = pgTable('scenes', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
   ownerId: uuid('owner_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
@@ -82,6 +173,10 @@ export const scenes = pgTable('scenes', {
 })
 
 export const scenesRelations = relations(scenes, ({ one, many }) => ({
+  org: one(organizations, {
+    fields: [scenes.orgId],
+    references: [organizations.id],
+  }),
   owner: one(users, {
     fields: [scenes.ownerId],
     references: [users.id],
@@ -278,6 +373,7 @@ export const analyticsActionsRelations = relations(analyticsActions, ({ one }) =
 
 export const events = pgTable('events', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
   ownerId: uuid('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   description: text('description'),
@@ -319,6 +415,7 @@ export const eventSceneLinksRelations = relations(eventSceneLinks, ({ one }) => 
 
 export const giveaways = pgTable('giveaways', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
   ownerId: uuid('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   enabled: boolean('enabled').notNull().default(true),
@@ -422,6 +519,7 @@ export const platformCallbacksRelations = relations(platformCallbacks, ({ one })
 
 export const mediaAssets = pgTable('media_assets', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
   ownerId: uuid('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   filename: text('filename').notNull(),
   contentType: text('content_type').notNull(),
@@ -542,6 +640,7 @@ export const streamingServerStatusEnum = pgEnum('streaming_server_status', [
 
 export const streamingServers = pgTable('streaming_servers', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
   ownerId: uuid('owner_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
@@ -614,6 +713,7 @@ export const subscriptionStatusEnum = pgEnum('subscription_status', [
 
 export const subscriptions = pgTable('subscriptions', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
   userId: uuid('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),

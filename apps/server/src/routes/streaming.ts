@@ -18,13 +18,14 @@ import {
   streamingSessions,
 } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
+import { requireFeature } from '../middleware/feature-gate.js'
 import { config } from '../config.js'
 
 export default async function streamingRoutes(app: FastifyInstance) {
   // ── Provision ─────────────────────────────────────────────────────────
   app.post(
     '/api/streaming/provision',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate, requireFeature('streaming')] },
     async (request, reply) => {
       if (!config.streamingEnabled) {
         return reply.status(403).send({ error: 'Streaming is not enabled on this instance' })

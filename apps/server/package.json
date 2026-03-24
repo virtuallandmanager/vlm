@@ -14,10 +14,12 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1016.0",
-    "@colyseus/redis-presence": "^0.15.0",
+    "@colyseus/redis-driver": "^0.17.6",
+    "@colyseus/redis-presence": "^0.15.6",
     "@colyseus/ws-transport": "^0.15.0",
     "@fastify/cors": "^10.0.0",
     "@fastify/jwt": "^9.0.0",
+    "@fastify/rate-limit": "^10.3.0",
     "@fastify/static": "^8.0.0",
     "bcryptjs": "^2.4.3",
     "colyseus": "^0.15.26",

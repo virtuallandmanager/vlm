@@ -67,7 +67,7 @@ export default async function authRoutes(app: FastifyInstance) {
     })
 
     const accessToken = app.jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null },
       { expiresIn: config.jwtAccessExpiry },
     )
     const refreshToken = app.jwt.sign(
@@ -111,7 +111,7 @@ export default async function authRoutes(app: FastifyInstance) {
     const user = authMethod.user
 
     const accessToken = app.jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null },
       { expiresIn: config.jwtAccessExpiry },
     )
     const refreshToken = app.jwt.sign(
@@ -153,7 +153,7 @@ export default async function authRoutes(app: FastifyInstance) {
       }
 
       const accessToken = app.jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
+        { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null },
         { expiresIn: config.jwtAccessExpiry },
       )
 

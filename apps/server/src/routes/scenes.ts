@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   scenes,
@@ -8,6 +8,8 @@ import {
   sceneElementInstances,
 } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
+import { config } from '../config.js'
+import { getSubscription } from '../integrations/stripe.js'
 
 interface CreateSceneBody {
   name: string
@@ -71,6 +73,27 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
     if (!name) {
       return reply.status(400).send({ error: 'name is required' })
+    }
+
+    // Enforce scene limit based on subscription tier (skip in self-hosted mode)
+    if (!config.allFeaturesUnlocked) {
+      const sub = await getSubscription(request.user.id)
+      const limit = sub.limits.scenes
+
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(scenes)
+        .where(eq(scenes.ownerId, request.user.id))
+
+      if (count >= limit) {
+        return reply.status(403).send({
+          error: 'scene_limit_reached',
+          message: `Your ${sub.tier} plan allows up to ${limit} scenes. Please upgrade to create more.`,
+          currentUsage: count,
+          limit,
+          tier: sub.tier,
+        })
+      }
     }
 
     const [scene] = await db

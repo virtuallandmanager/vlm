@@ -82,6 +82,15 @@ export const config = {
   // In single/scalable mode, the first signup automatically becomes admin
   autoPromoteFirstUser: mode !== 'cloud',
 
+  // ── Rate Limiting ──────────────────────────────────────────────────────
+  rateLimitMax: parseInt(env('RATE_LIMIT_MAX') || '100'),
+
+  // ── CORS ──────────────────────────────────────────────────────────────
+  corsOrigins: [
+    env('PUBLIC_URL') || 'http://localhost:3010',
+    ...(env('CORS_ORIGINS') ? env('CORS_ORIGINS')!.split(',').map((s) => s.trim()).filter(Boolean) : []),
+  ],
+
   // ── Limits ──────────────────────────────────────────────────────────────
   maxRoomsPerServer: parseInt(env('MAX_ROOMS') || (mode === 'single' ? '50' : '500')),
   maxUploadSize: parseInt(env('MAX_UPLOAD_MB') || '100') * 1024 * 1024,

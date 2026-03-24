@@ -4,6 +4,7 @@ export interface AuthUser {
   id: string
   email: string | null
   role: string
+  orgId: string | null
 }
 
 declare module 'fastify' {
@@ -14,7 +15,7 @@ declare module 'fastify' {
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    payload: { id: string; email: string | null; role: string; refresh?: boolean }
+    payload: { id: string; email: string | null; role: string; orgId?: string | null; refresh?: boolean }
     user: AuthUser
   }
 }
