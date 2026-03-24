@@ -79,25 +79,25 @@ async function main() {
     timestamp: new Date().toISOString(),
   }))
 
-  // ── Serve uploaded media files ───────────────────────────────────────────
-  const uploadsPath = resolve(process.env.LOCAL_STORAGE_PATH || './uploads')
-  if (existsSync(uploadsPath)) {
-    await app.register(fastifyStatic, {
-      root: uploadsPath,
-      prefix: '/uploads/',
-      decorateReply: false, // Don't conflict with dashboard static
-    })
-  }
-
   // ── Static Dashboard ─────────────────────────────────────────────────────
   const dashboardPath = resolve(config.dashboardDir)
+  console.log(`[vlm-server] Dashboard path: ${dashboardPath} (exists: ${existsSync(dashboardPath)})`)
   if (existsSync(dashboardPath)) {
     console.log(`[vlm-server] Serving dashboard from ${dashboardPath}`)
     await app.register(fastifyStatic, {
       root: dashboardPath,
       prefix: '/',
-      wildcard: false,
     })
+
+    // ── Serve uploaded media files ─────────────────────────────────────────
+    const uploadsPath = resolve(process.env.LOCAL_STORAGE_PATH || './uploads')
+    if (existsSync(uploadsPath)) {
+      await app.register(fastifyStatic, {
+        root: uploadsPath,
+        prefix: '/uploads/',
+        decorateReply: false,
+      })
+    }
 
     // SPA fallback: serve index.html for unmatched non-API routes
     app.setNotFoundHandler(async (request, reply) => {
