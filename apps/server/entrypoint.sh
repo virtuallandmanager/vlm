@@ -9,5 +9,10 @@ if [ -n "$DATABASE_URL" ]; then
   cd /app
 fi
 
+# Debug: verify dashboard exists
+echo "[vlm-server] CWD: $(pwd)"
+echo "[vlm-server] DASHBOARD_DIR: $DASHBOARD_DIR"
+ls -la "${DASHBOARD_DIR:-./dashboard}/" 2>&1 | head -5 || echo "[vlm-server] WARNING: dashboard dir missing!"
+
 # Start the server
 exec node apps/server/dist/index.js
