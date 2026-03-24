@@ -40,9 +40,6 @@ RUN apk add --no-cache ffmpeg
 COPY --from=builder /app/apps/server/dist ./dist
 COPY --from=builder /app/apps/server/package.json ./
 
-# Copy Drizzle migrations (auto-applied on boot)
-COPY --from=builder /app/apps/server/drizzle ./drizzle
-
 # Copy Next.js standalone dashboard
 # The standalone output includes a minimal Node server + all required node_modules
 COPY --from=builder /app/apps/web/.next/standalone ./dashboard-standalone
