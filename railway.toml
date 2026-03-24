@@ -3,7 +3,7 @@ builder = "dockerfile"
 dockerfilePath = "./Dockerfile"
 
 [deploy]
-startCommand = "node dist/index.js"
+startCommand = "apps/server/entrypoint.sh"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
