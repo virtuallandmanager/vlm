@@ -50,9 +50,6 @@ COPY --from=builder /app ./
 RUN mkdir -p /app/uploads
 
 ENV NODE_ENV=production
-ENV PORT=3010
-
-EXPOSE 3010
 
 # Make entrypoint executable
 RUN chmod +x apps/server/entrypoint.sh
