@@ -1,0 +1,37 @@
+app = "vlm"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  VLM_MODE = "single"
+  PORT = "3010"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 3010
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 250
+    soft_limit = 200
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+[checks]
+  [checks.health]
+    port = 3010
+    type = "http"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/api/health"

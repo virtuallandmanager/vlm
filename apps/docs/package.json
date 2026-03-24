@@ -1,0 +1,20 @@
+{
+  "name": "vlm-docs",
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check",
+    "clean": "rm -rf dist .turbo .astro"
+  },
+  "dependencies": {
+    "astro": "^5.0.0",
+    "@astrojs/starlight": "^0.32.0",
+    "sharp": "^0.33.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

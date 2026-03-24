@@ -1,0 +1,21 @@
+{
+  "name": "vlm-client",
+  "version": "2.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "colyseus.js": "^0.15.26"
+  },
+  "devDependencies": {
+    "vlm-shared": "workspace:*",
+    "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "vlm-shared": "workspace:*"
+  }
+}

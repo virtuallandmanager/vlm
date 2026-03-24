@@ -1,0 +1,21 @@
+{
+  "name": "vlm-v2-dcl-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VLM V2 Decentraland Test Scene",
+  "scripts": {
+    "start": "sdk-commands start",
+    "build": "sdk-commands build"
+  },
+  "devDependencies": {
+    "@dcl/sdk": "~7.7.9",
+    "@dcl/js-runtime": "~7.6.3"
+  },
+  "dependencies": {
+    "vlm-adapter-dcl": "file:../../packages/vlm-adapter-dcl",
+    "vlm-core": "file:../../packages/vlm-core",
+    "vlm-client": "file:../../packages/vlm-client",
+    "vlm-shared": "file:../../packages/vlm-shared",
+    "colyseus.js": "^0.15.26"
+  }
+}

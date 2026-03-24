@@ -1,0 +1,50 @@
+# =============================================================================
+# VLM V2 — Single Mode (self-hosted, one server)
+#
+# Everything runs from one container + Postgres.
+# No Redis, no external storage required.
+#
+# Usage:
+#   cp .env.example .env   # edit DATABASE_URL and JWT_SECRET
+#   docker compose -f docker-compose.single.yml up -d
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: vlm
+      POSTGRES_USER: vlm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vlm_prod}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vlm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  vlm:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3010}:3010"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      VLM_MODE: single
+      DATABASE_URL: postgresql://vlm:${POSTGRES_PASSWORD:-vlm_prod}@postgres:5432/vlm
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3010}
+      STORAGE_PROVIDER: local
+      LOCAL_STORAGE_PATH: /app/uploads
+    volumes:
+      - uploads:/app/uploads
+
+volumes:
+  pgdata:
+  uploads:

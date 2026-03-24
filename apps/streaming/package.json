@@ -1,0 +1,21 @@
+{
+  "name": "vlm-streaming",
+  "version": "2.0.0",
+  "type": "module",
+  "description": "VLM Streaming Media Server — RTMP ingest + HLS transcoding",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "node-media-server": "^2.7.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.0.0"
+  }
+}

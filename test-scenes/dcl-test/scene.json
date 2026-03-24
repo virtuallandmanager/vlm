@@ -1,0 +1,16 @@
+{
+  "display": {
+    "title": "VLM V2 Test Scene",
+    "description": "Testing VLM V2 Decentraland adapter"
+  },
+  "scene": {
+    "parcels": ["0,0"],
+    "base": "0,0"
+  },
+  "main": "bin/index.js",
+  "ecs7": true,
+  "runtimeVersion": "7",
+  "vlm": {
+    "sceneId": "645c3a07-5d49-469f-88f3-1636fd55e701"
+  }
+}

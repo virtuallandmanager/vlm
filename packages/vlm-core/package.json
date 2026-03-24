@@ -1,0 +1,26 @@
+{
+  "name": "vlm-core",
+  "version": "2.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "devDependencies": {
+    "vlm-shared": "workspace:*",
+    "vlm-client": "workspace:*",
+    "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "vlm-shared": "workspace:*",
+    "vlm-client": "workspace:*",
+    "vlm-hud": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "vlm-hud": {
+      "optional": true
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "vlm-adapter-hyperfy",
+  "version": "2.0.0",
+  "description": "VLM Hyperfy platform adapter — renders VLM scenes in Hyperfy worlds",
+  "license": "AGPL-3.0",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "echo 'vlm-adapter-hyperfy: plain JS, no build step'",
+    "typecheck": "echo 'vlm-adapter-hyperfy: plain JS, no typecheck'",
+    "clean": "echo 'vlm-adapter-hyperfy: nothing to clean'"
+  },
+  "dependencies": {
+    "vlm-shared": "workspace:*",
+    "vlm-core": "workspace:*",
+    "vlm-client": "workspace:*",
+    "colyseus.js": "^0.15.26"
+  },
+  "peerDependencies": {
+    "hyperfy": "*"
+  },
+  "peerDependenciesMeta": {
+    "hyperfy": {
+      "optional": true
+    }
+  }
+}

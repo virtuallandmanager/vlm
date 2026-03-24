@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "lib": ["ESNext", "DOM"],
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "declaration": true,
+    "outDir": "bin",
+    "rootDir": "src",
+    "module": "esnext",
+    "target": "esnext"
+  },
+  "include": ["src/**/*.ts"],
+  "extends": "@dcl/sdk/types/tsconfig.ecs7.json"
+}

@@ -1,0 +1,75 @@
+---
+title: Environment Variables
+description: Complete reference for all VLM environment variables
+---
+
+## Required (All Modes)
+
+| Variable | Description |
+|----------|-------------|
+| `VLM_MODE` | `single` \| `scalable` \| `cloud` (default: `single`) |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `JWT_SECRET` | Random 64-char string for JWT signing |
+| `PUBLIC_URL` | Public URL of this instance |
+
+## Storage
+
+| Variable | Description |
+|----------|-------------|
+| `STORAGE_PROVIDER` | `local` \| `supabase` \| `s3` \| `r2` (default: `local`) |
+| `LOCAL_STORAGE_PATH` | Path for local storage (default: `./uploads`) |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase anon key |
+| `SUPABASE_SERVICE_KEY` | Supabase service role key |
+| `S3_BUCKET` | S3/R2 bucket name |
+| `S3_REGION` | S3 region |
+| `S3_ENDPOINT` | Custom S3 endpoint (for R2/MinIO) |
+| `CDN_URL` | Prepended to public file URLs |
+
+## Scalable/Cloud Mode
+
+| Variable | Description |
+|----------|-------------|
+| `REDIS_URL` | Redis connection string (required for scalable/cloud) |
+
+## Billing (Cloud Only)
+
+| Variable | Description |
+|----------|-------------|
+| `STRIPE_SECRET_KEY` | Enables billing + feature gating |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook endpoint secret |
+| `STRIPE_PRICE_CREATOR` | Stripe price ID for Creator tier |
+| `STRIPE_PRICE_PRO` | Stripe price ID for Pro tier |
+| `STRIPE_PRICE_STUDIO` | Stripe price ID for Studio tier |
+
+## Streaming
+
+| Variable | Description |
+|----------|-------------|
+| `ENABLE_STREAMING` | `true` to enable streaming features |
+| `RTMP_INGEST_URL` | RTMP ingest base URL (default: `rtmp://localhost:1935/live`) |
+| `HLS_BASE_URL` | HLS playlist base URL (default: `http://localhost:8000/streams`) |
+| `STREAMING_WEBHOOK_KEY` | Shared secret for media server webhooks |
+
+## Hyperfy Provisioning
+
+| Variable | Description |
+|----------|-------------|
+| `HYPERFY_INFRA_PROVIDER` | `fly` \| `docker` \| `local` (default: `local`) |
+| `FLY_API_TOKEN` | Fly.io API token |
+| `FLY_HYPERFY_APP` | Fly.io app name (default: `vlm-hyperfy`) |
+| `HYPERFY_IMAGE` | Docker image for Hyperfy worlds |
+| `DOCKER_SOCKET` | Docker socket path (default: `/var/run/docker.sock`) |
+
+## Tuning
+
+| Variable | Description |
+|----------|-------------|
+| `PORT` | HTTP port (default: `3010`) |
+| `LOG_LEVEL` | `debug` \| `info` \| `warn` \| `error` |
+| `JWT_ACCESS_EXPIRY` | Access token lifetime (default: `15m`) |
+| `JWT_REFRESH_EXPIRY` | Refresh token lifetime (default: `7d`) |
+| `MAX_ROOMS` | Max concurrent Colyseus rooms (default: `50` single, `500` scalable) |
+| `DASHBOARD_DIR` | Path to static dashboard files (default: `./dashboard`) |
+| `MULTI_TENANT` | `true` for data isolation between orgs |
+| `ENABLE_METRICS` | `true` for Prometheus `/metrics` endpoint |

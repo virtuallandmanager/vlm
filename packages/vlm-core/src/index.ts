@@ -1,0 +1,5 @@
+export { VLM } from './VLM'
+export { SceneManager } from './SceneManager'
+export { EventBus } from './events/EventBus'
+export { VLMStorageImpl } from './storage'
+export type { VLMStorage } from 'vlm-shared'
