@@ -29,6 +29,17 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm turbo build
 
+# Use pnpm deploy to create a standalone server bundle with all deps resolved
+RUN pnpm --filter vlm-server deploy /app/server-bundle --prod
+
+# Copy workspace package dist into the bundle's node_modules
+RUN cp -r packages/vlm-shared/dist server-bundle/node_modules/vlm-shared/dist && \
+    cp packages/vlm-shared/package.json server-bundle/node_modules/vlm-shared/ && \
+    cp -r packages/vlm-core/dist server-bundle/node_modules/vlm-core/dist && \
+    cp packages/vlm-core/package.json server-bundle/node_modules/vlm-core/ && \
+    cp -r packages/vlm-client/dist server-bundle/node_modules/vlm-client/dist && \
+    cp packages/vlm-client/package.json server-bundle/node_modules/vlm-client/
+
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM node:20-alpine
 WORKDIR /app
@@ -36,24 +47,11 @@ WORKDIR /app
 # Optional: FFmpeg for HLS streaming support
 RUN apk add --no-cache ffmpeg
 
-# Copy the compiled API server
+# Copy the standalone server bundle (includes node_modules with real files, not symlinks)
+COPY --from=builder /app/server-bundle ./
+
+# Copy the compiled server code
 COPY --from=builder /app/apps/server/dist ./dist
-COPY --from=builder /app/apps/server/package.json ./
-
-# Copy Next.js standalone dashboard
-# The standalone output includes a minimal Node server + all required node_modules
-COPY --from=builder /app/apps/web/.next/standalone ./dashboard-standalone
-COPY --from=builder /app/apps/web/.next/static ./dashboard-standalone/apps/web/.next/static
-
-# Copy production node_modules for the server
-# (pruned — only production deps, no devDependencies)
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages/vlm-shared/dist ./node_modules/vlm-shared/dist
-COPY --from=builder /app/packages/vlm-shared/package.json ./node_modules/vlm-shared/
-COPY --from=builder /app/packages/vlm-core/dist ./node_modules/vlm-core/dist
-COPY --from=builder /app/packages/vlm-core/package.json ./node_modules/vlm-core/
-COPY --from=builder /app/packages/vlm-client/dist ./node_modules/vlm-client/dist
-COPY --from=builder /app/packages/vlm-client/package.json ./node_modules/vlm-client/
 
 # Create uploads directory for local storage
 RUN mkdir -p /app/uploads
