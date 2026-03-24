@@ -5,7 +5,7 @@ set -e
 if [ -n "$DATABASE_URL" ]; then
   echo "[vlm-server] Running drizzle-kit push to sync schema..."
   cd /app/apps/server
-  npx drizzle-kit push --force 2>&1 || echo "[vlm-server] Schema push failed — tables may already exist"
+  echo "yes" | npx drizzle-kit push 2>&1 || echo "[vlm-server] Schema push failed — tables may already exist"
   cd /app
 fi
 
