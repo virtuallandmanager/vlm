@@ -147,6 +147,7 @@ When the server is running, Swagger UI is available at `/api/docs`.
 - [VLM_V2_BUILD_SPEC.md](VLM_V2_BUILD_SPEC.md) — complete rebuild specification, architecture, and implementation details
 - [VLM_V2_IMPLEMENTATION_PLAN.md](VLM_V2_IMPLEMENTATION_PLAN.md) — phased build plan with current status
 - [VLM_V2_ADAPTER_DESIGNS.md](VLM_V2_ADAPTER_DESIGNS.md) — detailed designs for Decentraland, Hyperfy, and Second Life adapters
+- [VLM_V2_WEBXR_SPEC.md](VLM_V2_WEBXR_SPEC.md) — WebXR "phygital" adapter for AR experiences in physical spaces (iPhone, Vision Pro, Quest)
 
 ## Tech Stack
 
