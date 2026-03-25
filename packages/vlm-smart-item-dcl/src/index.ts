@@ -182,6 +182,10 @@ export class VLMSmartItem {
       const config: Partial<VLMInitConfig> = {
         env,
         sceneId,
+        ...(serverUrl && serverUrl !== 'https://vlm.gg' ? {
+          apiUrl: serverUrl,
+          wssUrl: serverUrl.replace(/^http/, 'ws'),
+        } : {}),
       }
 
       this.vlm = await createVLM(config)

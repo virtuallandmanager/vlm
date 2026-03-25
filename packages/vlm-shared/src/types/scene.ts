@@ -41,6 +41,8 @@ export interface Scene {
 export interface VLMInitConfig {
   env?: 'dev' | 'staging' | 'prod';
   sceneId?: string;
+  apiUrl?: string;
+  wssUrl?: string;
   debug?: boolean | string[];
   widgets?: WidgetConfig[];
 }

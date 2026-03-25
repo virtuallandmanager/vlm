@@ -16,6 +16,7 @@
     "vlm-adapter-dcl": "file:../../packages/vlm-adapter-dcl",
     "vlm-client": "file:../../packages/vlm-client",
     "vlm-core": "file:../../packages/vlm-core",
-    "vlm-shared": "file:../../packages/vlm-shared"
+    "vlm-shared": "file:../../packages/vlm-shared",
+    "vlm-smart-item-dcl": "file:../../packages/vlm-smart-item-dcl/vlm-smart-item-dcl-2.0.0.tgz"
   }
 }

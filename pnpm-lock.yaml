@@ -194,7 +194,7 @@ importers:
         version: 0.15.28
     devDependencies:
       '@dcl/sdk':
-        specifier: ~7.7.9
+        specifier: '>=7.7.0'
         version: 7.7.9(@well-known-components/interfaces@1.5.2)
       typescript:
         specifier: ^5.7.0
@@ -276,10 +276,22 @@ importers:
         version: 5.9.3
 
   packages/vlm-smart-item-dcl:
-    dependencies:
+    devDependencies:
+      '@dcl/sdk':
+        specifier: '>=7.7.0'
+        version: 7.7.9(@well-known-components/interfaces@1.5.2)
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.15
       colyseus.js:
         specifier: ^0.15.26
         version: 0.15.28
+      esbuild:
+        specifier: ^0.27.4
+        version: 0.27.4
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
       vlm-adapter-dcl:
         specifier: workspace:*
         version: link:../vlm-adapter-dcl
@@ -295,16 +307,6 @@ importers:
       vlm-shared:
         specifier: workspace:*
         version: link:../vlm-shared
-    devDependencies:
-      '@dcl/sdk':
-        specifier: ~7.7.9
-        version: 7.7.9(@well-known-components/interfaces@1.5.2)
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.15
-      typescript:
-        specifier: ^5.7.0
-        version: 5.9.3
 
 packages:
 

@@ -37,8 +37,8 @@ export class VLM {
 
   async init(config: VLMInitConfig): Promise<VLMStorageType> {
     const env = config.env || 'prod'
-    const apiUrl = API_URLS[env] || API_URLS.prod
-    const wssUrl = WSS_URLS[env] || WSS_URLS.prod
+    const apiUrl = config.apiUrl || API_URLS[env] || API_URLS.prod
+    const wssUrl = config.wssUrl || WSS_URLS[env] || WSS_URLS.prod
 
     this.http = new VLMHttpClient(apiUrl)
 
