@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/lib/api'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 
 type Tab = 'users' | 'orgs'
 
@@ -44,59 +44,32 @@ export default function AdminPage() {
   const [orgsOffset, setOrgsOffset] = useState(0)
   const [orgsLoading, setOrgsLoading] = useState(false)
 
-  const loadStats = useCallback(async () => {
-    try {
-      setStatsLoading(true)
-      const data = await api.getAdminStats()
-      setStats(data)
-    } catch (err) {
-      console.error('Failed to load stats:', err)
-    } finally {
-      setStatsLoading(false)
-    }
-  }, [api])
-
-  const loadUsers = useCallback(async () => {
-    try {
-      setUsersLoading(true)
-      const data = await api.getAdminUsers({
-        limit: PAGE_SIZE,
-        offset: usersOffset,
-        search: usersSearch || undefined,
-      })
-      setUsers(data.users)
-      setUsersTotal(data.total)
-    } catch (err) {
-      console.error('Failed to load users:', err)
-    } finally {
-      setUsersLoading(false)
-    }
-  }, [api, usersOffset, usersSearch])
-
-  const loadOrgs = useCallback(async () => {
-    try {
-      setOrgsLoading(true)
-      const data = await api.getAdminOrgs({ limit: PAGE_SIZE, offset: orgsOffset })
-      setOrgs(data.organizations)
-      setOrgsTotal(data.total)
-    } catch (err) {
-      console.error('Failed to load orgs:', err)
-    } finally {
-      setOrgsLoading(false)
-    }
-  }, [api, orgsOffset])
+  useEffect(() => {
+    if (user?.role !== 'admin') return
+    setStatsLoading(true)
+    api.getAdminStats()
+      .then(data => setStats(data))
+      .catch(err => console.error('Failed to load stats:', err))
+      .finally(() => setStatsLoading(false))
+  }, [user?.role])
 
   useEffect(() => {
-    if (user?.role === 'admin') loadStats()
-  }, [user?.role, loadStats])
+    if (user?.role !== 'admin' || tab !== 'users') return
+    setUsersLoading(true)
+    api.getAdminUsers({ limit: PAGE_SIZE, offset: usersOffset, search: usersSearch || undefined })
+      .then(data => { setUsers(data.users); setUsersTotal(data.total) })
+      .catch(err => console.error('Failed to load users:', err))
+      .finally(() => setUsersLoading(false))
+  }, [user?.role, tab, usersOffset, usersSearch])
 
   useEffect(() => {
-    if (user?.role === 'admin' && tab === 'users') loadUsers()
-  }, [user?.role, tab, loadUsers])
-
-  useEffect(() => {
-    if (user?.role === 'admin' && tab === 'orgs') loadOrgs()
-  }, [user?.role, tab, loadOrgs])
+    if (user?.role !== 'admin' || tab !== 'orgs') return
+    setOrgsLoading(true)
+    api.getAdminOrgs({ limit: PAGE_SIZE, offset: orgsOffset })
+      .then(data => { setOrgs(data.organizations); setOrgsTotal(data.total) })
+      .catch(err => console.error('Failed to load orgs:', err))
+      .finally(() => setOrgsLoading(false))
+  }, [user?.role, tab, orgsOffset])
 
   if (user?.role !== 'admin') {
     return (
@@ -117,13 +90,17 @@ export default function AdminPage() {
     }
   }
 
+  const refreshStats = () => {
+    api.getAdminStats().then(data => setStats(data)).catch(() => {})
+  }
+
   const handleDeleteUser = async (userId: string, displayName: string) => {
     if (!confirm(`Delete user "${displayName}"? This cannot be undone.`)) return
     try {
       await api.deleteUser(userId)
       setUsers((prev) => prev.filter((u) => u.id !== userId))
       setUsersTotal((prev) => prev - 1)
-      loadStats()
+      refreshStats()
     } catch (err) {
       alert(`Failed to delete user: ${(err as Error).message}`)
     }
@@ -135,7 +112,7 @@ export default function AdminPage() {
       await api.deleteOrg(orgId)
       setOrgs((prev) => prev.filter((o) => o.id !== orgId))
       setOrgsTotal((prev) => prev - 1)
-      loadStats()
+      refreshStats()
     } catch (err) {
       alert(`Failed to delete org: ${(err as Error).message}`)
     }
