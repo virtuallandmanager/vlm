@@ -5,24 +5,30 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node build.mjs",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo"
   },
   "peerDependencies": {
     "@dcl/sdk": ">=7.7.0"
   },
-  "dependencies": {
+  "dependencies": {},
+  "devDependencies": {
+    "@dcl/sdk": ">=7.7.0",
+    "@types/node": "^22.0.0",
     "colyseus.js": "^0.15.26",
+    "esbuild": "^0.27.4",
+    "typescript": "^5.7.0",
     "vlm-adapter-dcl": "workspace:*",
     "vlm-client": "workspace:*",
     "vlm-core": "workspace:*",
     "vlm-hud": "workspace:*",
     "vlm-shared": "workspace:*"
   },
-  "devDependencies": {
-    "@dcl/sdk": ">=7.7.0",
-    "@types/node": "^22.0.0",
-    "typescript": "^5.7.0"
-  }
+  "files": [
+    "dist",
+    "asset.json",
+    "models",
+    "README.md"
+  ]
 }
