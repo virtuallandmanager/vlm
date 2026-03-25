@@ -129,14 +129,26 @@ export default async function streamingRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
-      // TODO: For dedicated servers, destroy infrastructure
+      // For dedicated servers with provisioned infrastructure, log a warning.
+      // The actual destroy call depends on the provider (Fly.io API, Docker API,
+      // ECS, etc.) which requires provider-specific implementation.
+      if (server.type === 'dedicated' && server.infrastructureId) {
+        request.log.warn(
+          { infrastructureId: server.infrastructureId },
+          'Infrastructure destroy not implemented for provider — manual cleanup may be needed',
+        )
+      }
 
       await db
         .update(streamingServers)
         .set({ status: 'terminated' })
         .where(eq(streamingServers.id, id))
 
-      return reply.send({ terminated: true })
+      await db
+        .delete(streamingServers)
+        .where(eq(streamingServers.id, id))
+
+      return reply.status(204).send()
     },
   )
 

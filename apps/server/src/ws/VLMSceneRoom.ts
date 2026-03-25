@@ -16,6 +16,7 @@ import {
   serializeSingleInstance,
 } from '../services/scene-serializer.js'
 import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
+import { config } from '../config.js'
 
 interface JoinOptions {
   sessionToken: string
@@ -33,12 +34,21 @@ interface ClientMeta {
 }
 
 export class VLMSceneRoom extends Room {
+  private static activeRoomCount = 0
+
   private sceneId: string = ''
   private clientMeta: Map<string, ClientMeta> = new Map()
 
   onCreate(options: JoinOptions) {
+    VLMSceneRoom.activeRoomCount++
+
+    if (VLMSceneRoom.activeRoomCount > config.maxRoomsPerServer) {
+      VLMSceneRoom.activeRoomCount--
+      throw new Error('Server room limit reached')
+    }
+
     this.sceneId = options.sceneId || ''
-    console.log(`[VLMSceneRoom] Created for scene ${this.sceneId}`)
+    console.log(`[VLMSceneRoom] Created for scene ${this.sceneId} (active rooms: ${VLMSceneRoom.activeRoomCount})`)
 
     // ── Scene Preset Updates (create/update/delete elements) ──────────────
     this.onMessage('scene_preset_update', async (client, message) => {
@@ -239,7 +249,8 @@ export class VLMSceneRoom extends Room {
   }
 
   onDispose() {
-    console.log(`[VLMSceneRoom] Disposed (scene: ${this.sceneId})`)
+    VLMSceneRoom.activeRoomCount--
+    console.log(`[VLMSceneRoom] Disposed (scene: ${this.sceneId}, active rooms: ${VLMSceneRoom.activeRoomCount})`)
     this.clientMeta.clear()
   }
 

@@ -15,6 +15,7 @@ import { db } from '../db/connection.js'
 import { assetLibraryItems } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { createStorage } from '../storage/index.js'
+import { generateThumbnail } from '../services/thumbnails.js'
 
 export default async function assetRoutes(app: FastifyInstance) {
   const storage = createStorage()
@@ -145,7 +146,7 @@ export default async function assetRoutes(app: FastifyInstance) {
           tags: body.tags || null,
           storageKey: key,
           cdnUrl: publicUrl,
-          thumbnailUrl: null, // TODO: generate thumbnail from GLB
+          thumbnailUrl: null,
           fileSizeBytes: buffer.length,
           triangleCount: body.triangleCount || null,
           textureCount: body.textureCount || null,
@@ -157,6 +158,21 @@ export default async function assetRoutes(app: FastifyInstance) {
           uploadedBy: request.user.id,
         })
         .returning()
+
+      // Generate thumbnail after insert so we can use the real asset ID
+      try {
+        const thumbnailUrl = await generateThumbnail(buffer, body.contentType, asset.id)
+        if (thumbnailUrl) {
+          await db
+            .update(assetLibraryItems)
+            .set({ thumbnailUrl })
+            .where(eq(assetLibraryItems.id, asset.id))
+          asset.thumbnailUrl = thumbnailUrl
+        }
+      } catch (err) {
+        // Thumbnail generation is non-critical; log and continue
+        request.log.warn({ err }, 'Failed to generate thumbnail')
+      }
 
       return reply.status(201).send({ asset })
     },

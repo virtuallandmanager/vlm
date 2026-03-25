@@ -23,6 +23,7 @@ import {
 import { authenticate } from '../middleware/auth.js'
 import { requireFeature } from '../middleware/feature-gate.js'
 import { HyperfyProvisioner } from '../services/hyperfy/provisioner.js'
+import { executeDCLDeploy } from '../services/dcl/deployer.js'
 
 export default async function deployRoutes(app: FastifyInstance) {
   // ── Start Deployment ──────────────────────────────────────────────────
@@ -89,7 +90,13 @@ export default async function deployRoutes(app: FastifyInstance) {
         })
         .returning()
 
-      // TODO: Queue DCL catalyst deploy job
+      // DCL: kick off catalyst deployment in the background
+      if (body.platform === 'decentraland') {
+        executeDCLDeploy(deployment.id, body.walletId).catch((err) => {
+          console.error(`[dcl-deploy] background deploy failed for ${deployment.id}:`, err)
+        })
+      }
+
       return reply.status(201).send({ deployment })
     },
   )
@@ -191,7 +198,14 @@ export default async function deployRoutes(app: FastifyInstance) {
         })
         .returning()
 
-      // TODO: Queue deployment job
+      // DCL: kick off catalyst redeployment in the background
+      if (original.platform === 'decentraland') {
+        // Try to find a wallet for the redeployer
+        executeDCLDeploy(deployment.id).catch((err) => {
+          console.error(`[dcl-deploy] background redeploy failed for ${deployment.id}:`, err)
+        })
+      }
+
       return reply.status(201).send({ deployment })
     },
   )

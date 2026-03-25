@@ -42,6 +42,16 @@ export function useApi() {
     removeSceneCollaborator: (sceneId: string, userId: string) =>
       apiFetch(`/api/scenes/${sceneId}/collaborators/${userId}`, { method: 'DELETE' }),
 
+    // Scene State
+    getSceneState: (sceneId: string) =>
+      apiFetch<{ state: Record<string, any> }>(`/api/scenes/${sceneId}/state`),
+    setSceneState: (sceneId: string, key: string, value: any) =>
+      apiFetch<{ updated: number }>(`/api/scenes/${sceneId}/state`, { method: 'PUT', body: JSON.stringify({ key, value }) }),
+    deleteSceneStateKey: (sceneId: string, key: string) =>
+      apiFetch(`/api/scenes/${sceneId}/state/${key}`, { method: 'DELETE' }),
+    clearSceneState: (sceneId: string) =>
+      apiFetch(`/api/scenes/${sceneId}/state`, { method: 'DELETE' }),
+
     // Elements
     createElement: (presetId: string, data: Record<string, any>) =>
       apiFetch<{ element: any }>(`/api/presets/${presetId}/elements`, { method: 'POST', body: JSON.stringify(data) }),

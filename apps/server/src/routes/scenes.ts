@@ -7,6 +7,7 @@ import {
   sceneElements,
   sceneElementInstances,
   sceneCollaborators,
+  sceneState,
   users,
 } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
@@ -601,6 +602,119 @@ export default async function sceneRoutes(app: FastifyInstance) {
           and(
             eq(sceneCollaborators.sceneId, sceneId),
             eq(sceneCollaborators.userId, userId),
+          ),
+        )
+
+      return reply.status(204).send()
+    },
+  )
+
+  // ── GET /api/scenes/:sceneId/state — get all key-value pairs ───────────
+
+  app.get<{ Params: { sceneId: string } }>(
+    '/api/scenes/:sceneId/state',
+    async (request, reply) => {
+      const { sceneId } = request.params
+
+      const rows = await db
+        .select({ key: sceneState.key, value: sceneState.value })
+        .from(sceneState)
+        .where(
+          and(
+            eq(sceneState.sceneId, sceneId),
+            eq(sceneState.userId, request.user.id),
+          ),
+        )
+
+      const state: Record<string, unknown> = {}
+      for (const row of rows) {
+        state[row.key] = row.value
+      }
+
+      return reply.send({ state })
+    },
+  )
+
+  // ── PUT /api/scenes/:sceneId/state — set one or more key-value pairs ───
+
+  app.put<{
+    Params: { sceneId: string }
+    Body: { key?: string; value?: unknown; entries?: Array<{ key: string; value: unknown }> }
+  }>(
+    '/api/scenes/:sceneId/state',
+    async (request, reply) => {
+      const { sceneId } = request.params
+      const { key, value, entries } = request.body
+
+      // Build the list of entries to upsert
+      const toUpsert: Array<{ key: string; value: unknown }> = []
+
+      if (entries && Array.isArray(entries)) {
+        for (const entry of entries) {
+          if (!entry.key) continue
+          toUpsert.push({ key: entry.key, value: entry.value })
+        }
+      } else if (key) {
+        toUpsert.push({ key, value })
+      }
+
+      if (toUpsert.length === 0) {
+        return reply.status(400).send({ error: 'Provide { key, value } or { entries: [{ key, value }] }' })
+      }
+
+      for (const entry of toUpsert) {
+        await db
+          .insert(sceneState)
+          .values({
+            sceneId,
+            userId: request.user.id,
+            key: entry.key,
+            value: entry.value as any,
+          })
+          .onConflictDoUpdate({
+            target: [sceneState.sceneId, sceneState.userId, sceneState.key],
+            set: { value: entry.value as any },
+          })
+      }
+
+      return reply.send({ updated: toUpsert.length })
+    },
+  )
+
+  // ── DELETE /api/scenes/:sceneId/state/:key — delete a specific key ─────
+
+  app.delete<{ Params: { sceneId: string; key: string } }>(
+    '/api/scenes/:sceneId/state/:key',
+    async (request, reply) => {
+      const { sceneId, key } = request.params
+
+      await db
+        .delete(sceneState)
+        .where(
+          and(
+            eq(sceneState.sceneId, sceneId),
+            eq(sceneState.userId, request.user.id),
+            eq(sceneState.key, key),
+          ),
+        )
+
+      return reply.status(204).send()
+    },
+  )
+
+  // ── DELETE /api/scenes/:sceneId/state — delete all state for user ──────
+
+  app.delete<{ Params: { sceneId: string } }>(
+    '/api/scenes/:sceneId/state',
+    async (request, reply) => {
+      const { sceneId } = request.params
+
+      await db
+        .delete(sceneState)
+        .where(
+          and(
+            eq(sceneState.sceneId, sceneId),
+            eq(sceneState.userId, request.user.id),
           ),
         )
 
