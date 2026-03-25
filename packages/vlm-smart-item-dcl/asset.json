@@ -1,0 +1,129 @@
+{
+  "id": "vlm-manager-v2",
+  "name": "VLM Manager",
+  "tags": ["vlm", "virtual land manager", "management", "hud", "video", "streaming", "analytics", "events"],
+  "category": "utils",
+  "model": "models/vlm_beacon.glb",
+  "parameters": [
+    {
+      "id": "sceneId",
+      "label": "VLM Scene ID",
+      "type": "text",
+      "default": "",
+      "description": "Your VLM scene ID. Find it in the VLM dashboard under scene settings."
+    },
+    {
+      "id": "serverUrl",
+      "label": "VLM Server URL",
+      "type": "text",
+      "default": "https://vlm.gg",
+      "description": "VLM server URL. Change only if self-hosting."
+    },
+    {
+      "id": "showBeacon",
+      "label": "Show VLM Beacon",
+      "type": "boolean",
+      "default": false,
+      "description": "Show a small VLM logo cube in the scene. Useful for debugging."
+    },
+    {
+      "id": "enableHud",
+      "label": "Enable Management HUD",
+      "type": "boolean",
+      "default": true,
+      "description": "Enable the in-world management HUD for scene operators."
+    },
+    {
+      "id": "enableAnalytics",
+      "label": "Enable Analytics",
+      "type": "boolean",
+      "default": true,
+      "description": "Track visitor sessions, actions, and movement paths."
+    },
+    {
+      "id": "autoConnect",
+      "label": "Auto-Connect",
+      "type": "boolean",
+      "default": true,
+      "description": "Automatically connect to VLM when the scene loads."
+    },
+    {
+      "id": "env",
+      "label": "Environment",
+      "type": "options",
+      "default": "prod",
+      "options": [
+        { "label": "Production", "value": "prod" },
+        { "label": "Staging", "value": "staging" },
+        { "label": "Development", "value": "dev" }
+      ],
+      "description": "Server environment. Use 'dev' for local development."
+    }
+  ],
+  "actions": [
+    {
+      "id": "connect",
+      "label": "Connect to VLM",
+      "parameters": []
+    },
+    {
+      "id": "disconnect",
+      "label": "Disconnect from VLM",
+      "parameters": []
+    },
+    {
+      "id": "toggleHud",
+      "label": "Toggle Management HUD",
+      "parameters": []
+    },
+    {
+      "id": "switchPreset",
+      "label": "Switch Scene Preset",
+      "parameters": [
+        {
+          "id": "presetId",
+          "label": "Preset ID",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "triggerGiveaway",
+      "label": "Trigger Giveaway",
+      "parameters": [
+        {
+          "id": "giveawayId",
+          "label": "Giveaway ID",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "sendMessage",
+      "label": "Send Custom Message",
+      "parameters": [
+        {
+          "id": "messageId",
+          "label": "Message ID",
+          "type": "text"
+        },
+        {
+          "id": "data",
+          "label": "Message Data (JSON)",
+          "type": "textarea"
+        }
+      ]
+    },
+    {
+      "id": "recordAction",
+      "label": "Record Analytics Action",
+      "parameters": [
+        {
+          "id": "actionName",
+          "label": "Action Name",
+          "type": "text"
+        }
+      ]
+    }
+  ]
+}

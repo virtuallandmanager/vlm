@@ -1,0 +1,28 @@
+{
+  "name": "vlm-smart-item-dcl",
+  "version": "2.0.0",
+  "description": "VLM Smart Item for Decentraland — drag into any scene to connect to VLM",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "peerDependencies": {
+    "@dcl/sdk": "~7.7.9"
+  },
+  "dependencies": {
+    "colyseus.js": "^0.15.26",
+    "vlm-adapter-dcl": "workspace:*",
+    "vlm-client": "workspace:*",
+    "vlm-core": "workspace:*",
+    "vlm-hud": "workspace:*",
+    "vlm-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@dcl/sdk": "~7.7.9",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

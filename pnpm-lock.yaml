@@ -275,6 +275,37 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/vlm-smart-item-dcl:
+    dependencies:
+      colyseus.js:
+        specifier: ^0.15.26
+        version: 0.15.28
+      vlm-adapter-dcl:
+        specifier: workspace:*
+        version: link:../vlm-adapter-dcl
+      vlm-client:
+        specifier: workspace:*
+        version: link:../vlm-client
+      vlm-core:
+        specifier: workspace:*
+        version: link:../vlm-core
+      vlm-hud:
+        specifier: workspace:*
+        version: link:../vlm-hud
+      vlm-shared:
+        specifier: workspace:*
+        version: link:../vlm-shared
+    devDependencies:
+      '@dcl/sdk':
+        specifier: ~7.7.9
+        version: 7.7.9(@well-known-components/interfaces@1.5.2)
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.15
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
 packages:
 
   '@adraffy/ens-normalize@1.10.1':
