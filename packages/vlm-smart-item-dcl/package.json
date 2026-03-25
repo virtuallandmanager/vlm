@@ -10,7 +10,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "peerDependencies": {
-    "@dcl/sdk": "~7.7.9"
+    "@dcl/sdk": ">=7.7.0"
   },
   "dependencies": {
     "colyseus.js": "^0.15.26",
@@ -21,7 +21,7 @@
     "vlm-shared": "workspace:*"
   },
   "devDependencies": {
-    "@dcl/sdk": "~7.7.9",
+    "@dcl/sdk": ">=7.7.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
   }

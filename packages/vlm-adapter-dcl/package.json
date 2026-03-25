@@ -10,13 +10,13 @@
     "clean": "rm -rf dist .turbo"
   },
   "peerDependencies": {
-    "@dcl/sdk": "~7.7.9",
+    "@dcl/sdk": ">=7.7.0",
     "vlm-shared": "workspace:*",
     "vlm-core": "workspace:*",
     "vlm-client": "workspace:*"
   },
   "devDependencies": {
-    "@dcl/sdk": "~7.7.9",
+    "@dcl/sdk": ">=7.7.0",
     "vlm-shared": "workspace:*",
     "vlm-core": "workspace:*",
     "vlm-client": "workspace:*",
