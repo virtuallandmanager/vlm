@@ -270,7 +270,15 @@ export class VLMSceneRoom extends Room {
   }
 
   private async sendInitData(client: Client) {
-    if (!this.sceneId) return
+    if (!this.sceneId) {
+      // Always send init even if there's no scene — client needs this to unblock
+      client.send('scene_preset_update', {
+        action: 'init',
+        scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [] },
+        sceneSettings: [],
+      })
+      return
+    }
 
     try {
       const scene = await db.query.scenes.findFirst({
@@ -279,6 +287,12 @@ export class VLMSceneRoom extends Room {
 
       if (!scene?.activePresetId) {
         console.log(`[VLMSceneRoom] No active preset for scene ${this.sceneId}`)
+        // Still send init with empty preset so client doesn't hang
+        client.send('scene_preset_update', {
+          action: 'init',
+          scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [] },
+          sceneSettings: [],
+        })
         return
       }
 
@@ -293,6 +307,11 @@ export class VLMSceneRoom extends Room {
 
       if (!preset) {
         console.log(`[VLMSceneRoom] Active preset not found: ${scene.activePresetId}`)
+        client.send('scene_preset_update', {
+          action: 'init',
+          scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [] },
+          sceneSettings: [],
+        })
         return
       }
 
@@ -311,6 +330,12 @@ export class VLMSceneRoom extends Room {
       )
     } catch (err) {
       console.error('[VLMSceneRoom] Error loading init data:', err)
+      // Send empty init so client doesn't hang
+      client.send('scene_preset_update', {
+        action: 'init',
+        scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [] },
+        sceneSettings: [],
+      })
     }
   }
 

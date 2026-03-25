@@ -1,4 +1,4 @@
-import type { VLMPlatformAdapter, VLMInitConfig, VLMStorage as VLMStorageType, HUDRenderer, BudgetLimits } from 'vlm-shared'
+import type { VLMPlatformAdapter, VLMInitConfig, VLMStorage as VLMStorageType, HUDRenderer, BudgetLimits, Scene } from 'vlm-shared'
 import { VLMHttpClient, ColyseusManager } from 'vlm-client'
 import { SceneManager } from './SceneManager.js'
 import { VLMStorageImpl } from './storage.js'
@@ -16,6 +16,20 @@ const WSS_URLS: Record<string, string> = {
   prod: 'wss://api.vlm.gg',
 }
 
+export type VLMConnectionState =
+  | 'idle'
+  | 'authenticating'
+  | 'authenticated'
+  | 'discovering_scene'
+  | 'scene_ready'
+  | 'connecting'
+  | 'connected'
+  | 'error'
+
+export interface VLMStateListener {
+  (state: VLMConnectionState, detail?: Record<string, unknown>): void
+}
+
 export class VLM {
   private adapter: VLMPlatformAdapter
   private http: VLMHttpClient
@@ -23,6 +37,13 @@ export class VLM {
   private sceneManager: SceneManager
   private events: EventBus
   private userMessageHandlers: Map<string, (data: unknown) => void> = new Map()
+  private stateListeners: Set<VLMStateListener> = new Set()
+  private handlersRegistered = false
+  private _connectionState: VLMConnectionState = 'idle'
+  private _sceneId: string | null = null
+  private _user: { id: string; displayName?: string; email?: string; role: string } | null = null
+  private _scenes: Scene[] = []
+  private wssUrl: string = ''
   public storage: VLMStorageType
   public hud: any | null = null // HUDManager — typed as any to avoid hard dep on vlm-hud
 
@@ -35,72 +56,180 @@ export class VLM {
     this.sceneManager = new SceneManager(adapter, this.storage, this.events)
   }
 
+  get connectionState(): VLMConnectionState { return this._connectionState }
+  get sceneId(): string | null { return this._sceneId }
+  get user(): typeof this._user { return this._user }
+  get scenes(): Scene[] { return this._scenes }
+  get httpClient(): VLMHttpClient { return this.http }
+
+  onStateChange(listener: VLMStateListener): () => void {
+    this.stateListeners.add(listener)
+    return () => this.stateListeners.delete(listener)
+  }
+
+  private setState(state: VLMConnectionState, detail?: Record<string, unknown>): void {
+    this._connectionState = state
+    for (const listener of this.stateListeners) {
+      try { listener(state, detail) } catch { /* swallow */ }
+    }
+  }
+
+  /**
+   * Full initialization — authenticate, discover/create scene, connect Colyseus.
+   * If sceneId is provided, connects directly. If not, discovers or creates one.
+   */
   async init(config: VLMInitConfig): Promise<VLMStorageType> {
-    const env = config.env || 'prod'
-    const apiUrl = config.apiUrl || API_URLS[env] || API_URLS.prod
-    const wssUrl = config.wssUrl || WSS_URLS[env] || WSS_URLS.prod
+    // Phase 1: Authenticate (also sets up http client and wssUrl)
+    await this.authenticate(config)
 
-    this.http = new VLMHttpClient(apiUrl)
-
-    // 1. Get platform user + scene info from adapter
-    const [platformUser, sceneInfo, environment] = await Promise.all([
-      this.adapter.getPlatformUser(),
-      this.adapter.getSceneInfo(),
-      this.adapter.getEnvironment(),
-    ])
-
-    const sceneId = config.sceneId || sceneInfo.sceneId
-    if (!sceneId) {
-      throw new Error('No sceneId provided in config or scene metadata')
+    // Phase 2: Discover or use provided sceneId
+    if (config.sceneId) {
+      this._sceneId = config.sceneId
+      this.setState('scene_ready', { sceneId: config.sceneId })
+    } else {
+      await this.discoverOrCreateScene()
     }
 
-    // 2. Authenticate with server
-    const authProof = await this.adapter.getAuthProof()
-    const authResponse = await this.http.authenticateWithPlatform(authProof, {
-      sceneId,
-      user: platformUser as unknown as Record<string, unknown>,
-      world: this.adapter.capabilities.platformName,
-      location: sceneInfo as unknown as Record<string, unknown>,
-      environment: environment as unknown as Record<string, unknown>,
-    })
+    if (!this._sceneId) {
+      throw new Error('No scene available — could not discover or create one')
+    }
 
-    // 3. Join Colyseus room
-    this.colyseus.connect(wssUrl)
+    // Phase 3: Connect to Colyseus and load scene
+    return this.connectToScene(this._sceneId)
+  }
 
-    // 4. Register message handlers BEFORE joining (ColyseusManager queues them)
+  /**
+   * Phase 1: Authenticate with the VLM server using platform credentials.
+   * Can be called standalone before scene discovery.
+   */
+  async authenticate(config: VLMInitConfig): Promise<void> {
+    const env = config.env || 'prod'
+    const apiUrl = config.apiUrl || API_URLS[env] || API_URLS.prod
+    this.wssUrl = config.wssUrl || WSS_URLS[env] || WSS_URLS.prod
+    this.http = new VLMHttpClient(apiUrl)
+
+    this.setState('authenticating')
+
+    try {
+      const [platformUser, sceneInfo, environment] = await Promise.all([
+        this.adapter.getPlatformUser(),
+        this.adapter.getSceneInfo(),
+        this.adapter.getEnvironment(),
+      ])
+
+      const authProof = await this.adapter.getAuthProof()
+      const authResponse = await this.http.authenticateWithPlatform(authProof, {
+        sceneId: config.sceneId || sceneInfo.sceneId || undefined,
+        user: platformUser as unknown as Record<string, unknown>,
+        world: this.adapter.capabilities.platformName,
+        location: sceneInfo as unknown as Record<string, unknown>,
+        environment: environment as unknown as Record<string, unknown>,
+      })
+
+      this._user = authResponse.user as any
+      this.setState('authenticated', { user: this._user as any })
+    } catch (err) {
+      this.setState('error', { error: String(err) })
+      throw err
+    }
+  }
+
+  /**
+   * Phase 2: Discover existing scenes or auto-create one.
+   * Must be called after authenticate().
+   */
+  async discoverOrCreateScene(): Promise<string> {
+    this.setState('discovering_scene')
+
+    try {
+      const { scenes } = await this.http.getScenes()
+      this._scenes = scenes
+
+      if (scenes.length > 0) {
+        // Use the most recently updated scene
+        this._sceneId = scenes[0].id
+        this.setState('scene_ready', { sceneId: this._sceneId, scenes, isNew: false })
+        return this._sceneId
+      }
+
+      // No scenes — auto-create one
+      const displayName = this._user?.displayName || 'My Scene'
+      const { scene } = await this.http.createScene(`${displayName}'s Scene`)
+      this._sceneId = scene.id
+      this._scenes = [scene]
+      this.setState('scene_ready', { sceneId: this._sceneId, scenes: [scene], isNew: true })
+      return this._sceneId
+    } catch (err) {
+      this.setState('error', { error: String(err) })
+      throw err
+    }
+  }
+
+  /**
+   * Phase 3: Connect to a specific scene via Colyseus.
+   * Must be called after authenticate().
+   */
+  async connectToScene(sceneId: string): Promise<VLMStorageType> {
+    this._sceneId = sceneId
+    this.setState('connecting', { sceneId })
+
+    this.colyseus.connect(this.wssUrl)
+
+    // Register message handlers BEFORE joining
     this.registerMessageHandlers()
 
-    // 5. Join room and wait for init
     return new Promise<VLMStorageType>(async (resolve, reject) => {
       try {
-        // Listen for the init message
         this.events.on('scene_initialized', () => {
+          this.setState('connected', { sceneId })
           resolve(this.storage)
         })
 
+        const platformUser = await this.adapter.getPlatformUser()
+
         await this.colyseus.joinSceneRoom(sceneId, {
-          sessionToken: authResponse.accessToken,
+          sessionToken: this.http.auth.token,
           clientType: 'analytics',
           user: {
-            id: authResponse.user.id,
-            displayName: authResponse.user.displayName || platformUser.displayName,
+            id: this._user?.id || '',
+            displayName: this._user?.displayName || platformUser.displayName,
             connectedWallet: platformUser.walletAddress,
           },
         })
 
-        // Send session_start
         this.colyseus.send('session_start', {
-          sessionToken: authResponse.accessToken,
+          sessionToken: this.http.auth.token,
           sceneId,
         })
       } catch (err) {
+        this.setState('error', { error: String(err) })
         reject(err)
       }
     })
   }
 
+  /**
+   * Select a scene from the user's existing scenes and connect to it.
+   */
+  async selectScene(sceneId: string): Promise<VLMStorageType> {
+    return this.connectToScene(sceneId)
+  }
+
+  /**
+   * Create a new scene and connect to it.
+   */
+  async createScene(name: string, description?: string): Promise<VLMStorageType> {
+    const { scene } = await this.http.createScene(name, description)
+    this._sceneId = scene.id
+    this._scenes = [scene, ...this._scenes]
+    this.setState('scene_ready', { sceneId: scene.id, isNew: true })
+    return this.connectToScene(scene.id)
+  }
+
   private registerMessageHandlers(): void {
-    // Scene init + updates
+    if (this.handlersRegistered) return
+    this.handlersRegistered = true
+
     this.colyseus.onMessage('scene_preset_update', (message: unknown) => {
       this.sceneManager.handlePresetUpdate(message as any)
       if ((message as any).action === 'init') {
@@ -108,22 +237,16 @@ export class VLM {
       }
     })
 
-    // Preset switch
     this.colyseus.onMessage('scene_change_preset', (message: unknown) => {
       this.sceneManager.handlePresetChange(message as any)
     })
 
-    // Video status (live/offline)
     this.colyseus.onMessage('scene_video_status', (message: unknown) => {
       this.sceneManager.handleVideoStatus(message as any)
     })
 
-    // Session started acknowledgment
-    this.colyseus.onMessage('session_started', (_message: unknown) => {
-      // Store session data if needed
-    })
+    this.colyseus.onMessage('session_started', (_message: unknown) => {})
 
-    // User messages (custom messaging between players)
     this.colyseus.onMessage('user_message', (message: unknown) => {
       const msg = message as any
       if (msg?.messageId && this.userMessageHandlers.has(msg.messageId)) {
@@ -131,7 +254,6 @@ export class VLM {
       }
     })
 
-    // User state responses
     this.colyseus.onMessage('get_user_state', (message: unknown) => {
       this.events.emit('state_response', message)
     })
@@ -143,20 +265,14 @@ export class VLM {
       this.hud.destroy()
       this.hud = null
     }
-    this.colyseus.send('session_end', {})
+    try { this.colyseus.send('session_end', {}) } catch { /* may not be connected */ }
     this.colyseus.leaveRoom()
+    this.setState('idle')
   }
 
   /**
    * Initialize the in-world management HUD.
-   *
-   * Call after init() succeeds. Only works when:
-   * 1. The platform supports screen-space or spatial UI
-   * 2. A HUDRenderer is provided (platform-specific)
-   * 3. vlm-hud package is available
-   *
-   * @param renderer Platform-specific HUD renderer implementation
-   * @param budgetLimits Platform-specific asset budget limits
+   * Can be called at any time — the HUD will reflect the current connection state.
    */
   async initHUD(renderer: HUDRenderer, budgetLimits?: BudgetLimits): Promise<void> {
     if (!this.adapter.capabilities.screenSpaceUI && !this.adapter.capabilities.spatialUI) {
@@ -166,7 +282,7 @@ export class VLM {
     try {
       const { HUDManager } = await import('vlm-hud')
       const limits: BudgetLimits = budgetLimits || {
-        maxFileSizeBytes: 50 * 1024 * 1024, // 50 MB default
+        maxFileSizeBytes: 50 * 1024 * 1024,
         maxTriangleCount: 100_000,
         maxTextureCount: 128,
         maxMaterialCount: 128,
@@ -195,11 +311,11 @@ export class VLM {
     this.userMessageHandlers.set(id, callback)
   }
 
-  setState(id: string, value: unknown): void {
+  setUserState(id: string, value: unknown): void {
     this.colyseus.send('set_user_state', { key: id, value })
   }
 
-  getState(id: string): Promise<unknown> {
+  getUserState(id: string): Promise<unknown> {
     return new Promise((resolve) => {
       const handler = (msg: unknown) => {
         const m = msg as any

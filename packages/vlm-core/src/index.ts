@@ -1,4 +1,5 @@
 export { VLM } from './VLM.js'
+export type { VLMConnectionState, VLMStateListener } from './VLM.js'
 export { SceneManager } from './SceneManager.js'
 export { EventBus } from './events/EventBus.js'
 export { VLMStorageImpl } from './storage.js'

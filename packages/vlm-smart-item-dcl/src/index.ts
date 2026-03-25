@@ -5,6 +5,10 @@
  * Handles VLM initialization, element rendering, HUD activation,
  * and analytics — all configurable via the Creator Hub UI.
  *
+ * The smart item now supports a full setup flow:
+ * - If sceneId is set: connects directly to that scene
+ * - If no sceneId: shows the HUD setup flow (auth → create/pick scene → connect)
+ *
  * Usage as a Smart Item:
  *   Drag "VLM Manager" from the asset catalog, set sceneId, deploy.
  *
@@ -34,7 +38,6 @@ export interface VLMSmartItemProps {
 }
 
 interface IInventory {
-  // Creator Hub inventory interface — used by init()
   [key: string]: any
 }
 
@@ -46,7 +49,7 @@ interface IChannel {
   reply: <T>(id: string, handler: (requester: string) => T) => void
 }
 
-type Entity = any // DCL Entity type — varies by SDK version
+type Entity = any
 
 // ---------------------------------------------------------------------------
 // VLM Smart Item
@@ -61,7 +64,7 @@ export class VLMSmartItem {
    * Called once when the scene starts, before any instances spawn.
    */
   init(_args: { inventory: IInventory }) {
-    // No global initialization needed — VLM connects per-instance
+    // No global initialization needed
   }
 
   /**
@@ -78,16 +81,9 @@ export class VLMSmartItem {
       env = 'prod',
     } = props
 
-    if (!sceneId) {
-      console.warn('[VLM Smart Item] No scene ID configured. Set the sceneId parameter in the Creator Hub.')
-      return
-    }
-
     // Hide the beacon model unless explicitly shown
     if (!showBeacon) {
       try {
-        // Try to make the host entity invisible
-        // SDK 7: remove VisibilityComponent or set it to false
         const { VisibilityComponent } = require('@dcl/sdk/ecs') as any
         if (VisibilityComponent) {
           VisibilityComponent.createOrReplace(host, { visible: false })
@@ -97,7 +93,7 @@ export class VLMSmartItem {
       }
     }
 
-    // Auto-connect on scene load
+    // Auto-connect on scene load — works with or without sceneId
     if (autoConnect) {
       this.connect(sceneId, serverUrl, env, enableHud, enableAnalytics)
     }
@@ -113,7 +109,6 @@ export class VLMSmartItem {
 
     channel.handleAction('toggleHud', () => {
       if (this.vlm?.hud) {
-        // Toggle the HUD visibility
         this.vlm.sendMessage('vlm:hud:toggle')
       }
     })
@@ -154,14 +149,15 @@ export class VLMSmartItem {
     // Reply to state requests from other smart items
     channel.reply<{ connected: boolean; sceneId: string }>('getState', () => ({
       connected: this.connected,
-      sceneId,
+      sceneId: sceneId || this.vlm?.sceneId || '',
     }))
 
-    console.log(`[VLM Smart Item] Ready. Scene: ${sceneId}, Server: ${serverUrl}, Auto-connect: ${autoConnect}`)
+    console.log(`[VLM Smart Item] Ready. Scene: ${sceneId || '(auto-setup)'}, Server: ${serverUrl}, Auto-connect: ${autoConnect}`)
   }
 
   /**
    * Connect to VLM and initialize all scene elements.
+   * If no sceneId is provided, the HUD will guide the user through setup.
    */
   private async connect(
     sceneId: string,
@@ -179,9 +175,11 @@ export class VLMSmartItem {
     console.log(`[VLM Smart Item] Connecting to ${serverUrl}...`)
 
     try {
-      const config: Partial<VLMInitConfig> = {
+      const config: Partial<VLMInitConfig> & { enableHud?: boolean } = {
         env,
-        sceneId,
+        enableHud,
+        // Only set sceneId if actually provided (empty string = no scene)
+        ...(sceneId ? { sceneId } : {}),
         ...(serverUrl && serverUrl !== 'https://vlm.gg' ? {
           apiUrl: serverUrl,
           wssUrl: serverUrl.replace(/^http/, 'ws'),
@@ -201,7 +199,7 @@ export class VLMSmartItem {
         widgets: Object.keys(storage.widgets.configs).length,
       }
 
-      console.log(`[VLM Smart Item] Connected! Elements:`, JSON.stringify(elementCounts))
+      console.log(`[VLM Smart Item] Connected! Scene: ${this.vlm.sceneId}, Elements:`, JSON.stringify(elementCounts))
 
       if (enableAnalytics) {
         this.vlm.recordAction('vlm:smart_item:connected')

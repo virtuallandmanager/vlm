@@ -189,14 +189,10 @@ export default async function authRoutes(app: FastifyInstance) {
   // For now, this is a simplified flow that auto-creates users from platform data.
   // In production, this would verify signed fetch proofs, wallet signatures, etc.
 
-  app.post<{ Body: { proof: any; sceneId: string; user: any; world: string; [key: string]: any } }>(
+  app.post<{ Body: { proof: any; sceneId?: string; user: any; world: string; [key: string]: any } }>(
     '/api/auth/platform',
     async (request, reply) => {
       const { proof, sceneId, user: platformUser, world } = request.body
-
-      if (!sceneId) {
-        return reply.status(400).send({ error: 'sceneId is required' })
-      }
 
       // Use platform user ID as identifier, or generate one
       const platformId = platformUser?.id || platformUser?.walletAddress || `guest-${Date.now()}`
