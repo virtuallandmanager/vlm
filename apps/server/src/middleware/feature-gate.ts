@@ -55,6 +55,9 @@ export function requireFeature(feature: GatedFeature) {
     // All features unlocked in single/scalable mode (unless Stripe is configured)
     if (config.allFeaturesUnlocked) return
 
+    // Admins always bypass feature gates
+    if (request.user.role === 'admin') return
+
     // Query the user's actual subscription tier from the database
     const sub = await getSubscription(request.user.id)
     const userTier = sub.tier || 'free'
