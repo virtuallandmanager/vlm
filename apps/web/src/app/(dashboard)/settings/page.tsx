@@ -83,6 +83,11 @@ export default function SettingsPage() {
   const [showCreateKey, setShowCreateKey] = useState(false)
   const [deletingKeyId, setDeletingKeyId] = useState<string | null>(null)
 
+  // Platform Hooks state
+  const [hooks, setHooks] = useState<any[]>([])
+  const [hooksLoading, setHooksLoading] = useState(true)
+  const [deletingHookId, setDeletingHookId] = useState<string | null>(null)
+
   // Billing state
   const [billingEnabled, setBillingEnabled] = useState<boolean | null>(null)
   const [billingTier, setBillingTier] = useState<string>('free')
@@ -118,6 +123,17 @@ export default function SettingsPage() {
         setApiKeysLoading(false)
       })
       .catch(() => setApiKeysLoading(false))
+  }, [token])
+
+  // Fetch platform hooks
+  useEffect(() => {
+    if (!token) return
+    api.getHooks()
+      .then(data => {
+        setHooks(data.hooks)
+        setHooksLoading(false)
+      })
+      .catch(() => setHooksLoading(false))
   }, [token])
 
   // Fetch billing info
@@ -162,6 +178,17 @@ export default function SettingsPage() {
       await api.deleteApiKey(keyId)
       setApiKeys(prev => prev.filter(k => k.id !== keyId))
       setDeletingKeyId(null)
+    } catch (err: any) {
+      setError(err.message)
+    }
+  }
+
+  const handleDeleteHook = async (hookId: string) => {
+    setError(null)
+    try {
+      await api.deleteHook(hookId)
+      setHooks(prev => prev.filter(h => h.id !== hookId))
+      setDeletingHookId(null)
     } catch (err: any) {
       setError(err.message)
     }
@@ -768,6 +795,98 @@ export default function SettingsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      {/* Platform Hooks */}
+      <section className="mt-10">
+        <h2 className="text-lg font-semibold mb-2">Platform Hooks</h2>
+        <p className="text-sm text-gray-400 mb-4">
+          External platforms register HTTP callbacks to receive real-time scene updates. This is used by platforms that can&apos;t use WebSocket (Second Life, IoT devices, etc.)
+        </p>
+
+        {hooksLoading ? (
+          <p className="text-gray-400">Loading platform hooks...</p>
+        ) : hooks.length === 0 ? (
+          <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+            <p className="text-gray-500">No platform hooks registered. External platforms register hooks automatically when they connect.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-gray-800">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800 bg-gray-900">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Scene</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Platform</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Callback URL</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Element</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Mode</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Failures</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Registered</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800 bg-gray-900/50">
+                {hooks.map(hook => (
+                  <tr key={hook.id} className="hover:bg-gray-800/50 transition-colors">
+                    <td className="px-4 py-3 text-white whitespace-nowrap">{hook.sceneName}</td>
+                    <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
+                      <span className="rounded-full bg-gray-800 border border-gray-700 px-2 py-0.5 text-xs">{hook.platform}</span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-300 max-w-[200px]">
+                      <span className="block truncate font-mono text-xs" title={hook.callbackUrl}>
+                        {hook.callbackUrl}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-400 whitespace-nowrap text-xs">
+                      {hook.elementType && hook.elementId ? (
+                        <span>{hook.elementType} / {hook.elementId}</span>
+                      ) : (
+                        <span className="text-gray-600">--</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
+                      <span className={`rounded-full px-2 py-0.5 text-xs ${
+                        hook.mode === 'controller'
+                          ? 'bg-purple-900/50 border border-purple-700 text-purple-400'
+                          : 'bg-blue-900/50 border border-blue-700 text-blue-400'
+                      }`}>
+                        {hook.mode}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`text-xs font-medium ${hook.failureCount > 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                        {hook.failureCount}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-400 whitespace-nowrap text-xs">
+                      {hook.lastRegistered ? new Date(hook.lastRegistered).toLocaleString() : '--'}
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {deletingHookId === hook.id ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="text-xs text-red-400">Delete?</span>
+                          <button onClick={() => handleDeleteHook(hook.id)}
+                            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors">
+                            Confirm
+                          </button>
+                          <button onClick={() => setDeletingHookId(null)}
+                            className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium hover:bg-gray-700 transition-colors">
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setDeletingHookId(hook.id)}
+                          className="rounded-lg bg-red-900/50 border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900 transition-colors">
+                          Delete
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>

@@ -11,7 +11,7 @@
  */
 
 import { FastifyInstance } from 'fastify'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   platformCallbacks,
@@ -19,8 +19,92 @@ import {
   scenePresets,
   sceneElements,
 } from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
 
 export default async function hookRoutes(app: FastifyInstance) {
+  // ── GET /api/hooks — List all platform callbacks for user's scenes ──────
+  app.get(
+    '/api/hooks',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const userId = request.user.id
+
+      // Get all scenes owned by the current user
+      const userScenes = await db
+        .select({ id: scenes.id, name: scenes.name })
+        .from(scenes)
+        .where(eq(scenes.ownerId, userId))
+
+      if (userScenes.length === 0) {
+        return reply.send({ hooks: [] })
+      }
+
+      const sceneIds = userScenes.map((s) => s.id)
+      const sceneNameMap = Object.fromEntries(userScenes.map((s) => [s.id, s.name]))
+
+      const callbacks = await db
+        .select()
+        .from(platformCallbacks)
+        .where(inArray(platformCallbacks.sceneId, sceneIds))
+
+      const hooks = callbacks.map((cb) => ({
+        id: cb.id,
+        sceneId: cb.sceneId,
+        sceneName: sceneNameMap[cb.sceneId] || 'Unknown',
+        platform: cb.platform,
+        callbackUrl: cb.callbackUrl,
+        elementId: cb.elementId,
+        elementType: cb.elementType,
+        mode: cb.mode,
+        region: cb.region,
+        metadata: cb.metadata,
+        failureCount: cb.failureCount,
+        lastRegistered: cb.lastRegistered,
+      }))
+
+      return reply.send({ hooks })
+    },
+  )
+
+  // ── DELETE /api/hooks/:hookId — Delete a specific callback ──────────────
+  app.delete<{ Params: { hookId: string } }>(
+    '/api/hooks/:hookId',
+    { preHandler: [authenticate] },
+    async (request, reply) => {
+      const userId = request.user.id
+      const { hookId } = request.params
+
+      // Find the callback
+      const [callback] = await db
+        .select()
+        .from(platformCallbacks)
+        .where(eq(platformCallbacks.id, hookId))
+        .limit(1)
+
+      if (!callback) {
+        return reply.status(404).send({ error: 'Hook not found' })
+      }
+
+      // Verify the user owns the scene this callback belongs to
+      const [scene] = await db
+        .select({ ownerId: scenes.ownerId })
+        .from(scenes)
+        .where(eq(scenes.id, callback.sceneId))
+        .limit(1)
+
+      if (!scene || scene.ownerId !== userId) {
+        return reply.status(403).send({ error: 'You do not own the scene this hook belongs to' })
+      }
+
+      await db
+        .delete(platformCallbacks)
+        .where(eq(platformCallbacks.id, hookId))
+
+      return reply.status(204).send()
+    },
+  )
+
+
   // ── POST /hook/register ─────────────────────────────────────────────────
   app.post('/hook/register', async (request, reply) => {
     const body = request.body as {

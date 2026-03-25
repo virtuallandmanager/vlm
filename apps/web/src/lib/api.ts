@@ -64,6 +64,10 @@ export function useApi() {
     setActiveOrg: (orgId: string) => apiFetch<{ activeOrgId: string }>(`/api/orgs/${orgId}/active`, { method: 'PUT' }),
     acceptInvite: (token: string) => apiFetch<{ accepted: boolean; orgId: string }>('/api/orgs/accept-invite', { method: 'POST', body: JSON.stringify({ token }) }),
 
+    // Platform Hooks
+    getHooks: () => apiFetch<{ hooks: any[] }>('/api/hooks'),
+    deleteHook: (hookId: string) => apiFetch(`/api/hooks/${hookId}`, { method: 'DELETE' }),
+
     // API Keys
     getApiKeys: () => apiFetch<{ keys: any[] }>('/api/keys'),
     createApiKey: (name: string, scopes?: string[]) => apiFetch<{ key: string; apiKey: any }>('/api/keys', { method: 'POST', body: JSON.stringify({ name, scopes }) }),
@@ -144,6 +148,34 @@ export function useApi() {
     createCheckout: (priceId: string) => apiFetch<{ url: string }>('/api/billing/checkout', { method: 'POST', body: JSON.stringify({ priceId }) }),
     getPortalUrl: () => apiFetch<{ url: string }>('/api/billing/portal', { method: 'POST', body: JSON.stringify({}) }),
 
+    // Deployments
+    getDeployments: (sceneId: string) =>
+      apiFetch<{ deployments: any[] }>(`/api/deploy/scene/${sceneId}`),
+    getDeployment: (id: string) =>
+      apiFetch<{ deployment: any }>(`/api/deploy/${id}`),
+    createDeployment: (data: { sceneId: string; platform: string; deploymentType: string; target: Record<string, unknown>; walletId?: string }) =>
+      apiFetch<{ deployment: any }>('/api/deploy', { method: 'POST', body: JSON.stringify(data) }),
+    cancelDeployment: (id: string) =>
+      apiFetch<{ deployment: any }>(`/api/deploy/${id}/cancel`, { method: 'POST' }),
+    redeployDeployment: (id: string) =>
+      apiFetch<{ deployment: any }>(`/api/deploy/${id}/redeploy`, { method: 'POST' }),
+    getDeployWallets: () =>
+      apiFetch<{ wallets: any[] }>('/api/deploy/wallets'),
+    createDeployWallet: (data: { platform: string; walletAddress: string; encryptedPrivateKey?: string; label?: string }) =>
+      apiFetch<{ wallet: any }>('/api/deploy/wallets', { method: 'POST', body: JSON.stringify(data) }),
+    deleteDeployWallet: (id: string) =>
+      apiFetch<{ deleted: boolean }>(`/api/deploy/wallets/${id}`, { method: 'DELETE' }),
+    provisionHyperfy: (data: { sceneId: string; name: string; region?: string }) =>
+      apiFetch<any>('/api/deploy/hyperfy/provision', { method: 'POST', body: JSON.stringify(data) }),
+    destroyHyperfy: (id: string) =>
+      apiFetch<{ destroyed: boolean }>(`/api/deploy/hyperfy/${id}/destroy`, { method: 'POST' }),
+    getHyperfyStatus: (id: string) =>
+      apiFetch<{ instance: any }>(`/api/deploy/hyperfy/${id}/status`),
+    getHyperfyLogs: (id: string, lines?: number) => {
+      const query = lines ? `?lines=${lines}` : ''
+      return apiFetch<{ logs: string }>(`/api/deploy/hyperfy/${id}/logs${query}`)
+    },
+
     // Streaming
     getStreamingServers: () => apiFetch<{ servers: any[] }>('/api/streaming'),
     getStreamingServer: (id: string) => apiFetch<{ server: any }>(`/api/streaming/${id}`),
@@ -153,6 +185,50 @@ export function useApi() {
       apiFetch<{ terminated: boolean }>(`/api/streaming/${id}`, { method: 'DELETE' }),
     getStreamingSessions: (serverId: string) =>
       apiFetch<{ sessions: any[] }>(`/api/streaming/${serverId}/sessions`),
+
+    // 3D Asset Library
+    getAssets: (params?: { q?: string; category?: string; tag?: string; maxTriangles?: string; maxFileSize?: string; limit?: string; offset?: string }) => {
+      const query = new URLSearchParams()
+      if (params?.q) query.set('q', params.q)
+      if (params?.category) query.set('category', params.category)
+      if (params?.tag) query.set('tag', params.tag)
+      if (params?.maxTriangles) query.set('maxTriangles', params.maxTriangles)
+      if (params?.maxFileSize) query.set('maxFileSize', params.maxFileSize)
+      if (params?.limit) query.set('limit', params.limit)
+      if (params?.offset) query.set('offset', params.offset)
+      const qs = query.toString()
+      return apiFetch<{ assets: any[]; total: number; limit: number; offset: number }>(
+        `/api/assets${qs ? `?${qs}` : ''}`,
+      )
+    },
+    getAsset: (id: string) => apiFetch<{ asset: any }>(`/api/assets/${id}`),
+    getAssetCategories: () => apiFetch<{ categories: string[] }>('/api/assets/categories'),
+    uploadAsset: (data: {
+      name: string
+      description?: string
+      category?: string
+      tags?: string[]
+      fileData: string
+      contentType: string
+      filename: string
+      triangleCount?: number
+      textureCount?: number
+      materialCount?: number
+      dimensions?: { width: number; height: number; depth: number }
+      license?: string
+      author?: string
+      isPublic?: boolean
+    }) => apiFetch<{ asset: any }>('/api/assets', { method: 'POST', body: JSON.stringify(data) }),
+    updateAsset: (id: string, data: Record<string, any>) =>
+      apiFetch<{ asset: any }>(`/api/assets/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteAsset: (id: string) =>
+      apiFetch<{ deleted: boolean }>(`/api/assets/${id}`, { method: 'DELETE' }),
+
+    // Command Center
+    getCommandCenterStatus: (eventId: string) =>
+      apiFetch<{ event: any; worlds: any[]; aggregate: { worldCount: number; deployedCount: number } }>(`/api/command-center/${eventId}/status`),
+    broadcastToEvent: (eventId: string, data: { action: Record<string, unknown>; targetScenes?: string[] | 'all' }) =>
+      apiFetch<{ dispatched: number; sceneIds: string[] }>(`/api/command-center/${eventId}/broadcast`, { method: 'POST', body: JSON.stringify(data) }),
 
     // Events
     getEvents: () => apiFetch<{ events: any[] }>('/api/events'),

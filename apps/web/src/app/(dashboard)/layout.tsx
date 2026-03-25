@@ -5,11 +5,14 @@ import { useEffect, useMemo } from 'react'
 import Link from 'next/link'
 
 const baseNavItems = [
+  { href: '/command-center', label: 'Command Center' },
   { href: '/scenes', label: 'Scenes' },
   { href: '/events', label: 'Events' },
   { href: '/giveaways', label: 'Giveaways' },
   { href: '/media', label: 'Media' },
+  { href: '/assets', label: 'Assets' },
   { href: '/streaming', label: 'Streaming' },
+  { href: '/deploy', label: 'Deploy' },
   { href: '/analytics', label: 'Analytics' },
   { href: '/settings', label: 'Settings' },
 ]
