@@ -217,6 +217,11 @@ function EventDetail({ eventId, onDeleted }: { eventId: string; onDeleted: () =>
   const [linkSceneId, setLinkSceneId] = useState('')
   const [linking, setLinking] = useState(false)
 
+  // giveaways
+  const [allGiveaways, setAllGiveaways] = useState<any[]>([])
+  const [linkGiveawayId, setLinkGiveawayId] = useState('')
+  const [linkingGiveaway, setLinkingGiveaway] = useState(false)
+
   // delete
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -224,6 +229,7 @@ function EventDetail({ eventId, onDeleted }: { eventId: string; onDeleted: () =>
     if (!token) return
     loadEvent()
     api.getScenes().then((d) => setAllScenes(d.scenes)).catch(() => {})
+    api.getGiveaways().then((d) => setAllGiveaways(d.giveaways)).catch(() => {})
   }, [token, eventId])
 
   async function loadEvent() {
@@ -293,6 +299,28 @@ function EventDetail({ eventId, onDeleted }: { eventId: string; onDeleted: () =>
     }
   }
 
+  const handleLinkGiveaway = async () => {
+    if (!linkGiveawayId) return
+    setLinkingGiveaway(true)
+    try {
+      await api.linkGiveawayToEvent(eventId, linkGiveawayId)
+      await loadEvent()
+      setLinkGiveawayId('')
+    } catch {
+      setError('Failed to link giveaway')
+    }
+    setLinkingGiveaway(false)
+  }
+
+  const handleUnlinkGiveaway = async (giveawayId: string) => {
+    try {
+      await api.unlinkGiveawayFromEvent(eventId, giveawayId)
+      await loadEvent()
+    } catch {
+      setError('Failed to unlink giveaway')
+    }
+  }
+
   if (loading) return <p className="text-gray-400">Loading event...</p>
   if (error && !event) return <p className="text-red-400">{error}</p>
   if (!event) return <p className="text-gray-400">Event not found.</p>
@@ -301,6 +329,11 @@ function EventDetail({ eventId, onDeleted }: { eventId: string; onDeleted: () =>
     (event.sceneLinks || []).map((l: any) => l.sceneId)
   )
   const availableScenes = allScenes.filter((s) => !linkedSceneIds.has(s.id))
+
+  const linkedGiveawayIds = new Set(
+    (event.giveawayLinks || []).map((l: any) => l.giveawayId)
+  )
+  const availableGiveaways = allGiveaways.filter((g) => !linkedGiveawayIds.has(g.id))
 
   return (
     <div className="space-y-6">
@@ -402,6 +435,57 @@ function EventDetail({ eventId, onDeleted }: { eventId: string; onDeleted: () =>
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
             >
               {linking ? 'Linking...' : 'Link Scene'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Linked giveaways */}
+      <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
+        <h2 className="text-lg font-semibold mb-3">Linked Giveaways</h2>
+        {(event.giveawayLinks || []).length === 0 ? (
+          <p className="text-sm text-gray-500">No giveaways linked to this event.</p>
+        ) : (
+          <ul className="space-y-2 mb-4">
+            {(event.giveawayLinks || []).map((link: any) => (
+              <li key={link.giveawayId} className="flex items-center justify-between rounded-lg bg-gray-800 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{link.giveaway?.name || link.giveawayId}</span>
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${link.giveaway?.enabled ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-500'}`}>
+                    {link.giveaway?.enabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleUnlinkGiveaway(link.giveawayId)}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  Unlink
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {availableGiveaways.length > 0 && (
+          <div className="flex gap-2">
+            <select
+              value={linkGiveawayId}
+              onChange={(e) => setLinkGiveawayId(e.target.value)}
+              className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select a giveaway to link...</option>
+              {availableGiveaways.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={handleLinkGiveaway}
+              disabled={!linkGiveawayId || linkingGiveaway}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
+            >
+              {linkingGiveaway ? 'Linking...' : 'Link Giveaway'}
             </button>
           </div>
         )}

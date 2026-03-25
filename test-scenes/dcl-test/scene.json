@@ -1,10 +1,13 @@
 {
   "display": {
     "title": "VLM V2 Test Scene",
-    "description": "Testing VLM V2 Decentraland adapter"
+    "description": "Testing VLM V2 Decentraland adapter",
+    "navmapThumbnail": ""
   },
   "scene": {
-    "parcels": ["0,0"],
+    "parcels": [
+      "0,0"
+    ],
     "base": "0,0"
   },
   "main": "bin/index.js",
@@ -12,5 +15,21 @@
   "runtimeVersion": "7",
   "vlm": {
     "sceneId": "645c3a07-5d49-469f-88f3-1636fd55e701"
+  },
+  "creator": "",
+  "contact": {
+    "name": "",
+    "email": ""
+  },
+  "tags": [],
+  "spawnPoints": [],
+  "featureToggles": {
+    "voiceChat": "enabled",
+    "portableExperiences": "enabled"
+  },
+  "skyboxConfig": {},
+  "source": {
+    "origin": "creator-hub",
+    "projectId": "94cf2082-678b-462f-a96d-75b4f04d915a"
   }
 }

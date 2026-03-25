@@ -1,11 +1,13 @@
 import type { FastifyInstance } from 'fastify'
-import { eq, sql } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   scenes,
   scenePresets,
   sceneElements,
   sceneElementInstances,
+  sceneCollaborators,
+  users,
 } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { config } from '../config.js'
@@ -403,6 +405,205 @@ export default async function sceneRoutes(app: FastifyInstance) {
       }
 
       await db.delete(sceneElementInstances).where(eq(sceneElementInstances.id, instanceId))
+      return reply.status(204).send()
+    },
+  )
+
+  // ── GET /api/scenes/:sceneId/collaborators — list collaborators ────────
+
+  app.get<{ Params: { sceneId: string } }>(
+    '/api/scenes/:sceneId/collaborators',
+    async (request, reply) => {
+      const { sceneId } = request.params
+
+      const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
+      if (!scene) return reply.status(404).send({ error: 'Scene not found' })
+
+      const isOwner = scene.ownerId === request.user.id
+
+      // Check if the requesting user is a collaborator
+      if (!isOwner && request.user.role !== 'admin') {
+        const collab = await db.query.sceneCollaborators.findFirst({
+          where: and(
+            eq(sceneCollaborators.sceneId, sceneId),
+            eq(sceneCollaborators.userId, request.user.id),
+          ),
+        })
+        if (!collab) return reply.status(403).send({ error: 'Forbidden' })
+      }
+
+      // Fetch collaborators with user info
+      const collabs = await db
+        .select({
+          userId: sceneCollaborators.userId,
+          role: sceneCollaborators.role,
+          displayName: users.displayName,
+          email: users.email,
+        })
+        .from(sceneCollaborators)
+        .innerJoin(users, eq(sceneCollaborators.userId, users.id))
+        .where(eq(sceneCollaborators.sceneId, sceneId))
+
+      // Also include the owner
+      const owner = await db.query.users.findFirst({ where: eq(users.id, scene.ownerId) })
+      const collaborators = [
+        ...(owner
+          ? [{ userId: owner.id, role: 'owner' as const, displayName: owner.displayName, email: owner.email }]
+          : []),
+        ...collabs,
+      ]
+
+      return reply.send({ collaborators })
+    },
+  )
+
+  // ── POST /api/scenes/:sceneId/collaborators — add collaborator ─────────
+
+  app.post<{ Params: { sceneId: string }; Body: { email: string; role: string } }>(
+    '/api/scenes/:sceneId/collaborators',
+    async (request, reply) => {
+      const { sceneId } = request.params
+      const { email, role } = request.body
+
+      if (!email || !role) {
+        return reply.status(400).send({ error: 'email and role are required' })
+      }
+      if (role !== 'editor' && role !== 'viewer') {
+        return reply.status(400).send({ error: 'role must be editor or viewer' })
+      }
+
+      const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
+      if (!scene) return reply.status(404).send({ error: 'Scene not found' })
+
+      // Only owner can add collaborators
+      if (scene.ownerId !== request.user.id && request.user.role !== 'admin') {
+        return reply.status(403).send({ error: 'Only the scene owner can add collaborators' })
+      }
+
+      // Look up user by email
+      const targetUser = await db.query.users.findFirst({ where: eq(users.email, email) })
+      if (!targetUser) {
+        return reply.status(404).send({ error: 'User not found with that email' })
+      }
+
+      // Cannot add the owner as a collaborator
+      if (targetUser.id === scene.ownerId) {
+        return reply.status(409).send({ error: 'That user is already the scene owner' })
+      }
+
+      // Check if already a collaborator
+      const existing = await db.query.sceneCollaborators.findFirst({
+        where: and(
+          eq(sceneCollaborators.sceneId, sceneId),
+          eq(sceneCollaborators.userId, targetUser.id),
+        ),
+      })
+      if (existing) {
+        return reply.status(409).send({ error: 'User is already a collaborator' })
+      }
+
+      const [collab] = await db
+        .insert(sceneCollaborators)
+        .values({
+          sceneId,
+          userId: targetUser.id,
+          role: role as 'editor' | 'viewer',
+        })
+        .returning()
+
+      return reply.status(201).send({
+        collaborator: {
+          userId: targetUser.id,
+          role: collab.role,
+          displayName: targetUser.displayName,
+          email: targetUser.email,
+        },
+      })
+    },
+  )
+
+  // ── PUT /api/scenes/:sceneId/collaborators/:userId — update role ───────
+
+  app.put<{ Params: { sceneId: string; userId: string }; Body: { role: string } }>(
+    '/api/scenes/:sceneId/collaborators/:userId',
+    async (request, reply) => {
+      const { sceneId, userId } = request.params
+      const { role } = request.body
+
+      if (!role || (role !== 'editor' && role !== 'viewer')) {
+        return reply.status(400).send({ error: 'role must be editor or viewer' })
+      }
+
+      const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
+      if (!scene) return reply.status(404).send({ error: 'Scene not found' })
+
+      // Only owner can change roles
+      if (scene.ownerId !== request.user.id && request.user.role !== 'admin') {
+        return reply.status(403).send({ error: 'Only the scene owner can change roles' })
+      }
+
+      const existing = await db.query.sceneCollaborators.findFirst({
+        where: and(
+          eq(sceneCollaborators.sceneId, sceneId),
+          eq(sceneCollaborators.userId, userId),
+        ),
+      })
+      if (!existing) {
+        return reply.status(404).send({ error: 'Collaborator not found' })
+      }
+
+      const [updated] = await db
+        .update(sceneCollaborators)
+        .set({ role: role as 'editor' | 'viewer' })
+        .where(
+          and(
+            eq(sceneCollaborators.sceneId, sceneId),
+            eq(sceneCollaborators.userId, userId),
+          ),
+        )
+        .returning()
+
+      return reply.send({ collaborator: updated })
+    },
+  )
+
+  // ── DELETE /api/scenes/:sceneId/collaborators/:userId — remove ─────────
+
+  app.delete<{ Params: { sceneId: string; userId: string } }>(
+    '/api/scenes/:sceneId/collaborators/:userId',
+    async (request, reply) => {
+      const { sceneId, userId } = request.params
+
+      const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
+      if (!scene) return reply.status(404).send({ error: 'Scene not found' })
+
+      const isOwner = scene.ownerId === request.user.id
+      const isSelf = userId === request.user.id
+
+      // Owner can remove anyone; collaborators can remove themselves
+      if (!isOwner && !isSelf && request.user.role !== 'admin') {
+        return reply.status(403).send({ error: 'Forbidden' })
+      }
+
+      const existing = await db.query.sceneCollaborators.findFirst({
+        where: and(
+          eq(sceneCollaborators.sceneId, sceneId),
+          eq(sceneCollaborators.userId, userId),
+        ),
+      })
+      if (!existing) {
+        return reply.status(404).send({ error: 'Collaborator not found' })
+      }
+
+      await db
+        .delete(sceneCollaborators)
+        .where(
+          and(
+            eq(sceneCollaborators.sceneId, sceneId),
+            eq(sceneCollaborators.userId, userId),
+          ),
+        )
+
       return reply.status(204).send()
     },
   )

@@ -343,7 +343,7 @@ function GiveawayDetail({ id, onDeleted }: { id: string; onDeleted: () => void }
 
       {/* ── Claims Section ──────────────────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Claims</h2>
+        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Claims ({claims.length})</h2>
 
         {claimsLoading ? (
           <p className="text-sm text-gray-500">Loading claims...</p>
@@ -373,6 +373,7 @@ function GiveawayDetail({ id, onDeleted }: { id: string; onDeleted: () => void }
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
                         claim.status === 'completed' ? 'bg-green-900/50 text-green-400'
                         : claim.status === 'pending' ? 'bg-yellow-900/50 text-yellow-400'
+                        : claim.status === 'failed' ? 'bg-red-900/50 text-red-400'
                         : 'bg-gray-800 text-gray-400'
                       }`}>
                         {claim.status}

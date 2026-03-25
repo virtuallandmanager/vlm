@@ -32,6 +32,16 @@ export function useApi() {
     deleteScene: (id: string) =>
       apiFetch(`/api/scenes/${id}`, { method: 'DELETE' }),
 
+    // Scene Collaborators
+    getSceneCollaborators: (sceneId: string) =>
+      apiFetch<{ collaborators: any[] }>(`/api/scenes/${sceneId}/collaborators`),
+    addSceneCollaborator: (sceneId: string, email: string, role: string) =>
+      apiFetch<{ collaborator: any }>(`/api/scenes/${sceneId}/collaborators`, { method: 'POST', body: JSON.stringify({ email, role }) }),
+    updateSceneCollaborator: (sceneId: string, userId: string, role: string) =>
+      apiFetch<{ collaborator: any }>(`/api/scenes/${sceneId}/collaborators/${userId}`, { method: 'PUT', body: JSON.stringify({ role }) }),
+    removeSceneCollaborator: (sceneId: string, userId: string) =>
+      apiFetch(`/api/scenes/${sceneId}/collaborators/${userId}`, { method: 'DELETE' }),
+
     // Elements
     createElement: (presetId: string, data: Record<string, any>) =>
       apiFetch<{ element: any }>(`/api/presets/${presetId}/elements`, { method: 'POST', body: JSON.stringify(data) }),
@@ -243,5 +253,9 @@ export function useApi() {
       apiFetch<{ link: any }>(`/api/events/${eventId}/link-scene`, { method: 'POST', body: JSON.stringify({ sceneId }) }),
     unlinkSceneFromEvent: (eventId: string, sceneId: string) =>
       apiFetch(`/api/events/${eventId}/unlink-scene/${sceneId}`, { method: 'DELETE' }),
+    linkGiveawayToEvent: (eventId: string, giveawayId: string) =>
+      apiFetch<{ link: any }>(`/api/events/${eventId}/link-giveaway`, { method: 'POST', body: JSON.stringify({ giveawayId }) }),
+    unlinkGiveawayFromEvent: (eventId: string, giveawayId: string) =>
+      apiFetch(`/api/events/${eventId}/unlink-giveaway/${giveawayId}`, { method: 'DELETE' }),
   }
 }

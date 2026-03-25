@@ -856,11 +856,200 @@ function ModerationPanel({ sendMessage }: { sendMessage: (type: string, payload:
 // Main Scene Editor Page
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Collaborators Section
+// ---------------------------------------------------------------------------
+
+interface Collaborator {
+  userId: string
+  displayName: string
+  email: string | null
+  role: string
+}
+
+function CollaboratorsSection({ sceneId, api, currentUserId }: {
+  sceneId: string
+  api: ReturnType<typeof import('@/lib/api').useApi>
+  currentUserId: string
+}) {
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState<'editor' | 'viewer'>('editor')
+  const [adding, setAdding] = useState(false)
+
+  const isOwner = collaborators.some(c => c.userId === currentUserId && c.role === 'owner')
+
+  const loadCollaborators = useCallback(async () => {
+    try {
+      const data = await api.getSceneCollaborators(sceneId)
+      setCollaborators(data.collaborators)
+      setError('')
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [api, sceneId])
+
+  useEffect(() => {
+    loadCollaborators()
+  }, [loadCollaborators])
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email.trim()) return
+    setAdding(true)
+    setError('')
+    setSuccess('')
+    try {
+      const data = await api.addSceneCollaborator(sceneId, email.trim(), role)
+      setCollaborators(prev => [...prev, data.collaborator])
+      setEmail('')
+      setSuccess(`Added ${data.collaborator.displayName || data.collaborator.email} as ${role}`)
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const handleChangeRole = async (userId: string, newRole: string) => {
+    setError('')
+    try {
+      await api.updateSceneCollaborator(sceneId, userId, newRole)
+      setCollaborators(prev =>
+        prev.map(c => c.userId === userId ? { ...c, role: newRole } : c)
+      )
+    } catch (err: any) {
+      setError(err.message)
+    }
+  }
+
+  const handleRemove = async (userId: string) => {
+    setError('')
+    try {
+      await api.removeSceneCollaborator(sceneId, userId)
+      setCollaborators(prev => prev.filter(c => c.userId !== userId))
+    } catch (err: any) {
+      setError(err.message)
+    }
+  }
+
+  const roleBadgeClass = (r: string) => {
+    switch (r) {
+      case 'owner': return 'bg-purple-900/50 text-purple-400'
+      case 'editor': return 'bg-blue-900/50 text-blue-400'
+      case 'viewer': return 'bg-gray-800 text-gray-400'
+      default: return 'bg-gray-800 text-gray-400'
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
+      <h3 className="text-lg font-semibold">Collaborators</h3>
+
+      {error && (
+        <div className="rounded-lg bg-red-900/30 border border-red-800 px-3 py-2 text-sm text-red-400">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="rounded-lg bg-green-900/30 border border-green-800 px-3 py-2 text-sm text-green-400">
+          {success}
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-gray-400 text-sm">Loading collaborators...</p>
+      ) : (
+        <div className="space-y-2">
+          {collaborators.map(c => (
+            <div key={c.userId} className="flex items-center justify-between rounded-lg border border-gray-700 bg-gray-800/50 px-3 py-2">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{c.displayName}</p>
+                  {c.email && <p className="text-xs text-gray-500 truncate">{c.email}</p>}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {c.role === 'owner' ? (
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${roleBadgeClass(c.role)}`}>
+                    {c.role}
+                  </span>
+                ) : isOwner ? (
+                  <select
+                    value={c.role}
+                    onChange={e => handleChangeRole(c.userId, e.target.value)}
+                    className="rounded bg-gray-700 px-2 py-1 text-xs text-white outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="editor">editor</option>
+                    <option value="viewer">viewer</option>
+                  </select>
+                ) : (
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${roleBadgeClass(c.role)}`}>
+                    {c.role}
+                  </span>
+                )}
+                {c.role !== 'owner' && (isOwner || c.userId === currentUserId) && (
+                  <button
+                    onClick={() => handleRemove(c.userId)}
+                    className="text-xs text-red-400 hover:text-red-300"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isOwner && (
+        <form onSubmit={handleAdd} className="flex items-end gap-2 pt-2 border-t border-gray-800">
+          <div className="flex-1">
+            <label className="text-xs text-gray-500 mb-1 block">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="user@example.com"
+              className="w-full rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Role</label>
+            <select
+              value={role}
+              onChange={e => setRole(e.target.value as 'editor' | 'viewer')}
+              className="rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="editor">Editor</option>
+              <option value="viewer">Viewer</option>
+            </select>
+          </div>
+          <button
+            type="submit"
+            disabled={adding || !email.trim()}
+            className="rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {adding ? 'Adding...' : 'Add'}
+          </button>
+        </form>
+      )}
+    </div>
+  )
+}
+
 export default function SceneEditorPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const sceneId = (searchParams.get('id') || params.sceneId) as string
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const api = useApi()
   const { room, connected, sendUpdate, sendMessage } = useSceneRoom(sceneId, token)
 
@@ -1295,6 +1484,9 @@ export default function SceneEditorPage() {
           )}
         </div>
       )}
+
+      {/* Collaborators */}
+      <CollaboratorsSection sceneId={sceneId} api={api} currentUserId={user?.id || ''} />
     </div>
   )
 }
