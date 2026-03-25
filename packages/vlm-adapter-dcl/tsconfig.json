@@ -10,8 +10,10 @@
     "declarationMap": true,
     "outDir": "dist",
     "rootDir": "src",
-    "lib": ["ESNext", "DOM"]
+    "lib": ["ESNext", "DOM"],
+    "jsx": "react",
+    "jsxFactory": "ReactEcs.createElement"
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist"]
 }

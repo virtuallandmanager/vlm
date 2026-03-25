@@ -16,26 +16,19 @@
  */
 import { createVLM } from 'vlm-smart-item-dcl'
 
-createVLM({ sceneId: '3cb5c185-5475-4309-8ebd-43d568c62e0f' })
 
 async function main() {
   console.log('VLM V2 Test Scene starting...')
 
   try {
-    const vlm = await createVLM({
-      env: 'dev', // Connect to localhost:3010
-    })
 
+  await createVLM({
+    sceneId: '3cb5c185-5475-4309-8ebd-43d568c62e0f',
+    apiUrl: 'https://vlm-production.up.railway.app',
+    wssUrl: 'wss://vlm-production.up.railway.app',
+  })
     console.log('VLM V2 initialized!')
-    console.log(
-      'Storage:',
-      JSON.stringify({
-        videos: Object.keys(vlm.storage.videos.configs).length,
-        images: Object.keys(vlm.storage.images.configs).length,
-        models: Object.keys(vlm.storage.models.configs).length,
-        sounds: Object.keys(vlm.storage.sounds.configs).length,
-      }),
-    )
+
   } catch (err) {
     console.error('VLM V2 failed to initialize:', err)
   }
