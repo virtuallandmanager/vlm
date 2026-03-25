@@ -106,7 +106,6 @@ export default async function authRoutes(app: FastifyInstance) {
         eq(userAuthMethods.type, 'email'),
         eq(userAuthMethods.identifier, email.toLowerCase()),
       ),
-      with: { user: true },
     })
 
     if (!authMethod || !authMethod.credentialHash) {
@@ -118,7 +117,20 @@ export default async function authRoutes(app: FastifyInstance) {
       return reply.status(401).send({ error: 'Invalid email or password' })
     }
 
-    const user = authMethod.user
+    let user: any
+    try {
+      const [row] = await db.select().from(users).where(eq(users.id, authMethod.userId))
+      user = row
+    } catch {
+      // Fallback if active_org_id column doesn't exist yet (pre-migration)
+      const [row] = await db.select({
+        id: users.id,
+        displayName: users.displayName,
+        email: users.email,
+        role: users.role,
+      }).from(users).where(eq(users.id, authMethod.userId))
+      user = { ...row, activeOrgId: null }
+    }
 
     const accessToken = app.jwt.sign(
       { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null },
