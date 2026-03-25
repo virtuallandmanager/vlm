@@ -5,7 +5,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc && node build.mjs",
+    "build": "echo 'vlm-smart-item-dcl: skip in CI, build locally with pnpm run bundle'",
+    "bundle": "tsc && node build.mjs",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo"
   },
