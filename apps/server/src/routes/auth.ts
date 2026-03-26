@@ -8,6 +8,7 @@ import { users, userAuthMethods, passwordResetTokens } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { config } from '../config.js'
 import { sendPasswordResetEmail } from '../services/email.js'
+import { verifyDclSignedFetch, hasDclAuthHeaders } from '../middleware/dcl-auth.js'
 
 interface RegisterBody {
   email: string
@@ -186,17 +187,39 @@ export default async function authRoutes(app: FastifyInstance) {
   })
 
   // ── POST /api/auth/platform — Platform-specific auth ───────────────────
-  // For now, this is a simplified flow that auto-creates users from platform data.
-  // In production, this would verify signed fetch proofs, wallet signatures, etc.
+  // Verifies Decentraland signed fetch headers (AuthChain) to cryptographically
+  // prove the request comes from a specific Ethereum wallet.
+  // Falls back to unverified auth for non-DCL platforms or preview mode.
 
-  app.post<{ Body: { proof: any; sceneId?: string; user: any; world: string; [key: string]: any } }>(
+  app.post<{ Body: { sceneId?: string; user?: any; world?: string; [key: string]: any } }>(
     '/api/auth/platform',
     async (request, reply) => {
-      const { proof, sceneId, user: platformUser, world } = request.body
+      const { sceneId, user: platformUser, world } = request.body
 
-      // Use platform user ID as identifier, or generate one
-      const platformId = platformUser?.id || platformUser?.walletAddress || `guest-${Date.now()}`
-      const displayName = platformUser?.displayName || platformUser?.name || 'Guest'
+      let verifiedWallet: string | null = null
+      let displayName = platformUser?.displayName || platformUser?.name || 'Guest'
+
+      // ── Try to verify DCL signed fetch headers ────────────────────────────
+      if (hasDclAuthHeaders(request.headers as Record<string, string | string[] | undefined>)) {
+        try {
+          const dclAuth = await verifyDclSignedFetch(
+            request.method,
+            request.url,
+            request.headers as Record<string, string | string[] | undefined>,
+          )
+          verifiedWallet = dclAuth.walletAddress.toLowerCase()
+          request.log.info({ wallet: verifiedWallet }, 'DCL signed fetch verified')
+        } catch (err) {
+          request.log.warn({ err }, 'DCL signed fetch verification failed')
+          // Don't reject — fall through to unverified path for preview mode
+        }
+      }
+
+      // Use verified wallet if available, otherwise fall back to body data
+      const platformId = verifiedWallet
+        || platformUser?.id
+        || platformUser?.walletAddress
+        || `guest-${Date.now()}`
 
       // Check if this platform user already has an account
       let authMethod = await db.query.userAuthMethods.findFirst({
@@ -227,7 +250,7 @@ export default async function authRoutes(app: FastifyInstance) {
           userId: newUser.id,
           type: 'wallet',
           identifier: platformId,
-          metadata: { world, sceneId },
+          metadata: { world, sceneId, verified: !!verifiedWallet },
         })
 
         dbUser = newUser
@@ -246,6 +269,7 @@ export default async function authRoutes(app: FastifyInstance) {
         user: { id: dbUser.id, displayName: dbUser.displayName, email: dbUser.email, role: dbUser.role },
         accessToken,
         refreshToken,
+        verified: !!verifiedWallet,
       })
     },
   )

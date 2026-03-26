@@ -10,6 +10,12 @@ export interface VLMPlatformAdapter {
   getPlatformUser(): Promise<PlatformUser>;
   /** Get a signed authentication proof (e.g., wallet signature, platform token) */
   getAuthProof(): Promise<AuthProof>;
+  /**
+   * Make an authenticated platform request.
+   * Platforms like DCL use signedFetch which adds cryptographic auth headers.
+   * If not implemented, falls back to regular fetch with proof in body.
+   */
+  signedRequest?(url: string, init: { method: string; body: string; headers?: Record<string, string> }): Promise<{ status: number; body: string }>;
 
   // --- Scene Metadata ---
   /** Get scene metadata from the platform (ID, location, realm, etc.) */

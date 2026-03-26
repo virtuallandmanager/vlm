@@ -93,13 +93,53 @@ export class DclAdapter implements VLMPlatformAdapter {
 
   async getAuthProof(): Promise<AuthProof> {
     try {
-      const { signedFetch } = await import('~system/SignedFetch' as any)
+      await import('~system/SignedFetch' as any)
       return {
         type: 'signed-fetch',
-        payload: { signedFetch },
+        payload: {},
       }
     } catch {
       return { type: 'api-key', payload: {} }
+    }
+  }
+
+  /**
+   * Make an HTTP request using DCL's signedFetch.
+   * The DCL runtime automatically adds AuthChain headers that prove
+   * the request comes from the player's Ethereum wallet.
+   */
+  async signedRequest(url: string, init: { method: string; body: string; headers?: Record<string, string> }): Promise<{ status: number; body: string }> {
+    try {
+      const { signedFetch } = await import('~system/SignedFetch' as any)
+      const response = await signedFetch({
+        url,
+        init: {
+          method: init.method,
+          headers: {
+            'Content-Type': 'application/json',
+            ...init.headers,
+          },
+          body: init.body,
+        },
+      })
+      return {
+        status: response.ok ? 200 : (response.status || 500),
+        body: response.body || '',
+      }
+    } catch (err) {
+      // signedFetch not available (outside DCL runtime) — fall back to regular fetch
+      const response = await fetch(url, {
+        method: init.method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...init.headers,
+        },
+        body: init.body,
+      })
+      return {
+        status: response.status,
+        body: await response.text(),
+      }
     }
   }
 

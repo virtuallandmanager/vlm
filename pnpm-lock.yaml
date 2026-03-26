@@ -81,6 +81,9 @@ importers:
       colyseus:
         specifier: ^0.15.26
         version: 0.15.57(@colyseus/schema@2.0.37)(express@4.22.1)
+      decentraland-crypto-middleware:
+        specifier: ^1.3.0
+        version: 1.3.0
       drizzle-orm:
         specifier: ^0.38.0
         version: 0.38.4(@opentelemetry/api@1.9.0)(@types/react@19.2.14)(postgres@3.4.8)(react@19.2.4)
@@ -649,8 +652,8 @@ packages:
   '@dcl/ecs-math@2.1.0':
     resolution: {integrity: sha512-tXoLKwKaWLJR9z9Iq29eMMttBovc/U8J0wkwTwZUJgCDSFhwjuN10HqpKuzr7ziC6npATpyga9fFBzjsgYkeyw==}
 
-  '@dcl/ecs@7.21.0':
-    resolution: {integrity: sha512-5EmssRn3zM3EzkkVWcQTbhOxllM0pMc/d26y99na6uXI8HJ7cU8683adSFxk4hzoOpHmQK3ywUt3OahIErbxag==}
+  '@dcl/ecs@7.22.0':
+    resolution: {integrity: sha512-PmIx9hqKeEu08uhZ/hRSQZqC/qjYOZui0GlWUrPpuYzdg0IGWCovI+NUIDGZ19syOoNR7q9v7bDAjXRfxZfxCA==}
 
   '@dcl/ecs@7.7.9':
     resolution: {integrity: sha512-JhXt0NG2XyXLuQULgFjKgjz5huWvX/T6vmvZgy3cOAxacSzVx8X9zdswXmgrTmwGoUfXYqiF2dgWfOePYPqS9Q==}
@@ -674,8 +677,8 @@ packages:
   '@dcl/inspector@7.7.9':
     resolution: {integrity: sha512-klhpMA9glSMoL5wSuJ9Z8McEAPRntDPOvGMkkS8cktJMcsrPMB2T4pS9UNSwvpoJhhFYAveVPrmbThPacOIdJg==}
 
-  '@dcl/js-runtime@7.21.0':
-    resolution: {integrity: sha512-B4dj0lRWkPJ9/9175kyStckwO87w8FPFxfj/x7mIsbIMd8C6I5ANOtcIVLBmXI/Zxjx+XqNhXgD/5rs7gVvKvA==}
+  '@dcl/js-runtime@7.22.0':
+    resolution: {integrity: sha512-BWCqvmnjeCTJhhWIHV9ikCzylXyD9ZMrvMsszIGJg2hDnJZBuPf99kQFW1kf4pa+spqNjIa7iMzE1ysrlW2A9g==}
 
   '@dcl/js-runtime@7.7.4':
     resolution: {integrity: sha512-pbpAP5IKdkUAoAJrIJZhuYrY2wM6X539Jct1lUqODegjhOaNxJoi1eVyFN2s6NaZTjRHkHPsuBqbXAZKWEbWNQ==}
@@ -704,8 +707,8 @@ packages:
   '@dcl/quests-manager@0.1.4':
     resolution: {integrity: sha512-IPB043+NbQB3om2FlmQGmaRxTokHaSM9o3a7sEL0yJgBb60mukCpMdNXxzdIcemixfV3EhIJQ2G8HgK30XKTkA==}
 
-  '@dcl/react-ecs@7.21.0':
-    resolution: {integrity: sha512-8ILBVJJz/b6Vk0vVNsaxsrshxCTS8H39XcHzTrj23ilAgFjbNGTcml063suzQ3spacNPlO0wn77CgbWKdAoqhw==}
+  '@dcl/react-ecs@7.22.0':
+    resolution: {integrity: sha512-fekdvYUtBMckrexQGcJEwFZoBMpUdemtshjv+G6fFF+6Vht+i8Q9vgjAwVXM8puCCz2amdi5l7mWAPbafbN29g==}
 
   '@dcl/react-ecs@7.7.9':
     resolution: {integrity: sha512-o5JzEl/ia8XfXljSoYJT6vCoviEz+W+S9RpTw/e6KV4gaJJ3K+qUacbN8cxqjhFkFuM8mUna8kppPPghmI/g+g==}
@@ -725,16 +728,16 @@ packages:
   '@dcl/schemas@9.15.0':
     resolution: {integrity: sha512-nip5rsOcJplNfBWeImwezuHLprM0gLW03kEeqGIvT9J6HnEBTtvIwkk9+NSt7hzFKEvWGI+C23vyNWbG3nU+SQ==}
 
-  '@dcl/sdk-commands@7.21.0':
-    resolution: {integrity: sha512-215Ip9dBV9j5OopyB/TcQNeVwNOgqLx/rfgIi2ZI053QylU/Kt/YF7In1M7PYdtXGhEUtAaEYXJ7sybhDYqpcQ==}
+  '@dcl/sdk-commands@7.22.0':
+    resolution: {integrity: sha512-ixDQoPqnFUsmaIYEsbohhnfpQu0+2vpL3wIa86y8rzdLcp7MqeZOGZO6g8qf3t3rO9Un7uzzSUNNFnPiRhaimQ==}
     hasBin: true
 
   '@dcl/sdk-commands@7.7.9':
     resolution: {integrity: sha512-01y3la76jIPtHrtZuem8yT9ZhoFJdcJwh53dhjYk8GJVIyMAU6lOq+EOZu7Epq5Hbsm5GwlR8jcjqcx3ltKUOQ==}
     hasBin: true
 
-  '@dcl/sdk@7.21.0':
-    resolution: {integrity: sha512-RlYzX29zwBD2UY6SbYsJTYC8kBjTsYwDMH8e0eE+yuOkj6Y7gjyhmAB0HTMtDctuGkNsUVlYciYwXYnQsSyQmQ==}
+  '@dcl/sdk@7.22.0':
+    resolution: {integrity: sha512-ZJaHJcnLAu3LhpjHaWSHj2L6MGtFNX1Po0bfhx573I1NySOlwxzvNtZ1Wd5imB4jkrr1NT2iDR94QOd07raXRw==}
 
   '@dcl/sdk@7.7.9':
     resolution: {integrity: sha512-d1oO3rf2+Svlk1L9m9OpE9h9wz++ujr7d4tNb9L0AqM4itEKemqeBtGehdmII7yKoF/l3HHCdayA6MP0fnDMiA==}
@@ -3133,6 +3136,9 @@ packages:
     resolution: {integrity: sha512-z2S+W9X73hAUUki+N+9Za2lBlun89zigOyGrsax+KUQ6wKW4ZoWpEYBkGhQjwAjjDCkWxhY0VKEhk8wzY7F5cA==}
     engines: {node: '>=0.10.0'}
 
+  decentraland-crypto-middleware@1.3.0:
+    resolution: {integrity: sha512-kfns4TuQy0M3rc+soQqsP6UFY21c1nQ5xNQn9/YVhR9bR12nybaVJgGFVubznMuWNZE2h+MGgl4DQbTnAXfSOA==}
+
   decode-named-character-reference@1.3.0:
     resolution: {integrity: sha512-GtpQYB283KrPp6nRw50q3U9/VfOutZOe103qlN7BPP6Ad27xYnOIWv4lPzo8HCAL+mMZofJ9KEy30fq6MfaK6Q==}
 
@@ -4818,6 +4824,10 @@ packages:
   parseurl@1.3.3:
     resolution: {integrity: sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==}
     engines: {node: '>= 0.8'}
+
+  passport-strategy@1.0.0:
+    resolution: {integrity: sha512-CB97UUvDKJde2V0KDWWB3lyf6PC3FaZP7YxZ2G8OAtn9p4HI9j9JLP9qjOGZFvyl8uwNT8qM+hGnz/n16NI7oA==}
+    engines: {node: '>= 0.4.0'}
 
   path-exists@4.0.0:
     resolution: {integrity: sha512-ak9Qy5Q7jYb2Wwcey5Fpvg2KoAc/ZIhLSLOSBmRmygPsGwkVVt0fZa0qrtMz+m6tJTAHfZQ8FnmB4MG4LWy7/w==}
@@ -6611,9 +6621,9 @@ snapshots:
 
   '@dcl-sdk/utils@1.4.0': {}
 
-  '@dcl/asset-packs@2.12.3(@dcl/ecs@7.21.0)':
+  '@dcl/asset-packs@2.12.3(@dcl/ecs@7.22.0)':
     dependencies:
-      '@dcl/ecs': 7.21.0
+      '@dcl/ecs': 7.22.0
       '@types/glob': 8.1.0
       glob: 11.1.0
       mitt: 3.0.1
@@ -6636,7 +6646,7 @@ snapshots:
 
   '@dcl/ecs-math@2.1.0': {}
 
-  '@dcl/ecs@7.21.0': {}
+  '@dcl/ecs@7.22.0': {}
 
   '@dcl/ecs@7.7.9': {}
 
@@ -6655,10 +6665,10 @@ snapshots:
 
   '@dcl/hashing@3.0.4': {}
 
-  '@dcl/inspector@7.25.0(@dcl/ecs@7.21.0)':
+  '@dcl/inspector@7.25.0(@dcl/ecs@7.22.0)':
     dependencies:
       '@babel/parser': 7.28.5
-      '@dcl/asset-packs': 2.12.3(@dcl/ecs@7.21.0)
+      '@dcl/asset-packs': 2.12.3(@dcl/ecs@7.22.0)
       ts-deepmerge: 7.0.3
     transitivePeerDependencies:
       - '@dcl/ecs'
@@ -6668,7 +6678,7 @@ snapshots:
       '@dcl/asset-packs': 2.2.1
       ts-deepmerge: 7.0.3
 
-  '@dcl/js-runtime@7.21.0': {}
+  '@dcl/js-runtime@7.22.0': {}
 
   '@dcl/js-runtime@7.7.4': {}
 
@@ -6710,7 +6720,7 @@ snapshots:
     dependencies:
       '@dcl/protocol': 1.0.0-13589257140.commit-dc6f088
       '@dcl/rpc': 1.1.2
-      '@dcl/sdk': 7.21.0(@well-known-components/interfaces@1.5.2)
+      '@dcl/sdk': 7.22.0(@well-known-components/interfaces@1.5.2)
       mitt: 3.0.1
     transitivePeerDependencies:
       - '@well-known-components/interfaces'
@@ -6721,9 +6731,9 @@ snapshots:
 
   '@dcl/quests-manager@0.1.4': {}
 
-  '@dcl/react-ecs@7.21.0':
+  '@dcl/react-ecs@7.22.0':
     dependencies:
-      '@dcl/ecs': 7.21.0
+      '@dcl/ecs': 7.22.0
       react: 18.3.1
       react-reconciler: 0.29.2(react@18.3.1)
 
@@ -6763,13 +6773,13 @@ snapshots:
       ajv-errors: 3.0.0(ajv@8.18.0)
       ajv-keywords: 5.1.0(ajv@8.18.0)
 
-  '@dcl/sdk-commands@7.21.0(@well-known-components/interfaces@1.5.2)':
+  '@dcl/sdk-commands@7.22.0(@well-known-components/interfaces@1.5.2)':
     dependencies:
       '@dcl/crypto': 3.4.5
-      '@dcl/ecs': 7.21.0
+      '@dcl/ecs': 7.22.0
       '@dcl/gltf-validator-ts': 1.0.14
       '@dcl/hashing': 1.1.3
-      '@dcl/inspector': 7.25.0(@dcl/ecs@7.21.0)
+      '@dcl/inspector': 7.25.0(@dcl/ecs@7.22.0)
       '@dcl/linker-dapp': 0.15.0
       '@dcl/mini-comms': 1.0.1-20230216163137.commit-a4c75be
       '@dcl/protocol': 1.0.0-22669986637.commit-fb11819
@@ -6853,14 +6863,14 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@dcl/sdk@7.21.0(@well-known-components/interfaces@1.5.2)':
+  '@dcl/sdk@7.22.0(@well-known-components/interfaces@1.5.2)':
     dependencies:
-      '@dcl/ecs': 7.21.0
+      '@dcl/ecs': 7.22.0
       '@dcl/ecs-math': 2.1.0
       '@dcl/explorer': 1.0.164509-20240802172549.commit-fb95b9b
-      '@dcl/js-runtime': 7.21.0
-      '@dcl/react-ecs': 7.21.0
-      '@dcl/sdk-commands': 7.21.0(@well-known-components/interfaces@1.5.2)
+      '@dcl/js-runtime': 7.22.0
+      '@dcl/react-ecs': 7.22.0
+      '@dcl/sdk-commands': 7.22.0(@well-known-components/interfaces@1.5.2)
       text-encoding: 0.7.0
     transitivePeerDependencies:
       - '@well-known-components/interfaces'
@@ -9190,6 +9200,14 @@ snapshots:
 
   decamelize@1.2.0: {}
 
+  decentraland-crypto-middleware@1.3.0:
+    dependencies:
+      '@dcl/crypto': 3.4.5
+      node-fetch: 2.7.0
+      passport-strategy: 1.0.0
+    transitivePeerDependencies:
+      - encoding
+
   decode-named-character-reference@1.3.0:
     dependencies:
       character-entities: 2.0.2
@@ -11438,6 +11456,8 @@ snapshots:
       entities: 6.0.1
 
   parseurl@1.3.3: {}
+
+  passport-strategy@1.0.0: {}
 
   path-exists@4.0.0: {}
 

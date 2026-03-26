@@ -124,7 +124,7 @@ export class VLM {
         world: this.adapter.capabilities.platformName,
         location: sceneInfo as unknown as Record<string, unknown>,
         environment: environment as unknown as Record<string, unknown>,
-      })
+      }, this.adapter)
 
       this._user = authResponse.user as any
       this.setState('authenticated', { user: this._user as any })

@@ -1,4 +1,4 @@
-import type { Scene, AuthProof } from 'vlm-shared'
+import type { Scene, AuthProof, VLMPlatformAdapter } from 'vlm-shared'
 import type { AuthResponse, MediaAsset } from './types.js'
 import { VLMAuth } from './auth.js'
 
@@ -55,8 +55,47 @@ export class VLMHttpClient {
     return data
   }
 
-  async authenticateWithPlatform(proof: AuthProof, platformData: Record<string, unknown>): Promise<AuthResponse> {
-    const data = await this._fetch<AuthResponse>('/api/auth/platform', {
+  /**
+   * Authenticate with the VLM server using platform credentials.
+   *
+   * If the adapter supports signedRequest (e.g., DCL's signedFetch), the request
+   * is made through the adapter so cryptographic auth headers are included.
+   * The server then verifies the AuthChain to prove the wallet identity.
+   *
+   * Falls back to regular fetch with proof in body for other platforms.
+   */
+  async authenticateWithPlatform(
+    proof: AuthProof,
+    platformData: Record<string, unknown>,
+    adapter?: VLMPlatformAdapter,
+  ): Promise<AuthResponse> {
+    const path = '/api/auth/platform'
+    const body = JSON.stringify({ ...platformData })
+
+    // If the adapter can make signed requests, use that path
+    // This sends the DCL AuthChain headers which the server verifies
+    if (adapter?.signedRequest) {
+      try {
+        const response = await adapter.signedRequest(`${this.baseUrl}${path}`, {
+          method: 'POST',
+          body,
+        })
+
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`HTTP ${response.status}: ${response.body}`)
+        }
+
+        const data = JSON.parse(response.body) as AuthResponse
+        this.auth.setTokens(data.accessToken, data.refreshToken)
+        return data
+      } catch (err) {
+        // If signedRequest fails, fall through to regular fetch
+        console.warn('[VLMHttpClient] signedRequest failed, falling back to regular fetch:', err)
+      }
+    }
+
+    // Fallback: regular fetch with proof in body (unverified)
+    const data = await this._fetch<AuthResponse>(path, {
       method: 'POST',
       body: JSON.stringify({ proof, ...platformData }),
     })
