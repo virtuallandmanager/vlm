@@ -54,7 +54,7 @@ New table `location_setups` (one active row per location; history kept):
 | `deployment_entity_id` text | catalyst/worlds entity id live when Setup was pressed |
 | `started_at`, `ended_at` (null = active), `end_reason` (`redeployed`, `deleted`) | |
 
-`analytics_scenes.claim*` columns and the claim routes are removed once nothing reads them (no production data uses them).
+The claim routes, `claimScene` and the claim re-verify job are removed. The `analytics_scenes.claim*` columns stay in the schema but nothing reads or writes them (no production data uses them; dropping columns isn't worth the migration risk). `POST /api/analytics/claims/check-signed` stays for `vlm-dcl` 2.0.0 clients.
 
 `getSceneAccess` gains one step after the collaborator check: an active `scene_roles` row matching the actor's user id or verified wallet → `cohost` = full access minus `scene.host` actions; `editor` = existing editor scopes + `analytics.view`; `viewer` = `analytics.view`. New scopes: `analytics.view`, `analytics.delete`, `roles.manage`, `scene.host` (host-only: transfer, delete scene/data).
 
