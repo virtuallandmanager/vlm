@@ -119,6 +119,22 @@ describe('POST /api/auth/platform', () => {
     expect(verifySessionToken(refreshed.json().accessToken)!.verified).toBe(false)
   })
 
+  it('refresh tokens are rejected as bearer access tokens but still refresh', async () => {
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/auth/platform',
+      headers: { 'x-identity-auth-chain-0': `valid:${WALLET}` },
+      payload: {},
+    })
+    const { refreshToken } = login.json()
+    const scenesRes = await app.inject({ method: 'GET', url: '/api/scenes', headers: { authorization: `Bearer ${refreshToken}` } })
+    expect(scenesRes.statusCode).toBe(401)
+    const refreshed = await app.inject({ method: 'POST', url: '/api/auth/refresh', headers: { authorization: `Bearer ${refreshToken}` } })
+    expect(refreshed.statusCode).toBe(200)
+    const ok = await app.inject({ method: 'GET', url: '/api/scenes', headers: { authorization: `Bearer ${refreshed.json().accessToken}` } })
+    expect(ok.statusCode).toBe(200)
+  })
+
   it('verifySessionToken rejects refresh tokens and garbage', async () => {
     const u = await createUser()
     expect(verifySessionToken(tokenFor(u, { refresh: true }))).toBeNull()

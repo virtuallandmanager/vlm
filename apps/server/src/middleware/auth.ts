@@ -88,6 +88,9 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
 
     // ── JWT auth (default) ────────────────────────────────────────────────
     const decoded = await request.jwtVerify<AuthUser & { refresh?: boolean }>()
+    if (decoded.refresh) {
+      return reply.status(401).send({ error: 'Unauthorized', message: 'Refresh tokens cannot access the API' })
+    }
     if (decoded.guest) {
       return reply.status(401).send({ error: 'Unauthorized', message: 'Guest tokens cannot access the API' })
     }
