@@ -15,11 +15,34 @@ interface AuthState {
   loading: boolean
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, displayName: string) => Promise<void>
+  loginWithWallet: () => Promise<void>
   logout: () => void
   updateUser: (updates: Partial<User>) => void
 }
 
 const AuthContext = createContext<AuthState | null>(null)
+
+interface Eip1193Provider {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
+}
+
+/** The browser wallet (MetaMask, Rabby, Coinbase Wallet…) if one is injected. */
+export function getBrowserWallet(): Eip1193Provider | null {
+  if (typeof window === 'undefined') return null
+  return ((window as unknown as { ethereum?: Eip1193Provider }).ethereum) ?? null
+}
+
+function toHex(text: string): string {
+  return '0x' + Array.from(new TextEncoder().encode(text), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function errorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    return (await res.json()).error || fallback
+  } catch {
+    return fallback
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -77,6 +100,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('vlm_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
   }, [])
 
+  // Sign-In with Ethereum: the server issues a one-time message, the wallet signs it
+  // (no transaction, no gas), and the server returns the same session as an email login.
+  const loginWithWallet = useCallback(async () => {
+    const wallet = getBrowserWallet()
+    if (!wallet) throw new Error('No browser wallet found. Install MetaMask or another Ethereum wallet.')
+    const accounts = (await wallet.request({ method: 'eth_requestAccounts' })) as string[]
+    const address = accounts?.[0]
+    if (!address) throw new Error('No wallet account selected')
+
+    const challengeRes = await fetch(`${API_URL}/api/auth/wallet/challenge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address }),
+    })
+    if (!challengeRes.ok) throw new Error(await errorMessage(challengeRes, 'Could not start wallet sign-in'))
+    const { nonce, message } = await challengeRes.json()
+
+    const signature = (await wallet.request({ method: 'personal_sign', params: [toHex(message), address] })) as string
+
+    const res = await fetch(`${API_URL}/api/auth/wallet/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address, nonce, signature }),
+    })
+    if (!res.ok) throw new Error(await errorMessage(res, 'Wallet sign-in failed'))
+    const data = await res.json()
+    setToken(data.accessToken)
+    setUser(data.user)
+    localStorage.setItem('vlm_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
+  }, [])
+
   const logout = useCallback(() => {
     setToken(null)
     setUser(null)
@@ -101,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, loginWithWallet, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   )

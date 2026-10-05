@@ -1,11 +1,11 @@
 'use client'
-import { useAuth } from '@/lib/auth'
+import { getBrowserWallet, useAuth } from '@/lib/auth'
 import { API_URL } from '@/lib/config'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 export default function Home() {
-  const { user, loading, login, register } = useAuth()
+  const { user, loading, login, register, loginWithWallet } = useAuth()
   const router = useRouter()
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
@@ -13,11 +13,16 @@ export default function Home() {
   const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [hasWallet, setHasWallet] = useState(false)
   const [providers, setProviders] = useState<{ google: boolean; discord: boolean }>({ google: false, discord: false })
 
   useEffect(() => {
     if (!loading && user) router.push('/scenes')
   }, [user, loading, router])
+
+  useEffect(() => {
+    setHasWallet(getBrowserWallet() !== null)
+  }, [])
 
   useEffect(() => {
     fetch(`${API_URL}/api/auth/providers`).then(r => r.json()).then(setProviders).catch(() => {})
@@ -36,6 +41,20 @@ export default function Home() {
       router.push('/scenes')
     } catch (err: any) {
       setError(err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleWallet = async () => {
+    setError('')
+    setSubmitting(true)
+    try {
+      await loginWithWallet()
+      router.push('/scenes')
+    } catch (err: any) {
+      // 4001 = the user closed or rejected the wallet prompt
+      setError(err?.code === 4001 ? 'Wallet sign-in cancelled' : err.message)
     } finally {
       setSubmitting(false)
     }
@@ -78,10 +97,16 @@ export default function Home() {
           </button>
         </form>
 
-        {(providers.google || providers.discord) && (
+        {(hasWallet || providers.google || providers.discord) && (
           <>
             <div className="flex items-center gap-3 my-4"><div className="flex-1 border-t border-gray-700" /><span className="text-xs text-gray-500">or</span><div className="flex-1 border-t border-gray-700" /></div>
             <div className="space-y-3">
+              {hasWallet && (
+                <button type="button" onClick={handleWallet} disabled={submitting}
+                  className="block w-full rounded-lg bg-orange-500 py-2 text-center font-medium text-white hover:bg-orange-600 disabled:opacity-50">
+                  Sign in with wallet
+                </button>
+              )}
               {providers.google && (
                 <a href={`${API_URL}/api/auth/google`}
                   className="block w-full rounded-lg bg-white py-2 text-center font-medium text-gray-900 hover:bg-gray-100">
