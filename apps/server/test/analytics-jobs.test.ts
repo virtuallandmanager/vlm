@@ -17,7 +17,8 @@ import type { AnalyticsSceneRow } from '../src/analytics/registry.js'
 import type { IngestBatch } from 'vlm-shared'
 import { randomUUID } from 'node:crypto'
 import { resetDb } from './helpers/db.js'
-import { createUser } from './helpers/factories.js'
+import { createUser, createScene } from './helpers/factories.js'
+import { createSetup } from './helpers/setups.js'
 import { createAnalyticsScene, insertSession } from './helpers/analytics.js'
 
 const H = new Date('2026-10-01T10:00:00Z')
@@ -89,26 +90,31 @@ describe('analytics jobs', () => {
     expect(await db.select().from(analyticsRollupHourly)).toHaveLength(1)
   })
 
-  it('retention: unclaimed 30 days, preview 7, claimed by tier; rollups survive', async () => {
+  it('retention: no setup 30 days, ended setup 30, preview 7, active setup by the host tier; rollups survive', async () => {
     const now = new Date('2026-10-04T00:00:00Z')
     const old = new Date(now.getTime() - 40 * 86400_000)
     const mid = new Date(now.getTime() - 10 * 86400_000)
-    const unclaimed = await createAnalyticsScene()
+    const unset = await createAnalyticsScene()
     const preview = await createAnalyticsScene({ kind: 'preview', isPreview: true })
     const owner = await createUser()
-    const claimed = await createAnalyticsScene({ claimedByUserId: owner.id, claimStatus: 'active' })
-    for (const sc of [unclaimed, preview, claimed]) {
+    const { scene } = await createScene(owner)
+    const setUp = await createAnalyticsScene()
+    await createSetup(setUp.id, scene.id)
+    const ended = await createAnalyticsScene()
+    await createSetup(ended.id, scene.id, { startedAt: old, endedAt: mid })
+    for (const sc of [unset, preview, setUp, ended]) {
       await insertSession(sc.id, { startedAt: old, lastSeenAt: old })
       await insertSession(sc.id, { startedAt: mid, lastSeenAt: mid })
       await db.insert(analyticsRollupHourly).values({ sceneId: sc.id, hour: old, sessions: 1 })
     }
     await runRetention(now)
     const left = async (id: string) => (await db.select().from(analyticsSessions).where(eq(analyticsSessions.sceneId, id))).length
-    expect(await left(unclaimed.id)).toBe(1) // 40-day-old gone, 10-day kept
+    expect(await left(unset.id)).toBe(1) // 40-day-old gone, 10-day kept
+    expect(await left(ended.id)).toBe(1)
     expect(await left(preview.id)).toBe(0) // both older than 7 days
-    // Test env runs with all features unlocked (no Stripe key) → claimed scenes keep everything
-    expect(await left(claimed.id)).toBe(2)
-    expect(await db.select().from(analyticsRollupHourly)).toHaveLength(3)
+    // Test env runs with all features unlocked (no Stripe key) → set-up scenes keep everything
+    expect(await left(setUp.id)).toBe(2)
+    expect(await db.select().from(analyticsRollupHourly)).toHaveLength(4)
   })
 
   const mkBatch = (sessionId: string, events: Array<Record<string, unknown>>) =>

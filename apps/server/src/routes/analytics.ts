@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
-import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { analyticsEvents, analyticsScenes, analyticsSessions } from '../db/schema.js'
+import { analyticsEvents, analyticsScenes, analyticsSessions, locationSetups } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess } from '../auth/permissions.js'
@@ -17,9 +17,10 @@ export default async function analyticsRoutes(app: FastifyInstance) {
     const access = await getSceneAccess(actor, vlmSceneId)
     if (!READ_LEVELS.has(access.level)) return { allowed: false as const }
     const scene = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.vlmSceneId, vlmSceneId) })
-    // The VLM scene grants access to its analytics only while the claim that linked them is active.
-    if (scene && scene.claimStatus !== 'active' && actor.role !== 'admin') return { allowed: false as const }
-    return { allowed: true as const, scene }
+    // The VLM scene grants access to its location's analytics only while its setup is active, and only from its start.
+    const active = scene ? await db.query.locationSetups.findFirst({ where: and(eq(locationSetups.analyticsSceneId, scene.id), isNull(locationSetups.endedAt)) }) : null
+    if (scene && active?.vlmSceneId !== vlmSceneId && actor.role !== 'admin') return { allowed: false as const }
+    return { allowed: true as const, scene, since: active?.startedAt }
   }
 
   app.get<{ Params: { sceneId: string } }>('/api/analytics/scenes/:sceneId/recent', async (request, reply) => {
@@ -27,7 +28,9 @@ export default async function analyticsRoutes(app: FastifyInstance) {
     if (!found.allowed) return reply.status(403).send({ error: 'Forbidden' })
     if (!found.scene) return reply.send({ visitors: 0, actions: 0, activeSessions: 0, recentSessions: [] })
     const sceneId = found.scene.id
-    const since = new Date(Date.now() - 86400_000)
+    const tenure = found.since
+    const day = new Date(Date.now() - 86400_000)
+    const since = tenure && tenure > day ? tenure : day
     const liveSince = new Date(Date.now() - 60_000)
     const [{ visitors }] = await db
       .select({ visitors: sql<number>`count(*)::int` })
@@ -40,7 +43,7 @@ export default async function analyticsRoutes(app: FastifyInstance) {
     const [{ active }] = await db
       .select({ active: sql<number>`count(*)::int` })
       .from(analyticsSessions)
-      .where(and(eq(analyticsSessions.sceneId, sceneId), gte(analyticsSessions.lastSeenAt, liveSince)))
+      .where(and(eq(analyticsSessions.sceneId, sceneId), gte(analyticsSessions.lastSeenAt, liveSince), tenure ? gte(analyticsSessions.startedAt, tenure) : undefined))
     const recentSessions = await db
       .select({
         id: analyticsSessions.id,
@@ -96,7 +99,7 @@ export default async function analyticsRoutes(app: FastifyInstance) {
           eventCount: analyticsSessions.eventCount,
         })
         .from(analyticsSessions)
-        .where(eq(analyticsSessions.sceneId, found.scene.id))
+        .where(and(eq(analyticsSessions.sceneId, found.scene.id), found.since ? gte(analyticsSessions.startedAt, found.since) : undefined))
         .orderBy(desc(analyticsSessions.startedAt))
         .limit(limit)
         .offset(offset)

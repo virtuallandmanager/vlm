@@ -6,8 +6,9 @@ import { visitorHash } from '../src/analytics/hash.js'
 import { setDeleteMyDataLimiter } from '../src/routes/analytics-read.js'
 import { TokenBucketLimiter } from '../src/analytics/limiter.js'
 import { resetDb } from './helpers/db.js'
-import { testApp, createUser, tokenFor } from './helpers/factories.js'
+import { testApp, createUser, createScene, tokenFor } from './helpers/factories.js'
 import { createAnalyticsScene, insertSession } from './helpers/analytics.js'
+import { createSetup } from './helpers/setups.js'
 
 describe('analytics read API', () => {
   let app: Awaited<ReturnType<typeof testApp>>
@@ -22,7 +23,9 @@ describe('analytics read API', () => {
 
   async function owned() {
     const owner = await createUser()
-    const s = await createAnalyticsScene({ claimedByUserId: owner.id, claimStatus: 'active' })
+    const { scene } = await createScene(owner)
+    const s = await createAnalyticsScene()
+    await createSetup(s.id, scene.id)
     return { owner, s }
   }
 
@@ -148,17 +151,23 @@ describe('analytics read API', () => {
     }
   })
 
-  it('a lapsed claimer only sees data from before lapsedAt, and live is empty', async () => {
+  it("an ended tenure's host only sees data from inside that tenure, and live is empty", async () => {
     const owner = await createUser()
     const lapsedAt = new Date(Date.now() - 2 * 86400_000)
     lapsedAt.setUTCHours(12, 0, 0, 0)
-    const s = await createAnalyticsScene({ claimedByUserId: owner.id, claimStatus: 'lapsed', lapsedAt })
+    const startedAt = new Date(lapsedAt.getTime() - 3 * 86400_000)
+    const { scene } = await createScene(owner)
+    const s = await createAnalyticsScene()
+    await createSetup(s.id, scene.id, { startedAt, endedAt: lapsedAt })
     const before = new Date(lapsedAt.getTime() - 3 * 3600_000)
     const after = new Date(lapsedAt.getTime() + 3 * 3600_000)
+    const earlier = new Date(startedAt.getTime() - 3 * 3600_000)
     await db.insert(analyticsRollupHourly).values([
+      { sceneId: s.id, hour: earlier, sessions: 11, uniqueVisitors: 11, peakConcurrency: 9, dwellAvgSec: 10 },
       { sceneId: s.id, hour: before, sessions: 2, uniqueVisitors: 1, peakConcurrency: 1, dwellAvgSec: 10 },
       { sceneId: s.id, hour: after, sessions: 5, uniqueVisitors: 5, peakConcurrency: 5, dwellAvgSec: 10 },
     ])
+    await insertSession(s.id, { visitorHash: 'EARLIER', startedAt: earlier, lastSeenAt: earlier })
     await insertSession(s.id, { visitorHash: 'OLD', startedAt: before, lastSeenAt: before })
     await insertSession(s.id, { visitorHash: 'NEW', startedAt: after, lastSeenAt: after })
     const live = await insertSession(s.id, { visitorHash: 'LIVE', lastSeenAt: new Date() })
@@ -166,6 +175,7 @@ describe('analytics read API', () => {
     const lapsedDay = lapsedAt.toISOString().slice(0, 10)
     const dayBefore = new Date(lapsedAt.getTime() - 86400_000).toISOString().slice(0, 10)
     await db.insert(analyticsHeatmapDaily).values([
+      { sceneId: s.id, day: new Date(startedAt.getTime() - 86400_000).toISOString().slice(0, 10), cellX: 3, cellZ: 3, dwellSec: 5, visits: 1 },
       { sceneId: s.id, day: dayBefore, cellX: 1, cellZ: 1, dwellSec: 7, visits: 1 },
       { sceneId: s.id, day: lapsedDay, cellX: 2, cellZ: 2, dwellSec: 9, visits: 1 },
     ])

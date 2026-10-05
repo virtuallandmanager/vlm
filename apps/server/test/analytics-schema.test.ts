@@ -7,6 +7,7 @@ import { actorFromClaims } from '../src/auth/actor.js'
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene, tokenFor, testApp, type TestUser } from './helpers/factories.js'
 import { createAnalyticsScene, insertSession } from './helpers/analytics.js'
+import { createSetup } from './helpers/setups.js'
 
 const actor = (u: TestUser, extra = {}) => actorFromClaims({ id: u.id, role: u.role, wallet: u.wallet, verified: true, ...extra })
 
@@ -27,18 +28,18 @@ describe('analytics schema and access', () => {
     expect(partial).toBeDefined()
   })
 
-  it('claimer reads and manages; lapsed claimer reads for 30 days only; strangers and unverified get nothing', async () => {
-    const claimer = await createUser()
+  it('the active setup host reads, manages and deletes; strangers, unverified users and unset-up locations get nothing', async () => {
+    const host = await createUser()
     const stranger = await createUser()
-    const s = await createAnalyticsScene({ claimedByUserId: claimer.id, claimStatus: 'active' })
-    expect(await getAnalyticsAccess(actor(claimer), s.id)).toMatchObject({ canRead: true, canManage: true })
-    expect(await getAnalyticsAccess(actor(stranger), s.id)).toMatchObject({ canRead: false, canManage: false })
-    expect(await getAnalyticsAccess(actor(claimer, { verified: false }), s.id)).toMatchObject({ canRead: false })
+    const { scene } = await createScene(host)
+    const s = await createAnalyticsScene()
+    await createSetup(s.id, scene.id)
+    expect(await getAnalyticsAccess(actor(host), s.id)).toMatchObject({ canRead: true, canManage: true, canDelete: true })
+    expect(await getAnalyticsAccess(actor(stranger), s.id)).toMatchObject({ canRead: false, canManage: false, canDelete: false })
+    expect(await getAnalyticsAccess(actor(host, { verified: false }), s.id)).toMatchObject({ canRead: false })
 
-    const lapsed = await createAnalyticsScene({ claimedByUserId: claimer.id, claimStatus: 'lapsed', lapsedAt: new Date(Date.now() - 10 * 86400_000) })
-    expect(await getAnalyticsAccess(actor(claimer), lapsed.id)).toMatchObject({ canRead: true, canManage: false })
-    const old = await createAnalyticsScene({ claimedByUserId: claimer.id, claimStatus: 'lapsed', lapsedAt: new Date(Date.now() - 31 * 86400_000) })
-    expect(await getAnalyticsAccess(actor(claimer), old.id)).toMatchObject({ canRead: false })
+    const unset = await createAnalyticsScene({ vlmSceneId: scene.id })
+    expect(await getAnalyticsAccess(actor(host), unset.id)).toMatchObject({ canRead: false, canManage: false })
   })
 
   it('linked VLM scene owner manages, collaborators read', async () => {
@@ -46,30 +47,33 @@ describe('analytics schema and access', () => {
     const viewer = await createUser()
     const { scene } = await createScene(owner)
     await db.insert(sceneCollaborators).values({ sceneId: scene.id, userId: viewer.id, role: 'viewer' })
-    const s = await createAnalyticsScene({ vlmSceneId: scene.id, claimedByUserId: owner.id, claimStatus: 'active' })
+    const s = await createAnalyticsScene()
+    await createSetup(s.id, scene.id)
     expect(await getAnalyticsAccess(actor(owner), s.id)).toMatchObject({ canRead: true, canManage: true })
-    expect(await getAnalyticsAccess(actor(viewer), s.id)).toMatchObject({ canRead: true, canManage: false })
+    expect(await getAnalyticsAccess(actor(viewer), s.id)).toMatchObject({ canRead: true, canManage: false, canDelete: false })
   })
 
-  it('lapsed claim with a linked VLM scene: ex-claimer reads (until lapsedAt) without managing, loses reads after 30 days; collaborators lose access', async () => {
+  it("an ended setup: its host and team read that tenure's data (until endedAt) without managing; admins are unrestricted", async () => {
     const owner = await createUser()
     const viewer = await createUser()
     const admin = await createUser({ role: 'admin' })
     const { scene } = await createScene(owner)
     await db.insert(sceneCollaborators).values({ sceneId: scene.id, userId: viewer.id, role: 'viewer' })
-    const lapsedAt = new Date(Date.now() - 10 * 86400_000)
-    const s = await createAnalyticsScene({ vlmSceneId: scene.id, claimedByUserId: owner.id, claimStatus: 'lapsed', lapsedAt })
-    const recent = await getAnalyticsAccess(actor(owner), s.id)
-    expect(recent).toMatchObject({ canRead: true, canManage: false })
-    expect(recent.until?.getTime()).toBe(lapsedAt.getTime())
-    expect(await getAnalyticsAccess(actor(viewer), s.id)).toMatchObject({ canRead: false, canManage: false })
+    const startedAt = new Date(Date.now() - 40 * 86400_000)
+    const endedAt = new Date(Date.now() - 10 * 86400_000)
+    const s = await createAnalyticsScene({ vlmSceneId: scene.id })
+    await createSetup(s.id, scene.id, { startedAt, endedAt })
+    const ex = await getAnalyticsAccess(actor(owner), s.id)
+    expect(ex).toMatchObject({ canRead: true, canManage: false, canDelete: false })
+    expect(ex.until?.getTime()).toBe(endedAt.getTime())
+    expect(ex.since?.getTime()).toBe(startedAt.getTime())
+    const team = await getAnalyticsAccess(actor(viewer), s.id)
+    expect(team).toMatchObject({ canRead: true, canManage: false })
+    expect(team.until?.getTime()).toBe(endedAt.getTime())
     const adm = await getAnalyticsAccess(actor(admin), s.id)
-    expect(adm).toMatchObject({ canRead: true, canManage: true })
+    expect(adm).toMatchObject({ canRead: true, canManage: true, canDelete: true })
     expect(adm.until).toBeUndefined()
-
-    const old = await createAnalyticsScene({ vlmSceneId: scene.id, claimedByUserId: owner.id, claimStatus: 'lapsed', lapsedAt: new Date(Date.now() - 31 * 86400_000) })
-    expect(await getAnalyticsAccess(actor(owner), old.id)).toMatchObject({ canRead: false, canManage: false })
-    expect(await getAnalyticsAccess(actor(viewer), old.id)).toMatchObject({ canRead: false, canManage: false })
+    expect(adm.since).toBeUndefined()
   })
 })
 
@@ -84,7 +88,8 @@ describe('compat endpoints keep the dashboard shape', () => {
   it('GET /api/analytics/scenes/:vlmSceneId/recent reads the new tables', async () => {
     const owner = await createUser()
     const { scene } = await createScene(owner)
-    const s = await createAnalyticsScene({ vlmSceneId: scene.id, claimedByUserId: owner.id, claimStatus: 'active' })
+    const s = await createAnalyticsScene()
+    await createSetup(s.id, scene.id)
     await insertSession(s.id, { lastSeenAt: new Date() })
     await insertSession(s.id, { lastSeenAt: new Date(Date.now() - 5 * 60_000), endedAt: new Date(Date.now() - 5 * 60_000) })
     const res = await app.inject({ method: 'GET', url: `/api/analytics/scenes/${scene.id}/recent`, headers: { authorization: `Bearer ${tokenFor(owner)}` } })
@@ -103,11 +108,12 @@ describe('compat endpoints keep the dashboard shape', () => {
     expect(no.statusCode).toBe(403)
   })
 
-  it('compat endpoints return 403 for a lapsed scene (admins still read)', async () => {
+  it("compat endpoints return 403 once the scene's setup has ended (admins still read)", async () => {
     const owner = await createUser()
     const admin = await createUser({ role: 'admin' })
     const { scene } = await createScene(owner)
-    const s = await createAnalyticsScene({ vlmSceneId: scene.id, claimedByUserId: owner.id, claimStatus: 'lapsed', lapsedAt: new Date(Date.now() - 86400_000) })
+    const s = await createAnalyticsScene({ vlmSceneId: scene.id })
+    await createSetup(s.id, scene.id, { endedAt: new Date(Date.now() - 86400_000) })
     await insertSession(s.id)
     for (const path of ['recent', 'sessions']) {
       const res = await app.inject({ method: 'GET', url: `/api/analytics/scenes/${scene.id}/${path}`, headers: { authorization: `Bearer ${tokenFor(owner)}` } })
@@ -120,7 +126,8 @@ describe('compat endpoints keep the dashboard shape', () => {
   it('sessions endpoint never leaks visitorHash and exposes a stable 16-hex userId', async () => {
     const owner = await createUser()
     const { scene } = await createScene(owner)
-    const s = await createAnalyticsScene({ vlmSceneId: scene.id, claimedByUserId: owner.id, claimStatus: 'active' })
+    const s = await createAnalyticsScene()
+    await createSetup(s.id, scene.id)
     const hash = 'abcdef0123456789abcdef0123456789'
     await insertSession(s.id, { visitorHash: hash })
     await insertSession(s.id, { visitorHash: hash, wallet: '0xabc' })

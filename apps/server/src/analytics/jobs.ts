@@ -10,11 +10,13 @@ import {
   analyticsRollupHourly,
   analyticsScenes,
   analyticsSessions,
+  locationSetups,
+  scenes,
 } from '../db/schema.js'
 import { config } from '../config.js'
 import { getSubscription } from '../integrations/stripe.js'
 import type { AnalyticsSceneRow } from './registry.js'
-import { purgeWalletChallenges, reverifyClaims } from './claims.js'
+import { purgeWalletChallenges } from './claims.js'
 
 const HOUR = 3_600_000
 const DAY = 86_400_000
@@ -216,9 +218,12 @@ export async function runRollups(now = new Date()): Promise<{ hours: number; day
 
 export async function retentionDaysFor(scene: AnalyticsSceneRow): Promise<number> {
   if (scene.isPreview) return 7
-  if (!scene.claimedByUserId || scene.claimStatus !== 'active') return 30
+  const active = await db.query.locationSetups.findFirst({ where: and(eq(locationSetups.analyticsSceneId, scene.id), isNull(locationSetups.endedAt)) })
+  if (!active) return 30
+  const host = await db.query.scenes.findFirst({ where: eq(scenes.id, active.vlmSceneId), columns: { ownerId: true } })
+  if (!host) return 30
   if (config.allFeaturesUnlocked) return Infinity
-  const sub = await getSubscription(scene.claimedByUserId)
+  const sub = await getSubscription(host.ownerId)
   const d = sub.limits.analyticsRetentionDays
   return d === Infinity || (typeof d === 'number' && Number.isFinite(d)) ? d : 30
 }
@@ -239,9 +244,9 @@ async function deleteOlder(table: 'analytics_events' | 'analytics_positions' | '
 }
 
 export async function runRetention(now = new Date()): Promise<{ deleted: number }> {
-  const scenes = await db.select().from(analyticsScenes)
+  const all = await db.select().from(analyticsScenes)
   let deleted = 0
-  for (const scene of scenes) {
+  for (const scene of all) {
     try {
       const days = await retentionDaysFor(scene)
       if (!Number.isFinite(days)) continue
@@ -262,7 +267,6 @@ export function registerDailyJob(name: string, fn: (now: Date) => Promise<unknow
   dailyJobs.push({ name, fn })
 }
 
-registerDailyJob('claim-reverify', reverifyClaims)
 registerDailyJob('wallet-challenge-purge', (now) => purgeWalletChallenges(now))
 
 export function startAnalyticsJobs(): () => void {
