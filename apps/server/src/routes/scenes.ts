@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, sql, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   scenes,
@@ -11,6 +11,9 @@ import {
   users,
 } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
+import type { AuthUser } from '../middleware/auth.js'
+import { actorFromClaims } from '../auth/actor.js'
+import { getSceneAccess, hasScope, canWriteElement, diffKeys } from '../auth/permissions.js'
 import { config } from '../config.js'
 import { getSubscription } from '../integrations/stripe.js'
 
@@ -59,14 +62,32 @@ export default async function sceneRoutes(app: FastifyInstance) {
   // All scene routes require authentication
   app.addHook('preHandler', authenticate)
 
+  const accessFor = (request: { user: AuthUser }, sceneId: string) =>
+    getSceneAccess(actorFromClaims(request.user), sceneId)
+
   // ── GET /api/scenes — list user's scenes ─────────────────────────────────
 
   app.get('/api/scenes', async (request, reply) => {
-    const userScenes = await db.query.scenes.findMany({
+    const owned = await db.query.scenes.findMany({
       where: eq(scenes.ownerId, request.user.id),
       orderBy: (scenes, { desc }) => [desc(scenes.updatedAt)],
     })
-    return reply.send({ scenes: userScenes })
+    const collabs = await db.query.sceneCollaborators.findMany({
+      where: eq(sceneCollaborators.userId, request.user.id),
+    })
+    const shared = collabs.length
+      ? await db.query.scenes.findMany({
+          where: inArray(scenes.id, collabs.map((c) => c.sceneId)),
+          orderBy: (scenes, { desc }) => [desc(scenes.updatedAt)],
+        })
+      : []
+    const roleBy = new Map(collabs.map((c) => [c.sceneId, c.role]))
+    return reply.send({
+      scenes: [
+        ...owned.map((s) => ({ ...s, relationship: 'owner' as const })),
+        ...shared.map((s) => ({ ...s, relationship: roleBy.get(s.id)! })),
+      ],
+    })
   })
 
   // ── POST /api/scenes — create scene ──────────────────────────────────────
@@ -155,11 +176,8 @@ export default async function sceneRoutes(app: FastifyInstance) {
     }
 
     // Check ownership or collaboration
-    const isOwner = scene.ownerId === request.user.id
-    const isCollaborator = scene.collaborators.some((c) => c.userId === request.user.id)
-    if (!isOwner && !isCollaborator && request.user.role !== 'admin') {
-      return reply.status(403).send({ error: 'Forbidden' })
-    }
+    const access = await accessFor(request, sceneId)
+    if (access.level === 'none') return reply.status(403).send({ error: 'Forbidden' })
 
     return reply.send({ scene })
   })
@@ -174,7 +192,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
       const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
       if (!scene) return reply.status(404).send({ error: 'Scene not found' })
-      if (scene.ownerId !== request.user.id && request.user.role !== 'admin') {
+      if (!hasScope(await accessFor(request, sceneId), 'scene.edit')) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
@@ -195,7 +213,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
     const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
     if (!scene) return reply.status(404).send({ error: 'Scene not found' })
-    if (scene.ownerId !== request.user.id && request.user.role !== 'admin') {
+    if (!hasScope(await accessFor(request, sceneId), 'scene.admin')) {
       return reply.status(403).send({ error: 'Forbidden' })
     }
 
@@ -213,7 +231,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
       const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
       if (!scene) return reply.status(404).send({ error: 'Scene not found' })
-      if (scene.ownerId !== request.user.id && request.user.role !== 'admin') {
+      if (!hasScope(await accessFor(request, sceneId), 'scene.edit')) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
@@ -244,7 +262,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
         with: { scene: true },
       })
       if (!preset) return reply.status(404).send({ error: 'Preset not found' })
-      if (preset.scene.ownerId !== request.user.id && request.user.role !== 'admin') {
+      if (!hasScope(await accessFor(request, preset.sceneId), 'scene.edit')) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
@@ -278,7 +296,15 @@ export default async function sceneRoutes(app: FastifyInstance) {
         with: { preset: { with: { scene: true } } },
       })
       if (!element) return reply.status(404).send({ error: 'Element not found' })
-      if (element.preset.scene.ownerId !== request.user.id && request.user.role !== 'admin') {
+      const access = await accessFor(request, element.preset.sceneId)
+      const propertyKeys =
+        request.body.properties !== undefined
+          ? diffKeys(element.properties as Record<string, unknown> | null, request.body.properties as Record<string, unknown>)
+          : []
+      const fieldKeys = (['type', 'name', 'enabled', 'customId', 'customRendering', 'clickEvent'] as const).filter(
+        (k) => request.body[k] !== undefined && JSON.stringify(request.body[k]) !== JSON.stringify((element as any)[k]),
+      )
+      if (!canWriteElement(access, element, { propertyKeys, fieldKeys })) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
@@ -309,7 +335,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
         with: { preset: { with: { scene: true } } },
       })
       if (!element) return reply.status(404).send({ error: 'Element not found' })
-      if (element.preset.scene.ownerId !== request.user.id && request.user.role !== 'admin') {
+      if (!hasScope(await accessFor(request, element.preset.sceneId), 'scene.edit')) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
@@ -359,7 +385,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
         with: { element: { with: { preset: { with: { scene: true } } } } },
       })
       if (!instance) return reply.status(404).send({ error: 'Instance not found' })
-      if (instance.element.preset.scene.ownerId !== request.user.id && request.user.role !== 'admin') {
+      if (!hasScope(await accessFor(request, instance.element.preset.sceneId), 'scene.edit')) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
@@ -401,7 +427,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
         with: { element: { with: { preset: { with: { scene: true } } } } },
       })
       if (!instance) return reply.status(404).send({ error: 'Instance not found' })
-      if (instance.element.preset.scene.ownerId !== request.user.id && request.user.role !== 'admin') {
+      if (!hasScope(await accessFor(request, instance.element.preset.sceneId), 'scene.edit')) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
@@ -420,17 +446,8 @@ export default async function sceneRoutes(app: FastifyInstance) {
       const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
       if (!scene) return reply.status(404).send({ error: 'Scene not found' })
 
-      const isOwner = scene.ownerId === request.user.id
-
-      // Check if the requesting user is a collaborator
-      if (!isOwner && request.user.role !== 'admin') {
-        const collab = await db.query.sceneCollaborators.findFirst({
-          where: and(
-            eq(sceneCollaborators.sceneId, sceneId),
-            eq(sceneCollaborators.userId, request.user.id),
-          ),
-        })
-        if (!collab) return reply.status(403).send({ error: 'Forbidden' })
+      if ((await accessFor(request, sceneId)).level === 'none') {
+        return reply.status(403).send({ error: 'Forbidden' })
       }
 
       // Fetch collaborators with user info
@@ -477,7 +494,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
       if (!scene) return reply.status(404).send({ error: 'Scene not found' })
 
       // Only owner can add collaborators
-      if (scene.ownerId !== request.user.id && request.user.role !== 'admin') {
+      if (!hasScope(await accessFor(request, sceneId), 'scene.admin')) {
         return reply.status(403).send({ error: 'Only the scene owner can add collaborators' })
       }
 
@@ -539,7 +556,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
       if (!scene) return reply.status(404).send({ error: 'Scene not found' })
 
       // Only owner can change roles
-      if (scene.ownerId !== request.user.id && request.user.role !== 'admin') {
+      if (!hasScope(await accessFor(request, sceneId), 'scene.admin')) {
         return reply.status(403).send({ error: 'Only the scene owner can change roles' })
       }
 
@@ -578,11 +595,10 @@ export default async function sceneRoutes(app: FastifyInstance) {
       const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
       if (!scene) return reply.status(404).send({ error: 'Scene not found' })
 
-      const isOwner = scene.ownerId === request.user.id
       const isSelf = userId === request.user.id
 
-      // Owner can remove anyone; collaborators can remove themselves
-      if (!isOwner && !isSelf && request.user.role !== 'admin') {
+      // Admins can remove anyone; collaborators can remove themselves
+      if (!isSelf && !hasScope(await accessFor(request, sceneId), 'scene.admin')) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
