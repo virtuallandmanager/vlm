@@ -587,6 +587,7 @@ function NavBar() {
   ]
   // Host and co-hosts manage who else can work on this setup
   const hasRoles = state.sceneRole === 'host' || state.sceneRole === 'cohost'
+  const tabs = hasRoles ? [...panels, { type: HUDPanelType.ROLES, label: 'Roles' }] : panels
 
   return (
     <UiEntity
@@ -598,10 +599,11 @@ function NavBar() {
       }}
       uiBackground={{ color: C.bgLight }}
     >
-      {(hasRoles ? [...panels, { type: HUDPanelType.ROLES, label: 'Roles' }] : panels).map(p => (
+      {tabs.map(p => (
         <UiEntity
           key={p.type}
-          uiTransform={{ height: 36, padding: { left: hasRoles ? 5 : 10, right: hasRoles ? 5 : 10 } }}
+          // Equal-width tabs so every label fits on one line, however many tabs there are
+          uiTransform={{ width: `${100 / tabs.length}%`, height: 36, justifyContent: 'center', alignItems: 'center' }}
           uiBackground={{ color: state.activePanel === p.type ? C.accent : C.transparent }}
           onMouseDown={() => {
             state.activePanel = state.activePanel === p.type ? null : p.type
@@ -613,8 +615,8 @@ function NavBar() {
             }
           }}
         >
-          <Label value={p.label} fontSize={11} color={state.activePanel === p.type ? C.text : C.textDim}
-            uiTransform={{ height: 36 }} />
+          <Label value={p.label} fontSize={hasRoles ? 10 : 11} textWrap="nowrap" color={state.activePanel === p.type ? C.text : C.textDim}
+            uiTransform={{ width: '100%', height: 36 }} />
         </UiEntity>
       ))}
     </UiEntity>
