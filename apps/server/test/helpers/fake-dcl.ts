@@ -6,6 +6,7 @@ export class FakeDclDirectory implements DclDirectory {
   worlds = new Map<string, { sceneUrns: string[]; title?: string }>()
   rights = new Map<string, ParcelRights>()
   worldOwners = new Map<string, string>()
+  worldDeployers = new Map<string, string[]>()
   down = false
   calls = 0
 
@@ -27,4 +28,5 @@ export class FakeDclDirectory implements DclDirectory {
   async getWorldScene(name: string) { this.hit(); return this.worlds.get(name.toLowerCase()) ?? null }
   async getParcelRights(parcel: string) { this.hit(); return this.rights.get(parcel) ?? null }
   async getWorldOwner(name: string) { this.hit(); return this.worldOwners.get(name.toLowerCase()) ?? null }
+  async getWorldDeployers(name: string) { this.hit(); return this.worldDeployers.get(name.toLowerCase()) ?? [] }
 }

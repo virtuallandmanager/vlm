@@ -21,6 +21,7 @@ export interface DclDirectory {
   getWorldScene(name: string): Promise<{ sceneUrns: string[]; title?: string } | null>
   getParcelRights(parcel: string): Promise<ParcelRights | null>
   getWorldOwner(name: string): Promise<string | null>
+  getWorldDeployers(name: string): Promise<string[]>
 }
 
 export class DirectoryUnavailableError extends Error {}
@@ -86,6 +87,14 @@ export class HttpDclDirectory implements DclDirectory {
   async getWorldOwner(name: string): Promise<string | null> {
     const body = (await getJson(`${this.worlds}/world/${encodeURIComponent(name.toLowerCase())}/permissions`)) as { owner?: string } | null
     return lower(body?.owner)
+  }
+
+  async getWorldDeployers(name: string): Promise<string[]> {
+    const body = (await getJson(`${this.worlds}/world/${encodeURIComponent(name.toLowerCase())}/permissions`)) as
+      | { permissions?: { deployment?: { type?: string; wallets?: unknown } } }
+      | null
+    const d = body?.permissions?.deployment
+    return d?.type === 'allow-list' ? lowerList(d.wallets) : []
   }
 }
 

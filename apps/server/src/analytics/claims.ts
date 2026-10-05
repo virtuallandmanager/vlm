@@ -17,7 +17,10 @@ export async function verifiedWalletsOf(userId: string): Promise<string[]> {
 export async function controls(scene: AnalyticsSceneRow, wallet: string, dir: DclDirectory = getDclDirectory()): Promise<boolean> {
   const w = wallet.toLowerCase()
   if (scene.kind === 'preview') return scene.locationKey.startsWith(`preview:${w}:`)
-  if (scene.kind === 'world') return (await dir.getWorldOwner(scene.worldName!)) === w
+  if (scene.kind === 'world') {
+    if ((await dir.getWorldOwner(scene.worldName!)) === w) return true
+    return (await dir.getWorldDeployers(scene.worldName!)).includes(w)
+  }
   const parcels = scene.parcels.length ? scene.parcels : scene.baseParcel ? [scene.baseParcel] : []
   if (!parcels.length) return false
   let viaRights = true
