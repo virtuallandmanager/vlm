@@ -83,24 +83,33 @@ export async function authorizeSceneMessage(access: SceneAccess, sceneId: string
   }
 }
 
+/** Delete actions: the room's own 'delete' plus the names apps/web sends after its REST delete. */
+const DELETE_ACTIONS = new Set(['delete', 'delete_instance', 'delete_element'])
+
 async function authorizePresetUpdate(access: SceneAccess, sceneId: string, message: any): Promise<GuardResult> {
   const { action, instance, elementData, instanceData, id } = message
   if (action !== 'update' || instance) {
     // create/delete of anything, or any instance change: scene editors only
     if (!hasScope(access, 'scene.edit')) return FORBIDDEN
     if (action === 'create' && !instance) return OK_BROADCAST
-    const instanceId = instance ? instanceData?.sk || instanceData?.id || id : null
-    const elementId = instance ? instanceData?.elementId || elementData?.sk || elementData?.id : elementData?.sk || elementData?.id || id
+    // The dashboard deletes over REST first, then relays the delete here; with the row
+    // already gone there is nothing to persist, so just relay it (editors only, checked above).
+    const isDelete = DELETE_ACTIONS.has(action)
+    const isInstance = instance || action === 'delete_instance'
+    const instanceId = isInstance ? instanceData?.sk || instanceData?.id || id : null
+    const elementId = isInstance ? instanceData?.elementId || elementData?.sk || elementData?.id : elementData?.sk || elementData?.id || id
     if (instanceId && action !== 'create') {
       const inst = await db.query.sceneElementInstances.findFirst({
         where: eq(sceneElementInstances.id, instanceId),
         with: { element: { with: { preset: true } } },
       })
+      if (!inst && isDelete) return OK_BROADCAST
       if (!inst || inst.element.preset.sceneId !== sceneId) return NOT_FOUND
       return { ok: true, broadcast: await isActive(sceneId, inst.element.presetId), target: { instanceId: inst.id } }
     }
     if (!elementId) return NOT_FOUND
     const el = await db.query.sceneElements.findFirst({ where: eq(sceneElements.id, elementId), with: { preset: true } })
+    if (!el && isDelete) return OK_BROADCAST
     if (!el || el.preset.sceneId !== sceneId) return NOT_FOUND
     return { ok: true, broadcast: await isActive(sceneId, el.presetId), target: { elementId: el.id } }
   }

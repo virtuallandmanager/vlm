@@ -4,7 +4,7 @@ import { db } from '../src/db/connection.js'
 import { sceneElements, sceneElementInstances, sceneCollaborators, scenePresets, scenes } from '../src/db/schema.js'
 import { createVenue, createBooking, addGrant, revokeGrant } from '../src/venues/service.js'
 import { resetDb } from './helpers/db.js'
-import { createUser, createScene, createElement, tokenFor, expiredTokenFor, randomWallet } from './helpers/factories.js'
+import { createUser, createScene, createElement, createInstance, tokenFor, expiredTokenFor, randomWallet } from './helpers/factories.js'
 import { startGameServer, joinScene, serverRoom } from './helpers/game-server.js'
 
 const H = 3600_000
@@ -89,6 +89,31 @@ describe('VLMSceneRoom auth', () => {
     }
     const underB = await db.select().from(sceneElementInstances).where(eq(sceneElementInstances.elementId, b.screen.id))
     expect(underB).toHaveLength(0)
+  })
+
+  it('dashboard delete messages sent after the REST delete still broadcast', async () => {
+    const s = await scene()
+    const widget = await createElement(s.preset.id, { type: 'widget', name: 'Toggle' })
+    const inst = await createInstance(s.screen.id)
+    const owner = await joinScene(gs.url, s.scene.id, tokenFor(s.owner))
+    const visitor = await joinScene(gs.url, s.scene.id)
+    await visitor.waitFor('scene_preset_update') // init
+
+    // apps/web handleDeleteInstance: REST delete, then this message
+    await db.delete(sceneElementInstances).where(eq(sceneElementInstances.id, inst.id))
+    owner.room.send('scene_preset_update', { action: 'delete_instance', instanceData: { id: inst.id } })
+    expect((await visitor.waitFor('scene_preset_update')).action).toBe('delete_instance')
+
+    // apps/web handleDeleteWidget: REST delete, then this message
+    await db.delete(sceneElements).where(eq(sceneElements.id, widget.id))
+    owner.room.send('scene_preset_update', { action: 'delete_element', element: 'widget', elementData: { id: widget.id } })
+    expect((await visitor.waitFor('scene_preset_update')).action).toBe('delete_element')
+
+    // non-editors still can't send them
+    const stranger = await joinScene(gs.url, s.scene.id, tokenFor(await createUser()))
+    stranger.room.send('scene_preset_update', { action: 'delete_element', element: 'widget', elementData: { id: widget.id } })
+    expect((await stranger.waitFor('vlm_error')).code).toBe('forbidden')
+    await visitor.expectNone('scene_preset_update')
   })
 
   it('different scenes get different rooms', async () => {
