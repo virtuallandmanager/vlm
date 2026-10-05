@@ -28,6 +28,7 @@
   },
   "files": [
     "dist",
+    "creator-hub",
     "asset.json",
     "models",
     "README.md"

@@ -19,6 +19,7 @@
  *   item.spawn(entity, { sceneId: 'your-scene-id' }, channel)
  */
 
+import { VisibilityComponent } from '@dcl/sdk/ecs'
 import { createVLM } from 'vlm-adapter-dcl'
 import type { VLM } from 'vlm-core'
 import type { VLMInitConfig } from 'vlm-shared'
@@ -83,14 +84,7 @@ export class VLMSmartItem {
 
     // Hide the beacon model unless explicitly shown
     if (!showBeacon) {
-      try {
-        const { VisibilityComponent } = require('@dcl/sdk/ecs') as any
-        if (VisibilityComponent) {
-          VisibilityComponent.createOrReplace(host, { visible: false })
-        }
-      } catch {
-        // If VisibilityComponent isn't available, that's fine
-      }
+      VisibilityComponent.createOrReplace(host, { visible: false })
     }
 
     // Auto-connect on scene load — works with or without sceneId
@@ -241,6 +235,39 @@ export class VLMSmartItem {
   isConnected(): boolean {
     return this.connected
   }
+}
+
+// ---------------------------------------------------------------------------
+// Creator Hub (SDK7 Script component)
+// ---------------------------------------------------------------------------
+
+export type VLMManagerOptions = Partial<VLMSmartItemProps>
+
+const noopChannel: IChannel = {
+  id: 'vlm-manager',
+  handleAction: () => {},
+  sendActions: () => {},
+  request: async () => undefined as any,
+  reply: () => {},
+}
+
+/**
+ * Entry point for Creator Hub's Script component. The scene's script file
+ * (see creator-hub/VLMManager.ts) declares the inspector fields and calls this
+ * from start(). Blank serverUrl means "use the env's default server".
+ */
+export function startVLMManager(entity: Entity, options: VLMManagerOptions = {}): VLMSmartItem {
+  const item = new VLMSmartItem()
+  item.spawn(entity, {
+    sceneId: options.sceneId || '',
+    serverUrl: options.serverUrl || 'https://vlm.gg',
+    showBeacon: options.showBeacon ?? false,
+    enableHud: options.enableHud ?? true,
+    enableAnalytics: options.enableAnalytics ?? true,
+    autoConnect: options.autoConnect ?? true,
+    env: options.env || 'prod',
+  }, noopChannel)
+  return item
 }
 
 // Default export for Creator Hub's smart item loader

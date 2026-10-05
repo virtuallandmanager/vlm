@@ -1,0 +1,17 @@
+{
+  "name": "vlm-v2-dcl-smart-item-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VLM V2 smart item (Creator Hub Script component) test scene",
+  "scripts": {
+    "start": "sdk-commands start",
+    "build": "sdk-commands build"
+  },
+  "devDependencies": {
+    "@dcl/js-runtime": "7.21.0",
+    "@dcl/sdk": "7.21.0"
+  },
+  "dependencies": {
+    "vlm-smart-item-dcl": "file:../../packages/vlm-smart-item-dcl"
+  }
+}

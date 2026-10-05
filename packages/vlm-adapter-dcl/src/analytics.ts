@@ -23,8 +23,7 @@ import { DclAdapter } from './DclAdapter'
 
 const SDK_VERSION = '2.0.0'
 
-function targetName(entity: number | undefined): string {
-  if (entity === undefined) return 'unknown'
+function targetName(entity: number): string {
   const n = Name.getOrNull(entity as Entity)
   return n?.value || `entity:${entity}`
 }
@@ -72,12 +71,15 @@ export class DclAnalyticsProbe implements AnalyticsProbe {
     const click = inputSystem.getInputCommand(InputAction.IA_POINTER, PointerEventType.PET_DOWN)
     if (click && click.timestamp !== this.lastClickTs) {
       this.lastClickTs = click.timestamp
-      out.push({ kind: 'click', target: targetName(click.hit?.entityId) })
+      // Clicks on empty space / the sky hit no entity: nothing to attribute, so skip them
+      const entity = click.hit?.entityId
+      if (entity !== undefined) out.push({ kind: 'click', target: targetName(entity) })
     }
     const hover = inputSystem.getInputCommand(InputAction.IA_POINTER, PointerEventType.PET_HOVER_ENTER)
     if (hover && hover.timestamp !== this.lastHoverTs) {
       this.lastHoverTs = hover.timestamp
-      out.push({ kind: 'hover', target: targetName(hover.hit?.entityId) })
+      const entity = hover.hit?.entityId
+      if (entity !== undefined) out.push({ kind: 'hover', target: targetName(entity) })
     }
     return out
   }
