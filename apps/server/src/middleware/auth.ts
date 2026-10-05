@@ -9,6 +9,9 @@ export interface AuthUser {
   email: string | null
   role: string
   orgId: string | null
+  wallet?: string | null
+  verified?: boolean
+  guest?: boolean
 }
 
 declare module 'fastify' {
@@ -19,7 +22,7 @@ declare module 'fastify' {
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    payload: { id: string; email: string | null; role: string; orgId?: string | null; refresh?: boolean }
+    payload: { id: string; email: string | null; role: string; orgId?: string | null; wallet?: string | null; verified?: boolean; guest?: boolean; refresh?: boolean }
     user: AuthUser
   }
 }
@@ -84,7 +87,10 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     }
 
     // ── JWT auth (default) ────────────────────────────────────────────────
-    const decoded = await request.jwtVerify<AuthUser>()
+    const decoded = await request.jwtVerify<AuthUser & { refresh?: boolean }>()
+    if (decoded.guest) {
+      return reply.status(401).send({ error: 'Unauthorized', message: 'Guest tokens cannot access the API' })
+    }
     request.user = decoded
   } catch (err) {
     reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or missing token' })

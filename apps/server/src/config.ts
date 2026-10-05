@@ -31,6 +31,8 @@ export const config = {
   jwtSecret: env('JWT_SECRET') || 'dev-secret-change-me',
   jwtAccessExpiry: env('JWT_ACCESS_EXPIRY') || '15m',
   jwtRefreshExpiry: env('JWT_REFRESH_EXPIRY') || '7d',
+  // Accept unverified DCL platform logins (local preview only — never in production)
+  allowUnverifiedPlatformAuth: env('ALLOW_UNVERIFIED_PLATFORM_AUTH') === 'true',
 
   // ── Google OAuth ──────────────────────────────────────────────────────────
   googleClientId: env('GOOGLE_CLIENT_ID'),

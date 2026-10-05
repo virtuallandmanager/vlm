@@ -8,6 +8,7 @@ import { users, userAuthMethods, passwordResetTokens } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { config } from '../config.js'
 import { sendPasswordResetEmail } from '../services/email.js'
+import { initialRoleForNewUser } from '../auth/roles.js'
 import { verifyDclSignedFetch, hasDclAuthHeaders } from '../middleware/dcl-auth.js'
 
 interface RegisterBody {
@@ -52,14 +53,7 @@ export default async function authRoutes(app: FastifyInstance) {
 
     const passwordHash = await bcrypt.hash(password, 12)
 
-    // Auto-promote the first user to admin in single/scalable mode
-    let role: 'admin' | 'creator' = 'creator'
-    if (config.autoPromoteFirstUser) {
-      const userCount = await db.query.users.findFirst()
-      if (!userCount) {
-        role = 'admin'
-      }
-    }
+    const role = await initialRoleForNewUser()
 
     const [user] = await db
       .insert(users)
@@ -160,7 +154,7 @@ export default async function authRoutes(app: FastifyInstance) {
     const token = authHeader.slice(7)
 
     try {
-      const decoded = app.jwt.verify<{ id: string; email: string | null; role: string; refresh?: boolean }>(token)
+      const decoded = app.jwt.verify<{ id: string; email: string | null; role: string; wallet?: string | null; verified?: boolean; refresh?: boolean }>(token)
 
       if (!decoded.refresh) {
         return reply.status(401).send({ error: 'Not a refresh token' })
@@ -176,7 +170,14 @@ export default async function authRoutes(app: FastifyInstance) {
       }
 
       const accessToken = app.jwt.sign(
-        { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null },
+        {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          orgId: user.activeOrgId || null,
+          wallet: decoded.wallet ?? null,
+          ...(decoded.verified === false ? { verified: false } : {}),
+        },
         { expiresIn: config.jwtAccessExpiry },
       )
 
@@ -187,9 +188,7 @@ export default async function authRoutes(app: FastifyInstance) {
   })
 
   // ── POST /api/auth/platform — Platform-specific auth ───────────────────
-  // Verifies Decentraland signed fetch headers (AuthChain) to cryptographically
-  // prove the request comes from a specific Ethereum wallet.
-  // Falls back to unverified auth for non-DCL platforms or preview mode.
+  // Verifies Decentraland signed fetch headers. Unverified requests get a guest token unless ALLOW_UNVERIFIED_PLATFORM_AUTH=true (local preview).
 
   app.post<{ Body: { sceneId?: string; user?: any; world?: string; [key: string]: any } }>(
     '/api/auth/platform',
@@ -215,55 +214,58 @@ export default async function authRoutes(app: FastifyInstance) {
         }
       }
 
-      // Use verified wallet if available, otherwise fall back to body data
-      const platformId = verifiedWallet
-        || platformUser?.id
-        || platformUser?.walletAddress
-        || `guest-${Date.now()}`
+      // ── No verified wallet: guest (or preview identity in local dev) ──────
+      if (!verifiedWallet && !config.allowUnverifiedPlatformAuth) {
+        const guestId = `guest:${crypto.randomUUID()}`
+        const accessToken = app.jwt.sign(
+          { id: guestId, email: null, role: 'viewer', orgId: null, wallet: null, verified: false, guest: true },
+          { expiresIn: config.jwtAccessExpiry },
+        )
+        return reply.send({
+          user: { id: guestId, displayName, email: null, role: 'viewer' },
+          accessToken,
+          refreshToken: null,
+          verified: false,
+          guest: true,
+        })
+      }
 
-      // Check if this platform user already has an account
+      const identifier =
+        verifiedWallet ??
+        `preview:${platformUser?.id || platformUser?.walletAddress || crypto.randomUUID()}`
+
       let authMethod = await db.query.userAuthMethods.findFirst({
-        where: and(
-          eq(userAuthMethods.type, 'wallet'),
-          eq(userAuthMethods.identifier, platformId),
-        ),
+        where: and(eq(userAuthMethods.type, 'wallet'), eq(userAuthMethods.identifier, identifier)),
         with: { user: true },
       })
 
       let dbUser
-
       if (authMethod) {
-        // Existing user
         dbUser = authMethod.user
       } else {
-        // Auto-create user for platform auth
         const [newUser] = await db
           .insert(users)
-          .values({
-            displayName,
-            email: null,
-            role: config.autoPromoteFirstUser ? 'admin' : 'creator',
-          })
+          .values({ displayName, email: null, role: await initialRoleForNewUser() })
           .returning()
-
         await db.insert(userAuthMethods).values({
           userId: newUser.id,
           type: 'wallet',
-          identifier: platformId,
+          identifier,
           metadata: { world, sceneId, verified: !!verifiedWallet },
         })
-
         dbUser = newUser
       }
 
-      const accessToken = app.jwt.sign(
-        { id: dbUser.id, email: dbUser.email, role: dbUser.role, orgId: dbUser.activeOrgId || null },
-        { expiresIn: config.jwtAccessExpiry },
-      )
-      const refreshToken = app.jwt.sign(
-        { id: dbUser.id, email: dbUser.email, role: dbUser.role, refresh: true },
-        { expiresIn: config.jwtRefreshExpiry },
-      )
+      const claims = {
+        id: dbUser.id,
+        email: dbUser.email,
+        role: dbUser.role,
+        orgId: dbUser.activeOrgId || null,
+        wallet: verifiedWallet,
+        verified: !!verifiedWallet,
+      }
+      const accessToken = app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry })
+      const refreshToken = app.jwt.sign({ ...claims, refresh: true }, { expiresIn: config.jwtRefreshExpiry })
 
       return reply.send({
         user: { id: dbUser.id, displayName: dbUser.displayName, email: dbUser.email, role: dbUser.role },
