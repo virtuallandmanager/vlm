@@ -69,6 +69,12 @@ export class VLMCommandCenterRoom extends Room {
       }
 
       try {
+        // Same rule as POST /api/command-center/:eventId/broadcast: event owner or admin.
+        const event = await db.query.events.findFirst({ where: eq(events.id, this.eventId), columns: { ownerId: true } })
+        if (!event || (event.ownerId !== actor.userId && actor.role !== 'admin')) {
+          return client.send('vlm_error', { code: 'forbidden', messageType: 'cross_world_update' })
+        }
+
         // Get all scenes linked to this event
         const links = await db
           .select({ sceneId: eventSceneLinks.sceneId })
