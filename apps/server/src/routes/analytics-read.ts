@@ -21,6 +21,7 @@ import { verifiedWalletsOf } from '../analytics/claims.js'
 import { visitorHash } from '../analytics/hash.js'
 
 const DAY = 86_400_000
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MAX_RANGE_DAYS = 400
 const ts = (d: Date) => sql`${d.toISOString()}::timestamptz`
 const rowsOf = <T>(r: unknown) => r as unknown as T[]
@@ -139,8 +140,25 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
           where scene_id = ${scene.id} and hour >= ${ts(r.from)} and hour <= ${ts(r.to)}
           group by 1 order by 1`),
       )
+      const dayUniques = new Map<number, number>()
+      if (bucket === 'day') {
+        const rows = rowsOf<{ t: Date; n: number }>(
+          await db.execute(sql`
+            select date_trunc('day', started_at) as t, count(distinct visitor_hash)::int as n
+            from analytics_sessions
+            where scene_id = ${scene.id} and started_at >= ${ts(r.from)} and started_at <= ${ts(r.to)}
+            group by 1`),
+        )
+        for (const u of rows) dayUniques.set(new Date(u.t).getTime(), Number(u.n))
+      }
       return reply.send({
-        points: points.map((p) => ({ t: p.t, sessions: Number(p.sessions), uniqueVisitors: Number(p.unique_visitors), peakConcurrency: Number(p.peak), dwellAvgSec: Number(p.dwell) })),
+        points: points.map((p) => ({
+          t: p.t,
+          sessions: Number(p.sessions),
+          uniqueVisitors: bucket === 'day' ? (dayUniques.get(new Date(p.t).getTime()) ?? 0) : Number(p.unique_visitors),
+          peakConcurrency: Number(p.peak),
+          dwellAvgSec: Number(p.dwell),
+        })),
       })
     },
   )
@@ -160,7 +178,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
             select distinct on (session_id) x, z from analytics_positions
             where scene_id = ${scene.id} and session_id in (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})
             order by session_id, occurred_at desc`),
-        )
+        ).sort((a, b) => Number(a.x) - Number(b.x) || Number(a.z) - Number(b.z))
       : []
     return reply.send({ count: ids.length, positions: positions.map((p) => ({ x: Number(p.x), z: Number(p.z) })) })
   })
@@ -188,7 +206,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     if (request.query.cursor) {
       const [ts, id] = request.query.cursor.split('|')
       const t = new Date(ts)
-      if (Number.isNaN(t.getTime()) || !id) return reply.status(400).send({ error: 'invalid cursor' })
+      if (Number.isNaN(t.getTime()) || !id || !UUID_RE.test(id)) return reply.status(400).send({ error: 'invalid cursor' })
       where = and(where, or(lt(analyticsSessions.startedAt, t), and(eq(analyticsSessions.startedAt, t), lt(analyticsSessions.id, id))))!
     }
     const rows = await db
@@ -210,8 +228,11 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     const scene = await guard(request, reply, request.params.id, true)
     if (!scene) return
     const on = request.body.walletVisibility
-    const [updated] = await db.update(analyticsScenes).set({ walletVisibility: on, updatedAt: new Date() }).where(eq(analyticsScenes.id, scene.id)).returning()
-    if (!on) await db.update(analyticsSessions).set({ wallet: null, displayName: null }).where(eq(analyticsSessions.sceneId, scene.id))
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx.update(analyticsScenes).set({ walletVisibility: on, updatedAt: new Date() }).where(eq(analyticsScenes.id, scene.id)).returning()
+      if (!on) await tx.update(analyticsSessions).set({ wallet: null, displayName: null }).where(eq(analyticsSessions.sceneId, scene.id))
+      return row
+    })
     return reply.send({ scene: { id: updated.id, walletVisibility: updated.walletVisibility } })
   })
 

@@ -115,6 +115,16 @@ describe('analytics jobs', () => {
   const write = (scene: AnalyticsSceneRow, b: IngestBatch) =>
     writeBatch({ scene, batch: b, verified: false, signer: null, country: null, keepPosProbability: 1 })
 
+  it('writer re-reads wallet visibility inside the transaction (stale scene object)', async () => {
+    const s = await createAnalyticsScene() // DB: walletVisibility false
+    const W = '0x00000000000000000000000000000000000000aa'
+    const b = { ...mkBatch(randomUUID(), [{ t: at(1).getTime(), type: 'session.start', seq: 0, data: {} }]), visitorId: W, isGuest: false, noticeShown: true, displayName: 'Ana' } as unknown as IngestBatch
+    await writeBatch({ scene: { ...s, walletVisibility: true }, batch: b, verified: true, signer: W, country: null, keepPosProbability: 1 })
+    const [row] = await db.select().from(analyticsSessions)
+    expect(row.wallet).toBeNull()
+    expect(row.displayName).toBeNull()
+  })
+
   it('ingest drops positions beyond 32000 m', async () => {
     const s = await createAnalyticsScene()
     const sid = randomUUID()

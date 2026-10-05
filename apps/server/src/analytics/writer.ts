@@ -23,7 +23,7 @@ export async function writeBatch(input: {
   const { scene, batch, verified, signer, country, keepPosProbability } = input
   const random = input.random ?? Math.random
   const hash = visitorHash(scene.salt, batch.visitorId)
-  const reveal = scene.walletVisibility && batch.noticeShown && !batch.isGuest && verified && signer !== null && signer === batch.visitorId.toLowerCase()
+  const mayReveal = batch.noticeShown && !batch.isGuest && verified && signer !== null && signer === batch.visitorId.toLowerCase()
   const times = batch.events.map((e) => e.t)
   const startedAt = new Date(Math.min(...times))
   const lastSeenAt = new Date(Math.max(...times))
@@ -38,6 +38,13 @@ export async function writeBatch(input: {
   const others = batch.events.filter((e) => e.type !== 'pos')
 
   return db.transaction(async (tx) => {
+    // Decide reveal from the live flag (row lock serialises against the visibility toggle), not the cached scene.
+    const [fresh] = await tx
+      .select({ walletVisibility: analyticsScenes.walletVisibility })
+      .from(analyticsScenes)
+      .where(eq(analyticsScenes.id, scene.id))
+      .for('update')
+    const reveal = !!fresh?.walletVisibility && mayReveal
     const insertedEvents = others.length
       ? await tx
           .insert(analyticsEvents)

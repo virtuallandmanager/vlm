@@ -105,6 +105,37 @@ describe('analytics read API', () => {
     expect((await get(owner, '/api/analytics/locations')).json().scenes.map((x: any) => x.id)).toEqual([s.id])
   })
 
+  it('day buckets count distinct visitors per day, not summed hourly uniques', async () => {
+    const { owner, s } = await owned()
+    const day = new Date()
+    day.setUTCHours(0, 0, 0, 0)
+    day.setUTCDate(day.getUTCDate() - 1)
+    for (const h of [1, 5, 9]) {
+      const hour = new Date(day.getTime() + h * 3600_000)
+      await db.insert(analyticsRollupHourly).values({ sceneId: s.id, hour, sessions: 1, uniqueVisitors: 1, peakConcurrency: 1, dwellAvgSec: 10 })
+      await insertSession(s.id, { visitorHash: 'SAME', startedAt: hour })
+    }
+    const ts = await get(owner, `/api/analytics/locations/${s.id}/timeseries?bucket=day`)
+    expect(ts.json().points).toHaveLength(1)
+    expect(ts.json().points[0]).toMatchObject({ sessions: 3, uniqueVisitors: 1 })
+  })
+
+  it('live positions are ordered by x then z', async () => {
+    const { owner, s } = await owned()
+    for (const [x, z] of [[5, 1], [1, 9], [1, 2]]) {
+      const sess = await insertSession(s.id, { lastSeenAt: new Date() })
+      await db.insert(analyticsPositions).values({ sceneId: s.id, sessionId: sess.id, seq: 1, occurredAt: new Date(), x, y: 0, z })
+    }
+    expect((await get(owner, `/api/analytics/locations/${s.id}/live`)).json().positions).toEqual([{ x: 1, z: 2 }, { x: 1, z: 9 }, { x: 5, z: 1 }])
+  })
+
+  it('rejects a sessions cursor whose id is not a UUID', async () => {
+    const { owner, s } = await owned()
+    const res = await get(owner, `/api/analytics/locations/${s.id}/sessions?cursor=${encodeURIComponent(new Date().toISOString() + '|not-a-uuid')}`)
+    expect(res.statusCode).toBe(400)
+    expect(res.json()).toEqual({ error: 'invalid cursor' })
+  })
+
   it('rejects ranges longer than 400 days', async () => {
     const { owner, s } = await owned()
     const to = new Date()
