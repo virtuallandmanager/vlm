@@ -5,10 +5,41 @@ import { analyticsScenes } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { DirectoryUnavailableError, getDclDirectory, type DclDirectory } from '../analytics/dcl-directory.js'
-import { ClaimError, claimScene, controlsAny, verifiedWalletsOf } from '../analytics/claims.js'
+import { hasDclAuthHeaders, verifyDclSignedFetch } from '../middleware/dcl-auth.js'
+import { TokenBucketLimiter, checkRequesterLimits } from '../analytics/limiter.js'
+import { ClaimError, controls, claimScene, controlsAny, verifiedWalletsOf } from '../analytics/claims.js'
 
 const MAX_DIRECTORY_CALLS = 100
 class BudgetExhausted extends Error {}
+
+const signedLimiter = new TokenBucketLimiter()
+
+/** Unauthenticated-by-JWT eligibility probe for the in-world SDK. Never creates users, auth methods or sessions. */
+export async function analyticsClaimSignedRoutes(app: FastifyInstance) {
+  app.post<{ Body: { locationKey?: string } }>('/api/analytics/claims/check-signed', async (request, reply) => {
+    const no = { eligible: false, known: false }
+    const key = request.body?.locationKey
+    const headers = request.headers as Record<string, string | string[] | undefined>
+    if (typeof key !== 'string' || !key || !hasDclAuthHeaders(headers)) return reply.send(no)
+    let wallet: string
+    try {
+      wallet = (await verifyDclSignedFetch(request.method, request.url.split('?')[0], headers)).walletAddress.toLowerCase()
+    } catch {
+      return reply.send(no)
+    }
+    const limit = checkRequesterLimits(signedLimiter, { requesterKey: `w:${wallet}`, verified: true, eventCount: 1 })
+    if (!limit.ok) return reply.status(429).send({ error: 'rate_limited', retryAfter: Math.ceil(limit.retryAfterMs / 1000) })
+    const scene = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, key) })
+    if (!scene) return reply.send(no)
+    if (scene.claimStatus === 'active') return reply.send({ eligible: false, known: true })
+    try {
+      return reply.send({ eligible: await controls(scene, wallet), known: true })
+    } catch (err) {
+      if (err instanceof DirectoryUnavailableError) return reply.send({ eligible: false, known: true })
+      throw err
+    }
+  })
+}
 
 export default async function analyticsClaimRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)

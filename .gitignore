@@ -10,6 +10,7 @@ out/
 .DS_Store
 coverage/
 dashboard/
+!apps/docs/src/content/docs/dashboard/
 uploads/
 node_modules/
 .astro/

@@ -12,7 +12,7 @@ When a scene uses VLM, the scene sends anonymous usage events to VLM while you'r
 - **IP addresses are never stored.** VLM uses them briefly to limit abuse and to look up your country, then discards them.
 
 ## Retention
-Raw events are kept for the scene owner's plan (7–365 days), 30 days for unclaimed scenes, and 7 days for local previews. Aggregated statistics (counts, heatmaps) are kept longer and contain no identities.
+Raw events are kept for the scene owner's plan (7–365 days, unlimited on the top tier and self-hosted installs), 30 days for unclaimed scenes, and 7 days for local previews. Aggregated statistics (counts, heatmaps) are kept longer and contain no identities.
 
 ## Deleting your data
-Sign in to the VLM dashboard with your wallet and use **Delete my visitor data**, or call `POST /api/analytics/me/delete` with your session token. This removes your sessions, events and positions from every scene.
+Call `POST /api/analytics/me/delete` with your session token. A dashboard control for this is coming. This removes your sessions, events and positions from every scene.

@@ -200,8 +200,12 @@ export class VLMSceneRoom extends Room {
 
   async onJoin(client: Client, options: JoinOptions) {
     const requested = options.clientType || 'analytics'
-    const access = await this.getAccess(client)
-    const canHost = ['admin', 'owner', 'org', 'editor'].includes(access.level)
+    let canHost = false
+    try {
+      canHost = ['admin', 'owner', 'org', 'editor'].includes((await this.getAccess(client)).level)
+    } catch {
+      canHost = false
+    }
     const clientType = requested === 'host' && canHost ? 'host' : 'analytics'
     const actor = client.auth as Actor
     const userId = actor.userId || client.sessionId

@@ -1,6 +1,8 @@
-import { VLM } from 'vlm-core'
+import { VLM, resolveApiUrl } from 'vlm-core'
+import { VLMHttpClient } from 'vlm-client'
 import type { VLMConnectionState } from 'vlm-core'
 import { DclAdapter } from './DclAdapter'
+import type { Collector } from 'vlm-core'
 import { startVLMAnalytics, getAnalyticsSceneRef } from './analytics.js'
 import { DclHUDRenderer, setSceneActionHandler } from './DclHUDRenderer.js'
 import { locationKeyFor } from 'vlm-shared'
@@ -19,13 +21,20 @@ import type { VLMInitConfig, VLMStorage } from 'vlm-shared'
  * If sceneId is provided, skips scene discovery and connects directly.
  * If no sceneId, authenticates first, then shows scene picker or auto-creates.
  */
+// Analytics start once per scene runtime; every createVLM call (retries included) attaches the shared collector.
+let sharedAnalytics: Promise<Collector | null> | null = null
+
 export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: boolean }): Promise<VLM> {
   const adapter = new DclAdapter()
   const vlm = new VLM(adapter)
   if (config?.analytics !== false) {
-    startVLMAnalytics({ env: config?.env, apiUrl: config?.apiUrl, adapter })
-      .then((c) => { if (c) vlm.attachAnalytics(c) })
-      .catch((err) => console.log('[VLM analytics] disabled:', String(err)))
+    if (!sharedAnalytics) {
+      sharedAnalytics = startVLMAnalytics({ env: config?.env, apiUrl: config?.apiUrl, adapter }).catch((err) => {
+        console.log('[VLM analytics] disabled:', String(err))
+        return null
+      })
+    }
+    sharedAnalytics.then((c) => { if (c) vlm.attachAnalytics(c) })
   }
   const enableHud = config?.enableHud !== false
 
@@ -70,30 +79,53 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
 
   // No sceneId — do the two-phase flow
   try {
-    // Phase 1: Authenticate
-    await vlm.authenticate({ env: 'prod', ...config })
-
     const user = await adapter.getPlatformUser()
     const sceneRef = await getAnalyticsSceneRef()
     const wallet = user.isGuest ? null : (user.walletAddress || '').toLowerCase() || null
-    const checkEligible = async (): Promise<boolean> => {
-      if (!wallet) return false
-      try {
-        return (await vlm.httpClient.checkAnalyticsClaim(locationKeyFor(sceneRef, wallet))).eligible
-      } catch {
-        return false
-      }
-    }
-    let eligible = await checkEligible()
-    if (!eligible && wallet) {
-      // A brand-new owner's analytics row appears after their first ingest batch; retry once
-      await new Promise((r) => setTimeout(r, 10_000))
-      eligible = await checkEligible()
-    }
-    if (!eligible) {
+    const probe = new VLMHttpClient(resolveApiUrl(config ?? {}))
+    const check = () =>
+      wallet
+        ? probe.checkAnalyticsClaimSigned(locationKeyFor(sceneRef, wallet), adapter)
+        : Promise.resolve({ eligible: false, known: false })
+
+    const first = await check()
+    if (!first.eligible) {
       console.log('[VLM] Analytics running; setup tools are only shown to this LAND or World owner')
+      if (wallet && !first.known) {
+        // A brand-new owner's analytics row appears after their first ingest batch; re-check once in the background
+        void new Promise((r) => setTimeout(r, 10_000))
+          .then(check)
+          .then((second) => (second.eligible ? setupOwnerHud() : undefined))
+          .catch((err) => console.log('[VLM] Setup unavailable:', String(err)))
+      }
       return vlm
     }
+    return await setupOwnerHud()
+  } catch (err) {
+    if (renderer) {
+      renderer.updateConnectionState('error', { error: String(err) })
+    } else {
+      console.log('[VLM] Setup unavailable:', String(err))
+      return vlm
+    }
+
+    // Set up retry handler
+    return new Promise<VLM>((resolve, reject) => {
+      setSceneActionHandler(async (action: string) => {
+        if (action === 'retry') {
+          try {
+            const retried = await createVLM(config)
+            resolve(retried)
+          } catch (retryErr) {
+            reject(retryErr)
+          }
+        }
+      })
+    })
+  }
+
+  async function setupOwnerHud(): Promise<VLM> {
+    await vlm.authenticate({ env: 'prod', ...config })
     ensureRenderer()
 
     if (renderer) {
@@ -194,7 +226,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
           } else if (action === 'retry') {
             // Retry the whole flow
             try {
-              const retried = await createVLM({ ...config, analytics: false })
+              const retried = await createVLM(config)
               resolve(retried)
             } catch (err) {
               reject(err)
@@ -208,34 +240,13 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         }
       })
     })
-  } catch (err) {
-    if (renderer) {
-      renderer.updateConnectionState('error', { error: String(err) })
-    } else {
-      console.log('[VLM] Setup unavailable:', String(err))
-      return vlm
-    }
-
-    // Set up retry handler
-    return new Promise<VLM>((resolve, reject) => {
-      setSceneActionHandler(async (action: string) => {
-        if (action === 'retry') {
-          try {
-            const retried = await createVLM({ ...config, analytics: false })
-            resolve(retried)
-          } catch (retryErr) {
-            reject(retryErr)
-          }
-        }
-      })
-    })
   }
 }
 
 // Backward-compatible default export
 const VLMCompat = {
   init: async (config?: Partial<VLMInitConfig>): Promise<VLMStorage> => {
-    const vlm = await createVLM({ ...config, analytics: false })
+    const vlm = await createVLM(config)
     return vlm.storage
   },
 }

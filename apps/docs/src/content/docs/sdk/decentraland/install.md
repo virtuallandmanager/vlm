@@ -84,7 +84,7 @@ vlm.setUserState('high-score', 9999)
 const score = await vlm.getUserState('high-score')
 
 // Analytics
-vlm.recordAction('level-complete', { level: 3 })
+vlm.track('level-complete', { level: 3 })
 
 // Direct element access
 vlm.storage.videos.configs['my-screen']
