@@ -3,6 +3,8 @@ import { db } from '../db/connection.js'
 import { analyticsScenes, locationSetups } from '../db/schema.js'
 import type { Actor } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess, isHostAccess } from '../auth/permissions.js'
+import { DirectoryUnavailableError } from './dcl-directory.js'
+import { releaseIfRedeployed } from '../setup/setups.js'
 
 export interface AnalyticsAccess {
   canRead: boolean
@@ -24,7 +26,17 @@ export async function getAnalyticsAccess(actor: Actor, analyticsSceneId: string,
   if (!scene || !actor.userId || !actor.verified) return NONE(scene)
   if (actor.role === 'admin') return { canRead: true, canManage: true, canDelete: true, scene }
 
-  const active = await db.query.locationSetups.findFirst({ where: and(eq(locationSetups.analyticsSceneId, scene.id), isNull(locationSetups.endedAt)) })
+  let active = (await db.query.locationSetups.findFirst({ where: and(eq(locationSetups.analyticsSceneId, scene.id), isNull(locationSetups.endedAt)) })) ?? null
+  // Ingest recorded a different live deployment than the setup's: check for a foreign redeploy here too,
+  // so a release doesn't depend on someone opening the in-world HUD (2.0.0 clients and guests never do).
+  if (active && scene.activeEntityId && active.deploymentEntityId && scene.activeEntityId !== active.deploymentEntityId) {
+    try {
+      active = await releaseIfRedeployed(active, scene, undefined, now)
+    } catch (err) {
+      if (!(err instanceof DirectoryUnavailableError)) throw err
+      // Directory down: treat the setup as still active; the next read rechecks.
+    }
+  }
   if (active) {
     const access = await getSceneAccess(actor, active.vlmSceneId, now)
     if (hasScope(access, 'analytics.view')) {

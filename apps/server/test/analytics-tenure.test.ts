@@ -1,13 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { db } from '../src/db/connection.js'
 import { eq } from 'drizzle-orm'
-import { analyticsRollupHourly, analyticsSessions, sceneRoles } from '../src/db/schema.js'
+import { analyticsRollupHourly, analyticsScenes, analyticsSessions, locationSetups, sceneRoles } from '../src/db/schema.js'
 import { getAnalyticsAccess } from '../src/analytics/access.js'
 import { actorFromClaims } from '../src/auth/actor.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, createScene, tokenFor, randomWallet } from './helpers/factories.js'
 import { createAnalyticsScene, insertSession } from './helpers/analytics.js'
 import { createSetup } from './helpers/setups.js'
+import { setDclDirectory } from '../src/analytics/dcl-directory.js'
+import { setUpLocation } from '../src/setup/setups.js'
+import { FakeDclDirectory } from './helpers/fake-dcl.js'
 
 const DAY = 86400_000
 const actorOf = (u: any) => actorFromClaims({ id: u.id, role: u.role, wallet: u.wallet, verified: true } as any)
@@ -18,7 +21,10 @@ describe('analytics access by setup tenure', () => {
     await resetDb()
     app = await testApp()
   })
-  afterEach(() => app.close())
+  afterEach(async () => {
+    setDclDirectory(null)
+    await app.close()
+  })
 
   it('host, co-host, editor, viewer and strangers', async () => {
     const host = await createUser({ wallet: randomWallet() })
@@ -83,5 +89,50 @@ describe('analytics access by setup tenure', () => {
 
     const list = (await app.inject({ method: 'GET', url: '/api/analytics/locations', headers: { authorization: `Bearer ${tokenFor(newHost)}` } })).json()
     expect(list.scenes.map((s: any) => s.id)).toEqual([loc.id])
+  })
+  it('a foreign redeploy seen only by ingest ends the setup on the next analytics read', async () => {
+    const dir = new FakeDclDirectory()
+    setDclDirectory(dir)
+    const host = await createUser({ wallet: randomWallet() })
+    const loc = await createAnalyticsScene({ locationKey: 'gc:3,3', parcels: ['3,3'], baseParcel: '3,3', activeEntityId: 'bafyA' })
+    const { setup } = await setUpLocation(loc, host.wallet!)
+    const before = await getAnalyticsAccess(actorOf(host), loc.id)
+    expect(before).toMatchObject({ canRead: true, canManage: true })
+    expect(before.until).toBeUndefined()
+
+    // Ingest from the new deployment records its entity on the analytics row; nobody calls /api/setup/status.
+    dir.addScene({ entityId: 'bafyNEW', base: '3,3', parcels: ['3,3'] }, randomWallet())
+    await db.update(analyticsScenes).set({ activeEntityId: 'bafyNEW' }).where(eq(analyticsScenes.id, loc.id))
+
+    const after = await getAnalyticsAccess(actorOf(host), loc.id)
+    expect(after).toMatchObject({ canRead: true, canManage: false, canDelete: false })
+    expect(after.until).toBeInstanceOf(Date)
+    expect(after.since?.getTime()).toBe(setup.startedAt.getTime())
+    expect(await db.query.locationSetups.findFirst({ where: eq(locationSetups.id, setup.id) })).toMatchObject({ endReason: 'redeployed' })
+  })
+
+  it('directory down during that check: the setup stays active', async () => {
+    const dir = new FakeDclDirectory()
+    setDclDirectory(dir)
+    const host = await createUser({ wallet: randomWallet() })
+    const loc = await createAnalyticsScene({ locationKey: 'gc:4,4', parcels: ['4,4'], baseParcel: '4,4', activeEntityId: 'bafyA' })
+    const { setup } = await setUpLocation(loc, host.wallet!)
+    await db.update(analyticsScenes).set({ activeEntityId: 'bafyNEW' }).where(eq(analyticsScenes.id, loc.id))
+    dir.down = true
+    const before = await getAnalyticsAccess(actorOf(host), loc.id)
+    expect(before).toMatchObject({ canRead: true, canManage: true })
+    expect(before.until).toBeUndefined()
+    expect(await db.query.locationSetups.findFirst({ where: eq(locationSetups.id, setup.id) })).toMatchObject({ endedAt: null })
+  })
+
+  it('same entity as the setup: no directory calls', async () => {
+    const dir = new FakeDclDirectory()
+    setDclDirectory(dir)
+    const host = await createUser({ wallet: randomWallet() })
+    const loc = await createAnalyticsScene({ locationKey: 'gc:5,5', parcels: ['5,5'], baseParcel: '5,5', activeEntityId: 'bafyA' })
+    await setUpLocation(loc, host.wallet!)
+    dir.calls = 0
+    expect((await getAnalyticsAccess(actorOf(host), loc.id)).canManage).toBe(true)
+    expect(dir.calls).toBe(0)
   })
 })
