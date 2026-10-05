@@ -4,24 +4,19 @@ import type { VLMConnectionState } from 'vlm-core'
 import { DclAdapter } from './DclAdapter'
 import { startVLMAnalytics, getAnalyticsSceneRef } from './analytics.js'
 import { DclHUDRenderer, setSceneActionHandler } from './DclHUDRenderer.js'
-import { locationKeyFor } from 'vlm-shared'
 import type { VLMInitConfig, VLMStorage } from 'vlm-shared'
 
-// Owner-HUD eligibility re-checks while the location is unknown or Decentraland is down (~2.5 min).
+// Setup-status re-checks while Decentraland's directory is unavailable (~2.5 min).
 const OWNER_CHECK_BACKOFF_MS = [10_000, 20_000, 40_000, 80_000]
 
 /**
  * Create a VLM instance for Decentraland SDK 7.
  *
- * This handles the full lifecycle:
- * 1. Shows HUD immediately (setup/connecting state)
- * 2. Authenticates with VLM using DCL's Web3 auth
- * 3. Discovers or creates a scene if no sceneId provided
- * 4. Connects to the scene via Colyseus
- * 5. HUD transitions to management mode
- *
- * If sceneId is provided, skips scene discovery and connects directly.
- * If no sceneId, authenticates first, then shows scene picker or auto-creates.
+ * If sceneId is provided, authenticates and connects to that scene directly.
+ * If not, asks the VLM server what the signed-in wallet gets at this location:
+ * - a member of this location's setup (host / co-host / editor / viewer) connects straight to its scene;
+ * - an owner, operator or deployer of the land with no setup yet gets a one-press "Set up VLM here" card;
+ * - everyone else (visitors, guests, wallets without a role) gets no VLM UI at all.
  */
 export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: boolean }): Promise<VLM> {
   const adapter = new DclAdapter()
@@ -73,40 +68,105 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
     }
   }
 
-  // No sceneId — do the two-phase flow
+  // No sceneId: ask the server what this wallet gets here (nothing / Set up / member of the setup).
+  // Visitors, role-less wallets and wallets that can't set up here never get any VLM UI.
+  type SceneRole = 'host' | 'cohost' | 'editor' | 'viewer'
   try {
-    const user = await adapter.getPlatformUser()
     const sceneRef = await getAnalyticsSceneRef()
-    const wallet = user.isGuest ? null : (user.walletAddress || '').toLowerCase() || null
+    const user = await adapter.getPlatformUser()
+    if (user.isGuest) return vlm
     const probe = new VLMHttpClient(resolveApiUrl(config ?? {}))
-    const check = (): Promise<{ eligible: boolean; known: boolean; unavailable?: boolean }> =>
-      wallet
-        ? probe.checkAnalyticsClaimSigned(locationKeyFor(sceneRef, wallet), adapter)
-        : Promise.resolve({ eligible: false, known: false })
-    // Worth another try: the location isn't registered yet (a brand-new owner's row appears after
-    // their first ingest batch) or Decentraland couldn't answer.
-    const retryable = (r: { known: boolean; unavailable?: boolean }) => !r.known || !!r.unavailable
 
-    const first = await check()
-    if (!first.eligible) {
-      console.log('[VLM] Analytics running; setup tools are only shown to this LAND or World owner')
-      if (wallet && retryable(first)) {
-        // Re-check in the background with backoff (10 s, 20 s, 40 s, 80 s), then give up quietly.
-        void (async () => {
-          for (const delay of OWNER_CHECK_BACKOFF_MS) {
-            await new Promise((r) => setTimeout(r, delay))
-            const next = await check()
-            if (next.eligible) {
-              await setupOwnerHud()
-              return
-            }
-            if (!retryable(next)) return
-          }
-        })().catch((err) => console.log('[VLM] Setup unavailable:', String(err)))
+    const installRolesHandler = (sceneId: string, role: SceneRole) => {
+      if (role !== 'host' && role !== 'cohost') return
+      let currentRole: SceneRole = role
+      const refresh = async () => {
+        try {
+          const data = await vlm.httpClient.getSceneRoles(sceneId)
+          renderer?.setRoles({ hostWallets: data.host.wallets, roles: data.roles })
+          renderer?.setRolesError(null)
+        } catch (err) {
+          renderer?.setRolesError(String(err))
+        }
       }
+      setSceneActionHandler(async (action: string, data?: any) => {
+        try {
+          if (action === 'roles_refresh') await refresh()
+          if (action === 'roles_add') { await vlm.httpClient.addSceneRole(sceneId, data.wallet, data.role); await refresh() }
+          if (action === 'roles_remove') { await vlm.httpClient.removeSceneRole(sceneId, data.wallet); await refresh() }
+          if (action === 'roles_transfer' && currentRole === 'host') {
+            await vlm.httpClient.transferHost(sceneId, data.wallet)
+            currentRole = 'cohost'
+            renderer?.setSceneRole('cohost')
+            await refresh()
+          }
+        } catch (err) {
+          renderer?.setRolesError(String(err))
+        }
+      })
+      void refresh()
+    }
+
+    const connectAs = async (sceneId: string, role: SceneRole): Promise<VLM> => {
+      await vlm.authenticate({ env: 'prod', ...config })
+      ensureRenderer()
+      renderer?.setSceneRole(role)
+      renderer?.updateConnectionState('connecting', { sceneId })
+      renderer?.setCurrentScene(sceneId, sceneRef.title || 'Scene')
+      await vlm.connectToScene(sceneId)
+      if (renderer) {
+        await vlm.initHUD(renderer)
+        installRolesHandler(sceneId, role)
+      }
+      console.log('[VLM] Connected to scene as', role, sceneId)
       return vlm
     }
-    return await setupOwnerHud()
+
+    let status = await probe.getSetupStatus(sceneRef, adapter)
+    for (const delay of OWNER_CHECK_BACKOFF_MS) {
+      if (status.state !== 'unavailable') break
+      await new Promise((r) => setTimeout(r, delay))
+      status = await probe.getSetupStatus(sceneRef, adapter)
+    }
+    if (status.state === 'member') return await connectAs(status.sceneId, status.role)
+    if (status.state !== 'eligible') {
+      console.log("[VLM] Analytics running; VLM setup is only offered to this land's owners, operators and deployer")
+      return vlm
+    }
+
+    ensureRenderer()
+    if (!renderer) return vlm
+    renderer.showSetupOffer()
+    return await new Promise<VLM>((resolve) => {
+      let busy = false
+      // Set once the server has created the setup, so a failed connect retries the connect, not the setup
+      let createdSceneId: string | null = null
+      setSceneActionHandler(async (action: string) => {
+        if (action !== 'setup_here' || busy) return
+        busy = true
+        try {
+          renderer?.updateConnectionState('connecting')
+          if (!createdSceneId) {
+            const res = await probe.setUpHere(sceneRef, adapter)
+            if (!('sceneId' in res)) {
+              const msg =
+                res.error === 'already_set_up' ? `Already set up by ${res.host ?? 'someone else'}`
+                : res.status === 503 ? "Decentraland's servers aren't answering — try again in a minute"
+                : res.status === 403 ? "Only this land's owner, operators or deployer can set up VLM here"
+                : `Setup failed (${res.error})`
+              renderer?.showSetupOffer(msg)
+              return
+            }
+            createdSceneId = res.sceneId
+          }
+          resolve(await connectAs(createdSceneId, 'host'))
+        } catch (err) {
+          renderer?.showSetupOffer(`VLM is set up, but connecting failed (${String(err)}) — press again to retry`)
+        } finally {
+          busy = false
+        }
+      })
+    })
   } catch (err) {
     if (renderer) {
       renderer.updateConnectionState('error', { error: String(err) })
@@ -125,124 +185,6 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
           } catch (retryErr) {
             reject(retryErr)
           }
-        }
-      })
-    })
-  }
-
-  async function setupOwnerHud(): Promise<VLM> {
-    await vlm.authenticate({ env: 'prod', ...config })
-    ensureRenderer()
-
-    if (renderer) {
-      renderer.updateConnectionState('authenticated', {
-        user: vlm.user,
-      })
-    }
-
-    // Phase 2: Discover scenes
-    const { scenes } = await vlm.httpClient.getScenes()
-
-    if (renderer) {
-      renderer.setScenes(scenes)
-    }
-
-    if (scenes.length === 0) {
-      // Auto-create a scene for first-time users
-      const sceneName = `${vlm.user?.displayName || 'My'}'s Scene`
-
-      if (renderer) {
-        renderer.updateConnectionState('connecting')
-      }
-
-      await vlm.createScene(sceneName)
-
-      if (renderer) {
-        renderer.setCurrentScene(vlm.sceneId!, sceneName)
-        await vlm.initHUD(renderer)
-      }
-
-      console.log('[VLM] Auto-created and connected to scene:', vlm.sceneId)
-      return vlm
-    }
-
-    if (scenes.length === 1) {
-      // Single scene — connect directly
-      const scene = scenes[0]
-
-      if (renderer) {
-        renderer.setCurrentScene(scene.id, scene.name)
-      }
-
-      await vlm.connectToScene(scene.id)
-
-      if (renderer) {
-        await vlm.initHUD(renderer)
-      }
-
-      console.log('[VLM] Connected to scene:', scene.name)
-      return vlm
-    }
-
-    // Multiple scenes — show picker in HUD and wait for selection
-    if (renderer) {
-      renderer.updateConnectionState('authenticated', {
-        user: vlm.user,
-        scenes,
-      })
-    }
-
-    return new Promise<VLM>((resolve, reject) => {
-      // Set up handler for scene actions from the HUD
-      setSceneActionHandler(async (action: string, data?: any) => {
-        try {
-          if (action === 'select_scene') {
-            const sceneId = data?.sceneId
-            const scene = scenes.find(s => s.id === sceneId)
-
-            if (renderer) {
-              renderer.updateConnectionState('connecting', { sceneId })
-              renderer.setCurrentScene(sceneId, scene?.name || 'Scene')
-            }
-
-            await vlm.connectToScene(sceneId)
-
-            if (renderer) {
-              await vlm.initHUD(renderer)
-            }
-
-            console.log('[VLM] Connected to scene:', scene?.name || sceneId)
-            resolve(vlm)
-          } else if (action === 'create_scene') {
-            const name = data?.name || `${vlm.user?.displayName || 'My'}'s Scene`
-
-            if (renderer) {
-              renderer.updateConnectionState('connecting')
-            }
-
-            await vlm.createScene(name)
-
-            if (renderer) {
-              renderer.setCurrentScene(vlm.sceneId!, name)
-              await vlm.initHUD(renderer)
-            }
-
-            console.log('[VLM] Created and connected to scene:', name)
-            resolve(vlm)
-          } else if (action === 'retry') {
-            // Retry the whole flow
-            try {
-              const retried = await createVLM(config)
-              resolve(retried)
-            } catch (err) {
-              reject(err)
-            }
-          }
-        } catch (err) {
-          if (renderer) {
-            renderer.updateConnectionState('error', { error: String(err) })
-          }
-          // Don't reject — let user retry via HUD
         }
       })
     })

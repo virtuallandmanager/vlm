@@ -22,6 +22,7 @@ import type {
 import { HUDPanelType } from 'vlm-shared'
 import type { EntityHandle, WorldStatus } from 'vlm-shared'
 import type { VLMConnectionState } from 'vlm-core'
+import { nearbyPlayers } from './players.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -51,7 +52,20 @@ interface HUDState {
 
   // Scene creation
   newSceneName: string
+
+  // In-world setup + roles
+  setupOffer: boolean
+  setupMessage: string | null
+  sceneRole: SceneRole | null
+  roles: RolesData
+  rolesError: string | null
+  roleDraftWallet: string
+  roleDraftRole: 'cohost' | 'editor' | 'viewer'
+  confirmTransfer: string | null
 }
+
+type SceneRole = 'host' | 'cohost' | 'editor' | 'viewer'
+type RolesData = { hostWallets: string[]; roles: { wallet: string; role: string; displayName?: string | null }[] }
 
 const state: HUDState = {
   connectionState: 'idle',
@@ -74,6 +88,15 @@ const state: HUDState = {
   hudVisible: true,
 
   newSceneName: '',
+
+  setupOffer: false,
+  setupMessage: null,
+  sceneRole: null,
+  roles: { hostWallets: [], roles: [] },
+  rolesError: null,
+  roleDraftWallet: '',
+  roleDraftRole: 'editor',
+  confirmTransfer: null,
 }
 
 // Callbacks
@@ -180,9 +203,9 @@ function PanelHeader({ title, onClose, subtitle }: { title: string; onClose: () 
 }
 
 function Button({ label, color, textColor, onPress, width, height, fontSize }: {
-  label: string; color: ReturnType<typeof Color4.create>;
+  label: string; color?: ReturnType<typeof Color4.create>;
   textColor?: ReturnType<typeof Color4.create>;
-  onPress: () => void; width?: number; height?: number; fontSize?: number
+  onPress: () => void; width?: number; height?: number; fontSize?: number; key?: string | number
 }) {
   const w = width || ('100%' as any)
   const h = height || 36
@@ -194,7 +217,7 @@ function Button({ label, color, textColor, onPress, width, height, fontSize }: {
         alignItems: 'center',
         justifyContent: 'center',
       }}
-      uiBackground={{ color }}
+      uiBackground={{ color: color || C.bgHover }}
       onMouseDown={onPress}
     >
       <Label value={label} fontSize={fontSize || 12} color={textColor || C.text}
@@ -387,6 +410,137 @@ function SceneSetupScreen() {
   )
 }
 
+function SetupOfferScreen() {
+  return (
+    <UiEntity
+      uiTransform={{
+        positionType: 'absolute',
+        position: { right: 12, top: 62 },
+        width: 340,
+        flexDirection: 'column',
+      }}
+      uiBackground={{ color: C.bg }}
+    >
+      <PanelHeader title="Set up VLM here" onClose={() => { state.hudVisible = false }} />
+      <UiEntity uiTransform={{ width: '100%', flexDirection: 'column', padding: 12 }}>
+        <Label
+          value="Manage this scene's screens, streams and events from here, see its visitor analytics, and invite your crew. You'll be the host."
+          fontSize={12} color={C.text} textAlign="top-left"
+          uiTransform={{ width: '100%', height: 64, margin: { bottom: 8 } }}
+        />
+        {state.setupMessage && (
+          <Label value={state.setupMessage} fontSize={11} color={C.warning} textAlign="top-left"
+            uiTransform={{ width: '100%', height: 32, margin: { bottom: 6 } }} />
+        )}
+        <Button
+          label="Set up VLM here"
+          color={C.accent}
+          onPress={() => {
+            // Hide the card so the connecting spinner shows; showSetupOffer() brings it back on failure
+            state.setupOffer = false
+            onSceneAction?.('setup_here')
+          }}
+          width={316}
+          height={40}
+          fontSize={13}
+        />
+      </UiEntity>
+    </UiEntity>
+  )
+}
+
+const roleLabel = (role: string) => (role === 'cohost' ? 'Co-host' : role === 'editor' ? 'Editor' : role === 'viewer' ? 'Viewer' : role)
+const shortWallet = (w: string) => `${w.slice(0, 6)}…${w.slice(-4)}`
+
+function RolesPanel() {
+  const isHost = state.sceneRole === 'host'
+  const assigned = new Set([...state.roles.hostWallets, ...state.roles.roles.map((r) => r.wallet)].map((w) => w.toLowerCase()))
+  const here = nearbyPlayers().filter((p) => !assigned.has(p.address))
+  const add = (wallet: string) => onSceneAction?.('roles_add', { wallet, role: state.roleDraftRole })
+
+  return (
+    <UiEntity uiTransform={{ width: '100%', flexDirection: 'column' }}>
+      <PanelHeader title="Roles" subtitle={state.currentSceneName || undefined}
+        onClose={() => { state.activePanel = null; state.confirmTransfer = null }} />
+      <UiEntity uiTransform={{ width: '100%', flexDirection: 'column', padding: 8 }}>
+        {state.rolesError && (
+          <Label value={state.rolesError} fontSize={10} color={C.danger} textAlign="top-left"
+            uiTransform={{ width: '100%', height: 28 }} />
+        )}
+
+        {state.roles.hostWallets.slice(0, 1).map((w) => (
+          <UiEntity key={w} uiTransform={{ width: '100%', height: 28, flexDirection: 'row', alignItems: 'center', padding: { left: 8 }, margin: { bottom: 2 } }}
+            uiBackground={{ color: C.bgCard }}>
+            <Label value={`${shortWallet(w)} — Host`} fontSize={12} color={C.text} />
+          </UiEntity>
+        ))}
+
+        {state.roles.roles.map((r) => (
+          <UiEntity key={r.wallet}
+            uiTransform={{ width: '100%', height: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: { left: 8, right: 4 }, margin: { bottom: 2 } }}
+            uiBackground={{ color: C.bgCard }}>
+            <Label value={`${r.displayName || shortWallet(r.wallet)} — ${roleLabel(r.role)}`} fontSize={12} color={C.text}
+              textAlign="middle-left" uiTransform={{ width: 170 }} />
+            <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center' }}>
+              {isHost && r.role === 'cohost' && (
+                state.confirmTransfer === r.wallet
+                  ? <Button label="Confirm" color={C.warning} textColor={C.bg}
+                      onPress={() => { state.confirmTransfer = null; onSceneAction?.('roles_transfer', { wallet: r.wallet }) }}
+                      width={70} height={24} fontSize={10} />
+                  : <Button label="Make host" onPress={() => { state.confirmTransfer = r.wallet }} width={70} height={24} fontSize={10} />
+              )}
+              <UiEntity uiTransform={{ width: 4 }} />
+              <Button label="Remove" color={C.danger} onPress={() => onSceneAction?.('roles_remove', { wallet: r.wallet })}
+                width={60} height={24} fontSize={10} />
+            </UiEntity>
+          </UiEntity>
+        ))}
+        {state.confirmTransfer && (
+          <Label value={`Make ${shortWallet(state.confirmTransfer)} the host? You'll become a co-host.`} fontSize={10} color={C.warning}
+            textAlign="top-left" uiTransform={{ width: '100%', height: 22 }} />
+        )}
+
+        <Divider />
+        <Label value="Add as" fontSize={11} color={C.textDim} uiTransform={{ height: 20 }} />
+        <UiEntity uiTransform={{ width: '100%', height: 30, flexDirection: 'row', justifyContent: 'space-between' }}>
+          {(['cohost', 'editor', 'viewer'] as const).map((role) => (
+            <Button key={role} label={roleLabel(role)} color={state.roleDraftRole === role ? C.accent : undefined}
+              onPress={() => { state.roleDraftRole = role }} width={102} height={26} fontSize={11} />
+          ))}
+        </UiEntity>
+
+        <Label value="People here" fontSize={11} color={C.textDim} uiTransform={{ height: 22 }} />
+        {here.length === 0 && <Label value="No one else here right now" fontSize={10} color={C.textMuted} uiTransform={{ height: 20 }} />}
+        {here.slice(0, 6).map((p) => (
+          <UiEntity key={p.address} uiTransform={{ width: '100%', height: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Label value={p.name} fontSize={11} color={C.text} textAlign="middle-left" uiTransform={{ width: 240 }} />
+            <Button label="Add" color={C.accent} onPress={() => add(p.address)} width={60} height={24} fontSize={10} />
+          </UiEntity>
+        ))}
+
+        <Input
+          uiTransform={{ width: '100%', height: 30, margin: { top: 6, bottom: 6 } }}
+          uiBackground={{ color: C.bgCard }}
+          color={C.text}
+          placeholderColor={C.textMuted}
+          placeholder="or paste a wallet address (0x…)"
+          fontSize={11}
+          onChange={(v) => { state.roleDraftWallet = v.trim() }}
+        />
+        <Button
+          label="Add address"
+          color={C.accent}
+          onPress={() => {
+            if (/^0x[0-9a-fA-F]{40}$/.test(state.roleDraftWallet)) add(state.roleDraftWallet.toLowerCase())
+            else state.rolesError = 'That is not a wallet address'
+          }}
+          height={30}
+        />
+      </UiEntity>
+    </UiEntity>
+  )
+}
+
 function ConnectedBanner() {
   if (!state.isNewScene) return null
 
@@ -429,6 +583,8 @@ function NavBar() {
     { type: HUDPanelType.WORLD_STATUS, label: 'Worlds' },
     { type: HUDPanelType.NOTIFICATIONS, label: 'Alerts' },
   ]
+  // Host and co-hosts manage who else can work on this setup
+  const hasRoles = state.sceneRole === 'host' || state.sceneRole === 'cohost'
 
   return (
     <UiEntity
@@ -440,14 +596,19 @@ function NavBar() {
       }}
       uiBackground={{ color: C.bgLight }}
     >
-      {panels.map(p => (
+      {(hasRoles ? [...panels, { type: HUDPanelType.ROLES, label: 'Roles' }] : panels).map(p => (
         <UiEntity
           key={p.type}
-          uiTransform={{ height: 36, padding: { left: 10, right: 10 } }}
+          uiTransform={{ height: 36, padding: { left: hasRoles ? 5 : 10, right: hasRoles ? 5 : 10 } }}
           uiBackground={{ color: state.activePanel === p.type ? C.accent : C.transparent }}
           onMouseDown={() => {
             state.activePanel = state.activePanel === p.type ? null : p.type
-            onPanelAction?.(p.type, 'open')
+            if (p.type === HUDPanelType.ROLES) {
+              state.confirmTransfer = null
+              if (state.activePanel === HUDPanelType.ROLES) onSceneAction?.('roles_refresh')
+            } else {
+              onPanelAction?.(p.type, 'open')
+            }
           }}
         >
           <Label value={p.label} fontSize={11} color={state.activePanel === p.type ? C.text : C.textDim}
@@ -823,6 +984,11 @@ function VLMHUD() {
       <HUDToggleButton />
 
       {state.hudVisible && (() => {
+        // Land owner/operator/deployer, not set up yet: the one-press setup card
+        if (state.setupOffer) {
+          return <SetupOfferScreen />
+        }
+
         // Pre-connection: show setup flow
         if (state.connectionState === 'idle' ||
             state.connectionState === 'authenticating' ||
@@ -870,6 +1036,7 @@ function VLMHUD() {
                 {state.activePanel === HUDPanelType.STREAM_CONTROL && <StreamControlPanel />}
                 {state.activePanel === HUDPanelType.WORLD_STATUS && <WorldStatusPanel />}
                 {state.activePanel === HUDPanelType.NOTIFICATIONS && <NotificationsPanel />}
+                {state.activePanel === HUDPanelType.ROLES && <RolesPanel />}
               </UiEntity>
             )
           }
@@ -951,6 +1118,30 @@ export class DclHUDRenderer implements HUDRenderer {
       error: 'Something went wrong',
     }
     state.statusMessage = messages[connectionState] || ''
+  }
+
+  // --- In-world setup + roles (called by the createVLM flow) ---
+
+  showSetupOffer(message?: string): void {
+    state.setupOffer = true
+    state.setupMessage = message ?? null
+    state.connectionState = 'idle'
+    state.hudVisible = true
+  }
+
+  setSceneRole(role: SceneRole): void {
+    state.sceneRole = role
+    state.setupOffer = false
+    if (role !== 'host') state.confirmTransfer = null
+    if (role !== 'host' && role !== 'cohost' && state.activePanel === HUDPanelType.ROLES) state.activePanel = null
+  }
+
+  setRoles(data: RolesData): void {
+    state.roles = data
+  }
+
+  setRolesError(msg: string | null): void {
+    state.rolesError = msg
   }
 
   setScenes(scenes: Scene[]): void {
