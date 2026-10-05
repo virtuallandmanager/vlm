@@ -10,6 +10,28 @@ import type { VLMInitConfig, VLMStorage } from 'vlm-shared'
 // Setup-status re-checks while Decentraland's directory is unavailable (~2.5 min).
 const OWNER_CHECK_BACKOFF_MS = [10_000, 20_000, 40_000, 80_000]
 
+// Same wording as the dashboard's Roles tab (apps/web SceneRoles.tsx).
+const ROLE_ERRORS: Record<string, string> = {
+  Forbidden: 'Only the host and co-hosts can manage roles.',
+  is_host: 'That wallet is the host.',
+  not_a_signed_in_cohost: 'They need to sign in to VLM with that wallet before they can become host.',
+  host_has_no_wallet: 'Link your wallet in Settings before transferring host.',
+}
+
+/** Map a vlm-client error (`HTTP 409: {"error":"is_host"}`) to text for the Roles panel. */
+function friendlyRoleError(err: unknown): string {
+  const m = /^HTTP \d+: ([\s\S]*)$/.exec(err instanceof Error ? err.message : String(err))
+  if (m) {
+    try {
+      const code = (JSON.parse(m[1]) as { error?: unknown })?.error
+      if (typeof code === 'string' && ROLE_ERRORS[code]) return ROLE_ERRORS[code]
+    } catch {
+      // not JSON
+    }
+  }
+  return 'Something went wrong — try again'
+}
+
 /**
  * Create a VLM instance for Decentraland SDK 7.
  *
@@ -48,6 +70,20 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
     return renderer
   }
 
+  // initHUD runs once per vlm, after the first successful connect (which may be a Retry)
+  // (shared promise, so a Retry racing an in-flight connect can't initialise it twice)
+  let hudInit: Promise<void> | null = null
+  const ensureHUD = async () => {
+    if (!renderer) return
+    if (!hudInit) {
+      hudInit = vlm.initHUD(renderer).catch((err) => {
+        hudInit = null
+        throw err
+      })
+    }
+    await hudInit
+  }
+
   // If sceneId is provided, do the full init in one shot
   if (config?.sceneId) {
     ensureRenderer()
@@ -56,7 +92,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
 
       if (renderer) {
         renderer.setCurrentScene(config.sceneId, 'Scene')
-        await vlm.initHUD(renderer)
+        await ensureHUD()
       }
 
       console.log('[VLM] Connected to scene:', config.sceneId)
@@ -84,6 +120,8 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       try {
         renderer?.updateConnectionState('connecting', { sceneId })
         await vlm.connectToScene(sceneId)
+        // A failed first connect never reached initHUD; do it now so the HUD isn't left dead after Retry
+        await ensureHUD()
       } catch (err) {
         renderer?.updateConnectionState('error', { error: String(err) })
       }
@@ -100,7 +138,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
           renderer?.setRoles({ hostWallets: data.host.wallets, roles: data.roles })
           renderer?.setRolesError(null)
         } catch (err) {
-          renderer?.setRolesError(String(err))
+          renderer?.setRolesError(friendlyRoleError(err))
         }
       }
       setSceneActionHandler(async (action: string, data?: any) => {
@@ -122,7 +160,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
             await refresh()
           }
         } catch (err) {
-          renderer?.setRolesError(String(err))
+          renderer?.setRolesError(friendlyRoleError(err))
         } finally {
           busy = false
         }
@@ -139,7 +177,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       // Installed before connecting so the error screen's Retry works even if this first connect fails
       if (renderer) installConnectedHandler(sceneId, role)
       await vlm.connectToScene(sceneId)
-      if (renderer) await vlm.initHUD(renderer)
+      await ensureHUD()
       console.log('[VLM] Connected to scene as', role, sceneId)
     }
 
