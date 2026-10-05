@@ -22,4 +22,9 @@ export default async function setup() {
     env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
     stdio: 'pipe',
   })
+
+  const { ensureVenueConstraints } = await import('../src/db/venue-constraints.js')
+  const client = postgres(TEST_DATABASE_URL, { max: 1, onnotice: () => {} })
+  await ensureVenueConstraints((q) => client.unsafe(q))
+  await client.end()
 }

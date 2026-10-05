@@ -8,8 +8,12 @@ import {
   timestamp,
   primaryKey,
   pgEnum,
+  customType,
+  index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core'
-import { relations } from 'drizzle-orm'
+import { relations, sql } from 'drizzle-orm'
+import type { VenueRules } from 'vlm-shared'
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 
@@ -221,6 +225,7 @@ export const sceneElements = pgTable('scene_elements', {
   customRendering: boolean('custom_rendering').notNull().default(false),
   clickEvent: jsonb('click_event'),
   properties: jsonb('properties'),
+  clonedFromId: uuid('cloned_from_id'), // set when copied into a booking preset
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
@@ -804,4 +809,118 @@ export const uploadTokensRelations = relations(uploadTokens, ({ one }) => ({
     fields: [uploadTokens.sceneId],
     references: [scenes.id],
   }),
+}))
+
+// ── Venues, Bookings & Access Grants ─────────────────────────────────────────
+
+const tstzrange = customType<{ data: string }>({
+  dataType() {
+    return 'tstzrange'
+  },
+})
+
+export const venueKindEnum = pgEnum('venue_kind', ['permanent', 'popup'])
+export const bookingStatusEnum = pgEnum('booking_status', ['pending', 'confirmed', 'live', 'ended', 'canceled'])
+// Must match VENUE_SCOPES / VENUE_ROLES in vlm-shared (asserted in test/schema-venues.test.ts)
+export const venueScopeEnum = pgEnum('venue_scope', [
+  'screens',
+  'playlist',
+  'lights.cue',
+  'lights.faders',
+  'schedule',
+  'presets',
+  'audio',
+  'moderation',
+  'crew',
+])
+export const venueRoleEnum = pgEnum('venue_role', ['host', 'cohost', 'vj', 'lighting', 'performer', 'door'])
+
+export const venues = pgTable('venues', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sceneId: uuid('scene_id')
+    .notNull()
+    .unique()
+    .references(() => scenes.id, { onDelete: 'cascade' }),
+  orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'set null' }),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  description: text('description'),
+  kind: venueKindEnum('kind').notNull().default('permanent'),
+  defaultPresetId: uuid('default_preset_id')
+    .notNull()
+    .references(() => scenePresets.id),
+  timezone: text('timezone').notNull().default('UTC'),
+  rules: jsonb('rules').$type<VenueRules>().notNull(),
+  rentableElementIds: uuid('rentable_element_ids').array().notNull().default(sql`'{}'::uuid[]`),
+  isListed: boolean('is_listed').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const bookings = pgTable(
+  'bookings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    venueId: uuid('venue_id')
+      .notNull()
+      .references(() => venues.id, { onDelete: 'cascade' }),
+    renterUserId: uuid('renter_user_id').references(() => users.id, { onDelete: 'set null' }),
+    renterWallet: text('renter_wallet'),
+    title: text('title').notNull(),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+    status: bookingStatusEnum('status').notNull().default('pending'),
+    bookingPresetId: uuid('booking_preset_id').references(() => scenePresets.id, { onDelete: 'set null' }),
+    holdExpiresAt: timestamp('hold_expires_at', { withTimezone: true }),
+    paymentRef: jsonb('payment_ref'),
+    blockedRange: tstzrange('blocked_range').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    venueIdx: index('bookings_venue_idx').on(t.venueId),
+    statusIdx: index('bookings_status_idx').on(t.status),
+  }),
+)
+
+export const accessGrants = pgTable(
+  'access_grants',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'cascade' }),
+    sceneId: uuid('scene_id')
+      .notNull()
+      .references(() => scenes.id, { onDelete: 'cascade' }),
+    walletAddress: text('wallet_address'), // lowercased
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    role: venueRoleEnum('role').notNull(),
+    scopes: venueScopeEnum('scopes').array().notNull(),
+    validFrom: timestamp('valid_from', { withTimezone: true }).notNull(),
+    validUntil: timestamp('valid_until', { withTimezone: true }).notNull(),
+    grantedByUserId: uuid('granted_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    bookingWallet: uniqueIndex('access_grants_booking_wallet_uq').on(t.bookingId, t.walletAddress),
+    bookingUser: uniqueIndex('access_grants_booking_user_uq').on(t.bookingId, t.userId),
+    sceneWallet: index('access_grants_scene_wallet_idx').on(t.sceneId, t.walletAddress),
+    sceneUser: index('access_grants_scene_user_idx').on(t.sceneId, t.userId),
+  }),
+)
+
+export const venuesRelations = relations(venues, ({ one, many }) => ({
+  scene: one(scenes, { fields: [venues.sceneId], references: [scenes.id] }),
+  bookings: many(bookings),
+}))
+
+export const bookingsRelations = relations(bookings, ({ one, many }) => ({
+  venue: one(venues, { fields: [bookings.venueId], references: [venues.id] }),
+  grants: many(accessGrants),
+}))
+
+export const accessGrantsRelations = relations(accessGrants, ({ one }) => ({
+  booking: one(bookings, { fields: [accessGrants.bookingId], references: [bookings.id] }),
 }))

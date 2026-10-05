@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { db } from './connection.js'
+import { ensureVenueConstraints } from './venue-constraints.js'
 
 /**
  * Auto-create tables using Drizzle schema push.
@@ -10,6 +11,9 @@ export async function runMigrations() {
   // Test the database connection
   await db.execute(sql`SELECT 1`)
   console.log('[vlm-server] Database connection verified')
+
+  await ensureVenueConstraints((q) => db.execute(sql.raw(q)))
+  console.log('[vlm-server] Venue constraints ensured')
 
   // In production, tables should be created via `drizzle-kit push` during deploy.
   // The server verifies connectivity here but doesn't auto-create tables
