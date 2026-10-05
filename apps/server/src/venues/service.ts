@@ -50,6 +50,14 @@ export function computeBlockedRange(startsAt: Date, endsAt: Date, bufferMinutes:
   return `[${new Date(startsAt.getTime() - buf).toISOString()},${new Date(endsAt.getTime() + buf).toISOString()})`
 }
 
+function assertValidRules(r: VenueRules) {
+  for (const k of ['minHours', 'maxHours', 'setupLeadMinutes', 'graceMinutes', 'bufferMinutes'] as const) {
+    const v = (r as any)[k]
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) throw new VenueError(400, `rules.${k} must be a number >= 0`)
+  }
+  if (r.minHours > r.maxHours) throw new VenueError(400, 'rules.minHours must not exceed rules.maxHours')
+}
+
 // ── Venues ───────────────────────────────────────────────────────────────
 
 export interface CreateVenueInput {
@@ -78,6 +86,8 @@ export async function createVenue(input: CreateVenueInput) {
   const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, input.sceneId) })
   if (!scene) throw new VenueError(404, 'Scene not found')
   if (!scene.activePresetId) throw new VenueError(400, 'Scene has no active preset to use as the venue default')
+  const rules = { ...DEFAULT_VENUE_RULES, ...input.rules }
+  assertValidRules(rules)
   const rentable = input.rentableElementIds ?? []
   await assertRentableInPreset(scene.activePresetId, rentable)
   try {
@@ -92,7 +102,7 @@ export async function createVenue(input: CreateVenueInput) {
         kind: input.kind ?? 'permanent',
         defaultPresetId: scene.activePresetId,
         timezone: input.timezone ?? 'UTC',
-        rules: { ...DEFAULT_VENUE_RULES, ...input.rules },
+        rules,
         rentableElementIds: rentable,
         isListed: input.isListed ?? false,
       })
@@ -110,6 +120,7 @@ export async function updateVenue(
 ) {
   const venue = await db.query.venues.findFirst({ where: eq(venues.id, id) })
   if (!venue) throw new VenueError(404, 'Venue not found')
+  if (patch.rules !== undefined) assertValidRules({ ...venue.rules, ...patch.rules })
   if (patch.rentableElementIds) await assertRentableInPreset(venue.defaultPresetId, patch.rentableElementIds)
   const [updated] = await db
     .update(venues)

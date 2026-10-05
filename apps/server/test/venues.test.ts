@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { sceneElements, accessGrants, scenes } from '../src/db/schema.js'
+import { sceneElementInstances, sceneElements, accessGrants, scenes } from '../src/db/schema.js'
 import { getSceneAccess } from '../src/auth/permissions.js'
 import { actorFromClaims } from '../src/auth/actor.js'
 import { resetDb } from './helpers/db.js'
@@ -209,7 +209,8 @@ describe('/api/venues', () => {
     const cohost = await createUser({ wallet: cohostWallet })
     const vj = await createUser({ wallet: vjWallet })
     for (const [w, role] of [[cohostWallet, 'cohost'], [vjWallet, 'vj']] as const) {
-      await app.inject({ method: 'POST', url: `/api/venues/bookings/${booking.id}/grants`, headers: as(host), payload: { walletAddress: w, role } })
+      const r = await app.inject({ method: 'POST', url: `/api/venues/bookings/${booking.id}/grants`, headers: as(host), payload: { walletAddress: w, role } })
+      expect(r.statusCode).toBe(201)
     }
     expect((await app.inject({ method: 'DELETE', url: `/api/venues/grants/${hostGrant.id}`, headers: as(cohost) })).statusCode).toBe(403)
     expect(
@@ -250,5 +251,81 @@ describe('/api/venues', () => {
     const res = await app.inject({ method: 'GET', url: '/api/venues/bookings/mine', headers: as(host) })
     expect(res.json().bookings.map((b: any) => b.id)).toEqual([booking.id])
     expect(res.json().bookings[0].role).toBe('host')
+  })
+
+  it('cohost can revoke a vj grant', async () => {
+    const s = await venueSetup()
+    const hostWallet = randomWallet()
+    const host = await createUser({ wallet: hostWallet })
+    const { booking } = (await book(s, hostWallet)).json()
+    const cohostWallet = randomWallet()
+    const cohost = await createUser({ wallet: cohostWallet })
+    const url = `/api/venues/bookings/${booking.id}/grants`
+    expect((await app.inject({ method: 'POST', url, headers: as(host), payload: { walletAddress: cohostWallet, role: 'cohost' } })).statusCode).toBe(201)
+    const vj = (await app.inject({ method: 'POST', url, headers: as(host), payload: { walletAddress: randomWallet(), role: 'vj' } })).json().grant
+    expect((await app.inject({ method: 'DELETE', url: `/api/venues/grants/${vj.id}`, headers: as(cohost) })).statusCode).toBe(204)
+  })
+
+  it('crew of booking A cannot manage booking B at the same venue', async () => {
+    const s = await venueSetup()
+    const hostWallet = randomWallet()
+    const host = await createUser({ wallet: hostWallet })
+    const a = (await book(s, hostWallet)).json().booking
+    const b = (await book(s, randomWallet(), 72 * H)).json().booking
+    const cohostWallet = randomWallet()
+    const cohost = await createUser({ wallet: cohostWallet })
+    expect((await app.inject({ method: 'POST', url: `/api/venues/bookings/${a.id}/grants`, headers: as(host), payload: { walletAddress: cohostWallet, role: 'cohost' } })).statusCode).toBe(201)
+    expect((await app.inject({ method: 'GET', url: `/api/venues/bookings/${b.id}/grants`, headers: as(cohost) })).statusCode).toBe(403)
+    expect((await app.inject({ method: 'POST', url: `/api/venues/bookings/${b.id}/grants`, headers: as(cohost), payload: { walletAddress: randomWallet(), role: 'vj' } })).statusCode).toBe(403)
+  })
+
+  it('a host with two bookings can add crew to the later one', async () => {
+    const s = await venueSetup()
+    const hostWallet = randomWallet()
+    const host = await createUser({ wallet: hostWallet })
+    await book(s, hostWallet)
+    const later = (await book(s, hostWallet, 72 * H)).json().booking
+    const res = await app.inject({ method: 'POST', url: `/api/venues/bookings/${later.id}/grants`, headers: as(host), payload: { walletAddress: randomWallet(), role: 'vj' } })
+    expect(res.statusCode).toBe(201)
+  })
+
+  it('rejects bad venue rules on create and patch', async () => {
+    const s = await venueSetup()
+    const other = await createScene(s.admin, 'Other')
+    for (const rules of [{ bufferMinutes: 'x' }, { minHours: 5, maxHours: 2 }, { graceMinutes: -1 }]) {
+      const c = await app.inject({ method: 'POST', url: '/api/venues', headers: as(s.admin), payload: { sceneId: other.scene.id, name: 'R', slug: 'r', rules } })
+      expect(c.statusCode).toBe(400)
+      const p = await app.inject({ method: 'PATCH', url: `/api/venues/${s.venue.id}`, headers: as(s.admin), payload: { rules } })
+      expect(p.statusCode).toBe(400)
+    }
+  })
+
+  it('an unverified admin token cannot create bookings', async () => {
+    const s = await venueSetup()
+    const startsAt = new Date(Date.now() + 24 * H)
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/venues/${s.venue.id}/bookings`,
+      headers: { authorization: `Bearer ${tokenFor(s.admin, { verified: false })}` },
+      payload: { renterWallet: randomWallet(), title: 'x', startsAt: startsAt.toISOString(), endsAt: new Date(startsAt.getTime() + 2 * H).toISOString() },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('preset clone remaps parentInstanceId to the cloned parent', async () => {
+    const s = await venueSetup()
+    const parent = await createInstance(s.wall.id)
+    const child = await createInstance(s.screen.id)
+    await db.update(sceneElementInstances).set({ parentInstanceId: parent.id }).where(eq(sceneElementInstances.id, child.id))
+    const { booking } = (await book(s, randomWallet())).json()
+    const clones = await db.query.sceneElements.findMany({ where: eq(sceneElements.presetId, booking.bookingPresetId), with: { instances: true } })
+    const insts = clones.flatMap((c) => c.instances)
+    const cloneChildEl = clones.find((c) => c.clonedFromId === s.screen.id)!
+    const cloneParentEl = clones.find((c) => c.clonedFromId === s.wall.id)!
+    const cloneParent = cloneParentEl.instances[0]
+    const withParent = cloneChildEl.instances.filter((i) => i.parentInstanceId)
+    expect(withParent).toHaveLength(1)
+    expect(withParent[0].parentInstanceId).toBe(cloneParent.id)
+    expect(insts.some((i) => i.id === parent.id || i.id === child.id)).toBe(false)
   })
 })

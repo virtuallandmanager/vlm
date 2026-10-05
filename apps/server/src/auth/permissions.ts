@@ -126,6 +126,30 @@ export async function getSceneAccess(actor: Actor, sceneId: string, at = new Dat
   return NONE
 }
 
+/** The actor's active grant for one specific booking, or null. */
+export async function getBookingGrant(actor: Actor, bookingId: string, at = new Date()) {
+  if (!actor.userId || !actor.verified) return null
+  const subject = actor.wallet
+    ? or(eq(accessGrants.userId, actor.userId), eq(accessGrants.walletAddress, actor.wallet))
+    : eq(accessGrants.userId, actor.userId)
+  const [row] = await db
+    .select({ grant: accessGrants })
+    .from(accessGrants)
+    .innerJoin(bookings, eq(accessGrants.bookingId, bookings.id))
+    .where(
+      and(
+        eq(accessGrants.bookingId, bookingId),
+        isNull(accessGrants.revokedAt),
+        lte(accessGrants.validFrom, at),
+        gt(accessGrants.validUntil, at),
+        inArray(bookings.status, ['confirmed', 'live']),
+        subject,
+      ),
+    )
+    .limit(1)
+  return row?.grant ?? null
+}
+
 export async function can(actor: Actor, sceneId: string, scope: SceneScope, at = new Date()) {
   const access = await getSceneAccess(actor, sceneId, at)
   if (!access.scopes.has(scope)) return { ok: false, target: null } as const

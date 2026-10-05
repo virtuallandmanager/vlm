@@ -4,7 +4,7 @@ import { db } from '../db/connection.js'
 import { scenes, venues } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
-import { getSceneAccess, hasScope, isFullAccess } from '../auth/permissions.js'
+import { getBookingGrant, getSceneAccess, isFullAccess } from '../auth/permissions.js'
 import {
   type CreateVenueInput,
   VenueError,
@@ -37,15 +37,15 @@ export default async function venueRoutes(app: FastifyInstance) {
     return isFullAccess(access)
   }
 
-  /** Crew management: needs `crew`; grant holders only for their own booking; non-hosts can't touch the host grant. */
+  /** Crew management: admins/owners always; grant holders only via a `crew` grant on this very booking. */
   async function crewAccess(request: { user: any }, bookingId: string, targetRole?: string) {
     const booking = await getBookingWithVenue(bookingId)
-    const access = await getSceneAccess(actorOf(request), booking.venue.sceneId)
-    if (!hasScope(access, 'crew')) throw new VenueError(403, 'You cannot manage crew for this booking')
-    if (access.level === 'grant') {
-      if (access.booking!.bookingId !== bookingId) throw new VenueError(403, 'You cannot manage crew for this booking')
-      if (targetRole === 'host' && access.booking!.role !== 'host') throw new VenueError(403, 'Only the host can change the host')
-    }
+    const actor = actorOf(request)
+    const access = await getSceneAccess(actor, booking.venue.sceneId)
+    if (isFullAccess(access)) return booking
+    const grant = await getBookingGrant(actor, bookingId)
+    if (!grant || !grant.scopes.includes('crew')) throw new VenueError(403, 'You cannot manage crew for this booking')
+    if (targetRole === 'host' && grant.role !== 'host') throw new VenueError(403, 'Only the host can change the host')
     return booking
   }
 
@@ -88,7 +88,8 @@ export default async function venueRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { venueId: string }; Body: Record<string, any> }>('/api/venues/:venueId/bookings', async (request, reply) => {
     // Admin-only until self-serve booking + payments (sub-project 5).
-    if (request.user.role !== 'admin') return reply.status(403).send({ error: 'Only admins can create bookings right now' })
+    const actor = actorOf(request)
+    if (!(actor.role === 'admin' && actor.verified)) return reply.status(403).send({ error: 'Only admins can create bookings right now' })
     try {
       const result = await createBooking({ ...(request.body as any), venueId: request.params.venueId, createdByUserId: request.user.id })
       return reply.status(201).send(result)
@@ -98,7 +99,8 @@ export default async function venueRoutes(app: FastifyInstance) {
   })
 
   app.post<{ Params: { bookingId: string } }>('/api/venues/bookings/:bookingId/cancel', async (request, reply) => {
-    if (request.user.role !== 'admin') return reply.status(403).send({ error: 'Forbidden' })
+    const actor = actorOf(request)
+    if (!(actor.role === 'admin' && actor.verified)) return reply.status(403).send({ error: 'Forbidden' })
     try {
       return reply.send({ booking: await cancelBooking(request.params.bookingId) })
     } catch (err) {
