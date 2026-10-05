@@ -2,6 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { count } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import { users, userAuthMethods } from '../src/db/schema.js'
+import { setSignedClaimLimiter } from '../src/routes/analytics-claims.js'
+import { TokenBucketLimiter } from '../src/analytics/limiter.js'
+import { createUser } from './helpers/factories.js'
 import { setDclDirectory } from '../src/analytics/dcl-directory.js'
 import { resetDb } from './helpers/db.js'
 import { testApp } from './helpers/factories.js'
@@ -31,6 +34,7 @@ describe('POST /api/analytics/claims/check-signed', () => {
     app = await testApp()
     dir = new FakeDclDirectory()
     setDclDirectory(dir)
+    setSignedClaimLimiter(new TokenBucketLimiter())
   })
   afterEach(async () => {
     setDclDirectory(null)
@@ -67,5 +71,27 @@ describe('POST /api/analytics/claims/check-signed', () => {
     await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'] })
     dir.rights.set('1,1', rights({ owner: '0x00000000000000000000000000000000000000bb' }))
     expect((await post('gc:1,1', signed())).json()).toEqual({ eligible: false, known: true })
+  })
+
+  it('an active claim is eligible for the claimer\'s verified wallet only, and creates no rows', async () => {
+    const u = await createUser()
+    await db.insert(userAuthMethods).values({ userId: u.id, type: 'wallet', identifier: W, metadata: { verified: true } } as any)
+    await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'], claimedByUserId: u.id, claimStatus: 'active' })
+    const other = '0x00000000000000000000000000000000000000bb'
+    dir.rights.set('1,1', rights({ owner: other }))
+    const before = await counts()
+    expect((await post('gc:1,1', signed())).json()).toEqual({ eligible: true, known: true })
+    expect((await post('gc:1,1', signed(other))).json()).toEqual({ eligible: false, known: true })
+    expect(await counts()).toEqual(before)
+  })
+
+  it('a burst from one IP with different wallets gets 429', async () => {
+    const codes: number[] = []
+    for (let i = 0; i < 6; i++) {
+      const w = '0x' + (i + 1).toString(16).padStart(40, '0')
+      codes.push((await post('gc:9,9', signed(w))).statusCode)
+    }
+    expect(codes).toContain(429)
+    expect(codes[0]).toBe(200)
   })
 })

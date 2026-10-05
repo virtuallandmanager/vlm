@@ -12,7 +12,12 @@ import { ClaimError, controls, claimScene, controlsAny, verifiedWalletsOf } from
 const MAX_DIRECTORY_CALLS = 100
 class BudgetExhausted extends Error {}
 
-const signedLimiter = new TokenBucketLimiter()
+let signedLimiter = new TokenBucketLimiter()
+
+/** Test hook. */
+export function setSignedClaimLimiter(l: TokenBucketLimiter): void {
+  signedLimiter = l
+}
 
 /** Unauthenticated-by-JWT eligibility probe for the in-world SDK. Never creates users, auth methods or sessions. */
 export async function analyticsClaimSignedRoutes(app: FastifyInstance) {
@@ -20,6 +25,8 @@ export async function analyticsClaimSignedRoutes(app: FastifyInstance) {
     const no = { eligible: false, known: false }
     const key = request.body?.locationKey
     const headers = request.headers as Record<string, string | string[] | undefined>
+    const ipLimit = checkRequesterLimits(signedLimiter, { requesterKey: `ip:${request.ip}`, verified: false, eventCount: 1 })
+    if (!ipLimit.ok) return reply.status(429).send({ error: 'rate_limited', retryAfter: Math.ceil(ipLimit.retryAfterMs / 1000) })
     if (typeof key !== 'string' || !key || !hasDclAuthHeaders(headers)) return reply.send(no)
     let wallet: string
     try {
@@ -31,7 +38,10 @@ export async function analyticsClaimSignedRoutes(app: FastifyInstance) {
     if (!limit.ok) return reply.status(429).send({ error: 'rate_limited', retryAfter: Math.ceil(limit.retryAfterMs / 1000) })
     const scene = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, key) })
     if (!scene) return reply.send(no)
-    if (scene.claimStatus === 'active') return reply.send({ eligible: false, known: true })
+    if (scene.claimStatus === 'active') {
+      const claimer = scene.claimedByUserId ? await verifiedWalletsOf(scene.claimedByUserId) : []
+      return reply.send({ eligible: claimer.includes(wallet), known: true })
+    }
     try {
       return reply.send({ eligible: await controls(scene, wallet), known: true })
     } catch (err) {
