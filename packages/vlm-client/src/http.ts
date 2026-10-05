@@ -104,6 +104,10 @@ export class VLMHttpClient {
   }
 
   // Scenes
+  async checkAnalyticsClaim(locationKey: string): Promise<{ eligible: boolean; claimed: boolean; mine: boolean }> {
+    return this._fetch(`/api/analytics/claims/check?locationKey=${encodeURIComponent(locationKey)}`)
+  }
+
   async getScenes(): Promise<{ scenes: Scene[] }> {
     return this._fetch('/api/scenes')
   }

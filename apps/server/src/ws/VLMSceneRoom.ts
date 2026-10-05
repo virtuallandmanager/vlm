@@ -153,31 +153,10 @@ export class VLMSceneRoom extends Room {
       this.broadcast('scene_sound_locator', message, { except: client })
     })
 
-    // ── Session & Analytics ───────────────────────────────────────────────
-    this.onMessage('session_start', (client, message) => {
-      console.log(`[VLMSceneRoom] session_start from ${client.sessionId}`)
-      // Acknowledge with session data
-      client.send('session_started', {
-        session: message,
-        user: this.getClientMeta(client),
-      })
-    })
-
-    this.onMessage('session_action', (client, message) => {
-      // Broadcast action to host clients (dashboard) for live analytics
-      const meta = this.getClientMeta(client)
-      this.broadcastToHosts('add_session_action', {
-        action: message.action,
-        metadata: message.metadata,
-        pathPoint: message.pathPoint,
-        displayName: meta?.displayName || 'Unknown',
-        timestamp: Date.now(),
-      })
-    })
-
-    this.onMessage('session_end', (client, _message) => {
-      console.log(`[VLMSceneRoom] session_end from ${client.sessionId}`)
-    })
+    // ── Legacy analytics (retired; analytics now go to POST /api/ingest) ──
+    for (const type of ['session_start', 'session_action', 'session_end']) {
+      this.onMessage(type, () => this.deprecatedAnalytics(type))
+    }
 
     // ── User Messaging ────────────────────────────────────────────────────
     this.onMessage('user_message', (client, message) => {
@@ -205,20 +184,9 @@ export class VLMSceneRoom extends Room {
       })
     })
 
-    // ── Player Position ───────────────────────────────────────────────────
-    this.onMessage('request_player_position', (client, _message) => {
-      this.broadcast('request_player_position', {}, { except: client })
-    })
-
-    this.onMessage('send_player_position', (client, message) => {
-      this.broadcastToHosts('send_player_position', message)
-    })
-
-    // ── Path Tracking ─────────────────────────────────────────────────────
-    this.onMessage('path_segments_add', (client, message) => {
-      // TODO: persist path segments to analytics_paths table
-      client.send('path_segments_added', { added: message.pathSegments?.length || 0 })
-    })
+    for (const type of ['request_player_position', 'send_player_position', 'path_segments_add']) {
+      this.onMessage(type, () => this.deprecatedAnalytics(type))
+    }
 
     // ── Moderator Actions ─────────────────────────────────────────────────
     this.guarded('scene_moderator_message', (client, message) => {
@@ -231,7 +199,10 @@ export class VLMSceneRoom extends Room {
   }
 
   async onJoin(client: Client, options: JoinOptions) {
-    const clientType = options.clientType || 'analytics'
+    const requested = options.clientType || 'analytics'
+    const access = await this.getAccess(client)
+    const canHost = ['admin', 'owner', 'org', 'editor'].includes(access.level)
+    const clientType = requested === 'host' && canHost ? 'host' : 'analytics'
     const actor = client.auth as Actor
     const userId = actor.userId || client.sessionId
     const displayName = options.user?.displayName || 'Guest'
@@ -356,13 +327,11 @@ export class VLMSceneRoom extends Room {
     return this.clientMeta.get(client.sessionId)
   }
 
-  private broadcastToHosts(type: string, message: unknown) {
-    for (const client of this.clients) {
-      const meta = this.clientMeta.get(client.sessionId)
-      if (meta?.clientType === 'host') {
-        client.send(type, message)
-      }
-    }
+  private warnedDeprecated = new Set<string>()
+  private deprecatedAnalytics(type: string) {
+    if (this.warnedDeprecated.has(type)) return
+    this.warnedDeprecated.add(type)
+    console.warn(`[VLMSceneRoom] '${type}' is deprecated — analytics now go to POST /api/ingest (scene ${this.sceneId})`)
   }
 
   private async sendInitData(client: Client) {

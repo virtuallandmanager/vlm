@@ -3,6 +3,17 @@ title: Decentraland Setup
 description: Install and configure VLM in a Decentraland SDK 7 scene
 ---
 
+## Analytics only (one line)
+
+```ts
+import { startVLMAnalytics } from 'vlm-adapter-dcl/analytics'
+startVLMAnalytics()
+```
+
+This starts collecting visits, movement, interactions, video and emote analytics. No VLM account is needed. When you're ready, sign in to the dashboard with the wallet that owns the LAND or World and **claim** the scene to see its data. `createVLM()` also starts analytics by default (`createVLM({ analytics: false })` turns it off). Visitors never see VLM setup screens: only the LAND or World owner does.
+
+Track your own events with `vlm.track('bought_ticket', { tier: 'vip' })`.
+
 ## Installation
 
 ```bash
@@ -69,8 +80,8 @@ vlm.sendMessage('game-event', { score: 100 })
 vlm.onMessage('game-event', (data) => console.log(data))
 
 // Persistent state
-vlm.setState('high-score', 9999)
-const score = await vlm.getState('high-score')
+vlm.setUserState('high-score', 9999)
+const score = await vlm.getUserState('high-score')
 
 // Analytics
 vlm.recordAction('level-complete', { level: 3 })

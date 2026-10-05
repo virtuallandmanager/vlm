@@ -40,6 +40,7 @@ function liveScope(access: SceneAccess, scope: SceneScope): GuardResult {
   return OK_BROADCAST
 }
 
+// Deprecated analytics messages (session_*, *_player_position, path_segments_add) stay open: the room ignores them.
 const OPEN = new Set([
   'scene_sound_locator', 'session_start', 'session_action', 'session_end', 'user_message', 'get_user_state',
   'set_user_state', 'giveaway_claim', 'request_player_position', 'send_player_position', 'path_segments_add',

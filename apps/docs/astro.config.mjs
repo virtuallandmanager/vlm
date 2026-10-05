@@ -34,6 +34,7 @@ export default defineConfig({
           label: 'Self-Hosting',
           autogenerate: { directory: 'self-hosting' },
         },
+        { label: 'Privacy', link: '/privacy/' },
       ],
     }),
   ],
