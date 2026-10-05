@@ -1,5 +1,6 @@
 import { VLM, resolveApiUrl } from 'vlm-core'
 import { VLMHttpClient } from 'vlm-client'
+import type { SetupStatus } from 'vlm-client'
 import type { VLMConnectionState } from 'vlm-core'
 import { DclAdapter } from './DclAdapter'
 import { startVLMAnalytics, getAnalyticsSceneRef } from './analytics.js'
@@ -70,6 +71,8 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
 
   // No sceneId: ask the server what this wallet gets here (nothing / Set up / member of the setup).
   // Visitors, role-less wallets and wallets that can't set up here never get any VLM UI.
+  // createVLM never blocks the creator's scene code: it resolves right after the first status probe,
+  // and connecting, setup and directory retries all continue in the background.
   type SceneRole = 'host' | 'cohost' | 'editor' | 'viewer'
   try {
     const sceneRef = await getAnalyticsSceneRef()
@@ -77,9 +80,20 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
     if (user.isGuest) return vlm
     const probe = new VLMHttpClient(resolveApiUrl(config ?? {}))
 
-    const installRolesHandler = (sceneId: string, role: SceneRole) => {
-      if (role !== 'host' && role !== 'cohost') return
+    const reconnect = async (sceneId: string) => {
+      try {
+        renderer?.updateConnectionState('connecting', { sceneId })
+        await vlm.connectToScene(sceneId)
+      } catch (err) {
+        renderer?.updateConnectionState('error', { error: String(err) })
+      }
+    }
+
+    // Scene actions once connected: 'retry' for everyone; roles management for host and co-hosts
+    const installConnectedHandler = (sceneId: string, role: SceneRole) => {
+      const managesRoles = role === 'host' || role === 'cohost'
       let currentRole: SceneRole = role
+      let busy = false
       const refresh = async () => {
         try {
           const data = await vlm.httpClient.getSceneRoles(sceneId)
@@ -90,9 +104,16 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         }
       }
       setSceneActionHandler(async (action: string, data?: any) => {
+        if (action === 'retry') return reconnect(sceneId)
+        if (!managesRoles || !action.startsWith('roles_') || busy) return
+        busy = true
         try {
           if (action === 'roles_refresh') await refresh()
-          if (action === 'roles_add') { await vlm.httpClient.addSceneRole(sceneId, data.wallet, data.role); await refresh() }
+          if (action === 'roles_add') {
+            await vlm.httpClient.addSceneRole(sceneId, data.wallet, data.role)
+            renderer?.clearRoleDraft()
+            await refresh()
+          }
           if (action === 'roles_remove') { await vlm.httpClient.removeSceneRole(sceneId, data.wallet); await refresh() }
           if (action === 'roles_transfer' && currentRole === 'host') {
             await vlm.httpClient.transferHost(sceneId, data.wallet)
@@ -102,46 +123,41 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
           }
         } catch (err) {
           renderer?.setRolesError(String(err))
+        } finally {
+          busy = false
         }
       })
-      void refresh()
+      if (managesRoles) void refresh()
     }
 
-    const connectAs = async (sceneId: string, role: SceneRole): Promise<VLM> => {
+    const connectAs = async (sceneId: string, role: SceneRole): Promise<void> => {
       await vlm.authenticate({ env: 'prod', ...config })
       ensureRenderer()
       renderer?.setSceneRole(role)
       renderer?.updateConnectionState('connecting', { sceneId })
       renderer?.setCurrentScene(sceneId, sceneRef.title || 'Scene')
+      // Installed before connecting so the error screen's Retry works even if this first connect fails
+      if (renderer) installConnectedHandler(sceneId, role)
       await vlm.connectToScene(sceneId)
-      if (renderer) {
-        await vlm.initHUD(renderer)
-        installRolesHandler(sceneId, role)
-      }
+      if (renderer) await vlm.initHUD(renderer)
       console.log('[VLM] Connected to scene as', role, sceneId)
-      return vlm
     }
 
-    let status = await probe.getSetupStatus(sceneRef, adapter)
-    for (const delay of OWNER_CHECK_BACKOFF_MS) {
-      if (status.state !== 'unavailable') break
-      await new Promise((r) => setTimeout(r, delay))
-      status = await probe.getSetupStatus(sceneRef, adapter)
-    }
-    if (status.state === 'member') return await connectAs(status.sceneId, status.role)
-    if (status.state !== 'eligible') {
-      console.log("[VLM] Analytics running; VLM setup is only offered to this land's owners, operators and deployer")
-      return vlm
+    const connectInBackground = (sceneId: string, role: SceneRole) => {
+      void connectAs(sceneId, role).catch((err) => {
+        if (renderer) renderer.updateConnectionState('error', { error: String(err) })
+        else console.log('[VLM] Setup unavailable:', String(err))
+      })
     }
 
-    ensureRenderer()
-    if (!renderer) return vlm
-    renderer.showSetupOffer()
-    return await new Promise<VLM>((resolve) => {
+    const offerSetup = () => {
+      ensureRenderer()
+      if (!renderer) return
+      renderer.showSetupOffer()
       let busy = false
       // Set once the server has created the setup, so a failed connect retries the connect, not the setup
       let createdSceneId: string | null = null
-      setSceneActionHandler(async (action: string) => {
+      const onSetupAction = async (action: string) => {
         if (action !== 'setup_here' || busy) return
         busy = true
         try {
@@ -159,35 +175,46 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
             }
             createdSceneId = res.sceneId
           }
-          resolve(await connectAs(createdSceneId, 'host'))
+          await connectAs(createdSceneId, 'host')
         } catch (err) {
-          renderer?.showSetupOffer(`VLM is set up, but connecting failed (${String(err)}) — press again to retry`)
+          // connectAs may already have swapped in the connected handler; the card needs setup_here back
+          setSceneActionHandler(onSetupAction)
+          renderer?.showSetupOffer(
+            createdSceneId
+              ? `VLM is set up, but connecting failed (${String(err)}) — press again to retry`
+              : 'Setup failed — try again',
+          )
         } finally {
           busy = false
         }
-      })
-    })
-  } catch (err) {
-    if (renderer) {
-      renderer.updateConnectionState('error', { error: String(err) })
-    } else {
-      console.log('[VLM] Setup unavailable:', String(err))
-      return vlm
+      }
+      setSceneActionHandler(onSetupAction)
     }
 
-    // Set up retry handler
-    return new Promise<VLM>((resolve, reject) => {
-      setSceneActionHandler(async (action: string) => {
-        if (action === 'retry') {
-          try {
-            const retried = await createVLM(config)
-            resolve(retried)
-          } catch (retryErr) {
-            reject(retryErr)
-          }
+    // Act on a status answer; true when it was final (no directory retry needed)
+    const act = (status: SetupStatus): boolean => {
+      if (status.state === 'member') connectInBackground(status.sceneId, status.role)
+      else if (status.state === 'eligible') offerSetup()
+      else if (status.state === 'unavailable') return false
+      else if (status.state === 'taken') console.log(`[VLM] Analytics running; VLM here is already set up by ${status.host}`)
+      else console.log("[VLM] Analytics running; VLM setup is only offered to this land's owners, operators and deployer")
+      return true
+    }
+
+    if (!act(await probe.getSetupStatus(sceneRef, adapter))) {
+      console.log("[VLM] Analytics running; Decentraland's servers aren't answering, will re-check VLM setup in the background")
+      void (async () => {
+        for (const delay of OWNER_CHECK_BACKOFF_MS) {
+          await new Promise((r) => setTimeout(r, delay))
+          if (act(await probe.getSetupStatus(sceneRef, adapter))) return
         }
-      })
-    })
+        console.log('[VLM] VLM setup check gave up; Decentraland is still unavailable')
+      })().catch((err) => console.log('[VLM] Setup unavailable:', String(err)))
+    }
+    return vlm
+  } catch (err) {
+    console.log('[VLM] Setup unavailable:', String(err))
+    return vlm
   }
 }
 

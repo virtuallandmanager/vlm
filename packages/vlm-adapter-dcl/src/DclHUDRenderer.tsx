@@ -525,13 +525,15 @@ function RolesPanel() {
           placeholderColor={C.textMuted}
           placeholder="or paste a wallet address (0x…)"
           fontSize={11}
-          onChange={(v) => { state.roleDraftWallet = v.trim() }}
+          value={state.roleDraftWallet}
+          onChange={(v) => { state.roleDraftWallet = v }}
         />
         <Button
           label="Add address"
           color={C.accent}
           onPress={() => {
-            if (/^0x[0-9a-fA-F]{40}$/.test(state.roleDraftWallet)) add(state.roleDraftWallet.toLowerCase())
+            const wallet = state.roleDraftWallet.trim()
+            if (/^0x[0-9a-fA-F]{40}$/.test(wallet)) add(wallet.toLowerCase())
             else state.rolesError = 'That is not a wallet address'
           }}
           height={30}
@@ -1142,6 +1144,11 @@ export class DclHUDRenderer implements HUDRenderer {
 
   setRolesError(msg: string | null): void {
     state.rolesError = msg
+  }
+
+  /** Empty the paste-an-address field after a successful add. */
+  clearRoleDraft(): void {
+    state.roleDraftWallet = ''
   }
 
   setScenes(scenes: Scene[]): void {
