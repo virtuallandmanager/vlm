@@ -1,6 +1,21 @@
-import type { Scene, AuthProof, VLMPlatformAdapter } from 'vlm-shared'
+import type { Scene, AuthProof, VLMPlatformAdapter, AnalyticsSceneRef } from 'vlm-shared'
 import type { AuthResponse, MediaAsset } from './types.js'
 import { VLMAuth } from './auth.js'
+
+export type SetupStatus =
+  | { state: 'eligible' }
+  | { state: 'member'; sceneId: string; role: 'host' | 'cohost' | 'editor' | 'viewer' }
+  | { state: 'taken'; host: string }
+  | { state: 'none' }
+  | { state: 'unavailable' }
+
+export interface SceneRoleEntry {
+  wallet: string
+  role: 'cohost' | 'editor' | 'viewer'
+  userId: string | null
+  displayName?: string | null
+  createdAt?: string
+}
 
 export class VLMHttpClient {
   private baseUrl: string
@@ -23,6 +38,7 @@ export class VLMHttpClient {
       const body = await res.text()
       throw new Error(`HTTP ${res.status}: ${body}`)
     }
+    if (res.status === 204) return undefined as T
     return res.json() as Promise<T>
   }
 
@@ -104,10 +120,6 @@ export class VLMHttpClient {
   }
 
   // Scenes
-  async checkAnalyticsClaim(locationKey: string): Promise<{ eligible: boolean; claimed: boolean; mine: boolean }> {
-    return this._fetch(`/api/analytics/claims/check?locationKey=${encodeURIComponent(locationKey)}`)
-  }
-
   /**
    * Ask whether the signed-in wallet may set up this location, without creating an account.
    * Any failure counts as "not eligible, not known".
@@ -131,6 +143,47 @@ export class VLMHttpClient {
     } catch {
       return { eligible: false, known: false }
     }
+  }
+
+  /** What the in-world HUD should offer this signed-in wallet at this location. Failures count as "none". */
+  async getSetupStatus(scene: AnalyticsSceneRef, adapter: VLMPlatformAdapter): Promise<SetupStatus> {
+    if (!adapter.signedRequest) return { state: 'none' }
+    try {
+      const res = await adapter.signedRequest(`${this.baseUrl}/api/setup/status`, { method: 'POST', body: JSON.stringify({ scene }) })
+      if (res.status < 200 || res.status >= 300) return { state: 'none' }
+      return JSON.parse(res.body) as SetupStatus
+    } catch {
+      return { state: 'none' }
+    }
+  }
+
+  /** One-press setup: the signed-in wallet becomes host of a new VLM scene for this location. */
+  async setUpHere(scene: AnalyticsSceneRef, adapter: VLMPlatformAdapter): Promise<{ sceneId: string } | { error: string; host?: string; status: number }> {
+    if (!adapter.signedRequest) return { error: 'signed_request_unavailable', status: 0 }
+    try {
+      const res = await adapter.signedRequest(`${this.baseUrl}/api/setup`, { method: 'POST', body: JSON.stringify({ scene }) })
+      const data = res.body ? JSON.parse(res.body) : {}
+      if (res.status >= 200 && res.status < 300) return { sceneId: data.sceneId }
+      return { error: data.error || 'setup_failed', host: data.host, status: res.status }
+    } catch (err) {
+      return { error: String(err), status: 0 }
+    }
+  }
+
+  async getSceneRoles(sceneId: string): Promise<{ host: { userId: string; displayName: string | null; wallets: string[] }; roles: SceneRoleEntry[] }> {
+    return this._fetch(`/api/scenes/${sceneId}/roles`)
+  }
+
+  async addSceneRole(sceneId: string, wallet: string, role: 'cohost' | 'editor' | 'viewer'): Promise<{ role: SceneRoleEntry }> {
+    return this._fetch(`/api/scenes/${sceneId}/roles`, { method: 'POST', body: JSON.stringify({ wallet, role }) })
+  }
+
+  async removeSceneRole(sceneId: string, wallet: string): Promise<void> {
+    await this._fetch(`/api/scenes/${sceneId}/roles/${wallet}`, { method: 'DELETE' })
+  }
+
+  async transferHost(sceneId: string, wallet: string): Promise<{ host: string }> {
+    return this._fetch(`/api/scenes/${sceneId}/transfer-host`, { method: 'POST', body: JSON.stringify({ wallet }) })
   }
 
   async getScenes(): Promise<{ scenes: Scene[] }> {
