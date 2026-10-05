@@ -148,3 +148,60 @@ test('world limit is 100 MB and under limit is not over', async () => {
   assert.equal(r.over, false)
   assert.match(f.calls[0], /location=world%3Aw\.dcl\.eth|location=world:w\.dcl\.eth/)
 })
+
+test('untracked existing file is never overwritten or tracked', async () => {
+  const cwd = tmp()
+  fs.mkdirSync(path.join(cwd, 'models/vlm'), { recursive: true })
+  fs.writeFileSync(path.join(cwd, 'models/vlm/a.glb'), 'mine')
+  const logs = []
+  const r = await sync({ cwd, server: 'https://api.test', fetch: stub([model('a', 10), model('b', 5)]), log: (m) => logs.push(m) })
+  assert.equal(fs.readFileSync(path.join(cwd, 'models/vlm/a.glb'), 'utf8'), 'mine')
+  assert.deepEqual(r.downloaded, ['models/vlm/b.glb'])
+  assert.ok(logs.some((l) => /wasn't created by vlm-dcl sync/.test(l)))
+  const mf = JSON.parse(fs.readFileSync(path.join(cwd, 'models/vlm/.vlm-sync.json'), 'utf8'))
+  assert.deepEqual(mf.files, ['models/vlm/b.glb'])
+  const r2 = await run(cwd, stub([]))
+  assert.deepEqual(r2.removed, ['models/vlm/b.glb'])
+  assert.ok(fs.existsSync(path.join(cwd, 'models/vlm/a.glb')))
+})
+
+test('case-only rename and duplicates do not delete the downloaded file', async () => {
+  const cwd = tmp()
+  await run(cwd, stub([model('a', 10)]))
+  const up = { ...model('A', 10), url: 'https://cdn.vlm.gg/u/A.glb' }
+  const r = await run(cwd, stub([up, model('a', 10)]))
+  assert.equal(r.removed.length, 0)
+  assert.equal(r.downloaded.length + r.skipped.length, 1)
+  const names = fs.readdirSync(path.join(cwd, 'models/vlm')).filter((n) => n.endsWith('.glb'))
+  assert.ok(names.length >= 1)
+})
+
+test('symlinked models/vlm aborts with nothing written outside', async () => {
+  const cwd = tmp()
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'vlm-out-'))
+  fs.mkdirSync(path.join(cwd, 'models'))
+  fs.symlinkSync(outside, path.join(cwd, 'models/vlm'))
+  await assert.rejects(run(cwd, stub([model('a', 10)])), /symlink/)
+  assert.deepEqual(fs.readdirSync(outside), [])
+  const cwd2 = tmp()
+  fs.symlinkSync(outside, path.join(cwd2, 'models'))
+  await assert.rejects(run(cwd2, stub([model('a', 10)])), /symlink/)
+  assert.deepEqual(fs.readdirSync(outside), [])
+})
+
+test('stale tmp files removed; oversized download rejected', async () => {
+  const cwd = tmp()
+  fs.mkdirSync(path.join(cwd, 'models/vlm'), { recursive: true })
+  const stale = path.join(cwd, 'models/vlm/a.glb.123e4567-e89b-12d3-a456-426614174000.vlm-tmp')
+  fs.writeFileSync(stale, 'x')
+  fs.writeFileSync(path.join(cwd, 'models/vlm/keep.tmp'), 'x')
+  const f = async (url) =>
+    String(url).includes('/api/setup/models')
+      ? { ok: true, status: 200, json: async () => ({ models: [model('a', 10)] }) }
+      : { ok: true, status: 200, headers: { get: () => String(61 * 1024 * 1024) }, arrayBuffer: async () => new ArrayBuffer(1) }
+  const r = await run(cwd, f)
+  assert.ok(!fs.existsSync(stale))
+  assert.ok(fs.existsSync(path.join(cwd, 'models/vlm/keep.tmp')))
+  assert.deepEqual(r.downloaded, [])
+  assert.ok(!fs.existsSync(path.join(cwd, 'models/vlm/a.glb')))
+})

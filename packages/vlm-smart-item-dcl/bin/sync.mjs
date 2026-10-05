@@ -2,10 +2,14 @@
 // Trusts nothing from the server: file paths are validated and confined to <cwd>/models/vlm.
 import fs from 'node:fs'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 
 const MB = 1024 * 1024
 const FILE_RE = /^models\/vlm\/[A-Za-z0-9._-]+\.glb$/i
 const MANIFEST = 'models/vlm/.vlm-sync.json'
+const MAX_DOWNLOAD = 60 * MB
+const TIMEOUT_MS = 60000
+const TMP_RE = /\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.vlm-tmp$/
 const SIZE_EXCLUDES = new Set(['node_modules', 'bin', '.git', 'dist'])
 export const DEFAULT_SERVER = 'https://api.vlm.gg'
 
@@ -78,10 +82,31 @@ async function fetchModels(fetchFn, server, location) {
 }
 
 async function download(fetchFn, url, dest) {
-  const res = await fetchFn(url)
+  const res = await fetchFn(url, { signal: AbortSignal.timeout(TIMEOUT_MS) })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const buf = Buffer.from(await res.arrayBuffer())
-  const tmpFile = `${dest}.${process.pid}.tmp`
+  const declared = Number(res.headers?.get?.('content-length'))
+  if (declared > MAX_DOWNLOAD) throw new Error('file too large')
+  let buf
+  if (res.body?.getReader) {
+    const chunks = []
+    let n = 0
+    const reader = res.body.getReader()
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      n += value.byteLength
+      if (n > MAX_DOWNLOAD) {
+        await reader.cancel().catch(() => {})
+        throw new Error('file too large')
+      }
+      chunks.push(value)
+    }
+    buf = Buffer.concat(chunks)
+  } else {
+    buf = Buffer.from(await res.arrayBuffer())
+    if (buf.length > MAX_DOWNLOAD) throw new Error('file too large')
+  }
+  const tmpFile = `${dest}.${randomUUID()}.vlm-tmp`
   try {
     fs.writeFileSync(tmpFile, buf)
     fs.renameSync(tmpFile, dest)
@@ -90,6 +115,20 @@ async function download(fetchFn, url, dest) {
       fs.rmSync(tmpFile, { force: true })
     } catch {}
     throw e
+  }
+}
+
+/** Abort if models or models/vlm is a symlink or resolves outside cwd. */
+function checkDirs(cwd) {
+  for (const rel of ['models', 'models/vlm']) {
+    const p = path.join(cwd, rel)
+    if (isSymlink(p)) throw new Error(`${rel} is a symlink — refusing to write or delete through it`)
+  }
+  const dir = path.join(cwd, 'models', 'vlm')
+  if (fs.existsSync(dir)) {
+    const real = fs.realpathSync(dir)
+    const base = fs.realpathSync(cwd)
+    if (!real.startsWith(base + path.sep)) throw new Error('models/vlm resolves outside the scene folder — refusing to continue')
   }
 }
 
@@ -104,13 +143,20 @@ export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, locat
   const isWorld = loc.startsWith('world:')
   log(`Location: ${loc}`)
 
+  checkDirs(cwd)
   const listed = await fetchModels(fetchFn, server, loc)
+  if (!dryRun && fs.existsSync(path.join(cwd, 'models', 'vlm'))) {
+    for (const n of fs.readdirSync(path.join(cwd, 'models', 'vlm'))) {
+      if (TMP_RE.test(n)) fs.rmSync(path.join(cwd, 'models', 'vlm', n), { force: true })
+    }
+  }
   const downloaded = []
   const skipped = []
   const removed = []
   const keep = new Set() // manifest files for the next manifest
-  const prev = readManifest(cwd)
-  const listedFiles = new Set()
+  const prev = readManifest(cwd).filter((f) => safePath(cwd, f))
+  const prevLower = new Set(prev.map((f) => f.toLowerCase()))
+  const listedFiles = new Set() // lowercase
 
   for (const m of listed) {
     const abs = safePath(cwd, m?.file)
@@ -126,24 +172,34 @@ export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, locat
       log(`Warning: skipping ${m.file} — it is a symlink`)
       continue
     }
-    listedFiles.add(m.file)
+    if (listedFiles.has(m.file.toLowerCase())) {
+      log(`Warning: skipping duplicate entry for ${m.file}`)
+      continue
+    }
+    listedFiles.add(m.file.toLowerCase())
+    const tracked = prevLower.has(m.file.toLowerCase())
     let st = null
     try {
       st = fs.statSync(abs)
     } catch {}
+    if (st && !tracked) {
+      log(`Warning: ${m.file} exists and wasn't created by vlm-dcl sync — rename or remove it`)
+      continue
+    }
     const need = !st || (typeof m.sizeBytes === 'number' && st.size !== m.sizeBytes)
     if (!need) {
       skipped.push(m.file)
-      if (prev.includes(m.file)) keep.add(m.file)
+      keep.add(m.file)
       continue
     }
     if (!dryRun) {
       try {
         fs.mkdirSync(path.dirname(abs), { recursive: true })
+        checkDirs(cwd)
         await download(fetchFn, m.url, abs)
       } catch (e) {
         log(`Warning: failed to download ${m.file}: ${e.message}`)
-        if (prev.includes(m.file)) keep.add(m.file)
+        if (tracked) keep.add(m.file)
         continue
       }
     }
@@ -152,7 +208,7 @@ export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, locat
   }
 
   for (const f of prev) {
-    if (listedFiles.has(f)) continue
+    if (listedFiles.has(f.toLowerCase())) continue
     const abs = safePath(cwd, f)
     if (!abs) {
       log(`Warning: ignoring invalid manifest entry "${f}"`)
