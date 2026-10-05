@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { sceneElements, sceneElementInstances, sceneCollaborators, scenePresets, scenes } from '../src/db/schema.js'
+import { sceneRoles, sceneElements, sceneElementInstances, sceneCollaborators, scenePresets, scenes } from '../src/db/schema.js'
 import { createVenue, createBooking, addGrant, revokeGrant } from '../src/venues/service.js'
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene, createElement, createInstance, tokenFor, expiredTokenFor, randomWallet } from './helpers/factories.js'
@@ -314,5 +314,19 @@ describe('VLMSceneRoom auth', () => {
     await watcher.waitFor('host_joined')
     r1.leave()
     r2.leave()
+  })
+
+  it('a co-host joining as host is treated as a host client', async () => {
+    const owner = await createUser()
+    const { scene } = await createScene(owner)
+    const wallet = randomWallet()
+    const cohost = await createUser({ wallet })
+    await db.insert(sceneRoles).values({ sceneId: scene.id, walletAddress: wallet, role: 'cohost' })
+    const { Client } = await import('colyseus.js')
+    const watcher = await joinScene(gs.url, scene.id)
+    const c = new Client(gs.url)
+    const r = await c.joinOrCreate('vlm_scene', { sceneId: scene.id, sessionToken: tokenFor(cohost), clientType: 'host' })
+    await watcher.waitFor('host_joined')
+    r.leave()
   })
 })

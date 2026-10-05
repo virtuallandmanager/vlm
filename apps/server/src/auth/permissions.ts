@@ -230,7 +230,7 @@ export async function linkWalletGrants(userId: string, wallet: string): Promise<
   const roles = await db
     .update(sceneRoles)
     .set({ userId })
-    .where(and(eq(sceneRoles.walletAddress, wallet.toLowerCase()), isNull(sceneRoles.userId)))
+    .where(and(eq(sceneRoles.walletAddress, wallet.toLowerCase()), isNull(sceneRoles.userId), isNull(sceneRoles.revokedAt)))
     .returning({ id: sceneRoles.id })
   return rows.length + roles.length
 }

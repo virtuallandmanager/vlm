@@ -61,4 +61,17 @@ describe('getSceneAccess with scene roles', () => {
     const access = await getSceneAccess(actorFromClaims({ id: newcomer.id, role: 'creator', verified: true } as any), scene.id)
     expect(access.level).toBe('editor')
   })
+
+  it('linkWalletGrants does not attach a revoked role, which stays inert after linking', async () => {
+    const host = await createUser()
+    const { scene } = await createScene(host)
+    const wallet = randomWallet()
+    await db.insert(sceneRoles).values({ sceneId: scene.id, walletAddress: wallet, role: 'cohost', revokedAt: new Date() })
+    const newcomer = await createUser({ wallet })
+    await linkWalletGrants(newcomer.id, wallet)
+    const row = await db.query.sceneRoles.findFirst({ where: eq(sceneRoles.walletAddress, wallet) })
+    expect(row!.userId).toBeNull()
+    expect((await getSceneAccess(actorOf(newcomer), scene.id)).level).toBe('none')
+    expect((await getSceneAccess(actorFromClaims({ id: newcomer.id, role: 'creator', verified: true } as any), scene.id)).level).toBe('none')
+  })
 })

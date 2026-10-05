@@ -19,7 +19,7 @@ import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 import { config } from '../config.js'
 import { verifySessionToken } from '../auth/tokens.js'
 import { actorFromClaims, type Actor } from '../auth/actor.js'
-import { getSceneAccess, toVenueAccessMessage, type SceneAccess } from '../auth/permissions.js'
+import { getSceneAccess, isFullAccess, toVenueAccessMessage, type SceneAccess } from '../auth/permissions.js'
 import { authorizeSceneMessage, propertiesOf, type GuardResult, type GuardTarget } from './scene-guard.js'
 import { venueTopic, type VenueEvent } from '../realtime/bus.js'
 import type { VenueAccessMessage } from 'vlm-shared'
@@ -202,7 +202,8 @@ export class VLMSceneRoom extends Room {
     const requested = options.clientType || 'analytics'
     let canHost = false
     try {
-      canHost = ['admin', 'owner', 'org', 'editor'].includes((await this.getAccess(client)).level)
+      const access = await this.getAccess(client)
+      canHost = isFullAccess(access) || access.level === 'editor'
     } catch {
       canHost = false
     }
