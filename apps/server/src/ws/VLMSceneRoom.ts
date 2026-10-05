@@ -17,6 +17,12 @@ import {
 } from '../services/scene-serializer.js'
 import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 import { config } from '../config.js'
+import { verifySessionToken } from '../auth/tokens.js'
+import { actorFromClaims, type Actor } from '../auth/actor.js'
+import { getSceneAccess, toVenueAccessMessage, type SceneAccess } from '../auth/permissions.js'
+import { authorizeSceneMessage, propertiesOf, type GuardResult } from './scene-guard.js'
+import { venueTopic, type VenueEvent } from '../realtime/bus.js'
+import type { VenueAccessMessage } from 'vlm-shared'
 
 interface JoinOptions {
   sessionToken: string
@@ -38,6 +44,14 @@ export class VLMSceneRoom extends Room {
 
   private sceneId: string = ''
   private clientMeta: Map<string, ClientMeta> = new Map()
+  private accessCache: Map<string, { access: SceneAccess; at: number }> = new Map()
+  private lastAccess: Map<string, VenueAccessMessage> = new Map()
+  private onVenueEventBound = (e: VenueEvent) => this.onVenueEvent(e)
+  private static ACCESS_TTL_MS = 10_000
+
+  async onAuth(_client: Client, options: JoinOptions): Promise<Actor> {
+    return actorFromClaims(verifySessionToken(options?.sessionToken))
+  }
 
   onCreate(options: JoinOptions) {
     VLMSceneRoom.activeRoomCount++
@@ -49,17 +63,17 @@ export class VLMSceneRoom extends Room {
 
     this.sceneId = options.sceneId || ''
     console.log(`[VLMSceneRoom] Created for scene ${this.sceneId} (active rooms: ${VLMSceneRoom.activeRoomCount})`)
+    if (this.sceneId) this.presence.subscribe(venueTopic(this.sceneId), this.onVenueEventBound)
 
     // ── Scene Preset Updates (create/update/delete elements) ──────────────
-    this.onMessage('scene_preset_update', async (client, message) => {
+    this.guarded('scene_preset_update', async (client, message, result) => {
       console.log(`[VLMSceneRoom] scene_preset_update from ${client.sessionId}`, message.action)
 
-      try {
-        // Persist to database based on action
-        await this.persistPresetUpdate(message)
-      } catch (err) {
-        console.error('[VLMSceneRoom] Error persisting preset update:', err)
-      }
+      await this.persistPresetUpdate(message)
+      client.send('scene_preset_update_ack', { action: message.action, id: message.elementData?.sk || message.id })
+
+      // Edits to a non-active preset (e.g. a booking clone during setup) are not broadcast
+      if (!result.broadcast) return
 
       // Broadcast to all OTHER clients in the room
       this.broadcast('scene_preset_update', message, { except: client })
@@ -76,7 +90,7 @@ export class VLMSceneRoom extends Room {
     })
 
     // ── Preset Switching ──────────────────────────────────────────────────
-    this.onMessage('scene_change_preset', async (client, message) => {
+    this.guarded('scene_change_preset', async (client, message) => {
       console.log(`[VLMSceneRoom] scene_change_preset`, message.presetId || message.id)
 
       const presetId = message.presetId || message.id
@@ -113,12 +127,12 @@ export class VLMSceneRoom extends Room {
     })
 
     // ── Scene Settings ────────────────────────────────────────────────────
-    this.onMessage('scene_setting_update', (client, message) => {
+    this.guarded('scene_setting_update', (client, message) => {
       this.broadcast('scene_setting_update', message, { except: client })
     })
 
     // ── Video Status Updates ──────────────────────────────────────────────
-    this.onMessage('scene_video_update', (client, message) => {
+    this.guarded('scene_video_update', (client, message) => {
       this.broadcast('scene_video_status', message, { except: client })
 
       // Push video status to HTTP callbacks
@@ -205,18 +219,19 @@ export class VLMSceneRoom extends Room {
     })
 
     // ── Moderator Actions ─────────────────────────────────────────────────
-    this.onMessage('scene_moderator_message', (client, message) => {
+    this.guarded('scene_moderator_message', (client, message) => {
       this.broadcast('scene_moderator_message', message, { except: client })
     })
 
-    this.onMessage('scene_moderator_crash', (client, message) => {
+    this.guarded('scene_moderator_crash', (client, message) => {
       this.broadcast('scene_moderator_crash', message, { except: client })
     })
   }
 
   async onJoin(client: Client, options: JoinOptions) {
     const clientType = options.clientType || 'analytics'
-    const userId = options.user?.id || client.sessionId
+    const actor = client.auth as Actor
+    const userId = actor.userId || client.sessionId
     const displayName = options.user?.displayName || 'Guest'
 
     this.clientMeta.set(client.sessionId, {
@@ -235,6 +250,10 @@ export class VLMSceneRoom extends Room {
 
     // Load the active preset and send init data
     await this.sendInitData(client)
+
+    // Sent after init so existing clients that wait for init are unaffected
+    client.send('auth_status', { authenticated: !!actor.userId && actor.verified })
+    await this.sendVenueAccess(client)
   }
 
   onLeave(client: Client, consented: boolean) {
@@ -246,15 +265,82 @@ export class VLMSceneRoom extends Room {
     }
 
     this.clientMeta.delete(client.sessionId)
+    this.accessCache.delete(client.sessionId)
+    this.lastAccess.delete(client.sessionId)
   }
 
   onDispose() {
     VLMSceneRoom.activeRoomCount--
     console.log(`[VLMSceneRoom] Disposed (scene: ${this.sceneId}, active rooms: ${VLMSceneRoom.activeRoomCount})`)
+    if (this.sceneId) this.presence.unsubscribe(venueTopic(this.sceneId), this.onVenueEventBound)
     this.clientMeta.clear()
+    this.accessCache.clear()
+    this.lastAccess.clear()
   }
 
   // ── Internal Helpers ──────────────────────────────────────────────────
+
+  private async getAccess(client: Client): Promise<SceneAccess> {
+    const cached = this.accessCache.get(client.sessionId)
+    if (cached && Date.now() - cached.at < VLMSceneRoom.ACCESS_TTL_MS) return cached.access
+    const access = await getSceneAccess(client.auth as Actor, this.sceneId)
+    this.accessCache.set(client.sessionId, { access, at: Date.now() })
+    return access
+  }
+
+  /** Register a handler that runs only if the sender is authorized for this message. */
+  private guarded(
+    type: string,
+    handler: (client: Client, message: any, result: Extract<GuardResult, { ok: true }>) => unknown,
+  ) {
+    this.onMessage(type, async (client: Client, message: any) => {
+      try {
+        const result = await authorizeSceneMessage(await this.getAccess(client), this.sceneId, type, message)
+        if (!result.ok) {
+          client.send('vlm_error', { code: result.code, messageType: type })
+          return
+        }
+        await handler(client, message, result)
+      } catch (err) {
+        console.error(`[VLMSceneRoom] ${type} failed:`, err)
+        client.send('vlm_error', { code: 'server_error', messageType: type })
+      }
+    })
+  }
+
+  /** Send the client's current venue access; returns the previous booking access if it was just lost. */
+  private async sendVenueAccess(client: Client) {
+    const msg = toVenueAccessMessage(await this.getAccess(client))
+    const prev = this.lastAccess.get(client.sessionId)
+    this.lastAccess.set(client.sessionId, msg)
+    if (prev?.bookingId && !msg.bookingId) return prev
+    client.send('venue_access', msg)
+    return null
+  }
+
+  private async onVenueEvent(e: VenueEvent) {
+    try {
+      if (e.type === 'preset_changed') {
+        const preset = await db.query.scenePresets.findFirst({
+          where: eq(scenePresets.id, e.presetId),
+          with: { elements: { with: { instances: true } } },
+        })
+        if (preset) this.broadcast('scene_change_preset', { scenePreset: serializePreset(preset), user: null })
+        return
+      }
+      this.accessCache.clear()
+      for (const client of this.clients) {
+        const lost = await this.sendVenueAccess(client)
+        if (lost) {
+          const reason = e.type === 'booking_ended' && e.bookingId === lost.bookingId ? e.reason : 'revoked'
+          client.send('access_revoked', { bookingId: lost.bookingId, reason })
+          client.send('venue_access', this.lastAccess.get(client.sessionId))
+        }
+      }
+    } catch (err) {
+      console.error('[VLMSceneRoom] venue event failed:', err)
+    }
+  }
 
   private getClientMeta(client: Client): ClientMeta | undefined {
     return this.clientMeta.get(client.sessionId)
@@ -430,36 +516,7 @@ export class VLMSceneRoom extends Room {
    * Everything else goes into the properties JSONB column.
    */
   private extractProperties(data: Record<string, unknown>): Record<string, unknown> {
-    const structuralKeys = new Set([
-      'sk',
-      'id',
-      'pk',
-      'name',
-      'enabled',
-      'customId',
-      'customRendering',
-      'clickEvent',
-      'instances',
-      'instanceIds',
-      'position',
-      'rotation',
-      'scale',
-      'parent',
-      'withCollisions',
-      'elementId',
-      'configId',
-      'entity',
-      'services',
-      'defaultClickEvent',
-    ])
-
-    const properties: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(data)) {
-      if (!structuralKeys.has(key) && value !== undefined) {
-        properties[key] = value
-      }
-    }
-    return properties
+    return propertiesOf(data)
   }
 
   /**

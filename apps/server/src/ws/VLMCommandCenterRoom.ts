@@ -22,6 +22,8 @@ import {
   sceneDeployments,
 } from '../db/schema.js'
 import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
+import { verifySessionToken } from '../auth/tokens.js'
+import { actorFromClaims, type Actor } from '../auth/actor.js'
 
 interface JoinOptions {
   sessionToken: string
@@ -44,6 +46,10 @@ export class VLMCommandCenterRoom extends Room {
   private userId: string = ''
   private statusInterval: ReturnType<typeof setInterval> | null = null
 
+  async onAuth(_client: Client, options: JoinOptions): Promise<Actor> {
+    return actorFromClaims(verifySessionToken(options?.sessionToken))
+  }
+
   onCreate(options: JoinOptions) {
     this.eventId = options.eventId || ''
     console.log(`[VLMCommandCenter] Created for event ${this.eventId || 'global'}`)
@@ -51,6 +57,10 @@ export class VLMCommandCenterRoom extends Room {
     // ── Cross-World Update ─────────────────────────────────────────────
     // Receives an action and fans it out to all scene rooms linked to this event
     this.onMessage('cross_world_update', async (client, message) => {
+      const actor = client.auth as Actor
+      if (!actor?.userId || !actor.verified) {
+        return client.send('vlm_error', { code: 'forbidden', messageType: 'cross_world_update' })
+      }
       console.log(`[VLMCommandCenter] cross_world_update from ${client.sessionId}`)
 
       if (!this.eventId) {

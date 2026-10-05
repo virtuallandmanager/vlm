@@ -8,6 +8,7 @@ import { VLMSceneRoom } from './ws/VLMSceneRoom.js'
 import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
 import { runMigrations } from './db/migrate.js'
 import { buildApp } from './app.js'
+import { initBus } from './realtime/bus.js'
 
 async function main() {
   console.log(`[vlm-server] Starting in "${config.mode}" mode`)
@@ -32,6 +33,7 @@ async function main() {
   // ── Colyseus WebSocket server ────────────────────────────────────────────
   const httpServer = app.server
 
+  const { LocalPresence } = _require('colyseus') as any
   let presence: any
   let driver: any
 
@@ -42,8 +44,10 @@ async function main() {
     driver = new RedisDriver(config.redisUrl)
     console.log(`[vlm-server] Redis presence enabled`)
   } else {
+    presence = new LocalPresence()
     console.log(`[vlm-server] In-memory presence (single instance)`)
   }
+  initBus(presence)
 
   const gameServer = new ColyseusServer({
     transport: new WebSocketTransport({
@@ -51,12 +55,12 @@ async function main() {
       pingInterval: 5000,
       pingMaxRetries: 3,
     }),
-    ...(presence ? { presence } : {}),
+    presence,
     ...(driver ? { driver } : {}),
   })
 
   // Register rooms
-  gameServer.define('vlm_scene', VLMSceneRoom)
+  gameServer.define('vlm_scene', VLMSceneRoom).filterBy(['sceneId'])
   gameServer.define('vlm_command_center', VLMCommandCenterRoom)
 
   console.log(`[vlm-server] Colyseus WebSocket attached`)
