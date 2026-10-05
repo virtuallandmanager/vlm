@@ -68,6 +68,8 @@ export default async function sceneRoutes(app: FastifyInstance) {
   // ── GET /api/scenes — list user's scenes ─────────────────────────────────
 
   app.get('/api/scenes', async (request, reply) => {
+    const actor = actorFromClaims(request.user)
+    if (!actor.userId || !actor.verified) return reply.send({ scenes: [] })
     const owned = await db.query.scenes.findMany({
       where: eq(scenes.ownerId, request.user.id),
       orderBy: (scenes, { desc }) => [desc(scenes.updatedAt)],

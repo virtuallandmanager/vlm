@@ -82,6 +82,19 @@ describe('scene routes enforce collaborator roles', () => {
     expect(own.json().scenes[0].relationship).toBe('owner')
   })
 
+  it('GET /api/scenes returns nothing for an unverified token', async () => {
+    const s = await setup()
+    for (const u of [s.owner, s.editor]) {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/scenes',
+        headers: { authorization: `Bearer ${tokenFor(u, { verified: false })}` },
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().scenes).toEqual([])
+    }
+  })
+
   it('owner keeps full access', async () => {
     const s = await setup()
     expect((await app.inject({ method: 'DELETE', url: `/api/scenes/${s.scene.id}`, headers: as(s.owner) })).statusCode).toBe(204)
