@@ -57,7 +57,7 @@ export default async function walletAuthRoutes(app: FastifyInstance) {
     if (auth?.startsWith('Bearer ')) {
       let bearer: { id: string; refresh?: boolean; guest?: boolean; verified?: boolean } | null = null
       try {
-        bearer = app.jwt.verify(auth.slice(7))
+        bearer = app.jwt.verify<{ id: string; refresh?: boolean; guest?: boolean; verified?: boolean }>(auth.slice(7))
       } catch {
         return reply.status(401).send({ error: 'Invalid token' })
       }
