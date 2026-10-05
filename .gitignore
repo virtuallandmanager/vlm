@@ -13,3 +13,5 @@ dashboard/
 uploads/
 node_modules/
 .astro/
+.worktrees/
+.superpowers/
