@@ -83,8 +83,21 @@ export interface SerializedInstance {
   [key: string]: unknown
 }
 
+/**
+ * A row's properties, with legacy nesting undone: an old dashboard relay bug stored
+ * `{ properties: { … } }`. The nested object is unwrapped at read time; outer keys win.
+ * (scripts/unwrap-nested-properties.mjs fixes stored rows the same way.)
+ */
+function flatProperties(raw: unknown): Record<string, unknown> {
+  const props = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
+  const nested = props.properties
+  if (!nested || typeof nested !== 'object' || Array.isArray(nested)) return props
+  const { properties: _nested, ...rest } = props
+  return { ...(nested as Record<string, unknown>), ...rest }
+}
+
 function serializeElement(element: DbElement): SerializedElement {
-  const props = (element.properties || {}) as Record<string, unknown>
+  const props = flatProperties(element.properties)
   return {
     sk: element.id,
     name: element.name,
@@ -100,7 +113,7 @@ function serializeElement(element: DbElement): SerializedElement {
 }
 
 function serializeInstance(instance: DbInstance): SerializedInstance {
-  const props = (instance.properties || {}) as Record<string, unknown>
+  const props = flatProperties(instance.properties)
   return {
     sk: instance.id,
     enabled: instance.enabled,
