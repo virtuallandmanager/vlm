@@ -1,3 +1,5 @@
+import { ANALYTICS_LIMITS } from 'vlm-shared'
+
 interface Bucket {
   tokens: number
   at: number
@@ -25,6 +27,8 @@ export class TokenBucketLimiter {
 
   take(key: string, cost: number, capacity: number, refillPerSec: number): { ok: boolean; retryAfterMs: number; available: number } {
     const b = this.refill(key, capacity, refillPerSec)
+    // A cost above capacity can never succeed: reject without a retry hint and without consuming.
+    if (cost > capacity) return { ok: false, retryAfterMs: 0, available: b.tokens }
     if (b.tokens >= cost) {
       b.tokens -= cost
       return { ok: true, retryAfterMs: 0, available: b.tokens }
@@ -53,7 +57,7 @@ export class TokenBucketLimiter {
 export const INGEST_LIMITS = {
   request: { capacity: 3, refillPerSec: 0.5 },
   signerEvents: { capacity: 200, refillPerSec: 200 / 60 },
-  unverifiedEvents: { capacity: 60, refillPerSec: 1 },
+  unverifiedEvents: { capacity: ANALYTICS_LIMITS.maxBatchEvents, refillPerSec: 1 },
   sceneEvents: { capacity: 5_000, refillPerSec: 5_000 / 60 },
   previewDaily: 10_000,
 } as const
@@ -62,11 +66,12 @@ export const INGEST_LIMITS = {
 export function checkRequesterLimits(
   l: TokenBucketLimiter,
   i: { requesterKey: string; verified: boolean; eventCount: number },
-): { ok: true } | { ok: false; retryAfterMs: number } {
+): { ok: true } | { ok: false; retryAfterMs: number; tooLarge?: true } {
+  const ev = i.verified ? INGEST_LIMITS.signerEvents : INGEST_LIMITS.unverifiedEvents
+  if (i.eventCount > ev.capacity) return { ok: false, retryAfterMs: 0, tooLarge: true }
   const req = l.take(`req:${i.requesterKey}`, 1, INGEST_LIMITS.request.capacity, INGEST_LIMITS.request.refillPerSec)
   if (!req.ok) return { ok: false, retryAfterMs: req.retryAfterMs }
 
-  const ev = i.verified ? INGEST_LIMITS.signerEvents : INGEST_LIMITS.unverifiedEvents
   const evs = l.take(`ev:${i.requesterKey}`, i.eventCount, ev.capacity, ev.refillPerSec)
   if (!evs.ok) return { ok: false, retryAfterMs: evs.retryAfterMs }
   return { ok: true }
@@ -102,7 +107,7 @@ export function checkSceneLimits(
 export function checkIngestLimits(
   l: TokenBucketLimiter,
   i: { requesterKey: string; verified: boolean; sceneId: string; isPreview: boolean; eventCount: number; posCount: number; dayKey: string },
-): { ok: true; keepPosProbability: number } | { ok: false; retryAfterMs: number } {
+): { ok: true; keepPosProbability: number } | { ok: false; retryAfterMs: number; tooLarge?: true } {
   const requester = checkRequesterLimits(l, i)
   if (!requester.ok) return requester
   return checkSceneLimits(l, i)

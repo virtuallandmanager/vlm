@@ -48,10 +48,28 @@ describe('ingest limits', () => {
     expect(checkIngestLimits(l, input({ eventCount: 100 })).ok).toBe(false)
   })
 
-  it('caps an unverified IP at 60 events per minute', () => {
+  it('caps an unverified IP at a 100-event burst (60 per minute sustained)', () => {
     const { l } = limiter()
-    expect(checkIngestLimits(l, input({ verified: false, requesterKey: 'ip:1.2.3.4', eventCount: 60 })).ok).toBe(true)
+    expect(checkIngestLimits(l, input({ verified: false, requesterKey: 'ip:1.2.3.4', eventCount: 100 })).ok).toBe(true)
     expect(checkIngestLimits(l, input({ verified: false, requesterKey: 'ip:1.2.3.4', eventCount: 1 })).ok).toBe(false)
+  })
+
+  it('accepts one max-size unverified batch, then rejects an immediate second with a retry hint', () => {
+    const { l } = limiter()
+    const u = { verified: false, requesterKey: 'ip:9.9.9.9', eventCount: 100 }
+    expect(checkIngestLimits(l, input(u)).ok).toBe(true)
+    const r = checkIngestLimits(l, input(u))
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.retryAfterMs).toBeGreaterThan(0)
+  })
+
+  it('never offers a retry for a cost above bucket capacity', () => {
+    const { l } = limiter()
+    const t = l.take('k', 201, 200, 1)
+    expect(t.ok).toBe(false)
+    expect(t.retryAfterMs).toBe(0)
+    const r = checkRequesterLimits(l, { requesterKey: 'w:big', verified: true, eventCount: 201 })
+    expect(r).toEqual({ ok: false, retryAfterMs: 0, tooLarge: true })
   })
 
   it('samples positions once a scene passes 5,000 events per minute, never other events', () => {
