@@ -22,6 +22,7 @@ import companionUploadRoutes from './routes/companion-upload.js'
 import organizationRoutes from './routes/organizations.js'
 import apiKeyRoutes from './routes/api-keys.js'
 import adminRoutes from './routes/admin.js'
+import venueRoutes from './routes/venues.js'
 import { db } from './db/connection.js'
 import { sql } from 'drizzle-orm'
 import { existsSync } from 'node:fs'
@@ -113,6 +114,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(organizationRoutes)
   await app.register(apiKeyRoutes)
   await app.register(adminRoutes)
+  await app.register(venueRoutes)
 
   // Health check
   app.get('/api/health', async (_request, reply) => {
