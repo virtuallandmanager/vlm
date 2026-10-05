@@ -17,7 +17,40 @@ import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess, isHostAccess, canWriteElement, diffKeys } from '../auth/permissions.js'
 import { config } from '../config.js'
 import { publishElementChanged } from '../realtime/bus.js'
+import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
+import { serializeSingleElement } from '../services/scene-serializer.js'
 import { getSubscription } from '../integrations/stripe.js'
+
+type ElementChange = Parameters<typeof publishElementChanged>[0]
+
+/** Structural keys left out of platform callback payloads (as the scene room's compact payload does). */
+const NON_CONFIG_KEYS = new Set(['sk', 'id', 'pk', 'instances', 'instanceIds', 'services', 'entity'])
+
+/**
+ * Push a REST element/instance write to HTTP platform callbacks (Second Life etc.) — the scene room
+ * does the same for room-sent updates. Only edits to the scene's active preset are pushed.
+ */
+async function dispatchElementCallbacks(e: ElementChange): Promise<void> {
+  const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, e.sceneId) })
+  if (!scene || scene.activePresetId !== e.presetId) return
+  if (e.deleted) {
+    await dispatchPlatformCallbacks(e.sceneId, { action: 'config_update', elementId: e.elementId, element: e.elementType, deleted: true })
+    return
+  }
+  const element = await db.query.sceneElements.findFirst({ where: eq(sceneElements.id, e.elementId), with: { instances: true } })
+  if (!element || element.presetId !== e.presetId) return
+  const compact: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(serializeSingleElement(element))) {
+    if (value !== undefined && !NON_CONFIG_KEYS.has(key)) compact[key] = value
+  }
+  await dispatchPlatformCallbacks(e.sceneId, { ...compact, action: 'config_update', elementId: e.elementId, element: element.type })
+}
+
+/** After a REST write: broadcast to scene rooms, and push to platform callbacks (fire-and-forget, errors swallowed). */
+async function elementChanged(e: ElementChange): Promise<void> {
+  await publishElementChanged(e)
+  void dispatchElementCallbacks(e).catch((err) => console.error('[scenes] platform callback dispatch failed:', err))
+}
 
 interface CreateSceneBody {
   name: string
@@ -25,7 +58,7 @@ interface CreateSceneBody {
 }
 
 interface CreateElementBody {
-  type: 'image' | 'video' | 'nft' | 'sound' | 'widget' | 'custom'
+  type: 'image' | 'video' | 'nft' | 'sound' | 'widget' | 'model' | 'custom'
   name: string
   enabled?: boolean
   customId?: string
@@ -322,7 +355,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
         })
         .returning()
 
-      await publishElementChanged({
+      await elementChanged({
         sceneId: preset.sceneId,
         presetId,
         elementId: element.id,
@@ -368,7 +401,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
         .where(eq(sceneElements.id, elementId))
         .returning()
 
-      await publishElementChanged({
+      await elementChanged({
         sceneId: element.preset.sceneId,
         presetId: element.presetId,
         elementId,
@@ -397,7 +430,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
       }
 
       await db.delete(sceneElements).where(eq(sceneElements.id, elementId))
-      await publishElementChanged({
+      await elementChanged({
         sceneId: element.preset.sceneId,
         presetId: element.presetId,
         elementId,
@@ -454,7 +487,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
         })
         .returning()
 
-      await publishElementChanged({
+      await elementChanged({
         sceneId: element.preset.sceneId,
         presetId: element.presetId,
         elementId,
@@ -503,7 +536,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
         .where(eq(sceneElementInstances.id, instanceId))
         .returning()
 
-      await publishElementChanged({
+      await elementChanged({
         sceneId: instance.element.preset.sceneId,
         presetId: instance.element.presetId,
         elementId: instance.elementId,
@@ -531,7 +564,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
       }
 
       await db.delete(sceneElementInstances).where(eq(sceneElementInstances.id, instanceId))
-      await publishElementChanged({
+      await elementChanged({
         sceneId: instance.element.preset.sceneId,
         presetId: instance.element.presetId,
         elementId: instance.elementId,
