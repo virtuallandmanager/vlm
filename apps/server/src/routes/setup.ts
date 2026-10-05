@@ -127,6 +127,8 @@ export default async function setupRoutes(app: FastifyInstance) {
     let key: string | null = null
     if (/^gc:-?\d{1,3},-?\d{1,3}$/.test(raw)) key = raw
     else if (/^world:[a-z0-9-]+(\.[a-z0-9-]+)*\.eth$/i.test(raw)) key = raw.toLowerCase()
+    // Local previews can be set up on non-cloud servers (see previewBlocked), so let sync find them there too
+    else if (config.mode !== 'cloud' && /^preview:0x[0-9a-f]{40}:-?\d{1,3},-?\d{1,3}$/i.test(raw)) key = raw.toLowerCase()
     if (!key) {
       reply.status(400).send({ error: 'invalid_location' })
       return null

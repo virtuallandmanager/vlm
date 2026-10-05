@@ -7,6 +7,7 @@ import { resetDb } from './helpers/db.js'
 import { createUser, createScene, createElement, testApp } from './helpers/factories.js'
 import { createAnalyticsScene } from './helpers/analytics.js'
 import { createSetup } from './helpers/setups.js'
+import { config } from '../src/config.js'
 
 describe('GET /api/setup/models', () => {
   let app: Awaited<ReturnType<typeof testApp>>
@@ -46,6 +47,20 @@ describe('GET /api/setup/models', () => {
     const { preset } = await setup('gc:5,6')
     await createElement(preset.id, { type: 'model', properties: { modelSrc: 'https://elsewhere.example/x.glb' } })
     expect((await get('gc:5,6')).json().models[0].sizeBytes).toBeNull()
+  })
+
+  it('preview locations are listed on non-cloud servers only', async () => {
+    const key = 'preview:0x00000000000000000000000000000000000000aa:0,0'
+    await setup(key)
+    const mode = config.mode
+    try {
+      ;(config as { mode: string }).mode = 'single'
+      expect((await get(key)).statusCode).toBe(200)
+      ;(config as { mode: string }).mode = 'cloud'
+      expect((await get(key)).statusCode).toBe(400)
+    } finally {
+      ;(config as { mode: string }).mode = mode
+    }
   })
 
   it('resolves worlds case-insensitively', async () => {
