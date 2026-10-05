@@ -9,6 +9,7 @@ import {
   PointerEventType,
   Name,
   VideoPlayer,
+  VideoEvent,
   videoEventsSystem,
   VideoState,
   AvatarEmoteCommand,
@@ -89,7 +90,13 @@ export class DclAnalyticsProbe implements AnalyticsProbe {
     const seen = new Set<Entity>()
     for (const [entity] of engine.getEntitiesWith(VideoPlayer)) {
       seen.add(entity)
-      const ev = videoEventsSystem.getVideoState(entity)
+      let ev: ReturnType<typeof videoEventsSystem.getVideoState>
+      try {
+        if (!VideoEvent.has(entity)) continue
+        ev = videoEventsSystem.getVideoState(entity)
+      } catch {
+        continue
+      }
       if (!ev) continue
       const prev = this.videoStates.get(entity)
       if (prev === ev.state) continue
