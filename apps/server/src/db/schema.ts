@@ -11,6 +11,7 @@ import {
   customType,
   index,
   uniqueIndex,
+  check,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
 import type { VenueRules } from 'vlm-shared'
@@ -880,6 +881,7 @@ export const bookings = pgTable(
   (t) => ({
     venueIdx: index('bookings_venue_idx').on(t.venueId),
     statusIdx: index('bookings_status_idx').on(t.status),
+    renterPresent: check('bookings_renter_present', sql`${t.renterUserId} IS NOT NULL OR ${t.renterWallet} IS NOT NULL`),
   }),
 )
 
@@ -908,6 +910,7 @@ export const accessGrants = pgTable(
     bookingUser: uniqueIndex('access_grants_booking_user_uq').on(t.bookingId, t.userId),
     sceneWallet: index('access_grants_scene_wallet_idx').on(t.sceneId, t.walletAddress),
     sceneUser: index('access_grants_scene_user_idx').on(t.sceneId, t.userId),
+    subjectPresent: check('access_grants_subject_present', sql`${t.walletAddress} IS NOT NULL OR ${t.userId} IS NOT NULL`),
   }),
 )
 
