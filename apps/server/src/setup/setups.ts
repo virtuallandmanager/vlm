@@ -41,7 +41,7 @@ export async function currentDeployment(scene: AnalyticsSceneRow, dir: DclDirect
   if (!base) return { entityId: null, deployer: null }
   const active = await dir.getActiveSceneAt(base)
   if (!active) return { entityId: null, deployer: null }
-  return { entityId: active.entityId, deployer: await dir.getActiveDeployer(base) }
+  return { entityId: active.entityId, deployer: await dir.getActiveDeployer(base, active.entityId) }
 }
 
 /**

@@ -39,7 +39,8 @@ async function locate(ref: AnalyticsSceneRef, wallet: string) {
   if (!resolved.ok) return { resolved, scene: null, setup: null }
   const scene = resolved.scene
   let setup = await getActiveSetup(scene.id)
-  if (setup) setup = await releaseIfRedeployed(setup, scene)
+  // The registry just verified the live entity; only when it moved can there be a redeploy to check.
+  if (setup && scene.activeEntityId !== setup.deploymentEntityId) setup = await releaseIfRedeployed(setup, scene)
   return { resolved, scene, setup }
 }
 

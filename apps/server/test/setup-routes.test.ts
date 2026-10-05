@@ -120,4 +120,10 @@ describe('setup routes', () => {
       ;(config as any).mode = prev
     }
   })
+  it('member status with an unchanged live entity makes no directory calls', async () => {
+    await setup(OP)
+    dir.calls = 0
+    expect((await status(OP)).json()).toMatchObject({ state: 'member', role: 'host' })
+    expect(dir.calls).toBe(0)
+  })
 })
