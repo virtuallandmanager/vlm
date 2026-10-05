@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { ANALYTICS_LIMITS, checkBatch } from 'vlm-shared'
 import { hasDclAuthHeaders, verifyDclSignedFetch } from '../middleware/dcl-auth.js'
 import { resolveAnalyticsScene } from '../analytics/registry.js'
-import { TokenBucketLimiter, checkRequesterLimits, checkSceneLimits } from '../analytics/limiter.js'
+import { INGEST_LIMITS, TokenBucketLimiter, checkIpLimits, checkRequesterLimits, checkSceneLimits } from '../analytics/limiter.js'
 import { createCountryLookup, type CountryLookup } from '../analytics/country.js'
 import { writeBatch, SessionSceneMismatchError } from '../analytics/writer.js'
 
@@ -32,7 +32,13 @@ export default async function ingestRoutes(app: FastifyInstance) {
       const checked = checkBatch(request.body, Date.now())
       if (!checked.ok) return reply.status(400).send({ error: checked.error })
       const { batch } = checked
+      const rateLimited = (retryAfterMs: number) =>
+        reply.status(429).send({ error: 'rate_limited', retryAfter: Math.ceil(retryAfterMs / 1000) })
       try {
+        // Per-IP buckets cover all traffic, signed or not, before any signature work.
+        const ipLimit = checkIpLimits(limiter, { ip: request.ip, eventCount: batch.events.length })
+        if (!ipLimit.ok) return rateLimited(ipLimit.retryAfterMs)
+
         let signer: string | null = null
         const headers = request.headers as Record<string, string | string[] | undefined>
         if (hasDclAuthHeaders(headers)) {
@@ -64,7 +70,13 @@ export default async function ingestRoutes(app: FastifyInstance) {
             })
         }
 
-        const resolved = await resolveAnalyticsScene(batch.scene, signer)
+        const dayKey = new Date().toISOString().slice(0, 10)
+        const previewRowsKey = `pnew:${request.ip}:${dayKey}`
+        const resolved = await resolveAnalyticsScene(batch.scene, signer, new Date(), {
+          allowNewPreview: () => limiter.counter(previewRowsKey) < INGEST_LIMITS.previewRowsPerIpDaily,
+        })
+        if (resolved.ok && resolved.created && resolved.scene.isPreview) limiter.count(previewRowsKey, 1)
+        if (!resolved.ok && resolved.status === 429) return rateLimited(3_600_000)
         if (!resolved.ok) {
           return reply
             .status(resolved.status)
@@ -80,7 +92,7 @@ export default async function ingestRoutes(app: FastifyInstance) {
           isPreview: resolved.scene.isPreview,
           eventCount: batch.events.length,
           posCount: batch.events.filter((e) => e.type === 'pos').length,
-          dayKey: new Date().toISOString().slice(0, 10),
+          dayKey,
         })
         if (!limit.ok) {
           return reply

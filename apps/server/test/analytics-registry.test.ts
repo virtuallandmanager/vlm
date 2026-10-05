@@ -3,7 +3,8 @@ import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import { analyticsScenes } from '../src/db/schema.js'
 import { setDclDirectory, HttpDclDirectory, DirectoryUnavailableError } from '../src/analytics/dcl-directory.js'
-import { resolveAnalyticsScene, clearRegistryCache } from '../src/analytics/registry.js'
+import { resolveAnalyticsScene, clearRegistryCache, setValidationBudget } from '../src/analytics/registry.js'
+import { TokenBucketLimiter } from '../src/analytics/limiter.js'
 import { resetDb } from './helpers/db.js'
 import { FakeDclDirectory } from './helpers/fake-dcl.js'
 
@@ -17,7 +18,10 @@ describe('resolveAnalyticsScene', () => {
     dir = new FakeDclDirectory()
     setDclDirectory(dir)
   })
-  afterEach(() => setDclDirectory(null))
+  afterEach(() => {
+    setDclDirectory(null)
+    setValidationBudget(null)
+  })
 
   it('registers a deployed Genesis City scene on first sight with a fresh salt', async () => {
     dir.addScene({ entityId: 'bafyA', base: '10,10', parcels: ['10,10', '10,11'], title: 'Caldera' })
@@ -107,6 +111,34 @@ describe('resolveAnalyticsScene', () => {
     expect(await resolveAnalyticsScene({ ...w, entityId: 'urn' }, null)).toMatchObject({ ok: false, status: 422 })
     const r = await resolveAnalyticsScene({ ...w, entityId: 'bafyW' }, null)
     expect(r.ok && r.scene.activeEntityId).toBe('bafyW')
+  })
+
+  it('global validation budget: past 20 directory validations per second, unknown scenes get 503 and known scenes are accepted stale', async () => {
+    setValidationBudget(new TokenBucketLimiter(() => 0)) // frozen clock: no refill
+    dir.addScene({ entityId: 'bafyA', base: '10,10', parcels: ['10,10', '10,11'] })
+    expect((await resolveAnalyticsScene(gc(), null)).ok).toBe(true) // 1 validation
+    for (let i = 0; i < 19; i++) {
+      const p = `${60 + i},60`
+      dir.addScene({ entityId: `bafy${i}`, base: p, parcels: [p] })
+      expect((await resolveAnalyticsScene(gc({ baseParcel: p, parcels: [p] }), null)).ok).toBe(true)
+    }
+    dir.addScene({ entityId: 'bafyZ', base: '99,99', parcels: ['99,99'] })
+    const calls = dir.calls
+    expect(await resolveAnalyticsScene(gc({ baseParcel: '99,99', parcels: ['99,99'] }), null)).toMatchObject({ ok: false, status: 503, error: 'upstream_unavailable' })
+    // Known scene whose cache expired: accepted stale without a directory call.
+    expect((await resolveAnalyticsScene(gc(), null, new Date(Date.now() + 11 * 60_000))).ok).toBe(true)
+    expect(dir.calls).toBe(calls)
+  })
+
+  it('preview: reports whether a row was created, and refuses a new row when allowNewPreview says no', async () => {
+    const ref = { realm: 'localhost', isWorld: false, isPreview: true, baseParcel: '0,0' }
+    const first = await resolveAnalyticsScene(ref, '0xabc')
+    expect(first).toMatchObject({ ok: true, created: true })
+    const again = await resolveAnalyticsScene(ref, '0xabc', new Date(), { allowNewPreview: () => false })
+    expect(again).toMatchObject({ ok: true, created: false })
+    const blocked = await resolveAnalyticsScene({ ...ref, baseParcel: '1,1' }, '0xabc', new Date(), { allowNewPreview: () => false })
+    expect(blocked).toMatchObject({ ok: false, status: 429, error: 'rate_limited' })
+    expect(await db.select().from(analyticsScenes).where(eq(analyticsScenes.locationKey, 'preview:0xabc:1,1'))).toHaveLength(0)
   })
 
   it('upstream down: a second batch within 60s makes no further directory calls', async () => {

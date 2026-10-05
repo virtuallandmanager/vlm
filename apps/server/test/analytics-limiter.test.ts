@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { TokenBucketLimiter, checkIngestLimits, checkRequesterLimits } from '../src/analytics/limiter.js'
+import { TokenBucketLimiter, checkIngestLimits, checkIpLimits, checkRequesterLimits } from '../src/analytics/limiter.js'
 import { createCountryLookup } from '../src/analytics/country.js'
 
 function limiter() {
@@ -90,6 +90,31 @@ describe('ingest limits', () => {
       if (r.ok) accepted += 100
     }
     expect(accepted).toBe(10_000)
+  })
+})
+
+describe('per-IP ingest limits (all traffic, verified or not)', () => {
+  it('allows a 10-request burst per IP, then 2 per second', () => {
+    const { l, advance } = limiter()
+    for (let i = 0; i < 10; i++) expect(checkIpLimits(l, { ip: '1.2.3.4', eventCount: 1 }).ok).toBe(true)
+    const r = checkIpLimits(l, { ip: '1.2.3.4', eventCount: 1 })
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.retryAfterMs).toBeGreaterThan(0)
+    expect(checkIpLimits(l, { ip: '5.6.7.8', eventCount: 1 }).ok).toBe(true)
+    advance(500)
+    expect(checkIpLimits(l, { ip: '1.2.3.4', eventCount: 1 }).ok).toBe(true)
+  })
+
+  it('allows a 600-event burst per IP, then 10 events per second', () => {
+    const { l, advance } = limiter()
+    for (let i = 0; i < 6; i++) {
+      expect(checkIpLimits(l, { ip: '1.2.3.4', eventCount: 100 }).ok).toBe(true)
+      advance(500) // keep the request bucket topped up; adds 5 events each time
+    }
+    const r = checkIpLimits(l, { ip: '1.2.3.4', eventCount: 100 })
+    expect(r.ok).toBe(false)
+    advance(10_000)
+    expect(checkIpLimits(l, { ip: '1.2.3.4', eventCount: 100 }).ok).toBe(true)
   })
 })
 

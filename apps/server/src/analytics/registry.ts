@@ -4,15 +4,21 @@ import { locationKeyFor, type AnalyticsSceneRef } from 'vlm-shared'
 import { db } from '../db/connection.js'
 import { analyticsScenes } from '../db/schema.js'
 import { DirectoryUnavailableError, getDclDirectory } from './dcl-directory.js'
+import { TokenBucketLimiter } from './limiter.js'
 
 export type AnalyticsSceneRow = typeof analyticsScenes.$inferSelect
 export type ResolveResult =
-  | { ok: true; scene: AnalyticsSceneRow }
+  | { ok: true; scene: AnalyticsSceneRow; created: boolean }
   | { ok: false; status: 422 | 503; error: 'unknown_scene' | 'upstream_unavailable' }
+  | { ok: false; status: 429; error: 'rate_limited' }
 
 const CACHE_MS = 10 * 60_000
 const DOWN_MS = 60_000
 const MAX_ENTRIES = 10_000
+// Global budget for directory validations across all locations, so a flood of made-up locations
+// cannot fan out into unbounded upstream calls. Over budget counts as upstream unavailable.
+const VALIDATION_BUDGET = { capacity: 20, refillPerSec: 20 }
+let validationBudget = new TokenBucketLimiter()
 // Positive results per location; negative results per location + claimed entity id, so a stale
 // deployment's rejections never block batches from the new deployment at the same location.
 // Negative entries record LOCATION-level failures only, never parcel-claim mismatches.
@@ -31,6 +37,12 @@ export function clearRegistryCache(): void {
   positive.clear()
   negative.clear()
   upstreamDown.clear()
+  validationBudget = new TokenBucketLimiter()
+}
+
+/** Test hook: replace the validation budget's limiter (null restores a fresh one). */
+export function setValidationBudget(l: TokenBucketLimiter | null): void {
+  validationBudget = l ?? new TokenBucketLimiter()
 }
 
 interface Validated {
@@ -63,8 +75,8 @@ function parcelsOk(ref: AnalyticsSceneRef, scene: AnalyticsSceneRow): boolean {
   return ref.parcels.every((p) => scene.parcels.includes(p))
 }
 
-const accept = (ref: AnalyticsSceneRef, scene: AnalyticsSceneRow): ResolveResult =>
-  parcelsOk(ref, scene) ? { ok: true, scene } : { ok: false, status: 422, error: 'unknown_scene' }
+const accept = (ref: AnalyticsSceneRef, scene: AnalyticsSceneRow, created = false): ResolveResult =>
+  parcelsOk(ref, scene) ? { ok: true, scene, created } : { ok: false, status: 422, error: 'unknown_scene' }
 
 async function upsert(key: string, ref: AnalyticsSceneRef, v: Validated, now: Date): Promise<AnalyticsSceneRow> {
   const [row] = await db
@@ -97,10 +109,23 @@ async function upsert(key: string, ref: AnalyticsSceneRef, v: Validated, now: Da
   return row
 }
 
-export async function resolveAnalyticsScene(ref: AnalyticsSceneRef, signer: string | null, now = new Date()): Promise<ResolveResult> {
+export interface ResolveOptions {
+  /** Asked before a new preview row is created; false rejects the batch with 429. */
+  allowNewPreview?: () => boolean
+}
+
+export async function resolveAnalyticsScene(
+  ref: AnalyticsSceneRef,
+  signer: string | null,
+  now = new Date(),
+  opts: ResolveOptions = {},
+): Promise<ResolveResult> {
   const key = locationKeyFor(ref, signer)
   if (ref.isPreview) {
-    return { ok: true, scene: await upsert(key, ref, { entityId: ref.entityId ?? null, parcels: ref.parcels ?? [], title: ref.title }, now) }
+    const existing = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, key), columns: { id: true } })
+    if (!existing && opts.allowNewPreview && !opts.allowNewPreview()) return { ok: false, status: 429, error: 'rate_limited' }
+    const scene = await upsert(key, ref, { entityId: ref.entityId ?? null, parcels: ref.parcels ?? [], title: ref.title }, now)
+    return { ok: true, scene, created: !existing }
   }
   const t = now.getTime()
   const negKey = `${key}|${ref.entityId ?? ''}`
@@ -112,6 +137,9 @@ export async function resolveAnalyticsScene(ref: AnalyticsSceneRef, signer: stri
   const downAt = upstreamDown.get(key)
   if (row && downAt !== undefined && t - downAt < DOWN_MS) return accept(ref, row)
 
+  if (!validationBudget.take('validate', 1, VALIDATION_BUDGET.capacity, VALIDATION_BUDGET.refillPerSec).ok) {
+    return row ? accept(ref, row) : { ok: false, status: 503, error: 'upstream_unavailable' }
+  }
   let v: Validated | null
   try {
     v = await validate(ref)
@@ -130,5 +158,5 @@ export async function resolveAnalyticsScene(ref: AnalyticsSceneRef, signer: stri
   const scene = await upsert(key, ref, v, now)
   remember(positive, key, { at: t, entityId: scene.activeEntityId })
   upstreamDown.delete(key)
-  return accept(ref, scene)
+  return accept(ref, scene, !row)
 }

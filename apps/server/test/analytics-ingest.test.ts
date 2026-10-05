@@ -153,6 +153,37 @@ describe('POST /api/ingest', () => {
     expect(r.json().retryAfter).toBeGreaterThan(0)
   })
 
+  it('per-IP limit applies to verified traffic: fresh wallets from one IP are capped at a 10-request burst', async () => {
+    setIngestLimiter(new TokenBucketLimiter(() => 0))
+    const codes: number[] = []
+    for (let i = 0; i < 11; i++) {
+      const w = `0x${(0xb00 + i).toString(16).padStart(40, '0')}`
+      const sid = `7777777${i.toString(16)}-7777-4777-8777-777777777777`
+      codes.push((await post(batch({ visitorId: w, sessionId: sid }), signed(w))).statusCode)
+    }
+    expect(codes.slice(0, 10).every((c) => c === 200)).toBe(true)
+    expect(codes[10]).toBe(429)
+  })
+
+  it('caps new preview rows per IP per UTC day at 20', async () => {
+    let t = 0
+    setIngestLimiter(new TokenBucketLimiter(() => (t += 1_000)))
+    const preview = { realm: 'localhost', isWorld: false, isPreview: true, baseParcel: '0,0', parcels: ['0,0'] }
+    const send = (i: number) => {
+      const w = `0x${(0xc00 + i).toString(16).padStart(40, '0')}`
+      const sid = `88888888-8888-4888-8888-${i.toString(16).padStart(12, '0')}`
+      return post(batch({ visitorId: w, sessionId: sid, scene: preview }), signed(w))
+    }
+    for (let i = 0; i < 20; i++) expect((await send(i)).statusCode).toBe(200)
+    const over = await send(20)
+    expect(over.statusCode).toBe(429)
+    expect(over.json()).toMatchObject({ error: 'rate_limited' })
+    expect(await db.select().from(analyticsScenes)).toHaveLength(20)
+    // An existing preview row still accepts batches.
+    const w0 = `0x${(0xc00).toString(16).padStart(40, '0')}`
+    expect((await post(batch({ visitorId: w0, sessionId: '88888888-8888-4888-8888-000000000000', scene: preview }), signed(w0))).statusCode).toBe(200)
+  })
+
   it('rejects NUL characters with 400', async () => {
     const b = batch({ events: [{ t: Date.now(), type: 'custom', seq: 0, data: { name: 'a\u0000b' } }] })
     expect((await post(b)).statusCode).toBe(400)

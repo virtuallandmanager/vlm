@@ -55,12 +55,27 @@ export class TokenBucketLimiter {
 }
 
 export const INGEST_LIMITS = {
+  ipRequest: { capacity: 10, refillPerSec: 2 },
+  ipEvents: { capacity: 600, refillPerSec: 10 },
+  previewRowsPerIpDaily: 20,
   request: { capacity: 3, refillPerSec: 0.5 },
   signerEvents: { capacity: 200, refillPerSec: 200 / 60 },
   unverifiedEvents: { capacity: ANALYTICS_LIMITS.maxBatchEvents, refillPerSec: 1 },
   sceneEvents: { capacity: 5_000, refillPerSec: 5_000 / 60 },
   previewDaily: 10_000,
 } as const
+
+/**
+ * Per-IP limits for ALL ingest traffic, verified or not, checked first: fresh wallets are free to
+ * mint, so the per-signer buckets alone would not bound one client.
+ */
+export function checkIpLimits(l: TokenBucketLimiter, i: { ip: string; eventCount: number }): { ok: true } | { ok: false; retryAfterMs: number } {
+  const req = l.take(`ip:${i.ip}`, 1, INGEST_LIMITS.ipRequest.capacity, INGEST_LIMITS.ipRequest.refillPerSec)
+  if (!req.ok) return { ok: false, retryAfterMs: req.retryAfterMs }
+  const evs = l.take(`ipev:${i.ip}`, i.eventCount, INGEST_LIMITS.ipEvents.capacity, INGEST_LIMITS.ipEvents.refillPerSec)
+  if (!evs.ok) return { ok: false, retryAfterMs: evs.retryAfterMs }
+  return { ok: true }
+}
 
 /** Per-requester limits (request rate and event volume). Run before resolving the scene. */
 export function checkRequesterLimits(
