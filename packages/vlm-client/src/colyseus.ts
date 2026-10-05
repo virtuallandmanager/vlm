@@ -1,4 +1,5 @@
 import { Client, Room } from 'colyseus.js'
+import { ensureNetworkPolyfills } from './polyfills.js'
 
 export class ColyseusManager {
   private client: Client | null = null
@@ -6,6 +7,8 @@ export class ColyseusManager {
   private messageHandlers: Map<string, Set<(message: unknown) => void>> = new Map()
 
   connect(wssUrl: string): void {
+    // colyseus.js needs URL and XMLHttpRequest, which some sandboxed runtimes (Decentraland) lack
+    ensureNetworkPolyfills()
     this.client = new Client(wssUrl)
   }
 

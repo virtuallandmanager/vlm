@@ -873,6 +873,22 @@ function VLMHUD() {
               </UiEntity>
             )
           }
+
+          // No panel open yet: show the toolbar on its own so a panel can be picked
+          // (otherwise the connected HUD renders nothing and the VLM button appears dead)
+          return (
+            <UiEntity
+              uiTransform={{
+                positionType: 'absolute',
+                position: { right: 12, top: 62 },
+                width: 340,
+                flexDirection: 'column',
+              }}
+              uiBackground={{ color: C.bg }}
+            >
+              <NavBar />
+            </UiEntity>
+          )
         }
 
         return null

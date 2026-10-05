@@ -180,10 +180,15 @@ export class VLM {
     this._sceneId = sceneId
     this.setState('connecting', { sceneId })
 
-    this.colyseus.connect(this.wssUrl)
-
-    // Register message handlers BEFORE joining
-    this.registerMessageHandlers()
+    try {
+      this.colyseus.connect(this.wssUrl)
+      // Register message handlers BEFORE joining
+      this.registerMessageHandlers()
+    } catch (err) {
+      // Without this the HUD would sit on "connecting" forever
+      this.setState('error', { error: String(err) })
+      throw err
+    }
 
     return new Promise<VLMStorageType>(async (resolve, reject) => {
       try {
