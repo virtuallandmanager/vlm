@@ -73,15 +73,15 @@ describe('POST /api/analytics/claims/check-signed', () => {
     expect((await post('gc:1,1', signed())).json()).toEqual({ eligible: false, known: true })
   })
 
-  it('an active claim is eligible for the claimer\'s verified wallet only, and creates no rows', async () => {
+  it('leftover claim columns are ignored: eligibility comes from controlling the location, and no rows are created', async () => {
     const u = await createUser()
     await db.insert(userAuthMethods).values({ userId: u.id, type: 'wallet', identifier: W, metadata: { verified: true } } as any)
     await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'], claimedByUserId: u.id, claimStatus: 'active' })
     const other = '0x00000000000000000000000000000000000000bb'
     dir.rights.set('1,1', rights({ owner: other }))
     const before = await counts()
-    expect((await post('gc:1,1', signed())).json()).toEqual({ eligible: true, known: true })
-    expect((await post('gc:1,1', signed(other))).json()).toEqual({ eligible: false, known: true })
+    expect((await post('gc:1,1', signed())).json()).toEqual({ eligible: false, known: true })
+    expect((await post('gc:1,1', signed(other))).json()).toEqual({ eligible: true, known: true })
     expect(await counts()).toEqual(before)
   })
 

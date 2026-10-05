@@ -82,6 +82,8 @@ async function release(setup: LocationSetupRow, scene: AnalyticsSceneRow, now: D
       .where(and(eq(locationSetups.id, setup.id), isNull(locationSetups.endedAt)))
       .returning({ id: locationSetups.id })
     if (!ended.length) return
+    // The next host starts with wallet visibility off.
+    await tx.update(analyticsScenes).set({ walletVisibility: false, updatedAt: now }).where(eq(analyticsScenes.id, scene.id))
     await tx
       .update(analyticsScenes)
       .set({ vlmSceneId: null, updatedAt: now })
@@ -104,7 +106,7 @@ export async function setUpLocation(scene: AnalyticsSceneRow, wallet: string, no
         .insert(locationSetups)
         .values({ analyticsSceneId: scene.id, vlmSceneId: created.id, hostUserId: user.id, deploymentEntityId: scene.activeEntityId ?? null, startedAt: now })
         .returning()
-      await tx.update(analyticsScenes).set({ vlmSceneId: created.id, updatedAt: now }).where(eq(analyticsScenes.id, scene.id))
+      await tx.update(analyticsScenes).set({ vlmSceneId: created.id, walletVisibility: false, updatedAt: now }).where(eq(analyticsScenes.id, scene.id))
       return { setup, vlmSceneId: created.id, userId: user.id }
     })
   } catch (err) {

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { db } from '../src/db/connection.js'
-import { sceneRoles } from '../src/db/schema.js'
+import { eq } from 'drizzle-orm'
+import { analyticsRollupHourly, analyticsSessions, sceneRoles } from '../src/db/schema.js'
 import { getAnalyticsAccess } from '../src/analytics/access.js'
 import { actorFromClaims } from '../src/auth/actor.js'
 import { resetDb } from './helpers/db.js'
@@ -46,8 +47,16 @@ describe('analytics access by setup tenure', () => {
     const switchAt = new Date(Date.now() - 5 * DAY)
     await createSetup(loc.id, oldScene.id, { startedAt: new Date(Date.now() - 20 * DAY), endedAt: switchAt })
     await createSetup(loc.id, newScene.id, { startedAt: switchAt })
-    await insertSession(loc.id, { startedAt: new Date(Date.now() - 10 * DAY), lastSeenAt: new Date(Date.now() - 10 * DAY) })
-    await insertSession(loc.id, { startedAt: new Date(Date.now() - 1 * DAY), lastSeenAt: new Date(Date.now() - 1 * DAY) })
+    const oldAt = new Date(Date.now() - 10 * DAY)
+    const newAt = new Date(Date.now() - 1 * DAY)
+    oldAt.setUTCMinutes(0, 0, 0)
+    newAt.setUTCMinutes(0, 0, 0)
+    const oldSession = await insertSession(loc.id, { startedAt: oldAt, lastSeenAt: oldAt, wallet: '0xold', displayName: 'Old' })
+    const newSession = await insertSession(loc.id, { startedAt: newAt, lastSeenAt: newAt, wallet: '0xnew', displayName: 'New' })
+    await db.insert(analyticsRollupHourly).values([
+      { sceneId: loc.id, hour: oldAt, sessions: 7, uniqueVisitors: 7, peakConcurrency: 7, dwellAvgSec: 10 },
+      { sceneId: loc.id, hour: newAt, sessions: 3, uniqueVisitors: 3, peakConcurrency: 3, dwellAvgSec: 10 },
+    ])
 
     const sessionsFor = async (u: any) =>
       (await app.inject({ method: 'GET', url: `/api/analytics/locations/${loc.id}/sessions`, headers: { authorization: `Bearer ${tokenFor(u)}` } })).json()
@@ -61,7 +70,16 @@ describe('analytics access by setup tenure', () => {
     expect(oldAccess.until?.getTime()).toBe(switchAt.getTime())
 
     const summary = (await app.inject({ method: 'GET', url: `/api/analytics/locations/${loc.id}/summary?from=${new Date(Date.now() - 30 * DAY).toISOString()}`, headers: { authorization: `Bearer ${tokenFor(newHost)}` } })).json()
-    expect(JSON.stringify(summary)).not.toContain('"sessions":2')
+    expect(summary.sessions).toBe(3)
+    const oldSummary = (await app.inject({ method: 'GET', url: `/api/analytics/locations/${loc.id}/summary?from=${new Date(Date.now() - 30 * DAY).toISOString()}`, headers: { authorization: `Bearer ${tokenFor(oldHost)}` } })).json()
+    expect(oldSummary.sessions).toBe(7)
+
+    // Turning wallet visibility off clears identities only inside the caller's tenure.
+    const patch = await app.inject({ method: 'PATCH', url: `/api/analytics/locations/${loc.id}`, payload: { walletVisibility: false }, headers: { authorization: `Bearer ${tokenFor(newHost)}` } })
+    expect(patch.statusCode).toBe(200)
+    const byId = async (id: string) => (await db.query.analyticsSessions.findFirst({ where: eq(analyticsSessions.id, id) }))!
+    expect(await byId(newSession.id)).toMatchObject({ wallet: null, displayName: null })
+    expect(await byId(oldSession.id)).toMatchObject({ wallet: '0xold', displayName: 'Old' })
 
     const list = (await app.inject({ method: 'GET', url: '/api/analytics/locations', headers: { authorization: `Bearer ${tokenFor(newHost)}` } })).json()
     expect(list.scenes.map((s: any) => s.id)).toEqual([loc.id])

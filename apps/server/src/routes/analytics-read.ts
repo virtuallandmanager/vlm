@@ -290,7 +290,19 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     const on = request.body.walletVisibility
     const updated = await db.transaction(async (tx) => {
       const [row] = await tx.update(analyticsScenes).set({ walletVisibility: on, updatedAt: new Date() }).where(eq(analyticsScenes.id, scene.id)).returning()
-      if (!on) await tx.update(analyticsSessions).set({ wallet: null, displayName: null }).where(eq(analyticsSessions.sceneId, scene.id))
+      // Only the caller's tenure: identities revealed under an earlier tenure stay with that tenure.
+      if (!on) {
+        await tx
+          .update(analyticsSessions)
+          .set({ wallet: null, displayName: null })
+          .where(
+            and(
+              eq(analyticsSessions.sceneId, scene.id),
+              scene.since ? gte(analyticsSessions.startedAt, scene.since) : undefined,
+              scene.until ? lt(analyticsSessions.startedAt, scene.until) : undefined,
+            ),
+          )
+      }
       return row
     })
     return reply.send({ scene: { id: updated.id, walletVisibility: updated.walletVisibility } })

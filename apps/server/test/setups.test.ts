@@ -30,8 +30,10 @@ describe('setup domain', () => {
 
   it('setUpLocation creates the user, scene (with default preset), setup and link in one go; second call is 409', async () => {
     const w = randomWallet()
-    const s = await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'], title: 'My Venue', activeEntityId: 'bafyA' })
+    const s = await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'], title: 'My Venue', activeEntityId: 'bafyA', walletVisibility: true })
     const r = await setUpLocation(s, w)
+    // A new host starts with wallet visibility off, whatever an earlier tenure chose.
+    expect((await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.id, s.id) }))!.walletVisibility).toBe(false)
     const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, r.vlmSceneId) })
     expect(scene).toMatchObject({ ownerId: r.userId, name: 'My Venue' })
     expect(scene!.activePresetId).toBeTruthy()
@@ -64,8 +66,10 @@ describe('setup domain', () => {
   it('a redeploy by anyone else ends the setup and the location can be set up again', async () => {
     const s = await createAnalyticsScene({ locationKey: 'gc:4,4', parcels: ['4,4'], baseParcel: '4,4', activeEntityId: 'bafyA' })
     const { setup } = await setUpLocation(s, randomWallet())
+    await db.update(analyticsScenes).set({ walletVisibility: true }).where(eq(analyticsScenes.id, s.id))
     dir.addScene({ entityId: 'bafyC', base: '4,4', parcels: ['4,4'] }, randomWallet())
     expect(await releaseIfRedeployed(setup, s, dir)).toBeNull()
+    expect((await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.id, s.id) }))!.walletVisibility).toBe(false)
     const ended = await db.query.locationSetups.findFirst({ where: eq(locationSetups.id, setup.id) })
     expect(ended).toMatchObject({ endReason: 'redeployed' })
     expect(ended!.endedAt).toBeInstanceOf(Date)

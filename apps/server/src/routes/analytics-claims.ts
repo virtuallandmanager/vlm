@@ -5,7 +5,7 @@ import { analyticsScenes } from '../db/schema.js'
 import { DirectoryUnavailableError } from '../analytics/dcl-directory.js'
 import { hasDclAuthHeaders, verifyDclSignedFetch } from '../middleware/dcl-auth.js'
 import { TokenBucketLimiter, checkRequesterLimits } from '../analytics/limiter.js'
-import { controls, verifiedWalletsOf } from '../analytics/claims.js'
+import { controls } from '../analytics/claims.js'
 
 let signedLimiter = new TokenBucketLimiter()
 let sweepTimer: NodeJS.Timeout | null = null
@@ -38,10 +38,6 @@ export async function analyticsClaimSignedRoutes(app: FastifyInstance) {
     if (!limit.ok) return reply.status(429).send({ error: 'rate_limited', retryAfter: Math.ceil(limit.retryAfterMs / 1000) })
     const scene = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, key) })
     if (!scene) return reply.send(no)
-    if (scene.claimStatus === 'active') {
-      const claimer = scene.claimedByUserId ? await verifiedWalletsOf(scene.claimedByUserId) : []
-      return reply.send({ eligible: claimer.includes(wallet), known: true })
-    }
     try {
       return reply.send({ eligible: await controls(scene, wallet), known: true })
     } catch (err) {
