@@ -5,6 +5,8 @@ set -e
 if [ -n "$DATABASE_URL" ]; then
   echo "[vlm-server] Running drizzle-kit push to sync schema..."
   cd /app/apps/server
+  # Drop the legacy (never-populated) analytics tables first, or push stops at a rename prompt.
+  node scripts/pre-push-upgrade.mjs 2>&1 || echo "[vlm-server] pre-push upgrade SQL failed"
   yes | npx drizzle-kit push 2>&1 || echo "[vlm-server] drizzle-kit push failed, trying raw SQL fallback..."
 
   # Fallback: ensure critical columns exist even if drizzle-kit push fails
