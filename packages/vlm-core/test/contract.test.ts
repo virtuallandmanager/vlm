@@ -42,6 +42,23 @@ describe('checkBatch', () => {
     expect(checkBatch(input, NOW).ok).toBe(false)
   })
 
+  it('measures the 2 KB limit in UTF-8 bytes, not UTF-16 units', () => {
+    const r = checkBatch(batch({ events: [{ t: NOW, type: 'custom', seq: 0, data: { name: '漢'.repeat(1000) } }] }), NOW)
+    expect(r.ok).toBe(false)
+  })
+
+  it('returns ok:false for unserializable events instead of throwing', () => {
+    const data: any = {}
+    data.self = data
+    const r = checkBatch(batch({ events: [{ t: NOW, type: 'custom', seq: 0, data }] }), NOW)
+    expect(r).toEqual({ ok: false, error: 'event is not serializable' })
+  })
+
+  it('bounds seq to int4', () => {
+    expect(checkBatch(batch({ events: [{ t: NOW, type: 'pos', seq: 2147483648 }] }), NOW).ok).toBe(false)
+    expect(checkBatch(batch({ events: [{ t: NOW, type: 'pos', seq: 2147483647 }] }), NOW).ok).toBe(true)
+  })
+
   it('clamps events whose clock is more than 10 minutes off', () => {
     const r = checkBatch(batch({ events: [{ t: NOW - 11 * 60_000, type: 'pos', seq: 0, data: { x: 1, y: 0, z: 1 } }] }), NOW)
     expect(r.ok && r.batch.events[0].t).toBe(NOW)

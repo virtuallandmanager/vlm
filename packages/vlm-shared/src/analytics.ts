@@ -86,6 +86,14 @@ export function locationKeyFor(scene: AnalyticsSceneRef, signer: string | null):
 export type BatchCheck = { ok: true; batch: IngestBatch; skewed: number } | { ok: false; error: string }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+function utf8Length(s: string): number {
+  let n = 0
+  for (const ch of s) {
+    const c = ch.codePointAt(0) as number
+    n += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4
+  }
+  return n
+}
 const str = (v: unknown, max: number) => typeof v === 'string' && v.length > 0 && v.length <= max
 
 function checkScene(s: unknown): AnalyticsSceneRef | string {
@@ -137,9 +145,15 @@ export function checkBatch(input: unknown, nowMs: number): BatchCheck {
   for (const e of input.events) {
     if (!isObj(e) || typeof e.t !== 'number' || !Number.isFinite(e.t)) return { ok: false, error: 'event.t must be a number' }
     if (typeof e.type !== 'string' || !TYPES.has(e.type)) return { ok: false, error: `unknown event type: ${String(e.type)}` }
-    if (!Number.isInteger(e.seq) || (e.seq as number) < 0) return { ok: false, error: 'event.seq must be a non-negative integer' }
+    if (!Number.isSafeInteger(e.seq) || (e.seq as number) < 0 || (e.seq as number) > 2147483647) return { ok: false, error: 'event.seq must be a non-negative integer' }
     if (e.data !== undefined && !isObj(e.data)) return { ok: false, error: 'event.data must be an object' }
-    if (JSON.stringify(e).length > ANALYTICS_LIMITS.maxEventBytes) return { ok: false, error: 'event exceeds 2 KB' }
+    let size: number
+    try {
+      size = utf8Length(JSON.stringify(e))
+    } catch {
+      return { ok: false, error: 'event is not serializable' }
+    }
+    if (size > ANALYTICS_LIMITS.maxEventBytes) return { ok: false, error: 'event exceeds 2 KB' }
     let t = e.t
     if (Math.abs(t - nowMs) > ANALYTICS_LIMITS.clockSkewMs) {
       t = nowMs
