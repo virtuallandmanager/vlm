@@ -7,6 +7,7 @@ import { config } from '../config.js'
 import { getSubscription } from '../integrations/stripe.js'
 import { createStorage } from '../storage/index.js'
 import { randomUUID } from 'crypto'
+import { classifyUpload, extensionFor } from '../storage/upload-policy.js'
 
 const storage = createStorage()
 
@@ -25,6 +26,10 @@ export default async function mediaRoutes(app: FastifyInstance) {
       }
 
       const buffer = Buffer.from(data, 'base64')
+
+      const verdict = classifyUpload(filename, contentType, buffer.length)
+      if (!verdict.ok) return reply.status(verdict.status).send({ error: verdict.error })
+      const storedType = verdict.contentType
 
       // Enforce storage quota based on subscription tier (skip in self-hosted mode)
       if (!config.allFeaturesUnlocked) {
@@ -48,15 +53,15 @@ export default async function mediaRoutes(app: FastifyInstance) {
         }
       }
 
-      const ext = filename.split('.').pop() || 'bin'
+      const ext = extensionFor(storedType)
       const key = `${request.user.id}/${randomUUID()}.${ext}`
 
-      const publicUrl = await storage.upload(key, buffer, contentType)
+      const publicUrl = await storage.upload(key, buffer, storedType)
 
       const [asset] = await db.insert(mediaAssets).values({
         ownerId: request.user.id,
         filename,
-        contentType,
+        contentType: storedType,
         sizeBytes: buffer.length,
         storageKey: key,
         publicUrl,

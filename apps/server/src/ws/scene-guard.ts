@@ -29,7 +29,10 @@ const STRUCTURAL = new Set([
 
 export function propertiesOf(data: Record<string, unknown>) {
   const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(data)) if (!STRUCTURAL.has(k) && v !== undefined) out[k] = v
+  // Older dashboard relays send { id, properties: {...} }; unwrap so properties are not nested.
+  const nested = data.properties
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) Object.assign(out, nested)
+  for (const [k, v] of Object.entries(data)) if (k !== 'properties' && !STRUCTURAL.has(k) && v !== undefined) out[k] = v
   return out
 }
 

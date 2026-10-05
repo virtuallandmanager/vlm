@@ -462,7 +462,11 @@ export class VLMSceneRoom extends Room {
         if (elementData.enabled !== undefined) updates.enabled = elementData.enabled
         if (elementData.customId !== undefined) updates.customId = elementData.customId
         if (elementData.clickEvent !== undefined) updates.clickEvent = elementData.clickEvent
-        updates.properties = this.extractProperties(elementData)
+        const extracted = this.extractProperties(elementData)
+        if (Object.keys(extracted).length > 0) {
+          const row = await db.query.sceneElements.findFirst({ where: eq(sceneElements.id, elementId) })
+          updates.properties = { ...((row?.properties as Record<string, unknown> | null) ?? {}), ...extracted }
+        }
       }
 
       await db.update(sceneElements).set(updates).where(eq(sceneElements.id, elementId))
@@ -479,6 +483,11 @@ export class VLMSceneRoom extends Room {
         if (instanceData.enabled !== undefined) updates.enabled = instanceData.enabled
         if (instanceData.clickEvent !== undefined) updates.clickEvent = instanceData.clickEvent
         if (instanceData.withCollisions !== undefined) updates.withCollisions = instanceData.withCollisions
+        const extracted = this.extractProperties(instanceData)
+        if (Object.keys(extracted).length > 0) {
+          const row = await db.query.sceneElementInstances.findFirst({ where: eq(sceneElementInstances.id, instanceId) })
+          updates.properties = { ...((row?.properties as Record<string, unknown> | null) ?? {}), ...extracted }
+        }
       }
 
       await db
