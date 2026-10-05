@@ -205,3 +205,48 @@ test('stale tmp files removed; oversized download rejected', async () => {
   assert.deepEqual(r.downloaded, [])
   assert.ok(!fs.existsSync(path.join(cwd, 'models/vlm/a.glb')))
 })
+
+test('model-list fetch passes an abort signal and times out with a clear error', async () => {
+  const cwd = tmp()
+  let signal
+  const hanging = async (_url, opts) => {
+    signal = opts?.signal
+    // AbortSignal.timeout's timer is unref'd: keep the loop alive until it fires
+    const keepAlive = setTimeout(() => {}, 5000)
+    return new Promise((_, reject) => opts.signal.addEventListener('abort', () => { clearTimeout(keepAlive); reject(opts.signal.reason) }))
+  }
+  await assert.rejects(run(cwd, hanging, { listTimeoutMs: 50 }), /didn't answer within/)
+  assert.ok(signal instanceof AbortSignal)
+})
+
+test('a symlinked manifest is refused and left untouched', async () => {
+  const cwd = tmp()
+  fs.mkdirSync(path.join(cwd, 'models/vlm'), { recursive: true })
+  const outside = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vlm-out-')), 'target.json')
+  fs.writeFileSync(outside, '{"files":[]}')
+  fs.symlinkSync(outside, path.join(cwd, 'models/vlm/.vlm-sync.json'))
+  const f = stub([model('a', 10)])
+  await assert.rejects(run(cwd, f), /symlink/)
+  assert.equal(fs.readFileSync(outside, 'utf8'), '{"files":[]}')
+  assert.ok(!fs.existsSync(path.join(cwd, 'models/vlm/a.glb')))
+})
+
+test('manifest is written atomically (no tmp files left behind)', async () => {
+  const cwd = tmp()
+  await run(cwd, stub([model('a', 10)]))
+  const names = fs.readdirSync(path.join(cwd, 'models/vlm')).sort()
+  assert.deepEqual(names, ['.vlm-sync.json', 'a.glb'])
+})
+
+test('a listed file with unsupported name characters gets a re-upload warning', async () => {
+  const cwd = tmp()
+  const logs = []
+  const bad = model('x', 5, { name: 'Fancy', url: 'https://cdn.vlm.gg/u/my%20duck.glb', file: 'models/vlm/my duck.glb' })
+  const r = await run(cwd, stub([bad, model('a', 10)]), { log: (m) => logs.push(m) })
+  assert.deepEqual(r.downloaded, ['models/vlm/a.glb'])
+  assert.ok(logs.some((l) => l.includes("can't be synced because its name has unsupported characters — re-upload it")), logs.join('\n'))
+  const traversal = model('y', 5, { file: 'models/vlm/../../evil.glb' })
+  const logs2 = []
+  await run(tmp(), stub([traversal]), { log: (m) => logs2.push(m) })
+  assert.ok(logs2.some((l) => l.includes('unsafe or invalid')))
+})

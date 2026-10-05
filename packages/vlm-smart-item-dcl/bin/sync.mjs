@@ -9,6 +9,7 @@ const FILE_RE = /^models\/vlm\/[A-Za-z0-9._-]+\.glb$/i
 const MANIFEST = 'models/vlm/.vlm-sync.json'
 const MAX_DOWNLOAD = 60 * MB
 const TIMEOUT_MS = 60000
+const LIST_TIMEOUT_MS = 30000
 const TMP_RE = /\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.vlm-tmp$/
 const SIZE_EXCLUDES = new Set(['node_modules', 'bin', '.git', 'dist'])
 export const DEFAULT_SERVER = 'https://api.vlm.gg'
@@ -39,6 +40,7 @@ function isSymlink(p) {
 }
 
 function readManifest(cwd) {
+  if (isSymlink(path.join(cwd, MANIFEST))) throw new Error(`${MANIFEST} is a symlink — refusing to read or write through it`)
   try {
     const m = JSON.parse(fs.readFileSync(path.join(cwd, MANIFEST), 'utf8'))
     return Array.isArray(m?.files) ? m.files.filter((f) => typeof f === 'string') : []
@@ -67,9 +69,17 @@ function sizeOfScene(cwd) {
   return total
 }
 
-async function fetchModels(fetchFn, server, location) {
+async function fetchModels(fetchFn, server, location, timeoutMs = LIST_TIMEOUT_MS) {
   const url = `${server.replace(/\/+$/, '')}/api/setup/models?location=${encodeURIComponent(location)}`
-  const res = await fetchFn(url)
+  let res
+  try {
+    res = await fetchFn(url, { signal: AbortSignal.timeout(timeoutMs) })
+  } catch (e) {
+    if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
+      throw new Error(`The VLM server didn't answer within ${Math.round(timeoutMs / 1000)} s — try again later`)
+    }
+    throw e
+  }
   if (res.status === 404) {
     throw new Error("This location isn't set up in VLM yet — walk into your deployed scene and press Set up VLM here")
   }
@@ -132,7 +142,23 @@ function checkDirs(cwd) {
   }
 }
 
-export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, location, dryRun = false, fetch: fetchFn = globalThis.fetch, log = console.log } = {}) {
+/** Write the manifest atomically (tmp file + rename), never through a symlink. */
+function writeManifest(cwd, files) {
+  const dest = path.join(cwd, MANIFEST)
+  if (isSymlink(dest)) throw new Error(`${MANIFEST} is a symlink — refusing to write through it`)
+  const tmpFile = `${dest}.${randomUUID()}.vlm-tmp`
+  try {
+    fs.writeFileSync(tmpFile, JSON.stringify({ files }, null, 2) + '\n')
+    fs.renameSync(tmpFile, dest)
+  } catch (e) {
+    try {
+      fs.rmSync(tmpFile, { force: true })
+    } catch {}
+    throw e
+  }
+}
+
+export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, location, dryRun = false, fetch: fetchFn = globalThis.fetch, log = console.log, listTimeoutMs = LIST_TIMEOUT_MS } = {}) {
   let sceneJson
   try {
     sceneJson = JSON.parse(fs.readFileSync(path.join(cwd, 'scene.json'), 'utf8'))
@@ -144,7 +170,8 @@ export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, locat
   log(`Location: ${loc}`)
 
   checkDirs(cwd)
-  const listed = await fetchModels(fetchFn, server, loc)
+  const prev = readManifest(cwd).filter((f) => safePath(cwd, f))
+  const listed = await fetchModels(fetchFn, server, loc, listTimeoutMs)
   if (!dryRun && fs.existsSync(path.join(cwd, 'models', 'vlm'))) {
     for (const n of fs.readdirSync(path.join(cwd, 'models', 'vlm'))) {
       if (TMP_RE.test(n)) fs.rmSync(path.join(cwd, 'models', 'vlm', n), { force: true })
@@ -154,7 +181,6 @@ export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, locat
   const skipped = []
   const removed = []
   const keep = new Set() // manifest files for the next manifest
-  const prev = readManifest(cwd).filter((f) => safePath(cwd, f))
   const prevLower = new Set(prev.map((f) => f.toLowerCase()))
   const listedFiles = new Set() // lowercase
 
@@ -165,7 +191,13 @@ export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, locat
       urlOk = ['http:', 'https:'].includes(new URL(m?.url).protocol)
     } catch {}
     if (!abs || !urlOk) {
-      log(`Warning: skipping model "${m?.name ?? m?.elementId}" — unsafe or invalid file/url from server`)
+      // A plain models/vlm/<name>.glb whose name has characters the sync won't write (old uploads)
+      const badName = urlOk && typeof m?.file === 'string' && /^models\/vlm\/[^/\\]+\.glb$/i.test(m.file) && !m.file.includes('..')
+      log(
+        badName
+          ? `Warning: model "${m?.name ?? m?.elementId}" (${m.file}) can't be synced because its name has unsupported characters — re-upload it`
+          : `Warning: skipping model "${m?.name ?? m?.elementId}" — unsafe or invalid file/url from server`,
+      )
       continue
     }
     if (isSymlink(abs)) {
@@ -223,7 +255,7 @@ export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, locat
 
   if (!dryRun && (keep.size || prev.length)) {
     fs.mkdirSync(path.join(cwd, 'models', 'vlm'), { recursive: true })
-    fs.writeFileSync(path.join(cwd, MANIFEST), JSON.stringify({ files: [...keep].sort() }, null, 2) + '\n')
+    writeManifest(cwd, [...keep].sort())
   }
 
   const parcels = Array.isArray(sceneJson?.scene?.parcels) ? sceneJson.scene.parcels.length : 1
