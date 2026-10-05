@@ -391,6 +391,8 @@ export const analyticsSessions = pgTable('analytics_sessions', {
   sceneStartIdx: index('analytics_sessions_scene_started_idx').on(t.sceneId, t.startedAt),
   sceneSeenIdx: index('analytics_sessions_scene_seen_idx').on(t.sceneId, t.lastSeenAt),
   sceneVisitorIdx: index('analytics_sessions_scene_visitor_idx').on(t.sceneId, t.visitorHash),
+  // Session-close sweep: open sessions by last_seen_at.
+  openSeenIdx: index('analytics_sessions_open_seen_idx').on(t.lastSeenAt).where(sql`ended_at is null`),
 }))
 
 export const analyticsEvents = pgTable('analytics_events', {

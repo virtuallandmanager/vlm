@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { sql } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import { analyticsEvents, sceneCollaborators } from '../src/db/schema.js'
 import { getAnalyticsAccess } from '../src/analytics/access.js'
@@ -18,6 +19,12 @@ describe('analytics schema and access', () => {
     await db.insert(analyticsEvents).values(row).onConflictDoNothing()
     const again = await db.insert(analyticsEvents).values(row).onConflictDoNothing().returning()
     expect(again).toHaveLength(0)
+  })
+
+  it('open sessions have a partial last_seen_at index for the session-close sweep', async () => {
+    const rows = (await db.execute(sql`select indexdef from pg_indexes where tablename = 'analytics_sessions'`)) as unknown as { indexdef: string }[]
+    const partial = rows.map((r) => r.indexdef).find((d) => /\(last_seen_at\)/.test(d) && /WHERE \(ended_at IS NULL\)/.test(d))
+    expect(partial).toBeDefined()
   })
 
   it('claimer reads and manages; lapsed claimer reads for 30 days only; strangers and unverified get nothing', async () => {
