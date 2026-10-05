@@ -1,125 +1,92 @@
 import type { FastifyInstance } from 'fastify'
-import { eq, and, gte, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { analyticsSessions, analyticsActions, scenes } from '../db/schema.js'
+import { analyticsEvents, analyticsScenes, analyticsSessions } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
+import { actorFromClaims } from '../auth/actor.js'
+import { getSceneAccess } from '../auth/permissions.js'
 
+const READ_LEVELS = new Set(['admin', 'owner', 'org', 'editor', 'viewer'])
+
+/** Legacy dashboard endpoints keyed by VLM scene id, served from the new analytics tables. */
 export default async function analyticsRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)
 
-  // ── GET /api/analytics/scenes/:sceneId/recent — Recent stats (last 24h) ──
+  async function locate(request: { user: any }, vlmSceneId: string) {
+    const access = await getSceneAccess(actorFromClaims(request.user), vlmSceneId)
+    if (!READ_LEVELS.has(access.level)) return { allowed: false as const }
+    const scene = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.vlmSceneId, vlmSceneId) })
+    return { allowed: true as const, scene }
+  }
 
-  app.get<{ Params: { sceneId: string } }>(
-    '/api/analytics/scenes/:sceneId/recent',
-    async (request, reply) => {
-      const { sceneId } = request.params
-
-      // Verify scene exists and user has access
-      const scene = await db.query.scenes.findFirst({
-        where: eq(scenes.id, sceneId),
-        with: { collaborators: true },
+  app.get<{ Params: { sceneId: string } }>('/api/analytics/scenes/:sceneId/recent', async (request, reply) => {
+    const found = await locate(request, request.params.sceneId)
+    if (!found.allowed) return reply.status(403).send({ error: 'Forbidden' })
+    if (!found.scene) return reply.send({ visitors: 0, actions: 0, activeSessions: 0, recentSessions: [] })
+    const sceneId = found.scene.id
+    const since = new Date(Date.now() - 86400_000)
+    const liveSince = new Date(Date.now() - 60_000)
+    const [{ visitors }] = await db
+      .select({ visitors: sql<number>`count(*)::int` })
+      .from(analyticsSessions)
+      .where(and(eq(analyticsSessions.sceneId, sceneId), gte(analyticsSessions.startedAt, since)))
+    const [{ actions }] = await db
+      .select({ actions: sql<number>`count(*)::int` })
+      .from(analyticsEvents)
+      .where(and(eq(analyticsEvents.sceneId, sceneId), gte(analyticsEvents.occurredAt, since)))
+    const [{ active }] = await db
+      .select({ active: sql<number>`count(*)::int` })
+      .from(analyticsSessions)
+      .where(and(eq(analyticsSessions.sceneId, sceneId), gte(analyticsSessions.lastSeenAt, liveSince)))
+    const recentSessions = await db
+      .select({
+        id: analyticsSessions.id,
+        displayName: analyticsSessions.displayName,
+        platform: analyticsSessions.platform,
+        startedAt: analyticsSessions.startedAt,
+        endedAt: analyticsSessions.endedAt,
       })
-      if (!scene) return reply.status(404).send({ error: 'Scene not found' })
-
-      const isOwner = scene.ownerId === request.user.id
-      const isCollaborator = scene.collaborators.some((c) => c.userId === request.user.id)
-      if (!isOwner && !isCollaborator && request.user.role !== 'admin') {
-        return reply.status(403).send({ error: 'Forbidden' })
-      }
-
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
-
-      // Count visitors (unique sessions in last 24h)
-      const [visitorResult] = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(analyticsSessions)
-        .where(
-          and(
-            eq(analyticsSessions.sceneId, sceneId),
-            gte(analyticsSessions.startedAt, since),
-          ),
-        )
-
-      // Count actions in last 24h
-      const [actionResult] = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(analyticsActions)
-        .where(
-          and(
-            eq(analyticsActions.sceneId, sceneId),
-            gte(analyticsActions.createdAt, since),
-          ),
-        )
-
-      // Count active sessions (no endedAt)
-      const [activeResult] = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(analyticsSessions)
-        .where(
-          and(
-            eq(analyticsSessions.sceneId, sceneId),
-            isNull(analyticsSessions.endedAt),
-          ),
-        )
-
-      // Recent sessions (last 24h, most recent first)
-      const recentSessions = await db.query.analyticsSessions.findMany({
-        where: and(
-          eq(analyticsSessions.sceneId, sceneId),
-          gte(analyticsSessions.startedAt, since),
-        ),
-        orderBy: (s, { desc }) => [desc(s.startedAt)],
-        limit: 50,
-        columns: {
-          id: true,
-          displayName: true,
-          platform: true,
-          startedAt: true,
-          endedAt: true,
-        },
-      })
-
-      return reply.send({
-        visitors: visitorResult.count,
-        actions: actionResult.count,
-        activeSessions: activeResult.count,
-        recentSessions,
-      })
-    },
-  )
-
-  // ── GET /api/analytics/scenes/:sceneId/sessions — List sessions ──────────
+      .from(analyticsSessions)
+      .where(and(eq(analyticsSessions.sceneId, sceneId), gte(analyticsSessions.startedAt, since)))
+      .orderBy(desc(analyticsSessions.startedAt))
+      .limit(50)
+    return reply.send({ visitors, actions, activeSessions: active, recentSessions })
+  })
 
   app.get<{ Params: { sceneId: string }; Querystring: { limit?: string; offset?: string } }>(
     '/api/analytics/scenes/:sceneId/sessions',
     async (request, reply) => {
-      const { sceneId } = request.params
-      const limit = Math.min(parseInt(request.query.limit || '50', 10), 200)
-      const offset = parseInt(request.query.offset || '0', 10)
-
-      // Verify scene exists and user has access
-      const scene = await db.query.scenes.findFirst({
-        where: eq(scenes.id, sceneId),
-        with: { collaborators: true },
-      })
-      if (!scene) return reply.status(404).send({ error: 'Scene not found' })
-
-      const isOwner = scene.ownerId === request.user.id
-      const isCollaborator = scene.collaborators.some((c) => c.userId === request.user.id)
-      if (!isOwner && !isCollaborator && request.user.role !== 'admin') {
-        return reply.status(403).send({ error: 'Forbidden' })
-      }
-
-      const sessions = await db.query.analyticsSessions.findMany({
-        where: eq(analyticsSessions.sceneId, sceneId),
-        orderBy: (s, { desc }) => [desc(s.startedAt)],
-        limit,
-        offset,
-        with: {
-          actions: true,
-        },
-      })
-
+      const found = await locate(request, request.params.sceneId)
+      if (!found.allowed) return reply.status(403).send({ error: 'Forbidden' })
+      if (!found.scene) return reply.send({ sessions: [] })
+      const limit = Math.min(Math.max(parseInt(request.query.limit || '50', 10) || 50, 1), 200)
+      const offset = Math.max(parseInt(request.query.offset || '0', 10) || 0, 0)
+      const rows = await db
+        .select()
+        .from(analyticsSessions)
+        .where(eq(analyticsSessions.sceneId, found.scene.id))
+        .orderBy(desc(analyticsSessions.startedAt))
+        .limit(limit)
+        .offset(offset)
+      const ids = rows.map((r) => r.id)
+      const events = ids.length
+        ? await db
+            .select()
+            .from(analyticsEvents)
+            .where(inArray(analyticsEvents.sessionId, ids))
+            .orderBy(analyticsEvents.occurredAt)
+            .limit(ids.length * 100)
+        : []
+      const bySession = new Map<string, typeof events>()
+      for (const e of events) bySession.set(e.sessionId, [...(bySession.get(e.sessionId) ?? []), e])
+      const sessions = rows.map((r) => ({
+        ...r,
+        actions: (bySession.get(r.id) ?? []).map((e) => ({
+          name: e.type === 'custom' ? (e.data as { name?: string } | null)?.name ?? 'custom' : e.type,
+          metadata: e.data,
+          createdAt: e.occurredAt,
+        })),
+      }))
       return reply.send({ sessions })
     },
   )

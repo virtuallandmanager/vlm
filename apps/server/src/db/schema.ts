@@ -12,6 +12,10 @@ import {
   index,
   uniqueIndex,
   check,
+  bigserial,
+  real,
+  smallint,
+  date,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
 import type { VenueRules } from 'vlm-shared'
@@ -332,48 +336,134 @@ export const sceneStateRelations = relations(sceneState, ({ one }) => ({
 
 // ── Analytics ────────────────────────────────────────────────────────────────
 
-export const analyticsSessions = pgTable('analytics_sessions', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  sceneId: uuid('scene_id').references(() => scenes.id),
-  userId: text('user_id'),
-  walletAddress: text('wallet_address'),
-  displayName: text('display_name'),
-  role: integer('role').default(0),
-  platform: text('platform'), // 'decentraland', 'hyperfy', etc.
-  device: jsonb('device'),
-  location: jsonb('location'),
-  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
-  endedAt: timestamp('ended_at', { withTimezone: true }),
-})
+export const analyticsSceneKindEnum = pgEnum('analytics_scene_kind', ['parcels', 'world', 'preview'])
+export const analyticsClaimStatusEnum = pgEnum('analytics_claim_status', ['active', 'lapsed'])
 
-export const analyticsSessionsRelations = relations(analyticsSessions, ({ one, many }) => ({
-  scene: one(scenes, {
-    fields: [analyticsSessions.sceneId],
-    references: [scenes.id],
-  }),
-  actions: many(analyticsActions),
-}))
-
-export const analyticsActions = pgTable('analytics_actions', {
+export const analyticsScenes = pgTable('analytics_scenes', {
   id: uuid('id').primaryKey().defaultRandom(),
-  sessionId: uuid('session_id').references(() => analyticsSessions.id, { onDelete: 'cascade' }),
-  sceneId: uuid('scene_id').references(() => scenes.id),
-  name: text('name').notNull(),
-  metadata: jsonb('metadata'),
-  pathPoint: jsonb('path_point'),
+  kind: analyticsSceneKindEnum('kind').notNull(),
+  locationKey: text('location_key').notNull().unique(),
+  realm: text('realm').notNull(),
+  baseParcel: text('base_parcel'),
+  parcels: text('parcels').array().notNull().default(sql`'{}'::text[]`),
+  worldName: text('world_name'),
+  activeEntityId: text('active_entity_id'),
+  title: text('title'),
+  salt: text('salt').notNull(), // 64 hex chars; never sent to clients
+  claimedByUserId: uuid('claimed_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  claimStatus: analyticsClaimStatusEnum('claim_status'),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  lapsedAt: timestamp('lapsed_at', { withTimezone: true }),
+  vlmSceneId: uuid('vlm_scene_id').references(() => scenes.id, { onDelete: 'set null' }),
+  walletVisibility: boolean('wallet_visibility').notNull().default(false),
+  isPreview: boolean('is_preview').notNull().default(false),
+  verifiedSessionShare: real('verified_session_share').notNull().default(0),
+  lastEntityCheckAt: timestamp('last_entity_check_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
-
-export const analyticsActionsRelations = relations(analyticsActions, ({ one }) => ({
-  session: one(analyticsSessions, {
-    fields: [analyticsActions.sessionId],
-    references: [analyticsSessions.id],
-  }),
-  scene: one(scenes, {
-    fields: [analyticsActions.sceneId],
-    references: [scenes.id],
-  }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  vlmSceneIdx: index('analytics_scenes_vlm_scene_idx').on(t.vlmSceneId),
+  claimerIdx: index('analytics_scenes_claimer_idx').on(t.claimedByUserId),
 }))
+
+export const analyticsSessions = pgTable('analytics_sessions', {
+  id: uuid('id').primaryKey(), // client-generated session id
+  sceneId: uuid('scene_id').notNull().references(() => analyticsScenes.id, { onDelete: 'cascade' }),
+  visitorHash: text('visitor_hash').notNull(),
+  wallet: text('wallet'),
+  displayName: text('display_name'),
+  isGuest: boolean('is_guest').notNull().default(false),
+  verified: boolean('verified').notNull().default(false),
+  platform: text('platform'),
+  device: text('device'),
+  realm: text('realm'),
+  country: text('country'),
+  cameraMode: text('camera_mode'),
+  isReturning: boolean('is_returning').notNull().default(false),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull(),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+  durationSec: integer('duration_sec').notNull().default(0),
+  eventCount: integer('event_count').notNull().default(0),
+}, (t) => ({
+  sceneStartIdx: index('analytics_sessions_scene_started_idx').on(t.sceneId, t.startedAt),
+  sceneSeenIdx: index('analytics_sessions_scene_seen_idx').on(t.sceneId, t.lastSeenAt),
+  sceneVisitorIdx: index('analytics_sessions_scene_visitor_idx').on(t.sceneId, t.visitorHash),
+}))
+
+export const analyticsEvents = pgTable('analytics_events', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  sceneId: uuid('scene_id').notNull().references(() => analyticsScenes.id, { onDelete: 'cascade' }),
+  sessionId: uuid('session_id').notNull(),
+  seq: integer('seq').notNull(),
+  visitorHash: text('visitor_hash').notNull(),
+  type: text('type').notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+  verified: boolean('verified').notNull().default(false),
+  data: jsonb('data'),
+}, (t) => ({
+  sessionSeqUq: uniqueIndex('analytics_events_session_seq_uq').on(t.sessionId, t.seq),
+  sceneTimeIdx: index('analytics_events_scene_time_idx').on(t.sceneId, t.occurredAt),
+}))
+
+export const analyticsPositions = pgTable('analytics_positions', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  sceneId: uuid('scene_id').notNull().references(() => analyticsScenes.id, { onDelete: 'cascade' }),
+  sessionId: uuid('session_id').notNull(),
+  seq: integer('seq').notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  x: real('x').notNull(),
+  y: real('y').notNull(),
+  z: real('z').notNull(),
+  heading: smallint('heading').notNull().default(0),
+  moving: boolean('moving').notNull().default(false),
+}, (t) => ({
+  sessionSeqUq: uniqueIndex('analytics_positions_session_seq_uq').on(t.sessionId, t.seq),
+  sceneTimeIdx: index('analytics_positions_scene_time_idx').on(t.sceneId, t.occurredAt),
+}))
+
+export const analyticsDirtyHours = pgTable('analytics_dirty_hours', {
+  sceneId: uuid('scene_id').notNull().references(() => analyticsScenes.id, { onDelete: 'cascade' }),
+  hour: timestamp('hour', { withTimezone: true }).notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.sceneId, t.hour] }) }))
+
+export const analyticsRollupHourly = pgTable('analytics_rollup_hourly', {
+  sceneId: uuid('scene_id').notNull().references(() => analyticsScenes.id, { onDelete: 'cascade' }),
+  hour: timestamp('hour', { withTimezone: true }).notNull(),
+  sessions: integer('sessions').notNull().default(0),
+  uniqueVisitors: integer('unique_visitors').notNull().default(0),
+  newVisitors: integer('new_visitors').notNull().default(0),
+  returningVisitors: integer('returning_visitors').notNull().default(0),
+  verifiedSessions: integer('verified_sessions').notNull().default(0),
+  peakConcurrency: integer('peak_concurrency').notNull().default(0),
+  dwellAvgSec: integer('dwell_avg_sec').notNull().default(0),
+  dwellP50Sec: integer('dwell_p50_sec').notNull().default(0),
+  dwellP90Sec: integer('dwell_p90_sec').notNull().default(0),
+  interactions: jsonb('interactions').notNull().default({}),
+  video: jsonb('video').notNull().default({}),
+  emotes: jsonb('emotes').notNull().default({}),
+  countries: jsonb('countries').notNull().default({}),
+  platforms: jsonb('platforms').notNull().default({}),
+  cameraModes: jsonb('camera_modes').notNull().default({}),
+}, (t) => ({ pk: primaryKey({ columns: [t.sceneId, t.hour] }) }))
+
+export const analyticsHeatmapDaily = pgTable('analytics_heatmap_daily', {
+  sceneId: uuid('scene_id').notNull().references(() => analyticsScenes.id, { onDelete: 'cascade' }),
+  day: date('day').notNull(),
+  cellX: smallint('cell_x').notNull(),
+  cellZ: smallint('cell_z').notNull(),
+  dwellSec: integer('dwell_sec').notNull().default(0),
+  visits: integer('visits').notNull().default(0),
+}, (t) => ({ pk: primaryKey({ columns: [t.sceneId, t.day, t.cellX, t.cellZ] }) }))
+
+export const analyticsCopresenceDaily = pgTable('analytics_copresence_daily', {
+  sceneId: uuid('scene_id').notNull().references(() => analyticsScenes.id, { onDelete: 'cascade' }),
+  day: date('day').notNull(),
+  visitorA: text('visitor_a').notNull(),
+  visitorB: text('visitor_b').notNull(),
+  overlapSec: integer('overlap_sec').notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.sceneId, t.day, t.visitorA, t.visitorB] }) }))
 
 // ── Events ───────────────────────────────────────────────────────────────────
 
