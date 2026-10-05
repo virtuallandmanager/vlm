@@ -33,12 +33,14 @@ import { register, httpRequestsTotal, httpRequestDurationSeconds } from './metri
 export interface BuildAppOptions {
   rateLimit?: boolean
   logger?: boolean
+  /** Test hook: capture log output. */
+  logStream?: { write(msg: string): void }
 }
 
 export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: opts.logger === false ? false : { level: config.logLevel },
-    trustProxy: true, // behind Railway's proxy: request.ip is the real client (per-IP ingest limits)
+    logger: opts.logger === false ? false : { level: config.logLevel, ...(opts.logStream ? { stream: opts.logStream } : {}) },
+    trustProxy: config.trustProxyHops, // request.ip = real client behind the proxy (per-IP ingest limits)
     genReqId: () => randomUUID(),
     bodyLimit: config.maxUploadSize, // default 100MB, set MAX_UPLOAD_MB to override
   })

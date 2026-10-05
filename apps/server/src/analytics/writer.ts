@@ -15,14 +15,15 @@ export async function writeBatch(input: {
   scene: AnalyticsSceneRow
   batch: IngestBatch
   verified: boolean
+  signer: string | null
   country: string | null
   keepPosProbability: number
   random?: () => number
 }): Promise<{ accepted: number }> {
-  const { scene, batch, verified, country, keepPosProbability } = input
+  const { scene, batch, verified, signer, country, keepPosProbability } = input
   const random = input.random ?? Math.random
   const hash = visitorHash(scene.salt, batch.visitorId)
-  const reveal = scene.walletVisibility && batch.noticeShown && !batch.isGuest
+  const reveal = scene.walletVisibility && batch.noticeShown && !batch.isGuest && verified && signer !== null && signer === batch.visitorId.toLowerCase()
   const times = batch.events.map((e) => e.t)
   const startedAt = new Date(Math.min(...times))
   const lastSeenAt = new Date(Math.max(...times))
@@ -33,7 +34,7 @@ export async function writeBatch(input: {
     .filter((e) => e.type === 'pos')
     .filter(() => keepPosProbability >= 1 || random() < keepPosProbability)
     .map((e) => ({ e, x: num(e.data?.x), y: num(e.data?.y), z: num(e.data?.z) }))
-    .filter((p) => p.x !== null && p.y !== null && p.z !== null)
+    .filter((p) => [p.x, p.y, p.z].every((v) => v !== null && Math.abs(v) <= 1e6))
   const others = batch.events.filter((e) => e.type !== 'pos')
 
   return db.transaction(async (tx) => {
@@ -67,7 +68,7 @@ export async function writeBatch(input: {
               x: x!,
               y: y!,
               z: z!,
-              heading: Math.round(num(e.data?.ry) ?? 0) % 360,
+              heading: (((Math.round(num(e.data?.ry) ?? 0) % 360) + 360) % 360),
               moving: e.data?.m === true,
             })),
           )
@@ -88,7 +89,7 @@ export async function writeBatch(input: {
         id: batch.sessionId,
         sceneId: scene.id,
         visitorHash: hash,
-        wallet: reveal ? batch.visitorId : null,
+        wallet: reveal ? signer : null,
         displayName: reveal ? text(batch.displayName) : null,
         isGuest: batch.isGuest,
         verified,
@@ -124,10 +125,10 @@ export async function writeBatch(input: {
           country: sql`coalesce(${analyticsSessions.country}, excluded.country)`,
           cameraMode: sql`coalesce(excluded.camera_mode, ${analyticsSessions.cameraMode})`,
         },
-        setWhere: sql`${analyticsSessions.sceneId} = excluded.scene_id`,
+        setWhere: sql`${analyticsSessions.sceneId} = excluded.scene_id and ${analyticsSessions.visitorHash} = excluded.visitor_hash`,
       })
       .returning({ id: analyticsSessions.id })
-    if (upserted.length === 0) throw new SessionSceneMismatchError('session belongs to another scene')
+    if (upserted.length === 0) throw new SessionSceneMismatchError('session id already belongs to another scene or visitor')
 
     const hours = [...new Set(times.map((t) => hourOf(t).getTime()))].map((h) => ({ sceneId: scene.id, hour: new Date(h) }))
     await tx.insert(analyticsDirtyHours).values(hours).onConflictDoNothing()

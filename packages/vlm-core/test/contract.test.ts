@@ -18,6 +18,15 @@ function batch(overrides: Partial<IngestBatch> = {}): any {
 }
 
 describe('checkBatch', () => {
+  it.each([
+    ['top-level string', batch({ displayName: 'a\u0000b' })],
+    ['scene string', batch({ scene: { realm: 'ma\u0000in', isWorld: false, isPreview: false, baseParcel: '1,1' } })],
+    ['nested event data', batch({ events: [{ t: NOW, type: 'custom', seq: 0, data: { name: 'x', props: { l: ['ok', 'a\u0000b'] } } }] })],
+  ])('rejects NUL characters in %s', (_n, b) => {
+    const r = checkBatch(b, NOW)
+    expect(r).toEqual({ ok: false, error: 'strings must not contain NUL characters' })
+  })
+
   it('accepts a valid batch and lowercases wallet visitor ids', () => {
     const r = checkBatch(batch(), NOW)
     expect(r.ok).toBe(true)

@@ -146,6 +146,42 @@ describe('POST /api/ingest', () => {
     expect(r.json().retryAfter).toBeGreaterThan(0)
   })
 
+  it('rejects NUL characters with 400', async () => {
+    const b = batch({ events: [{ t: Date.now(), type: 'custom', seq: 0, data: { name: 'a\u0000b' } }] })
+    expect((await post(b)).statusCode).toBe(400)
+  })
+
+  it('drops out-of-range positions and normalizes heading', async () => {
+    const now = Date.now()
+    const res = await post(batch({ events: [
+      { t: now - 3000, type: 'pos', seq: 0, data: { x: 1e300, y: 0, z: 0, ry: 0, m: false } },
+      { t: now - 2000, type: 'pos', seq: 1, data: { x: 1, y: 0, z: 2, ry: -90, m: false } },
+    ] }))
+    expect(res.statusCode).toBe(200)
+    const ps = await db.select().from(analyticsPositions)
+    expect(ps).toHaveLength(1)
+    expect(ps[0].heading).toBe(270)
+  })
+
+  it('does not reveal identity for an unsigned batch even with visibility on and notice shown', async () => {
+    await post(batch())
+    await db.update(analyticsScenes).set({ walletVisibility: true })
+    const id = '77777777-7777-4777-8777-777777777777'
+    await post(batch({ sessionId: id, noticeShown: true, displayName: 'Ana' }), {})
+    const [s] = await db.select().from(analyticsSessions).where(eq(analyticsSessions.id, id))
+    expect(s).toMatchObject({ wallet: null, displayName: null, verified: false })
+  })
+
+  it('a session id reused by a different visitor is rejected with 409 and the hash is unchanged', async () => {
+    await post(batch())
+    const [before] = await db.select().from(analyticsSessions)
+    const other = '0x00000000000000000000000000000000000000bb'
+    const r = await post(batch({ visitorId: other, events: [{ t: Date.now(), type: 'session.heartbeat', seq: 9, data: {} }] }), signed(other))
+    expect(r.statusCode).toBe(409)
+    const [after] = await db.select().from(analyticsSessions)
+    expect(after.visitorHash).toBe(before.visitorHash)
+  })
+
   it('never stores the IP address', async () => {
     await post(batch(), { ...signed(), 'x-forwarded-for': '203.0.113.9' })
     const dump = JSON.stringify(await db.select().from(analyticsSessions)) + JSON.stringify(await db.select().from(analyticsEvents))

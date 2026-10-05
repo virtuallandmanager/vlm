@@ -124,9 +124,17 @@ function checkScene(s: unknown): AnalyticsSceneRef | string {
   }
 }
 
+function hasNul(v: unknown, depth = 0): boolean {
+  if (typeof v === 'string') return v.includes('\u0000')
+  if (depth > 20 || v === null || typeof v !== 'object') return false
+  if (Array.isArray(v)) return v.some((x) => hasNul(x, depth + 1))
+  return Object.entries(v).some(([k, x]) => k.includes('\u0000') || hasNul(x, depth + 1))
+}
+
 export function checkBatch(input: unknown, nowMs: number): BatchCheck {
   if (!isObj(input)) return { ok: false, error: 'batch must be an object' }
   if (input.v !== 1) return { ok: false, error: 'v must be 1' }
+  if (hasNul(input)) return { ok: false, error: 'strings must not contain NUL characters' }
   if (typeof input.sessionId !== 'string' || !UUID_RE.test(input.sessionId)) return { ok: false, error: 'sessionId must be a UUID' }
   if (!str(input.visitorId, 100)) return { ok: false, error: 'visitorId is required' }
   if (typeof input.isGuest !== 'boolean' || typeof input.noticeShown !== 'boolean') {
