@@ -3,6 +3,8 @@ import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import { analyticsEvents, analyticsHeatmapDaily, analyticsPositions, analyticsRollupHourly, analyticsScenes, analyticsSessions, analyticsCopresenceDaily } from '../src/db/schema.js'
 import { visitorHash } from '../src/analytics/hash.js'
+import { setDeleteMyDataLimiter } from '../src/routes/analytics-read.js'
+import { TokenBucketLimiter } from '../src/analytics/limiter.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, tokenFor } from './helpers/factories.js'
 import { createAnalyticsScene, insertSession } from './helpers/analytics.js'
@@ -11,6 +13,7 @@ describe('analytics read API', () => {
   let app: Awaited<ReturnType<typeof testApp>>
   beforeEach(async () => {
     await resetDb()
+    setDeleteMyDataLimiter(new TokenBucketLimiter())
     app = await testApp()
   })
   afterEach(() => app.close())
@@ -193,5 +196,28 @@ describe('analytics read API', () => {
     const res = await app.inject({ method: 'POST', url: '/api/analytics/me/delete', headers: { authorization: `Bearer ${tokenFor(me)}` } })
     expect(res.json().deleted).toEqual({ sessions: 2, events: 2, positions: 2, copresence: 2 })
     expect(await db.select().from(analyticsSessions)).toHaveLength(2)
+  })
+
+  it('delete-my-data deletes events by the deleted sessions\' ids', async () => {
+    const W = '0x00000000000000000000000000000000000000d2'
+    const me = await createUser({ wallet: W })
+    const sc = await createAnalyticsScene()
+    const sess = await insertSession(sc.id, { visitorHash: visitorHash(sc.salt, W) })
+    // Keyed by session id (session_id index), not a visitor_hash scan.
+    await db.insert(analyticsEvents).values({ sceneId: sc.id, sessionId: sess.id, seq: 0, visitorHash: 'not-the-hash', type: 'custom', occurredAt: new Date() })
+    const res = await app.inject({ method: 'POST', url: '/api/analytics/me/delete', headers: { authorization: `Bearer ${tokenFor(me)}` } })
+    expect(res.json().deleted).toMatchObject({ sessions: 1, events: 1 })
+    expect(await db.select().from(analyticsEvents)).toHaveLength(0)
+  })
+
+  it('delete-my-data is limited to 3 requests per hour per user', async () => {
+    const me = await createUser({ wallet: '0x00000000000000000000000000000000000000d3' })
+    const other = await createUser({ wallet: '0x00000000000000000000000000000000000000d4' })
+    const del = (u: any) => app.inject({ method: 'POST', url: '/api/analytics/me/delete', headers: { authorization: `Bearer ${tokenFor(u)}` } })
+    for (let i = 0; i < 3; i++) expect((await del(me)).statusCode).toBe(200)
+    const r = await del(me)
+    expect(r.statusCode).toBe(429)
+    expect(r.json().retryAfter).toBeGreaterThan(0)
+    expect((await del(other)).statusCode).toBe(200)
   })
 })

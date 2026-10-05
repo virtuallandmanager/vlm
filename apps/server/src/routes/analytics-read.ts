@@ -19,6 +19,7 @@ import { actorFromClaims } from '../auth/actor.js'
 import { getAnalyticsAccess } from '../analytics/access.js'
 import { verifiedWalletsOf } from '../analytics/claims.js'
 import { visitorHash } from '../analytics/hash.js'
+import { TokenBucketLimiter } from '../analytics/limiter.js'
 
 const DAY = 86_400_000
 const HOUR = 3_600_000
@@ -27,6 +28,16 @@ const MAX_RANGE_DAYS = 400
 const ts = (d: Date) => sql`${d.toISOString()}::timestamptz`
 const rowsOf = <T>(r: unknown) => r as unknown as T[]
 const startedCap = (cap: { started: Date | null }) => (cap.started ? sql` and started_at < ${ts(cap.started)}` : sql``)
+
+// delete-my-data walks every scene, so allow it 3 times per hour per user.
+const DELETE_LIMIT = { capacity: 3, refillPerSec: 3 / 3600 }
+let deleteLimiter = new TokenBucketLimiter()
+let deleteSweepTimer: NodeJS.Timeout | null = null
+
+/** Test hook. */
+export function setDeleteMyDataLimiter(l: TokenBucketLimiter): void {
+  deleteLimiter = l
+}
 
 function range(q: { from?: string; to?: string }): { from: Date; to: Date } | null {
   const to = q.to ? new Date(q.to) : new Date()
@@ -56,6 +67,10 @@ function mergeCounts(objs: unknown[]): Record<string, number> {
 
 export default async function analyticsReadRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)
+  if (!deleteSweepTimer) {
+    deleteSweepTimer = setInterval(() => deleteLimiter.sweep(), 60_000)
+    deleteSweepTimer.unref()
+  }
 
   async function guard(request: { user: any }, reply: FastifyReply, id: string, manage = false) {
     const access = await getAnalyticsAccess(actorFromClaims(request.user), id)
@@ -268,30 +283,37 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     const wallets = new Set(await verifiedWalletsOf(actor.userId))
     if (actor.wallet) wallets.add(actor.wallet)
     if (!wallets.size) return reply.status(400).send({ error: 'Sign in with your wallet to delete your visitor data' })
+    const limit = deleteLimiter.take(`del:${actor.userId}`, 1, DELETE_LIMIT.capacity, DELETE_LIMIT.refillPerSec)
+    if (!limit.ok) return reply.status(429).send({ error: 'rate_limited', retryAfter: Math.ceil(limit.retryAfterMs / 1000) })
     const deleted = { sessions: 0, events: 0, positions: 0, copresence: 0 }
     const all = await db.select({ id: analyticsScenes.id, salt: analyticsScenes.salt }).from(analyticsScenes)
     for (const scene of all) {
       const hashes = [...wallets].map((w) => visitorHash(scene.salt, w))
-      const sessions = await db
-        .delete(analyticsSessions)
-        .where(and(eq(analyticsSessions.sceneId, scene.id), inArray(analyticsSessions.visitorHash, hashes)))
-        .returning({ id: analyticsSessions.id })
-      deleted.sessions += sessions.length
-      deleted.events += (await db.delete(analyticsEvents).where(and(eq(analyticsEvents.sceneId, scene.id), inArray(analyticsEvents.visitorHash, hashes))).returning({ id: analyticsEvents.id })).length
-      if (sessions.length) {
-        deleted.positions += (
-          await db
-            .delete(analyticsPositions)
-            .where(and(eq(analyticsPositions.sceneId, scene.id), inArray(analyticsPositions.sessionId, sessions.map((s) => s.id))))
-            .returning({ id: analyticsPositions.id })
+      // One transaction per scene; events and positions go by the deleted sessions' ids (session_id index).
+      const counts = await db.transaction(async (tx) => {
+        const sessions = await tx
+          .delete(analyticsSessions)
+          .where(and(eq(analyticsSessions.sceneId, scene.id), inArray(analyticsSessions.visitorHash, hashes)))
+          .returning({ id: analyticsSessions.id })
+        const ids = sessions.map((s) => s.id)
+        const events = ids.length
+          ? (await tx.delete(analyticsEvents).where(inArray(analyticsEvents.sessionId, ids)).returning({ id: analyticsEvents.id })).length
+          : 0
+        const positions = ids.length
+          ? (await tx.delete(analyticsPositions).where(inArray(analyticsPositions.sessionId, ids)).returning({ id: analyticsPositions.id })).length
+          : 0
+        const copresence = (
+          await tx
+            .delete(analyticsCopresenceDaily)
+            .where(and(eq(analyticsCopresenceDaily.sceneId, scene.id), or(inArray(analyticsCopresenceDaily.visitorA, hashes), inArray(analyticsCopresenceDaily.visitorB, hashes))))
+            .returning({ day: analyticsCopresenceDaily.day })
         ).length
-      }
-      deleted.copresence += (
-        await db
-          .delete(analyticsCopresenceDaily)
-          .where(and(eq(analyticsCopresenceDaily.sceneId, scene.id), or(inArray(analyticsCopresenceDaily.visitorA, hashes), inArray(analyticsCopresenceDaily.visitorB, hashes))))
-          .returning({ day: analyticsCopresenceDaily.day })
-      ).length
+        return { sessions: sessions.length, events, positions, copresence }
+      })
+      deleted.sessions += counts.sessions
+      deleted.events += counts.events
+      deleted.positions += counts.positions
+      deleted.copresence += counts.copresence
     }
     return reply.send({ deleted })
   })
