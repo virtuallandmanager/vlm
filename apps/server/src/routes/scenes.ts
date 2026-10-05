@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { eq, and, sql, inArray } from 'drizzle-orm'
+import { eq, and, or, isNull, sql, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   scenes,
@@ -7,6 +7,7 @@ import {
   sceneElements,
   sceneElementInstances,
   sceneCollaborators,
+  sceneRoles,
   sceneState,
   users,
 } from '../db/schema.js'
@@ -83,11 +84,40 @@ export default async function sceneRoutes(app: FastifyInstance) {
           orderBy: (scenes, { desc }) => [desc(scenes.updatedAt)],
         })
       : []
-    const roleBy = new Map(collabs.map((c) => [c.sceneId, c.role]))
+    const actorWallet = actor.wallet
+    const roleRows = await db
+      .select({ sceneId: sceneRoles.sceneId, role: sceneRoles.role })
+      .from(sceneRoles)
+      .where(
+        and(
+          isNull(sceneRoles.revokedAt),
+          actorWallet
+            ? or(eq(sceneRoles.userId, actor.userId), eq(sceneRoles.walletAddress, actorWallet))
+            : eq(sceneRoles.userId, actor.userId),
+        ),
+      )
+    const rank: Record<string, number> = { owner: 4, cohost: 3, editor: 2, viewer: 1 }
+    const best = new Map<string, string>()
+    const consider = (sceneId: string, role: string) => {
+      const cur = best.get(sceneId)
+      if (!cur || rank[role] > rank[cur]) best.set(sceneId, role)
+    }
+    for (const c of collabs) consider(c.sceneId, c.role)
+    for (const r of roleRows) consider(r.sceneId, r.role)
+
+    const ownedIds = new Set(owned.map((s) => s.id))
+    const sharedIds = new Set(shared.map((s) => s.id))
+    const extraIds = roleRows.map((r) => r.sceneId).filter((id) => !ownedIds.has(id) && !sharedIds.has(id))
+    const extra = extraIds.length
+      ? await db.query.scenes.findMany({
+          where: inArray(scenes.id, [...new Set(extraIds)]),
+          orderBy: (scenes, { desc }) => [desc(scenes.updatedAt)],
+        })
+      : []
     return reply.send({
       scenes: [
         ...owned.map((s) => ({ ...s, relationship: 'owner' as const })),
-        ...shared.map((s) => ({ ...s, relationship: roleBy.get(s.id)! })),
+        ...[...shared, ...extra].map((s) => ({ ...s, relationship: best.get(s.id)! })),
       ],
     })
   })
