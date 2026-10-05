@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { sceneElements, sceneElementInstances, sceneCollaborators } from '../src/db/schema.js'
+import { sceneElements, sceneElementInstances, sceneCollaborators, scenePresets, scenes } from '../src/db/schema.js'
 import { createVenue, createBooking, addGrant, revokeGrant } from '../src/venues/service.js'
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene, createElement, tokenFor, expiredTokenFor, randomWallet } from './helpers/factories.js'
@@ -100,10 +100,11 @@ describe('VLMSceneRoom auth', () => {
   })
 
   describe('venue grants', () => {
-    async function venueWithCrew(startInMs = 24 * H) {
+    async function venueWithCrew(startInMs = 24 * H, role: 'vj' | 'cohost' = 'vj') {
       const admin = await createUser({ role: 'admin' })
       const { scene, preset } = await createScene(admin)
       const screen = await createElement(preset.id)
+      const sideScreen = await createElement(preset.id, { name: 'Side Screen' })
       const venue = await createVenue({ sceneId: scene.id, name: 'Aurora', slug: `aurora-${crypto.randomUUID()}`, rentableElementIds: [screen.id] })
       const hostWallet = randomWallet()
       const host = await createUser({ wallet: hostWallet })
@@ -118,9 +119,11 @@ describe('VLMSceneRoom auth', () => {
       })
       const crewWallet = randomWallet()
       const crew = await createUser({ wallet: crewWallet })
-      const grant = await addGrant({ bookingId: booking.id, walletAddress: crewWallet, role: 'vj', grantedByUserId: host.id })
-      const [clone] = await db.select().from(sceneElements).where(eq(sceneElements.presetId, booking.bookingPresetId!))
-      return { admin, scene, preset, screen, venue, booking, host, crew, grant, clone }
+      const grant = await addGrant({ bookingId: booking.id, walletAddress: crewWallet, role, grantedByUserId: host.id })
+      const clones = await db.select().from(sceneElements).where(eq(sceneElements.presetId, booking.bookingPresetId!))
+      const clone = clones.find((c) => c.clonedFromId === screen.id)!
+      const sideClone = clones.find((c) => c.clonedFromId === sideScreen.id)!
+      return { admin, scene, preset, screen, sideScreen, venue, booking, host, crew, grant, clone, sideClone }
     }
 
     it('crew gets venue_access on join', async () => {
@@ -155,6 +158,44 @@ describe('VLMSceneRoom auth', () => {
       const c = await joinScene(gs.url, v.scene.id, tokenFor(v.crew))
       c.room.send('scene_moderator_message', { message: 'hi' })
       expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+    })
+
+    it('live crew can switch only to the booking preset or the venue default', async () => {
+      const v = await venueWithCrew(30 * 60_000, 'cohost')
+      const [privatePreset] = await db.insert(scenePresets).values({ sceneId: v.scene.id, name: 'Owner Private' }).returning()
+      const c = await joinScene(gs.url, v.scene.id, tokenFor(v.crew))
+      expect((await c.waitFor('venue_access')).window).toBe('live')
+
+      c.room.send('scene_change_preset', { presetId: privatePreset.id })
+      expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+      expect((await db.query.scenes.findFirst({ where: eq(scenes.id, v.scene.id) }))!.activePresetId).toBe(v.preset.id)
+
+      c.room.send('scene_change_preset', { presetId: v.booking.bookingPresetId })
+      await c.waitFor('scene_change_preset')
+      expect((await db.query.scenes.findFirst({ where: eq(scenes.id, v.scene.id) }))!.activePresetId).toBe(v.booking.bookingPresetId)
+
+      c.room.send('scene_change_preset', { presetId: v.preset.id })
+      await c.waitFor('scene_change_preset')
+      expect((await db.query.scenes.findFirst({ where: eq(scenes.id, v.scene.id) }))!.activePresetId).toBe(v.preset.id)
+    })
+
+    it('live crew video updates are limited to rentable screens in the booking preset', async () => {
+      const v = await venueWithCrew(30 * 60_000)
+      const visitor = await joinScene(gs.url, v.scene.id)
+      await visitor.waitFor('scene_preset_update') // init
+      const c = await joinScene(gs.url, v.scene.id, tokenFor(v.crew))
+      expect((await c.waitFor('venue_access')).window).toBe('live')
+
+      for (const sk of [v.sideClone.id, v.screen.id, v.sideScreen.id]) {
+        c.room.send('scene_video_update', { sk, url: 'https://evil/x.m3u8', isLive: true })
+        expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+      }
+      c.room.send('scene_video_update', { sk: crypto.randomUUID(), url: 'https://evil/x.m3u8' })
+      expect((await c.waitFor('vlm_error')).code).toBe('not_found')
+      await visitor.expectNone('scene_video_status')
+
+      c.room.send('scene_video_update', { sk: v.clone.id, url: 'https://dj/live.m3u8', isLive: true })
+      expect((await visitor.waitFor('scene_video_status')).url).toBe('https://dj/live.m3u8')
     })
 
     it('revoking a grant takes effect on the very next message and notifies the client', async () => {

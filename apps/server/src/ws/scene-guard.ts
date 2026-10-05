@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { sceneElementInstances, sceneElements, scenePresets, scenes } from '../db/schema.js'
+import { sceneElementInstances, sceneElements, scenePresets, scenes, venues } from '../db/schema.js'
 import { canWriteElement, diffKeys, hasScope, type SceneAccess, type SceneScope } from '../auth/permissions.js'
 
 /** The element/instance ids the guard authorized; the room must act on these, not re-derive them. */
@@ -50,8 +50,18 @@ export async function authorizeSceneMessage(access: SceneAccess, sceneId: string
   switch (type) {
     case 'scene_setting_update':
       return hasScope(access, 'scene.edit') ? OK_BROADCAST : FORBIDDEN
-    case 'scene_video_update':
-      return liveScope(access, 'screens')
+    case 'scene_video_update': {
+      const live = liveScope(access, 'screens')
+      if (!live.ok || access.level !== 'grant') return live
+      // Crew may only drive rentable screens in their own booking preset.
+      const elementId = message?.sk || message?.id || message?.elementId
+      const el = elementId && (await db.query.sceneElements.findFirst({ where: eq(sceneElements.id, elementId), with: { preset: true } }))
+      if (!el || el.preset.sceneId !== sceneId) return NOT_FOUND
+      const rentable = access.booking!.rentableElementIds
+      if (el.presetId !== access.booking!.bookingPresetId) return FORBIDDEN
+      if (!rentable.has(el.id) && !(el.clonedFromId && rentable.has(el.clonedFromId))) return FORBIDDEN
+      return OK_BROADCAST
+    }
     case 'scene_moderator_message':
     case 'scene_moderator_crash':
       return hasScope(access, 'moderation') ? OK_BROADCAST : FORBIDDEN
@@ -59,7 +69,12 @@ export async function authorizeSceneMessage(access: SceneAccess, sceneId: string
       const presetId = message?.presetId || message?.id
       const preset = presetId && (await db.query.scenePresets.findFirst({ where: eq(scenePresets.id, presetId) }))
       if (!preset || preset.sceneId !== sceneId) return NOT_FOUND
-      return liveScope(access, 'presets')
+      const live = liveScope(access, 'presets')
+      if (!live.ok || access.level !== 'grant') return live
+      // Crew may only switch between their booking preset and the venue default.
+      if (preset.id === access.booking!.bookingPresetId) return live
+      const venue = await db.query.venues.findFirst({ where: eq(venues.sceneId, sceneId), columns: { defaultPresetId: true } })
+      return venue?.defaultPresetId === preset.id ? live : FORBIDDEN
     }
     case 'scene_preset_update':
       return authorizePresetUpdate(access, sceneId, message ?? {})
