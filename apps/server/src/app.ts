@@ -23,6 +23,7 @@ import organizationRoutes from './routes/organizations.js'
 import apiKeyRoutes from './routes/api-keys.js'
 import adminRoutes from './routes/admin.js'
 import venueRoutes from './routes/venues.js'
+import ingestRoutes from './routes/ingest.js'
 import { db } from './db/connection.js'
 import { sql } from 'drizzle-orm'
 import { existsSync } from 'node:fs'
@@ -37,6 +38,7 @@ export interface BuildAppOptions {
 export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: opts.logger === false ? false : { level: config.logLevel },
+    trustProxy: true, // behind Railway's proxy: request.ip is the real client (per-IP ingest limits)
     genReqId: () => randomUUID(),
     bodyLimit: config.maxUploadSize, // default 100MB, set MAX_UPLOAD_MB to override
   })
@@ -115,6 +117,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(apiKeyRoutes)
   await app.register(adminRoutes)
   await app.register(venueRoutes)
+  await app.register(ingestRoutes)
 
   // Health check
   app.get('/api/health', async (_request, reply) => {
