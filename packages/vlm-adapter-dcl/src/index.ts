@@ -1,6 +1,7 @@
 import { VLM } from 'vlm-core'
 import type { VLMConnectionState } from 'vlm-core'
 import { DclAdapter } from './DclAdapter'
+import { startVLMAnalytics } from './analytics.js'
 import { DclHUDRenderer, setSceneActionHandler } from './DclHUDRenderer.js'
 import type { VLMInitConfig, VLMStorage } from 'vlm-shared'
 
@@ -20,6 +21,10 @@ import type { VLMInitConfig, VLMStorage } from 'vlm-shared'
 export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: boolean }): Promise<VLM> {
   const adapter = new DclAdapter()
   const vlm = new VLM(adapter)
+  if (config?.analytics !== false) {
+    const collector = await startVLMAnalytics({ env: config?.env, apiUrl: config?.apiUrl, adapter })
+    if (collector) vlm.attachAnalytics(collector)
+  }
   const enableHud = config?.enableHud !== false
 
   // Initialize HUD immediately so user sees something right away
@@ -211,3 +216,4 @@ export default VLMCompat
 export { DclAdapter }
 export { DclHUDRenderer } from './DclHUDRenderer.js'
 export type { VLMInitConfig }
+export { startVLMAnalytics, DclAnalyticsProbe, getAnalyticsSceneRef } from './analytics.js'

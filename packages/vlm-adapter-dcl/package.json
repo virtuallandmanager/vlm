@@ -4,6 +4,10 @@
   "description": "VLM Platform Adapter for Decentraland SDK 7",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./analytics": { "types": "./dist/analytics.d.ts", "default": "./dist/analytics.js" }
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",

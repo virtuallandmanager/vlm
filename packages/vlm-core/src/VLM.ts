@@ -10,6 +10,11 @@ const API_URLS: Record<string, string> = {
   staging: 'https://staging-api.vlm.gg',
   prod: 'https://api.vlm.gg',
 }
+export function resolveApiUrl(config: Partial<VLMInitConfig> = {}): string {
+  const env = config.env || 'prod'
+  return config.apiUrl || API_URLS[env] || API_URLS.prod
+}
+
 const WSS_URLS: Record<string, string> = {
   dev: 'ws://localhost:3010',
   staging: 'wss://staging-api.vlm.gg',
@@ -55,6 +60,8 @@ export class VLM {
     this.storage = VLMStorageImpl.create()
     this.sceneManager = new SceneManager(adapter, this.storage, this.events)
   }
+
+  private analytics: import('./analytics/collector.js').Collector | null = null
 
   get connectionState(): VLMConnectionState { return this._connectionState }
   get sceneId(): string | null { return this._sceneId }
@@ -104,7 +111,7 @@ export class VLM {
    */
   async authenticate(config: VLMInitConfig): Promise<void> {
     const env = config.env || 'prod'
-    const apiUrl = config.apiUrl || API_URLS[env] || API_URLS.prod
+    const apiUrl = resolveApiUrl(config)
     this.wssUrl = config.wssUrl || WSS_URLS[env] || WSS_URLS.prod
     this.http = new VLMHttpClient(apiUrl)
 
@@ -197,10 +204,6 @@ export class VLM {
           },
         })
 
-        this.colyseus.send('session_start', {
-          sessionToken: this.http.auth.token,
-          sceneId,
-        })
       } catch (err) {
         this.setState('error', { error: String(err) })
         reject(err)
@@ -265,7 +268,7 @@ export class VLM {
       this.hud.destroy()
       this.hud = null
     }
-    try { this.colyseus.send('session_end', {}) } catch { /* may not be connected */ }
+    await this.analytics?.destroy()
     this.colyseus.leaveRoom()
     this.setState('idle')
   }
@@ -329,7 +332,16 @@ export class VLM {
     })
   }
 
+  /** @deprecated use track() */
   recordAction(id: string, metadata?: Record<string, unknown>): void {
-    this.colyseus.send('session_action', { action: id, metadata })
+    this.track(id, metadata)
+  }
+
+  attachAnalytics(collector: import('./analytics/collector.js').Collector): void {
+    this.analytics = collector
+  }
+
+  track(name: string, props?: Record<string, unknown>): void {
+    this.analytics?.track(name, props)
   }
 }

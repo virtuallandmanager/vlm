@@ -163,6 +163,11 @@ export class DclAdapter implements VLMPlatformAdapter {
     }
   }
 
+  async getAnalyticsScene() {
+    const { getAnalyticsSceneRef } = await import('./analytics.js')
+    return getAnalyticsSceneRef()
+  }
+
   async getEnvironment(): Promise<PlatformEnvironment> {
     try {
       const { isPreviewMode, getPlatform, getCurrentRealm } = await import(

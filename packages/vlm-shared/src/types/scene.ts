@@ -45,6 +45,8 @@ export interface VLMInitConfig {
   wssUrl?: string;
   debug?: boolean | string[];
   widgets?: WidgetConfig[];
+  /** Automatic analytics (default true). */
+  analytics?: boolean;
 }
 
 export interface WidgetConfig {
