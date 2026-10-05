@@ -171,6 +171,22 @@ describe('VLMSceneRoom auth', () => {
       expect((await propsOf(v.screen.id)).liveSrc).toBe('https://old.example/live.m3u8')
     })
 
+    it('partial updates are diffed against only the keys sent (merge semantics)', async () => {
+      const v = await venueWithCrew()
+      // screens scope only: may toggle and edit non-playlist props, but not the playlist
+      await db.update((await import('../src/db/schema.js')).accessGrants).set({ scopes: ['screens'] }).where(eq((await import('../src/db/schema.js')).accessGrants.id, v.grant.id))
+      const c = await joinScene(gs.url, v.scene.id, tokenFor(v.crew))
+      await c.waitFor('venue_access')
+
+      c.room.send('scene_preset_update', { action: 'update', element: 'video', elementData: { sk: v.clone.id, enabled: false } })
+      await c.waitFor('scene_preset_update_ack')
+      expect((await db.query.sceneElements.findFirst({ where: eq(sceneElements.id, v.clone.id) }))!.enabled).toBe(false)
+
+      c.room.send('scene_preset_update', { action: 'update', element: 'video', elementData: { sk: v.clone.id, properties: { playlist: [{ url: 'x' }] } } })
+      expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+      expect((await propsOf(v.clone.id)).playlist).toEqual([])
+    })
+
     it('crew cannot edit the live default preset element', async () => {
       const v = await venueWithCrew()
       const c = await joinScene(gs.url, v.scene.id, tokenFor(v.crew))

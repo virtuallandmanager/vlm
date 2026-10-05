@@ -123,7 +123,9 @@ async function authorizePresetUpdate(access: SceneAccess, sceneId: string, messa
   const el = await db.query.sceneElements.findFirst({ where: eq(sceneElements.id, elementId), with: { preset: true } })
   if (!el || el.preset.sceneId !== sceneId) return NOT_FOUND
   const data = (elementData ?? {}) as Record<string, unknown>
-  const propertyKeys = elementData ? diffKeys(el.properties as Record<string, unknown> | null, propertiesOf(data)) : []
+  // Persistence merges, so only the keys the message actually carries can change.
+  const sent = elementData ? propertiesOf(data) : {}
+  const propertyKeys = diffKeys(el.properties as Record<string, unknown> | null, sent).filter((k) => k in sent)
   const fieldKeys = ELEMENT_FIELDS.filter(
     (k) => data[k] !== undefined && JSON.stringify(data[k]) !== JSON.stringify((el as any)[k]),
   )

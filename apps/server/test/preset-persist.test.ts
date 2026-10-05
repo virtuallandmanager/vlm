@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { sceneElements } from '../src/db/schema.js'
+import { sceneElements, sceneElementInstances } from '../src/db/schema.js'
 import { resetDb } from './helpers/db.js'
-import { createUser, createScene, createElement, tokenFor } from './helpers/factories.js'
+import { createUser, createScene, createElement, createInstance, tokenFor } from './helpers/factories.js'
 import { startGameServer, joinScene } from './helpers/game-server.js'
 
 describe('persistPresetUpdate merges properties', () => {
@@ -47,5 +47,19 @@ describe('persistPresetUpdate merges properties', () => {
     c.room.send('scene_preset_update', { action: 'update', element: 'image', elementData: { id: el.id, properties: { textureSrc: 'https://x/c.png' } } })
     await settle()
     expect((await row(el.id)).properties).toEqual({ textureSrc: 'https://x/c.png' })
+  })
+
+  it('instance update keeps existing properties when only position is sent', async () => {
+    const { c, el } = await setup({ textureSrc: 'https://x/a.png' })
+    const inst = await createInstance(el.id)
+    await db.update(sceneElementInstances).set({ properties: { tint: 'red' } }).where(eq(sceneElementInstances.id, inst.id))
+    c.room.send('scene_preset_update', {
+      action: 'update', element: 'image', instance: true,
+      elementData: { sk: el.id }, instanceData: { sk: inst.id, position: { x: 5, y: 5, z: 5 } },
+    })
+    await settle()
+    const r = (await db.query.sceneElementInstances.findFirst({ where: eq(sceneElementInstances.id, inst.id) }))!
+    expect(r.position).toEqual({ x: 5, y: 5, z: 5 })
+    expect(r.properties).toEqual({ tint: 'red' })
   })
 })
