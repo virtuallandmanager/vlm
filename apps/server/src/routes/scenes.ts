@@ -16,6 +16,7 @@ import type { AuthUser } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess, isHostAccess, canWriteElement, diffKeys } from '../auth/permissions.js'
 import { config } from '../config.js'
+import { publishElementChanged } from '../realtime/bus.js'
 import { getSubscription } from '../integrations/stripe.js'
 
 interface CreateSceneBody {
@@ -321,6 +322,13 @@ export default async function sceneRoutes(app: FastifyInstance) {
         })
         .returning()
 
+      await publishElementChanged({
+        sceneId: preset.sceneId,
+        presetId,
+        elementId: element.id,
+        elementType: element.type,
+        deleted: false,
+      })
       return reply.status(201).send({ element })
     },
   )
@@ -360,7 +368,43 @@ export default async function sceneRoutes(app: FastifyInstance) {
         .where(eq(sceneElements.id, elementId))
         .returning()
 
+      await publishElementChanged({
+        sceneId: element.preset.sceneId,
+        presetId: element.presetId,
+        elementId,
+        elementType: updated.type,
+        deleted: false,
+      })
       return reply.send({ element: updated })
+    },
+  )
+
+  // ── DELETE /api/elements/:elementId — delete element (and its instances) ─
+
+  app.delete<{ Params: { elementId: string } }>(
+    '/api/elements/:elementId',
+    async (request, reply) => {
+      const { elementId } = request.params
+
+      const element = await db.query.sceneElements.findFirst({
+        where: eq(sceneElements.id, elementId),
+        with: { preset: { with: { scene: true } } },
+      })
+      if (!element) return reply.status(404).send({ error: 'Element not found' })
+      // Deleting is structural (like instance delete and the room's delete guard): editors only, never renters.
+      if (!hasScope(await accessFor(request, element.preset.sceneId), 'scene.edit')) {
+        return reply.status(403).send({ error: 'Forbidden' })
+      }
+
+      await db.delete(sceneElements).where(eq(sceneElements.id, elementId))
+      await publishElementChanged({
+        sceneId: element.preset.sceneId,
+        presetId: element.presetId,
+        elementId,
+        elementType: element.type,
+        deleted: true,
+      })
+      return reply.status(204).send()
     },
   )
 
@@ -410,6 +454,13 @@ export default async function sceneRoutes(app: FastifyInstance) {
         })
         .returning()
 
+      await publishElementChanged({
+        sceneId: element.preset.sceneId,
+        presetId: element.presetId,
+        elementId,
+        elementType: element.type,
+        deleted: false,
+      })
       return reply.status(201).send({ instance })
     },
   )
@@ -452,6 +503,13 @@ export default async function sceneRoutes(app: FastifyInstance) {
         .where(eq(sceneElementInstances.id, instanceId))
         .returning()
 
+      await publishElementChanged({
+        sceneId: instance.element.preset.sceneId,
+        presetId: instance.element.presetId,
+        elementId: instance.elementId,
+        elementType: instance.element.type,
+        deleted: false,
+      })
       return reply.send({ instance: updated })
     },
   )
@@ -473,6 +531,13 @@ export default async function sceneRoutes(app: FastifyInstance) {
       }
 
       await db.delete(sceneElementInstances).where(eq(sceneElementInstances.id, instanceId))
+      await publishElementChanged({
+        sceneId: instance.element.preset.sceneId,
+        presetId: instance.element.presetId,
+        elementId: instance.elementId,
+        elementType: instance.element.type,
+        deleted: false,
+      })
       return reply.status(204).send()
     },
   )

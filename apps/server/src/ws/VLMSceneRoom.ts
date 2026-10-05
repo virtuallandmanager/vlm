@@ -305,6 +305,10 @@ export class VLMSceneRoom extends Room {
 
   private async onVenueEvent(e: VenueEvent) {
     try {
+      if (e.type === 'element_changed') {
+        await this.broadcastElementChange(e)
+        return
+      }
       if (e.type === 'preset_changed') {
         const preset = await db.query.scenePresets.findFirst({
           where: eq(scenePresets.id, e.presetId),
@@ -326,6 +330,26 @@ export class VLMSceneRoom extends Room {
     } catch (err) {
       console.error('[VLMSceneRoom] venue event failed:', err)
     }
+  }
+
+  /** A REST edit landed: push the element's full current state (or its deletion) if it is live here. */
+  private async broadcastElementChange(e: Extract<VenueEvent, { type: 'element_changed' }>) {
+    if (e.presetId !== (await this.getActivePresetId())) return
+    if (e.deleted) {
+      this.broadcast('scene_preset_update', { action: 'delete', element: e.elementType, id: e.elementId })
+      return
+    }
+    const element = await db.query.sceneElements.findFirst({
+      where: eq(sceneElements.id, e.elementId),
+      with: { instances: true },
+    })
+    // Gone already (deleted after this event) or moved: the later event carries the truth.
+    if (!element || element.presetId !== e.presetId) return
+    this.broadcast('scene_preset_update', {
+      action: 'upsert',
+      element: element.type,
+      elementData: serializeSingleElement(element),
+    })
   }
 
   private getClientMeta(client: Client): ClientMeta | undefined {
