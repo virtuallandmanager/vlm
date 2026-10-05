@@ -10,12 +10,16 @@ import { controls, verifiedWalletsOf } from '../analytics/claims.js'
 import { TokenBucketLimiter, checkRequesterLimits } from '../analytics/limiter.js'
 import { getActiveSetup, releaseIfRedeployed, setUpLocation, SetupError } from '../setup/setups.js'
 import { sceneRoleFor } from '../auth/scene-roles.js'
+import { config } from '../config.js'
 
 let limiter = new TokenBucketLimiter()
 /** Test hook. */
 export function setSetupLimiter(l: TokenBucketLimiter): void {
   limiter = l
 }
+
+/** Preview realms can be set up only on a non-cloud (local/self-hosted) server — spec §5.1. */
+const previewBlocked = (ref: AnalyticsSceneRef) => ref.isPreview && config.mode === 'cloud'
 
 const short = (w: string) => `${w.slice(0, 6)}…${w.slice(-4)}`
 
@@ -57,7 +61,7 @@ export default async function setupRoutes(app: FastifyInstance) {
   app.post<{ Body: { scene?: unknown } }>('/api/setup/status', async (request, reply) => {
     const ref = validateSceneRef(request.body?.scene)
     const wallet = await signer(request)
-    if (!ref || !wallet) return reply.send({ state: 'none' })
+    if (!ref || !wallet || previewBlocked(ref)) return reply.send({ state: 'none' })
     if (!checkRequesterLimits(limiter, { requesterKey: `w:${wallet}`, verified: true, eventCount: 1 }).ok) {
       return reply.status(429).send({ error: 'rate_limited' })
     }
@@ -81,6 +85,7 @@ export default async function setupRoutes(app: FastifyInstance) {
     if (!wallet) return reply.status(401).send({ error: 'signed_request_required' })
     const ref = validateSceneRef(request.body?.scene)
     if (!ref) return reply.status(400).send({ error: 'scene is required' })
+    if (previewBlocked(ref)) return reply.status(403).send({ error: 'not_eligible' })
     if (!checkRequesterLimits(limiter, { requesterKey: `w:${wallet}`, verified: true, eventCount: 1 }).ok) {
       return reply.status(429).send({ error: 'rate_limited' })
     }

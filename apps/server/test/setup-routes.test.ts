@@ -8,6 +8,7 @@ import { setSetupLimiter } from '../src/routes/setup.js'
 import { TokenBucketLimiter } from '../src/analytics/limiter.js'
 import { resetDb } from './helpers/db.js'
 import { testApp } from './helpers/factories.js'
+import { config } from '../src/config.js'
 import { FakeDclDirectory } from './helpers/fake-dcl.js'
 
 vi.mock('../src/middleware/dcl-auth.js', () => ({
@@ -99,5 +100,24 @@ describe('setup routes', () => {
     ref = { ...REF, entityId: 'bafyNEW' }
     expect((await status(OWNER)).json()).toEqual({ state: 'eligible' })
     expect((await setup(OWNER)).statusCode).toBe(200)
+  })
+  it('preview realms: set up allowed off-cloud (local dev), refused in cloud mode', async () => {
+    ref = { ...REF, realm: 'LocalPreview', isPreview: true }
+    const prev = config.mode
+    try {
+      ;(config as any).mode = 'cloud'
+      expect((await status(OWNER)).json()).toEqual({ state: 'none' })
+      const res = await setup(OWNER)
+      expect(res.statusCode).toBe(403)
+      expect(res.json()).toEqual({ error: 'not_eligible' })
+      expect(await db.select().from(locationSetups)).toHaveLength(0)
+
+      ;(config as any).mode = 'single'
+      expect((await status(OWNER)).json()).toEqual({ state: 'eligible' })
+      expect((await setup(OWNER)).statusCode).toBe(200)
+      expect(await db.select().from(locationSetups)).toHaveLength(1)
+    } finally {
+      ;(config as any).mode = prev
+    }
   })
 })
