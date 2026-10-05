@@ -6,12 +6,14 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "clean": "rm -rf dist .turbo"
   },
   "devDependencies": {
     "vlm-shared": "workspace:*",
     "vlm-client": "workspace:*",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "3.2.7"
   },
   "peerDependencies": {
     "vlm-shared": "workspace:*",
