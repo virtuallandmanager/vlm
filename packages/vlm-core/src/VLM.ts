@@ -318,6 +318,15 @@ export class VLM {
     return this.storage.models.missing.size
   }
 
+  /** Called with the current missingModels() count whenever it changes; returns an unsubscribe. */
+  onModelsMissing(listener: (count: number) => void): () => void {
+    const handler = () => {
+      try { listener(this.missingModels()) } catch { /* swallow */ }
+    }
+    this.events.on('models_missing', handler)
+    return () => this.events.off('models_missing', handler)
+  }
+
   sendMessage(id: string, data?: unknown): void {
     this.colyseus.send('user_message', { messageId: id, data, type: 'outbound' })
   }

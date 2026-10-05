@@ -62,9 +62,21 @@ interface HUDState {
   roleDraftWallet: string
   roleDraftRole: 'cohost' | 'editor' | 'viewer'
   confirmTransfer: string | null
+
+  // Media library + layout editing (host, co-hosts, editors)
+  media: HUDMediaItem[]
+  mediaLoaded: boolean
+  layout: HUDLayoutItem[]
+  layoutLoaded: boolean
+  editMessage: { text: string; error: boolean } | null
+  confirmDelete: string | null
+  missingModels: number
 }
 
 type SceneRole = 'host' | 'cohost' | 'editor' | 'viewer'
+export type HUDMediaItem = { id: string; name: string; kind: 'image' | 'model' }
+export type HUDLayoutItem = { id: string; name: string; type: string; enabled: boolean }
+const canEdit = () => state.sceneRole === 'host' || state.sceneRole === 'cohost' || state.sceneRole === 'editor'
 type RolesData = { hostWallets: string[]; roles: { wallet: string; role: string; displayName?: string | null }[] }
 
 const state: HUDState = {
@@ -97,6 +109,14 @@ const state: HUDState = {
   roleDraftWallet: '',
   roleDraftRole: 'editor',
   confirmTransfer: null,
+
+  media: [],
+  mediaLoaded: false,
+  layout: [],
+  layoutLoaded: false,
+  editMessage: null,
+  confirmDelete: null,
+  missingModels: 0,
 }
 
 // Callbacks
@@ -607,9 +627,16 @@ function NavBar() {
           uiBackground={{ color: state.activePanel === p.type ? C.accent : C.transparent }}
           onMouseDown={() => {
             state.activePanel = state.activePanel === p.type ? null : p.type
+            const opened = state.activePanel === p.type
+            state.confirmDelete = null
+            state.editMessage = null
             if (p.type === HUDPanelType.ROLES) {
               state.confirmTransfer = null
-              if (state.activePanel === HUDPanelType.ROLES) onSceneAction?.('roles_refresh')
+              if (opened) onSceneAction?.('roles_refresh')
+            } else if (p.type === HUDPanelType.SCENE_LAYOUT) {
+              if (opened) onSceneAction?.('layout_refresh')
+            } else if (p.type === HUDPanelType.ASSET_BROWSER) {
+              if (opened && canEdit()) onSceneAction?.('media_refresh')
             } else {
               onPanelAction?.(p.type, 'open')
             }
@@ -627,49 +654,85 @@ function NavBar() {
 // Panel: Scene Layout
 // ---------------------------------------------------------------------------
 
+function EditMessage() {
+  if (!state.editMessage) return null
+  return (
+    <Label value={state.editMessage.text} fontSize={10} color={state.editMessage.error ? C.danger : C.success}
+      textAlign="top-left" uiTransform={{ width: '100%', height: 24 }} />
+  )
+}
+
 function SceneLayoutPanel() {
-  const panelState = state.panelStates.get(HUDPanelType.SCENE_LAYOUT) as any
-  const elements = panelState?.elements || []
+  const editable = canEdit()
+  const elements = state.layout
 
   return (
     <UiEntity uiTransform={{ width: '100%', flexDirection: 'column' }}>
       <PanelHeader
         title="Scene Layout"
         subtitle={state.currentSceneName || undefined}
-        onClose={() => { state.activePanel = null }}
+        onClose={() => { state.activePanel = null; state.confirmDelete = null }}
       />
-      <UiEntity uiTransform={{ padding: 8, flexDirection: 'column' }}>
+      <UiEntity uiTransform={{ width: '100%', padding: 8, flexDirection: 'column' }}>
+        <EditMessage />
         {elements.length === 0 ? (
-          <UiEntity uiTransform={{ padding: 16, flexDirection: 'column', alignItems: 'center' }}>
-            <Label value="No elements yet" fontSize={12} color={C.textDim} />
-            <Label value="Add elements from the Assets panel" fontSize={10} color={C.textMuted}
-              uiTransform={{ margin: { top: 4 } }} />
+          <UiEntity uiTransform={{ width: '100%', padding: 16, flexDirection: 'column', alignItems: 'center' }}>
+            <Label value={state.layoutLoaded ? 'No elements yet' : 'Loading…'} fontSize={12} color={C.textDim} />
+            {state.layoutLoaded && editable && (
+              <Label value="Place images and models from the Assets panel" fontSize={10} color={C.textMuted}
+                uiTransform={{ margin: { top: 4 } }} />
+            )}
           </UiEntity>
         ) : (
-          elements.slice(0, 20).map((el: any, i: number) => (
+          elements.slice(0, 12).map((el) => (
             <UiEntity
-              key={el.id || i}
+              key={el.id}
               uiTransform={{
                 width: '100%',
                 height: 34,
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: { left: 10, right: 10 },
+                padding: { left: 10, right: 4 },
                 margin: { bottom: 2 },
               }}
               uiBackground={{ color: C.bgCard }}
-              onMouseDown={() => onPanelAction?.(HUDPanelType.SCENE_LAYOUT, 'select', { elementId: el.id })}
             >
-              <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Label value={el.type?.toUpperCase()?.slice(0, 3) || '???'} fontSize={8} color={C.textMuted}
+              <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', width: editable ? 170 : 260 }}>
+                <Label value={el.type.toUpperCase().slice(0, 3)} fontSize={8} color={C.textMuted}
                   uiTransform={{ margin: { right: 6 } }} />
-                <Label value={el.name || 'Unnamed'} fontSize={11} color={C.text} />
+                <Label value={el.name || 'Unnamed'} fontSize={11} color={el.enabled ? C.text : C.textDim} textAlign="middle-left" />
               </UiEntity>
-              <Label value={el.enabled ? 'ON' : 'OFF'} fontSize={9}
-                color={el.enabled ? C.success : C.textDim} />
+              {!editable ? (
+                <Label value={el.enabled ? 'ON' : 'OFF'} fontSize={9} color={el.enabled ? C.success : C.textDim} />
+              ) : state.confirmDelete === el.id ? (
+                <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Button label="Delete" color={C.danger}
+                    onPress={() => { state.confirmDelete = null; onSceneAction?.('layout_delete', { elementId: el.id }) }}
+                    width={56} height={24} fontSize={10} />
+                  <UiEntity uiTransform={{ width: 4 }} />
+                  <Button label="Cancel" onPress={() => { state.confirmDelete = null }} width={56} height={24} fontSize={10} />
+                </UiEntity>
+              ) : (
+                <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Button label={el.enabled ? 'Hide' : 'Show'} color={el.enabled ? undefined : C.accent}
+                    onPress={() => onSceneAction?.('layout_toggle', { elementId: el.id, enabled: !el.enabled })}
+                    width={56} height={24} fontSize={10} />
+                  <UiEntity uiTransform={{ width: 4 }} />
+                  <Button label="Delete" color={C.danger} onPress={() => { state.confirmDelete = el.id }}
+                    width={56} height={24} fontSize={10} />
+                </UiEntity>
+              )}
             </UiEntity>
           ))
+        )}
+        {elements.length > 12 && (
+          <Label value={`+${elements.length - 12} more — manage them on the dashboard`} fontSize={10} color={C.textMuted}
+            uiTransform={{ height: 20 }} />
+        )}
+        {state.confirmDelete && (
+          <Label value="Delete this element and all its copies? This can't be undone." fontSize={10} color={C.warning}
+            textAlign="top-left" uiTransform={{ width: '100%', height: 22 }} />
         )}
       </UiEntity>
     </UiEntity>
@@ -677,45 +740,79 @@ function SceneLayoutPanel() {
 }
 
 // ---------------------------------------------------------------------------
-// Panel: Asset Browser
+// Panel: Asset Browser (the signed-in user's Media library)
 // ---------------------------------------------------------------------------
 
 function AssetBrowserPanel() {
+  const editable = canEdit()
   return (
     <UiEntity uiTransform={{ width: '100%', flexDirection: 'column' }}>
-      <PanelHeader title="Asset Browser" onClose={() => { state.activePanel = null }} />
-      <UiEntity uiTransform={{ padding: 8, flexDirection: 'column' }}>
-        {state.assets.length === 0 ? (
-          <UiEntity uiTransform={{ padding: 16, flexDirection: 'column', alignItems: 'center' }}>
-            <Label value="No assets loaded" fontSize={12} color={C.textDim} />
-            <Label value="Assets will appear here from your library" fontSize={10} color={C.textMuted}
-              uiTransform={{ margin: { top: 4 } }} />
+      <PanelHeader title="Media Library" subtitle="Images and GLB models" onClose={() => { state.activePanel = null }} />
+      <UiEntity uiTransform={{ width: '100%', padding: 8, flexDirection: 'column' }}>
+        {!editable ? (
+          <UiEntity uiTransform={{ width: '100%', padding: 16, flexDirection: 'column', alignItems: 'center' }}>
+            <Label value="Only the host, co-hosts and editors can place media" fontSize={11} color={C.textDim} />
           </UiEntity>
         ) : (
-          state.assets.slice(0, 15).map((asset, i) => (
-            <UiEntity
-              key={asset.id || i}
-              uiTransform={{
-                width: '100%',
-                height: 38,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: { left: 10, right: 10 },
-                margin: { bottom: 2 },
-              }}
-              uiBackground={{ color: C.bgCard }}
-              onMouseDown={() => onPanelAction?.(HUDPanelType.ASSET_BROWSER, 'place', { assetId: asset.id })}
-            >
-              <Label value={asset.name} fontSize={11} color={C.text} />
-              <Label value={asset.category || ''} fontSize={9} color={C.textDim} />
-            </UiEntity>
-          ))
+          <UiEntity uiTransform={{ width: '100%', flexDirection: 'column' }}>
+            <EditMessage />
+            {state.media.length === 0 ? (
+              <UiEntity uiTransform={{ width: '100%', padding: 16, flexDirection: 'column', alignItems: 'center' }}>
+                <Label value={state.mediaLoaded ? 'No images or models yet' : 'Loading…'} fontSize={12} color={C.textDim} />
+                {state.mediaLoaded && (
+                  <Label value="Upload them on the dashboard's Media page" fontSize={10} color={C.textMuted}
+                    uiTransform={{ margin: { top: 4 } }} />
+                )}
+              </UiEntity>
+            ) : (
+              state.media.slice(0, 10).map((asset) => (
+                <UiEntity
+                  key={asset.id}
+                  uiTransform={{
+                    width: '100%',
+                    height: 34,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: { left: 10, right: 4 },
+                    margin: { bottom: 2 },
+                  }}
+                  uiBackground={{ color: C.bgCard }}
+                >
+                  <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', width: 240 }}>
+                    <Label value={asset.kind === 'model' ? 'GLB' : 'IMG'} fontSize={8}
+                      color={asset.kind === 'model' ? C.warning : C.textMuted} uiTransform={{ margin: { right: 6 } }} />
+                    <Label value={asset.name} fontSize={11} color={C.text} textAlign="middle-left" />
+                  </UiEntity>
+                  <Button label="Place" color={C.accent}
+                    onPress={() => onSceneAction?.('media_place', { assetId: asset.id })}
+                    width={56} height={24} fontSize={10} />
+                </UiEntity>
+              ))
+            )}
+            {state.media.length > 10 && (
+              <Label value={`+${state.media.length - 10} more — place them from the dashboard`} fontSize={10} color={C.textMuted}
+                uiTransform={{ height: 20 }} />
+            )}
+          </UiEntity>
         )}
         {state.budgetUsage && state.budgetLimits && (
           <BudgetMeter usage={state.budgetUsage} limits={state.budgetLimits} />
         )}
       </UiEntity>
+    </UiEntity>
+  )
+}
+
+/** Models placed or listed in this scene whose GLB file isn't deployed with it yet. */
+function SyncNotice() {
+  const n = state.missingModels
+  if (n <= 0) return null
+  return (
+    <UiEntity uiTransform={{ width: '100%', padding: { left: 10, right: 10, top: 4, bottom: 4 } }}
+      uiBackground={{ color: C.bgCard }}>
+      <Label value={`${n} model(s) need sync + redeploy — run npx vlm-dcl sync`} fontSize={10} color={C.warning}
+        textAlign="middle-left" uiTransform={{ width: '100%', height: 20 }} />
     </UiEntity>
   )
 }
@@ -1034,6 +1131,7 @@ function VLMHUD() {
                 uiBackground={{ color: C.bg }}
               >
                 <NavBar />
+                <SyncNotice />
                 {state.activePanel === HUDPanelType.SCENE_LAYOUT && <SceneLayoutPanel />}
                 {state.activePanel === HUDPanelType.ASSET_BROWSER && <AssetBrowserPanel />}
                 {state.activePanel === HUDPanelType.EVENT_CONTROL && <EventControlPanel />}
@@ -1058,6 +1156,7 @@ function VLMHUD() {
               uiBackground={{ color: C.bg }}
             >
               <NavBar />
+              <SyncNotice />
             </UiEntity>
           )
         }
@@ -1151,6 +1250,28 @@ export class DclHUDRenderer implements HUDRenderer {
   /** Empty the paste-an-address field after a successful add. */
   clearRoleDraft(): void {
     state.roleDraftWallet = ''
+  }
+
+  // --- Media library + layout editing (called by the createVLM flow) ---
+
+  setMedia(list: HUDMediaItem[]): void {
+    state.media = list
+    state.mediaLoaded = true
+  }
+
+  setLayout(list: HUDLayoutItem[]): void {
+    state.layout = list
+    state.layoutLoaded = true
+    if (state.confirmDelete && !list.some((el) => el.id === state.confirmDelete)) state.confirmDelete = null
+  }
+
+  setMissingModels(n: number): void {
+    state.missingModels = n
+  }
+
+  /** A one-line result for the Assets / Layout panels (null clears it). */
+  setEditMessage(text: string | null, error = false): void {
+    state.editMessage = text === null ? null : { text, error }
   }
 
   setScenes(scenes: Scene[]): void {

@@ -17,6 +17,15 @@ export interface SceneRoleEntry {
   createdAt?: string
 }
 
+/** One file in the signed-in user's Media library (`GET /api/media`). */
+export interface MediaLibraryAsset {
+  id: string
+  filename: string
+  contentType: string
+  publicUrl: string | null
+  sizeBytes: number
+}
+
 export class VLMHttpClient {
   private baseUrl: string
   public auth: VLMAuth
@@ -201,6 +210,11 @@ export class VLMHttpClient {
     })
   }
 
+  // Media library
+  async getMedia(): Promise<{ assets: MediaLibraryAsset[] }> {
+    return this._fetch('/api/media')
+  }
+
   // Elements
   async createElement(presetId: string, data: Record<string, unknown>): Promise<{ element: any }> {
     return this._fetch(`/api/presets/${presetId}/elements`, {
@@ -214,6 +228,10 @@ export class VLMHttpClient {
       method: 'PUT',
       body: JSON.stringify(data),
     })
+  }
+
+  async deleteElement(elementId: string): Promise<void> {
+    await this._fetch(`/api/elements/${elementId}`, { method: 'DELETE' })
   }
 
   // Instances

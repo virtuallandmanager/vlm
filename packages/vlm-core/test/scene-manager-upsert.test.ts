@@ -162,3 +162,23 @@ describe('model resolution via adapter.resolveModelSrc', () => {
     expect(live.size).toBe(1)
   })
 })
+
+describe('VLM.onModelsMissing', () => {
+  const model = (src: string, sk = 'm1') => ({ sk, name: 'M', enabled: true, modelSrc: src, instances: [inst(`${sk}-i1`)] })
+
+  it('reports the latest missing count on each change and stops after unsubscribe', () => {
+    const { adapter } = fakeAdapter({ resolveModelSrc: () => null })
+    const vlm = new VLM(adapter)
+    const counts: number[] = []
+    const off = vlm.onModelsMissing((n) => counts.push(n))
+    const sm = (vlm as any).sceneManager
+    sm.handlePresetUpdate({ action: 'init', scenePreset: { models: [model('https://cdn.vlm.gg/u1/ab12.glb')] } })
+    // An upsert of a still-missing model deletes then recreates: listeners always see the current count
+    sm.handlePresetUpdate({ action: 'upsert', element: 'model', elementData: model('https://cdn.vlm.gg/u1/ab12.glb') })
+    expect(counts).toEqual([1, 0, 1])
+    expect(vlm.missingModels()).toBe(1)
+    off()
+    sm.handlePresetUpdate({ action: 'delete', element: 'model', id: 'm1' })
+    expect(counts).toEqual([1, 0, 1])
+  })
+})
