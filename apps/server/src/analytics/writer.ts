@@ -1,4 +1,4 @@
-import { and, eq, ne, sql } from 'drizzle-orm'
+import { and, eq, isNull, ne, or, sql } from 'drizzle-orm'
 import type { IngestBatch } from 'vlm-shared'
 import { db } from '../db/connection.js'
 import { analyticsDirtyHours, analyticsScenes, analyticsEvents, analyticsPositions, analyticsSessions } from '../db/schema.js'
@@ -37,13 +37,14 @@ export async function writeBatch(input: {
     .filter((p) => [p.x, p.y, p.z].every((v) => v !== null && Math.abs(v) <= 32000))
   const others = batch.events.filter((e) => e.type !== 'pos')
 
-  return db.transaction(async (tx) => {
-    // Decide reveal from the live flag (row lock serialises against the visibility toggle), not the cached scene.
+  const result = await db.transaction(async (tx) => {
+    // Decide reveal from the live flag, not the cached scene. FOR SHARE lets concurrent writers
+    // proceed together while still serialising against the visibility toggle's row update.
     const [fresh] = await tx
       .select({ walletVisibility: analyticsScenes.walletVisibility })
       .from(analyticsScenes)
       .where(eq(analyticsScenes.id, scene.id))
-      .for('update')
+      .for('share')
     const reveal = !!fresh?.walletVisibility && mayReveal
     const insertedEvents = others.length
       ? await tx
@@ -142,10 +143,20 @@ export async function writeBatch(input: {
     hourSet.add(hourOf(upserted[0].startedAt.getTime()).getTime())
     const hours = [...hourSet].map((h) => ({ sceneId: scene.id, hour: new Date(h) }))
     await tx.insert(analyticsDirtyHours).values(hours).onConflictDoNothing()
-    await tx
-      .update(analyticsScenes)
-      .set({ lastActivityAt: sql`greatest(coalesce(${analyticsScenes.lastActivityAt}, 'epoch'::timestamptz), ${lastSeenAt.toISOString()}::timestamptz)` })
-      .where(eq(analyticsScenes.id, scene.id))
     return { accepted }
   })
+
+  // After commit and outside the row-sharing transaction: bump last_activity_at only when it is
+  // unset or more than 60 s behind this batch, so busy scenes don't rewrite the row on every batch.
+  const seen = sql`${lastSeenAt.toISOString()}::timestamptz`
+  await db
+    .update(analyticsScenes)
+    .set({ lastActivityAt: seen })
+    .where(
+      and(
+        eq(analyticsScenes.id, scene.id),
+        or(isNull(analyticsScenes.lastActivityAt), sql`${analyticsScenes.lastActivityAt} < ${seen} - interval '60 seconds'`),
+      ),
+    )
+  return result
 }

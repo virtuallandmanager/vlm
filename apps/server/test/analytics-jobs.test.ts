@@ -9,6 +9,7 @@ import {
   analyticsHeatmapDaily,
   analyticsCopresenceDaily,
   analyticsDirtyHours,
+  analyticsScenes,
 } from '../src/db/schema.js'
 import { runSessionCloseSweep, rollupHour, rollupDay, runRollups, runRetention, registerDailyJob, runDailyJobs } from '../src/analytics/jobs.js'
 import { writeBatch } from '../src/analytics/writer.js'
@@ -123,6 +124,41 @@ describe('analytics jobs', () => {
     const [row] = await db.select().from(analyticsSessions)
     expect(row.wallet).toBeNull()
     expect(row.displayName).toBeNull()
+  })
+
+  it('writer bumps last_activity_at only when it is null or more than 60 s behind, after the batch commits', async () => {
+    const s = await createAnalyticsScene()
+    const sid = randomUUID()
+    const activity = async () => (await db.select().from(analyticsScenes).where(eq(analyticsScenes.id, s.id)))[0].lastActivityAt?.getTime()
+    await write(s, mkBatch(sid, [{ t: at(1).getTime(), type: 'session.start', seq: 0, data: {} }]))
+    expect(await activity()).toBe(at(1).getTime())
+    await write(s, mkBatch(sid, [{ t: at(1, 30).getTime(), type: 'custom', seq: 1, data: {} }]))
+    expect(await activity()).toBe(at(1).getTime()) // 30 s newer: not worth a write
+    await write(s, mkBatch(sid, [{ t: at(3).getTime(), type: 'custom', seq: 2, data: {} }]))
+    expect(await activity()).toBe(at(3).getTime())
+  })
+
+  it('writers share the scene row lock instead of queueing on an exclusive one', async () => {
+    const s = await createAnalyticsScene({ lastActivityAt: at(10) })
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    let locked!: () => void
+    const isLocked = new Promise<void>((r) => (locked = r))
+    // Another writer mid-transaction, holding the scene row FOR SHARE.
+    const other = db.transaction(async (tx) => {
+      await tx.select({ id: analyticsScenes.id }).from(analyticsScenes).where(eq(analyticsScenes.id, s.id)).for('share')
+      locked()
+      await held
+    })
+    await isLocked
+    try {
+      const done = write(s, mkBatch(randomUUID(), [{ t: at(1).getTime(), type: 'session.start', seq: 0, data: {} }])).then(() => 'done')
+      const outcome = await Promise.race([done, new Promise((r) => setTimeout(() => r('blocked'), 1_500))])
+      expect(outcome).toBe('done')
+    } finally {
+      release()
+      await other
+    }
   })
 
   it('ingest drops positions beyond 32000 m', async () => {
