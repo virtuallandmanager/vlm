@@ -6,7 +6,7 @@ import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess } from '../auth/permissions.js'
 
-const READ_LEVELS = new Set(['admin', 'owner', 'org', 'editor', 'viewer'])
+const READ_LEVELS = new Set(['admin', 'owner', 'org', 'cohost', 'editor', 'viewer'])
 
 /** Legacy dashboard endpoints keyed by VLM scene id, served from the new analytics tables. */
 export default async function analyticsRoutes(app: FastifyInstance) {

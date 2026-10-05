@@ -103,7 +103,7 @@ describe('getSceneAccess', () => {
     expect((await getSceneAccess(actor(member), s.scene.id)).level).toBe('none')
   })
 
-  it('editor gets edit + venue scopes but not crew or scene.admin; viewer gets nothing', async () => {
+  it('editor gets edit + venue scopes but not crew or scene.admin; viewer gets only analytics.view', async () => {
     const s = await seed()
     const editor = await createUser()
     const viewer = await createUser()
@@ -119,7 +119,7 @@ describe('getSceneAccess', () => {
     expect(e.scopes.has('scene.admin')).toBe(false)
     const v = await getSceneAccess(actor(viewer), s.scene.id)
     expect(v.level).toBe('viewer')
-    expect(v.scopes.size).toBe(0)
+    expect([...v.scopes]).toEqual(['analytics.view'])
   })
 
   it('active wallet grant gives its scopes in the setup window', async () => {

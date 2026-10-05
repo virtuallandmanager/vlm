@@ -1013,6 +1013,48 @@ export const accessGrants = pgTable(
   }),
 )
 
+export const sceneRoleEnum = pgEnum('scene_role', ['cohost', 'editor', 'viewer'])
+export const setupEndReasonEnum = pgEnum('setup_end_reason', ['redeployed', 'deleted'])
+
+/** Permanent per-scene roles, addressed to a wallet (attached to a user once that wallet signs in). The host is scenes.ownerId, never a row here. */
+export const sceneRoles = pgTable(
+  'scene_roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sceneId: uuid('scene_id').notNull().references(() => scenes.id, { onDelete: 'cascade' }),
+    walletAddress: text('wallet_address').notNull(), // lowercased
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    role: sceneRoleEnum('role').notNull(),
+    grantedByUserId: uuid('granted_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => ({
+    activeWallet: uniqueIndex('scene_roles_active_wallet_uq').on(t.sceneId, t.walletAddress).where(sql`${t.revokedAt} IS NULL`),
+    byWallet: index('scene_roles_wallet_idx').on(t.walletAddress),
+    byUser: index('scene_roles_user_idx').on(t.userId),
+  }),
+)
+
+/** One tenure of a location being set up in VLM. At most one active (ended_at IS NULL) per location. */
+export const locationSetups = pgTable(
+  'location_setups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    analyticsSceneId: uuid('analytics_scene_id').notNull().references(() => analyticsScenes.id, { onDelete: 'cascade' }),
+    vlmSceneId: uuid('vlm_scene_id').notNull().references(() => scenes.id, { onDelete: 'cascade' }),
+    hostUserId: uuid('host_user_id').references(() => users.id, { onDelete: 'set null' }),
+    deploymentEntityId: text('deployment_entity_id'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    endReason: setupEndReasonEnum('end_reason'),
+  },
+  (t) => ({
+    oneActive: uniqueIndex('location_setups_one_active_uq').on(t.analyticsSceneId).where(sql`${t.endedAt} IS NULL`),
+    byScene: index('location_setups_vlm_scene_idx').on(t.vlmSceneId),
+  }),
+)
+
 export const venuesRelations = relations(venues, ({ one, many }) => ({
   scene: one(scenes, { fields: [venues.sceneId], references: [scenes.id] }),
   bookings: many(bookings),

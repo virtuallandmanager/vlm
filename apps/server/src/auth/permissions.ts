@@ -8,11 +8,12 @@ import {
   type VenueScope,
 } from 'vlm-shared'
 import { db } from '../db/connection.js'
-import { accessGrants, bookings, orgMembers, sceneCollaborators, scenes, venues } from '../db/schema.js'
+import { accessGrants, bookings, orgMembers, sceneCollaborators, sceneRoles, scenes, venues } from '../db/schema.js'
 import type { Actor } from './actor.js'
+import { sceneRoleFor } from './scene-roles.js'
 
-export type SceneScope = VenueScope | 'scene.edit' | 'scene.admin'
-export type AccessLevel = 'admin' | 'owner' | 'org' | 'editor' | 'viewer' | 'grant' | 'none'
+export type SceneScope = VenueScope | 'scene.edit' | 'scene.admin' | 'analytics.view' | 'roles.manage'
+export type AccessLevel = 'admin' | 'owner' | 'org' | 'cohost' | 'editor' | 'viewer' | 'grant' | 'none'
 
 export interface BookingAccess {
   bookingId: string
@@ -30,14 +31,20 @@ export interface SceneAccess {
   booking: BookingAccess | null
 }
 
-const ALL_SCOPES: SceneScope[] = [...VENUE_SCOPES, 'scene.edit', 'scene.admin']
-const EDITOR_SCOPES: SceneScope[] = [...VENUE_SCOPES.filter((s) => s !== 'crew'), 'scene.edit']
+const ALL_SCOPES: SceneScope[] = [...VENUE_SCOPES, 'scene.edit', 'scene.admin', 'analytics.view', 'roles.manage']
+const EDITOR_SCOPES: SceneScope[] = [...VENUE_SCOPES.filter((s) => s !== 'crew'), 'scene.edit', 'analytics.view']
 const NONE: SceneAccess = { level: 'none', scopes: new Set(), booking: null }
 
-const full = (level: 'admin' | 'owner' | 'org'): SceneAccess => ({ level, scopes: new Set(ALL_SCOPES), booking: null })
+const full = (level: 'admin' | 'owner' | 'org' | 'cohost'): SceneAccess => ({ level, scopes: new Set(ALL_SCOPES), booking: null })
 
+/** Everything a scene allows, including role management. Co-hosts included; see isHostAccess for host-only actions. */
 export function isFullAccess(access: SceneAccess) {
-  return access.level === 'admin' || access.level === 'owner' || access.level === 'org'
+  return access.level === 'admin' || access.level === 'owner' || access.level === 'org' || access.level === 'cohost'
+}
+
+/** Host-only actions: transfer host, delete the scene, delete analytics data. */
+export function isHostAccess(access: SceneAccess) {
+  return access.level === 'admin' || access.level === 'owner'
 }
 
 export function hasScope(access: SceneAccess, scope: SceneScope) {
@@ -79,6 +86,10 @@ export async function getSceneAccess(actor: Actor, sceneId: string, at = new Dat
     where: and(eq(sceneCollaborators.sceneId, sceneId), eq(sceneCollaborators.userId, actor.userId)),
   })
   if (collab?.role === 'editor') return { level: 'editor', scopes: new Set(EDITOR_SCOPES), booking: null }
+
+  const role = await sceneRoleFor(sceneId, actor)
+  if (role === 'cohost') return full('cohost')
+  if (role === 'editor') return { level: 'editor', scopes: new Set(EDITOR_SCOPES), booking: null }
 
   const subject = actor.wallet
     ? or(eq(accessGrants.userId, actor.userId), eq(accessGrants.walletAddress, actor.wallet))
@@ -122,7 +133,7 @@ export async function getSceneAccess(actor: Actor, sceneId: string, at = new Dat
     }
   }
 
-  if (collab) return { level: 'viewer', scopes: new Set(), booking: null }
+  if (collab || role === 'viewer') return { level: 'viewer', scopes: new Set<SceneScope>(['analytics.view']), booking: null }
   return NONE
 }
 
@@ -216,5 +227,10 @@ export async function linkWalletGrants(userId: string, wallet: string): Promise<
     .set({ userId })
     .where(and(eq(accessGrants.walletAddress, wallet.toLowerCase()), isNull(accessGrants.userId)))
     .returning({ id: accessGrants.id })
-  return rows.length
+  const roles = await db
+    .update(sceneRoles)
+    .set({ userId })
+    .where(and(eq(sceneRoles.walletAddress, wallet.toLowerCase()), isNull(sceneRoles.userId)))
+    .returning({ id: sceneRoles.id })
+  return rows.length + roles.length
 }
