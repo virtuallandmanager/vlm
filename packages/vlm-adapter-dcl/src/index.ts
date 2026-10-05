@@ -22,8 +22,9 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
   const adapter = new DclAdapter()
   const vlm = new VLM(adapter)
   if (config?.analytics !== false) {
-    const collector = await startVLMAnalytics({ env: config?.env, apiUrl: config?.apiUrl, adapter })
-    if (collector) vlm.attachAnalytics(collector)
+    startVLMAnalytics({ env: config?.env, apiUrl: config?.apiUrl, adapter })
+      .then((c) => { if (c) vlm.attachAnalytics(c) })
+      .catch((err) => console.log('[VLM analytics] disabled:', String(err)))
   }
   const enableHud = config?.enableHud !== false
 

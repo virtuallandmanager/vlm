@@ -38,8 +38,7 @@ export class DclAnalyticsProbe implements AnalyticsProbe {
   private parcels: Set<string>
   private lastClickTs = -1
   private lastHoverTs = -1
-  private videoBuffer: Array<{ target: string; state: 'play' | 'pause' | 'end' | 'error' }> = []
-  private registeredVideos = new Set<Entity>()
+  private videoStates = new Map<Entity, VideoState>()
   private lastVideoScan = 0
   private lastEmoteTs = -1
 
@@ -84,23 +83,27 @@ export class DclAnalyticsProbe implements AnalyticsProbe {
 
   pollVideoEvents(): Array<{ target: string; state: 'play' | 'pause' | 'end' | 'error' }> {
     const now = Date.now()
-    if (now - this.lastVideoScan > 1000) {
-      this.lastVideoScan = now
-      for (const [entity] of engine.getEntitiesWith(VideoPlayer)) {
-        if (this.registeredVideos.has(entity)) continue
-        this.registeredVideos.add(entity)
-        videoEventsSystem.registerVideoEventsEntity(entity, (e) => {
-          const target = targetName(entity)
-          if (e.state === VideoState.VS_PLAYING) this.videoBuffer.push({ target, state: 'play' })
-          else if (e.state === VideoState.VS_ERROR) this.videoBuffer.push({ target, state: 'error' })
-          else if (e.state === VideoState.VS_PAUSED) {
-            const ended = e.videoLength > 0 && e.currentOffset >= e.videoLength - 0.5
-            this.videoBuffer.push({ target, state: ended ? 'end' : 'pause' })
-          }
-        })
+    if (now - this.lastVideoScan < 250) return []
+    this.lastVideoScan = now
+    const out: Array<{ target: string; state: 'play' | 'pause' | 'end' | 'error' }> = []
+    const seen = new Set<Entity>()
+    for (const [entity] of engine.getEntitiesWith(VideoPlayer)) {
+      seen.add(entity)
+      const ev = videoEventsSystem.getVideoState(entity)
+      if (!ev) continue
+      const prev = this.videoStates.get(entity)
+      if (prev === ev.state) continue
+      this.videoStates.set(entity, ev.state)
+      const target = targetName(entity)
+      if (ev.state === VideoState.VS_PLAYING) out.push({ target, state: 'play' })
+      else if (ev.state === VideoState.VS_ERROR) out.push({ target, state: 'error' })
+      else if (ev.state === VideoState.VS_PAUSED) {
+        const ended = ev.videoLength > 0 && ev.currentOffset >= ev.videoLength - 0.5
+        out.push({ target, state: ended ? 'end' : 'pause' })
       }
     }
-    return this.videoBuffer.splice(0)
+    for (const entity of this.videoStates.keys()) if (!seen.has(entity)) this.videoStates.delete(entity)
+    return out
   }
 
   pollEmotes(): string[] {
@@ -140,7 +143,7 @@ export async function getAnalyticsSceneRef(): Promise<AnalyticsSceneRef> {
   const metadata = JSON.parse(info.metadataJson || '{}')
   const realmName: string = realm?.realmInfo?.realmName || ''
   const isWorld = /\.eth$/i.test(realmName)
-  const entityId = typeof info.urn === 'string' ? info.urn.split(':').pop()?.split('?')[0] : undefined
+  const entityId = typeof info.urn === 'string' ? info.urn.split('?')[0].split(':').pop() || undefined : undefined
   return {
     realm: realmName || 'unknown',
     isWorld,
