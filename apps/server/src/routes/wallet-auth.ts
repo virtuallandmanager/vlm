@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import { randomBytes } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { verifyMessage } from 'ethers'
+import { getAddress, verifyMessage } from 'ethers'
 import { db } from '../db/connection.js'
 import { walletChallenges } from '../db/schema.js'
 import { config } from '../config.js'
+import { actorFromClaims } from '../auth/actor.js'
 import { linkWalletGrants } from '../auth/permissions.js'
 import { linkVerifiedWallet, resolveVerifiedWalletUser } from '../auth/wallet-users.js'
 
@@ -16,8 +17,23 @@ export default async function walletAuthRoutes(app: FastifyInstance) {
     const address = request.body?.address
     if (!address || !ADDRESS_RE.test(address)) return reply.status(400).send({ error: 'address must be a 0x wallet address' })
     const nonce = randomBytes(16).toString('hex')
-    const message = `VLM wants you to sign in with your wallet.\n\nAddress: ${address.toLowerCase()}\nNonce: ${nonce}\nIssued: ${new Date().toISOString()}`
-    await db.insert(walletChallenges).values({ nonce, address: address.toLowerCase(), message, expiresAt: new Date(Date.now() + TTL_MS) })
+    const url = new URL(config.publicUrl)
+    const issuedAt = new Date()
+    const expiresAt = new Date(issuedAt.getTime() + TTL_MS)
+    const message = [
+      `${url.host} wants you to sign in with your Ethereum account:`,
+      getAddress(address.toLowerCase()),
+      '',
+      'Sign in to VLM to manage your scenes and analytics.',
+      '',
+      `URI: ${url.origin}`,
+      'Version: 1',
+      'Chain ID: 1',
+      `Nonce: ${nonce}`,
+      `Issued At: ${issuedAt.toISOString()}`,
+      `Expiration Time: ${expiresAt.toISOString()}`,
+    ].join('\n')
+    await db.insert(walletChallenges).values({ nonce, address: address.toLowerCase(), message, expiresAt })
     return reply.send({ nonce, message })
   })
 
@@ -39,17 +55,18 @@ export default async function walletAuthRoutes(app: FastifyInstance) {
 
     const auth = request.headers.authorization
     if (auth?.startsWith('Bearer ')) {
+      let bearer: { id: string; refresh?: boolean; guest?: boolean; verified?: boolean } | null = null
       try {
-        const bearer = app.jwt.verify<{ id: string; refresh?: boolean; guest?: boolean }>(auth.slice(7))
-        if (!bearer.refresh && !bearer.guest) {
-          const result = await linkVerifiedWallet(bearer.id, recovered)
-          if (result === 'conflict') return reply.status(409).send({ error: 'That wallet is linked to another account' })
-          await linkWalletGrants(bearer.id, recovered)
-          return reply.send({ linked: true })
-        }
+        bearer = app.jwt.verify(auth.slice(7))
       } catch {
         return reply.status(401).send({ error: 'Invalid token' })
       }
+      const actor = actorFromClaims(bearer)
+      if (bearer!.refresh || !actor.userId || !actor.verified) return reply.status(401).send({ error: 'Invalid token' })
+      const result = await linkVerifiedWallet(actor.userId, recovered)
+      if (result === 'conflict') return reply.status(409).send({ error: 'That wallet is linked to another account' })
+      await linkWalletGrants(actor.userId, recovered)
+      return reply.send({ linked: true })
     }
 
     const user = await resolveVerifiedWalletUser(recovered, `${recovered.slice(0, 6)}…${recovered.slice(-4)}`)

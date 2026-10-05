@@ -1,7 +1,9 @@
-import { and, eq, isNotNull, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { analyticsScenes, scenePresets, scenes, userAuthMethods } from '../db/schema.js'
-import { DirectoryUnavailableError, getDclDirectory } from './dcl-directory.js'
+import { analyticsScenes, scenePresets, scenes, userAuthMethods, walletChallenges } from '../db/schema.js'
+import { config } from '../config.js'
+import { getSubscription } from '../integrations/stripe.js'
+import { DirectoryUnavailableError, getDclDirectory, type DclDirectory } from './dcl-directory.js'
 import type { AnalyticsSceneRow } from './registry.js'
 
 export async function verifiedWalletsOf(userId: string): Promise<string[]> {
@@ -12,9 +14,8 @@ export async function verifiedWalletsOf(userId: string): Promise<string[]> {
 }
 
 /** Does this wallet control the scene's location? Throws DirectoryUnavailableError if Decentraland can't answer. */
-export async function controls(scene: AnalyticsSceneRow, wallet: string): Promise<boolean> {
+export async function controls(scene: AnalyticsSceneRow, wallet: string, dir: DclDirectory = getDclDirectory()): Promise<boolean> {
   const w = wallet.toLowerCase()
-  const dir = getDclDirectory()
   if (scene.kind === 'preview') return scene.locationKey.startsWith(`preview:${w}:`)
   if (scene.kind === 'world') return (await dir.getWorldOwner(scene.worldName!)) === w
   const parcels = scene.parcels.length ? scene.parcels : scene.baseParcel ? [scene.baseParcel] : []
@@ -33,8 +34,8 @@ export async function controls(scene: AnalyticsSceneRow, wallet: string): Promis
   return true
 }
 
-export async function controlsAny(scene: AnalyticsSceneRow, wallets: string[]): Promise<boolean> {
-  for (const w of wallets) if (await controls(scene, w)) return true
+export async function controlsAny(scene: AnalyticsSceneRow, wallets: string[], dir: DclDirectory = getDclDirectory()): Promise<boolean> {
+  for (const w of wallets) if (await controls(scene, w, dir)) return true
   return false
 }
 
@@ -44,7 +45,11 @@ export class ClaimError extends Error {
   }
 }
 
-export async function claimScene(userId: string, locationKey: string, vlmSceneId?: string): Promise<AnalyticsSceneRow> {
+export async function claimScene(
+  userId: string,
+  locationKey: string,
+  vlmSceneId?: string,
+): Promise<{ scene: AnalyticsSceneRow; linked: boolean }> {
   const scene = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, locationKey) })
   if (!scene) throw new ClaimError(404, 'No analytics have been recorded at that location yet')
   if (scene.claimStatus === 'active' && scene.claimedByUserId && scene.claimedByUserId !== userId) {
@@ -66,18 +71,42 @@ export async function claimScene(userId: string, locationKey: string, vlmSceneId
     const owned = await db.query.scenes.findFirst({ where: and(eq(scenes.id, linkTo), eq(scenes.ownerId, userId)) })
     if (!owned) linkTo = null
   }
+  let mayCreate = false
   if (!linkTo) {
-    const [created] = await db.insert(scenes).values({ ownerId: userId, name: scene.title || scene.locationKey }).returning()
-    const [preset] = await db.insert(scenePresets).values({ sceneId: created.id, name: 'Default' }).returning()
-    await db.update(scenes).set({ activePresetId: preset.id }).where(eq(scenes.id, created.id))
-    linkTo = created.id
+    mayCreate = true
+    if (!config.allFeaturesUnlocked) {
+      const sub = await getSubscription(userId)
+      const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(scenes).where(eq(scenes.ownerId, userId))
+      if (count >= sub.limits.scenes) mayCreate = false
+    }
   }
-  const [updated] = await db
-    .update(analyticsScenes)
-    .set({ claimedByUserId: userId, claimStatus: 'active', claimedAt: new Date(), lapsedAt: null, vlmSceneId: linkTo, updatedAt: new Date() })
-    .where(eq(analyticsScenes.id, scene.id))
-    .returning()
-  return updated
+
+  return db.transaction(async (tx) => {
+    if (!linkTo && mayCreate) {
+      const [created] = await tx.insert(scenes).values({ ownerId: userId, name: scene.title || scene.locationKey }).returning()
+      const [preset] = await tx.insert(scenePresets).values({ sceneId: created.id, name: 'Default' }).returning()
+      await tx.update(scenes).set({ activePresetId: preset.id }).where(eq(scenes.id, created.id))
+      linkTo = created.id
+    }
+    const [updated] = await tx
+      .update(analyticsScenes)
+      .set({ claimedByUserId: userId, claimStatus: 'active', claimedAt: new Date(), lapsedAt: null, vlmSceneId: linkTo, updatedAt: new Date() })
+      .where(
+        and(
+          eq(analyticsScenes.id, scene.id),
+          or(sql`${analyticsScenes.claimStatus} IS DISTINCT FROM 'active'`, eq(analyticsScenes.claimedByUserId, userId)),
+        ),
+      )
+      .returning()
+    if (!updated) throw new ClaimError(409, 'This scene has already been claimed') // rolls back any scene created above
+    return { scene: updated, linked: !!linkTo }
+  })
+}
+
+/** Delete expired wallet sign-in challenges. */
+export async function purgeWalletChallenges(now = new Date()): Promise<number> {
+  const rows = await db.delete(walletChallenges).where(lt(walletChallenges.expiresAt, now)).returning({ nonce: walletChallenges.nonce })
+  return rows.length
 }
 
 export async function reverifyClaims(now = new Date()): Promise<{ checked: number; lapsed: number }> {
@@ -91,7 +120,7 @@ export async function reverifyClaims(now = new Date()): Promise<{ checked: numbe
         lapsed++
       }
     } catch (err) {
-      if (!(err instanceof DirectoryUnavailableError)) throw err
+      if (!(err instanceof DirectoryUnavailableError)) console.error(`[vlm-server] claim re-verify failed for ${scene.id}`, err)
     }
   }
   return { checked: claimed.length, lapsed }

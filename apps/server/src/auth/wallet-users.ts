@@ -22,6 +22,7 @@ export async function resolveVerifiedWalletUser(wallet: string, displayName: str
   if (existing && isVerified(existing)) return existing.user
   const [user] = await db.insert(users).values({ displayName, email: null, role: await initialRoleForNewUser() }).returning()
   if (existing) {
+    console.warn(`[vlm-server] re-homing unverified wallet record ${w.slice(0, 6)}… from user ${existing.userId}`)
     await db
       .update(userAuthMethods)
       .set({ userId: user.id, metadata: { ...(existing.metadata as object), verified: true, rehomedFrom: existing.userId } })
@@ -39,6 +40,7 @@ export async function linkVerifiedWallet(userId: string, wallet: string): Promis
   if (existing && existing.userId === userId && isVerified(existing)) return 'already'
   if (existing && isVerified(existing) && existing.userId !== userId) return 'conflict'
   if (existing) {
+    console.warn(`[vlm-server] re-homing unverified wallet record ${w.slice(0, 6)}… from user ${existing.userId}`)
     await db
       .update(userAuthMethods)
       .set({ userId, metadata: { ...(existing.metadata as object), verified: true, rehomedFrom: existing.userId } })

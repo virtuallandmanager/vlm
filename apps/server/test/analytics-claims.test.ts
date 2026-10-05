@@ -3,11 +3,12 @@ import { Wallet } from 'ethers'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import { analyticsScenes, userAuthMethods, users, scenes } from '../src/db/schema.js'
-import { setDclDirectory } from '../src/analytics/dcl-directory.js'
+import { DirectoryUnavailableError, setDclDirectory } from '../src/analytics/dcl-directory.js'
 import { reverifyClaims } from '../src/analytics/claims.js'
 import { resetDb } from './helpers/db.js'
-import { testApp, createUser, tokenFor } from './helpers/factories.js'
-import { createAnalyticsScene } from './helpers/analytics.js'
+import { config } from '../src/config.js'
+import { testApp, createUser, tokenFor, createScene } from './helpers/factories.js'
+import { createAnalyticsScene, insertSession } from './helpers/analytics.js'
 import { FakeDclDirectory } from './helpers/fake-dcl.js'
 
 const rights = (o: Partial<{ owner: string; operator: string; updateOperator: string; updateManagers: string[]; approvedForAll: string[] }> = {}) => ({
@@ -70,6 +71,30 @@ describe('wallet sign-in', () => {
     expect(res.json()).toMatchObject({ linked: true })
     const m = await db.query.userAuthMethods.findFirst({ where: eq(userAuthMethods.identifier, w.address.toLowerCase()) })
     expect(m!.userId).toBe(u.id)
+  })
+
+  it('rejects unverified and refresh Bearer tokens without linking the wallet', async () => {
+    const u = await createUser()
+    const w = Wallet.createRandom()
+    const r1 = await signIn(w, tokenFor(u, { verified: false }))
+    expect(r1.statusCode).toBe(401)
+    const w2 = Wallet.createRandom()
+    const r2 = await signIn(w2, tokenFor(u, { refresh: true }))
+    expect(r2.statusCode).toBe(401)
+    for (const x of [w, w2]) {
+      expect(await db.query.userAuthMethods.findFirst({ where: eq(userAuthMethods.identifier, x.address.toLowerCase()) })).toBeUndefined()
+    }
+  })
+
+  it('issues an EIP-4361 message that still verifies', async () => {
+    const w = Wallet.createRandom()
+    const ch = await app.inject({ method: 'POST', url: '/api/auth/wallet/challenge', payload: { address: w.address } })
+    const { message } = ch.json()
+    expect(message).toContain(new URL(config.publicUrl).host)
+    expect(message).toContain('URI: ')
+    expect(message).toContain('Chain ID: 1')
+    expect(message).toContain(w.address)
+    expect((await signIn(w)).statusCode).toBe(200)
   })
 })
 
@@ -171,5 +196,52 @@ describe('claims', () => {
     await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'], claimedByUserId: u.id, claimStatus: 'active' })
     dir.down = true
     expect(await reverifyClaims()).toEqual({ checked: 1, lapsed: 0 })
+  })
+
+  it('over the scene limit: claim succeeds without creating a VLM scene (linked:false)', async () => {
+    const prev = config.allFeaturesUnlocked
+    ;(config as any).allFeaturesUnlocked = false
+    try {
+      const u = await createUser({ wallet: W })
+      for (let i = 0; i < 3; i++) await createScene(u, `s${i}`)
+      const s = await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'] })
+      dir.rights.set('1,1', rights({ owner: W }))
+      const res = await claim(u, 'gc:1,1')
+      expect(res.statusCode).toBe(200)
+      expect(res.json().linked).toBe(false)
+      const row = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.id, s.id) })
+      expect(row).toMatchObject({ claimStatus: 'active', vlmSceneId: null })
+      expect((await db.select().from(scenes).where(eq(scenes.ownerId, u.id))).length).toBe(3)
+    } finally {
+      ;(config as any).allFeaturesUnlocked = prev
+    }
+  })
+
+  it('eligible: skips a candidate whose check fails, flags truncated, returns the others', async () => {
+    const u = await createUser({ wallet: W })
+    const a = await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'] })
+    const b = await createAnalyticsScene({ locationKey: 'gc:2,2', parcels: ['2,2'] })
+    await insertSession(a.id)
+    await insertSession(b.id)
+    dir.rights.set('1,1', rights({ owner: W }))
+    const orig = dir.getParcelRights.bind(dir)
+    dir.getParcelRights = async (p: string) => {
+      if (p === '2,2') throw new DirectoryUnavailableError('boom')
+      return orig(p)
+    }
+    const res = await app.inject({ method: 'GET', url: '/api/analytics/claims/eligible', headers: { authorization: `Bearer ${tokenFor(u)}` } })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().truncated).toBe(true)
+    expect(res.json().scenes.map((x: any) => x.locationKey)).toEqual(['gc:1,1'])
+  })
+
+  it('concurrent claims by two controllers: one 200, one 409', async () => {
+    const W2 = '0x00000000000000000000000000000000000000c2'
+    const u1 = await createUser({ wallet: W })
+    const u2 = await createUser({ wallet: W2 })
+    await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'] })
+    dir.rights.set('1,1', rights({ owner: W, approvedForAll: [W2] }))
+    const codes = (await Promise.all([claim(u1, 'gc:1,1'), claim(u2, 'gc:1,1')])).map((r) => r.statusCode).sort()
+    expect(codes).toEqual([200, 409])
   })
 })

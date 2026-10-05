@@ -14,7 +14,7 @@ import {
 import { config } from '../config.js'
 import { getSubscription } from '../integrations/stripe.js'
 import type { AnalyticsSceneRow } from './registry.js'
-import { reverifyClaims } from './claims.js'
+import { purgeWalletChallenges, reverifyClaims } from './claims.js'
 
 const HOUR = 3_600_000
 const DAY = 86_400_000
@@ -263,6 +263,7 @@ export function registerDailyJob(name: string, fn: (now: Date) => Promise<unknow
 }
 
 registerDailyJob('claim-reverify', reverifyClaims)
+registerDailyJob('wallet-challenge-purge', (now) => purgeWalletChallenges(now))
 
 export function startAnalyticsJobs(): () => void {
   if (!config.analyticsJobsEnabled) return () => {}
