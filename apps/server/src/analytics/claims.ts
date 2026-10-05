@@ -1,6 +1,6 @@
 import { and, eq, isNotNull, lt, or, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { analyticsScenes, scenePresets, scenes, userAuthMethods, walletChallenges } from '../db/schema.js'
+import { analyticsScenes, analyticsSessions, scenePresets, scenes, userAuthMethods, walletChallenges } from '../db/schema.js'
 import { config } from '../config.js'
 import { getSubscription } from '../integrations/stripe.js'
 import { DirectoryUnavailableError, getDclDirectory, type DclDirectory } from './dcl-directory.js'
@@ -116,7 +116,14 @@ export async function reverifyClaims(now = new Date()): Promise<{ checked: numbe
     try {
       const ok = await controlsAny(scene, await verifiedWalletsOf(scene.claimedByUserId!))
       if (!ok) {
-        await db.update(analyticsScenes).set({ claimStatus: 'lapsed', lapsedAt: now, updatedAt: now }).where(eq(analyticsScenes.id, scene.id))
+        // A lapsed claim also stops revealing identities: visibility off, revealed wallets/names cleared.
+        await db.transaction(async (tx) => {
+          await tx
+            .update(analyticsScenes)
+            .set({ claimStatus: 'lapsed', lapsedAt: now, walletVisibility: false, updatedAt: now })
+            .where(eq(analyticsScenes.id, scene.id))
+          await tx.update(analyticsSessions).set({ wallet: null, displayName: null }).where(eq(analyticsSessions.sceneId, scene.id))
+        })
         lapsed++
       }
     } catch (err) {

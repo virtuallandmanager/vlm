@@ -2,13 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { Wallet } from 'ethers'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { analyticsScenes, userAuthMethods, users, scenes } from '../src/db/schema.js'
+import { analyticsScenes, analyticsSessions, userAuthMethods, users, scenes } from '../src/db/schema.js'
 import { DirectoryUnavailableError, setDclDirectory } from '../src/analytics/dcl-directory.js'
 import { reverifyClaims } from '../src/analytics/claims.js'
 import { resetDb } from './helpers/db.js'
 import { config } from '../src/config.js'
 import { testApp, createUser, tokenFor, createScene } from './helpers/factories.js'
-import { createAnalyticsScene } from './helpers/analytics.js'
+import { createAnalyticsScene, insertSession } from './helpers/analytics.js'
 import { FakeDclDirectory } from './helpers/fake-dcl.js'
 
 const rights = (o: Partial<{ owner: string; operator: string; updateOperator: string; updateManagers: string[]; approvedForAll: string[] }> = {}) => ({
@@ -202,6 +202,18 @@ describe('claims', () => {
     const row = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.id, s.id) })
     expect(row).toMatchObject({ claimStatus: 'lapsed' })
     expect(row!.lapsedAt).not.toBeNull()
+  })
+
+  it('a re-verification lapse turns wallet visibility off and clears revealed identities', async () => {
+    const u = await createUser({ wallet: W })
+    const s = await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'], claimedByUserId: u.id, claimStatus: 'active', walletVisibility: true })
+    await insertSession(s.id, { wallet: '0xabc', displayName: 'Ana' })
+    dir.rights.set('1,1', rights({ owner: '0x0000000000000000000000000000000000000999' }))
+    expect(await reverifyClaims()).toEqual({ checked: 1, lapsed: 1 })
+    const row = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.id, s.id) })
+    expect(row).toMatchObject({ claimStatus: 'lapsed', walletVisibility: false })
+    const [sess] = await db.select().from(analyticsSessions).where(eq(analyticsSessions.sceneId, s.id))
+    expect(sess).toMatchObject({ wallet: null, displayName: null })
   })
 
   it('re-verification leaves claims alone when the directory is down', async () => {

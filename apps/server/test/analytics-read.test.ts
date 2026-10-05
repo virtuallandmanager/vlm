@@ -145,6 +145,38 @@ describe('analytics read API', () => {
     }
   })
 
+  it('a lapsed claimer only sees data from before lapsedAt, and live is empty', async () => {
+    const owner = await createUser()
+    const lapsedAt = new Date(Date.now() - 2 * 86400_000)
+    lapsedAt.setUTCHours(12, 0, 0, 0)
+    const s = await createAnalyticsScene({ claimedByUserId: owner.id, claimStatus: 'lapsed', lapsedAt })
+    const before = new Date(lapsedAt.getTime() - 3 * 3600_000)
+    const after = new Date(lapsedAt.getTime() + 3 * 3600_000)
+    await db.insert(analyticsRollupHourly).values([
+      { sceneId: s.id, hour: before, sessions: 2, uniqueVisitors: 1, peakConcurrency: 1, dwellAvgSec: 10 },
+      { sceneId: s.id, hour: after, sessions: 5, uniqueVisitors: 5, peakConcurrency: 5, dwellAvgSec: 10 },
+    ])
+    await insertSession(s.id, { visitorHash: 'OLD', startedAt: before, lastSeenAt: before })
+    await insertSession(s.id, { visitorHash: 'NEW', startedAt: after, lastSeenAt: after })
+    const live = await insertSession(s.id, { visitorHash: 'LIVE', lastSeenAt: new Date() })
+    await db.insert(analyticsPositions).values({ sceneId: s.id, sessionId: live.id, seq: 1, occurredAt: new Date(), x: 1, y: 0, z: 1 })
+    const lapsedDay = lapsedAt.toISOString().slice(0, 10)
+    const dayBefore = new Date(lapsedAt.getTime() - 86400_000).toISOString().slice(0, 10)
+    await db.insert(analyticsHeatmapDaily).values([
+      { sceneId: s.id, day: dayBefore, cellX: 1, cellZ: 1, dwellSec: 7, visits: 1 },
+      { sceneId: s.id, day: lapsedDay, cellX: 2, cellZ: 2, dwellSec: 9, visits: 1 },
+    ])
+    const q = `from=${new Date(lapsedAt.getTime() - 5 * 86400_000).toISOString()}&to=${new Date().toISOString()}`
+    expect((await get(owner, `/api/analytics/locations/${s.id}/summary?${q}`)).json()).toMatchObject({ sessions: 2, uniqueVisitors: 1, peakConcurrency: 1 })
+    const ts = (await get(owner, `/api/analytics/locations/${s.id}/timeseries?bucket=hour&${q}`)).json()
+    expect(ts.points.map((p: any) => p.sessions)).toEqual([2])
+    expect((await get(owner, `/api/analytics/locations/${s.id}/heatmap?${q}`)).json().cells).toEqual([{ x: 1, z: 1, dwellSec: 7, visits: 1 }])
+    expect((await get(owner, `/api/analytics/locations/${s.id}/live`)).json()).toEqual({ count: 0, positions: [] })
+    const sessions = (await get(owner, `/api/analytics/locations/${s.id}/sessions`)).json().sessions
+    expect(sessions).toHaveLength(1)
+    expect(new Date(sessions[0].startedAt).getTime()).toBe(before.getTime())
+  })
+
   it('delete-my-data removes the visitor everywhere using each scene salt', async () => {
     const W = '0x00000000000000000000000000000000000000d1'
     const me = await createUser({ wallet: W })

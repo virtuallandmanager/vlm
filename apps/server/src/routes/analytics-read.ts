@@ -21,10 +21,12 @@ import { verifiedWalletsOf } from '../analytics/claims.js'
 import { visitorHash } from '../analytics/hash.js'
 
 const DAY = 86_400_000
+const HOUR = 3_600_000
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MAX_RANGE_DAYS = 400
 const ts = (d: Date) => sql`${d.toISOString()}::timestamptz`
 const rowsOf = <T>(r: unknown) => r as unknown as T[]
+const startedCap = (cap: { started: Date | null }) => (cap.started ? sql` and started_at < ${ts(cap.started)}` : sql``)
 
 function range(q: { from?: string; to?: string }): { from: Date; to: Date } | null {
   const to = q.to ? new Date(q.to) : new Date()
@@ -32,6 +34,18 @@ function range(q: { from?: string; to?: string }): { from: Date; to: Date } | nu
   if (Number.isNaN(to.getTime()) || Number.isNaN(from.getTime()) || from > to) return null
   if (to.getTime() - from.getTime() > MAX_RANGE_DAYS * DAY) return null
   return { from, to }
+}
+
+/**
+ * Upper bounds for a reader limited to data before `until` (a lapsed claimer): whole hourly and
+ * daily buckets that end by `until`, and sessions that started before it. No limit without `until`.
+ */
+function caps(until: Date | undefined) {
+  return {
+    hour: until ? new Date(until.getTime() - HOUR) : null,
+    day: until ? new Date(until.getTime() - DAY).toISOString().slice(0, 10) : null,
+    started: until ?? null,
+  }
 }
 
 function mergeCounts(objs: unknown[]): Record<string, number> {
@@ -53,7 +67,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
       reply.status(403).send({ error: 'Forbidden' })
       return null
     }
-    return access.scene
+    return { ...access.scene, until: access.until }
   }
 
   app.get('/api/analytics/locations', async (request, reply) => {
@@ -100,13 +114,21 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     if (!r) return reply.status(400).send({ error: 'from/to must be ISO dates with from <= to and a range of at most 400 days' })
     const scene = await guard(request, reply, request.params.id)
     if (!scene) return
+    const cap = caps(scene.until)
     const rows = await db
       .select()
       .from(analyticsRollupHourly)
-      .where(and(eq(analyticsRollupHourly.sceneId, scene.id), gte(analyticsRollupHourly.hour, r.from), lte(analyticsRollupHourly.hour, r.to)))
+      .where(
+        and(
+          eq(analyticsRollupHourly.sceneId, scene.id),
+          gte(analyticsRollupHourly.hour, r.from),
+          lte(analyticsRollupHourly.hour, r.to),
+          cap.hour ? lte(analyticsRollupHourly.hour, cap.hour) : undefined,
+        ),
+      )
     const sessions = rows.reduce((a, x) => a + x.sessions, 0)
     const [u] = rowsOf<{ n: number }>(
-      await db.execute(sql`select count(distinct visitor_hash)::int as n from analytics_sessions where scene_id = ${scene.id} and started_at >= ${ts(r.from)} and started_at <= ${ts(r.to)}`),
+      await db.execute(sql`select count(distinct visitor_hash)::int as n from analytics_sessions where scene_id = ${scene.id} and started_at >= ${ts(r.from)} and started_at <= ${ts(r.to)}${startedCap(cap)}`),
     )
     return reply.send({
       sessions,
@@ -131,13 +153,14 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
       if (!r) return reply.status(400).send({ error: 'from/to must be ISO dates with from <= to and a range of at most 400 days' })
       const scene = await guard(request, reply, request.params.id)
       if (!scene) return
+      const cap = caps(scene.until)
       const points = rowsOf<{ t: Date; sessions: number; unique_visitors: number; peak: number; dwell: number }>(
         await db.execute(sql`
           select date_trunc(${bucket}, hour) as t, sum(sessions)::int as sessions, sum(unique_visitors)::int as unique_visitors,
                  max(peak_concurrency)::int as peak,
                  coalesce(round(sum(dwell_avg_sec * sessions)::numeric / nullif(sum(sessions), 0)), 0)::int as dwell
           from analytics_rollup_hourly
-          where scene_id = ${scene.id} and hour >= ${ts(r.from)} and hour <= ${ts(r.to)}
+          where scene_id = ${scene.id} and hour >= ${ts(r.from)} and hour <= ${ts(r.to)}${cap.hour ? sql` and hour <= ${ts(cap.hour)}` : sql``}
           group by 1 order by 1`),
       )
       const dayUniques = new Map<number, number>()
@@ -146,7 +169,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
           await db.execute(sql`
             select date_trunc('day', started_at) as t, count(distinct visitor_hash)::int as n
             from analytics_sessions
-            where scene_id = ${scene.id} and started_at >= ${ts(r.from)} and started_at <= ${ts(r.to)}
+            where scene_id = ${scene.id} and started_at >= ${ts(r.from)} and started_at <= ${ts(r.to)}${startedCap(cap)}
             group by 1`),
         )
         for (const u of rows) dayUniques.set(new Date(u.t).getTime(), Number(u.n))
@@ -166,6 +189,8 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>('/api/analytics/locations/:id/live', async (request, reply) => {
     const scene = await guard(request, reply, request.params.id)
     if (!scene) return
+    // Live data is always after a lapse, so a reader limited by `until` sees nothing here.
+    if (scene.until) return reply.send({ count: 0, positions: [] })
     const since = new Date(Date.now() - 60_000)
     const live = await db
       .select({ id: analyticsSessions.id })
@@ -188,11 +213,12 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     if (!r) return reply.status(400).send({ error: 'from/to must be ISO dates with from <= to and a range of at most 400 days' })
     const scene = await guard(request, reply, request.params.id)
     if (!scene) return
+    const cap = caps(scene.until)
     const cells = rowsOf<{ x: number; z: number; dwell: number; visits: number }>(
       await db.execute(sql`
         select cell_x as x, cell_z as z, sum(dwell_sec)::int as dwell, sum(visits)::int as visits
         from analytics_heatmap_daily
-        where scene_id = ${scene.id} and day >= ${r.from.toISOString().slice(0, 10)}::date and day <= ${r.to.toISOString().slice(0, 10)}::date
+        where scene_id = ${scene.id} and day >= ${r.from.toISOString().slice(0, 10)}::date and day <= ${r.to.toISOString().slice(0, 10)}::date${cap.day ? sql` and day <= ${cap.day}::date` : sql``}
         group by 1, 2 order by 1, 2`),
     )
     return reply.send({ cells: cells.map((c) => ({ x: Number(c.x), z: Number(c.z), dwellSec: Number(c.dwell), visits: Number(c.visits) })) })
@@ -202,7 +228,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     const scene = await guard(request, reply, request.params.id)
     if (!scene) return
     const limit = Math.min(Math.max(parseInt(request.query.limit || '50', 10) || 50, 1), 200)
-    let where = eq(analyticsSessions.sceneId, scene.id)
+    let where = and(eq(analyticsSessions.sceneId, scene.id), scene.until ? lt(analyticsSessions.startedAt, scene.until) : undefined)!
     if (request.query.cursor) {
       const [ts, id] = request.query.cursor.split('|')
       const t = new Date(ts)

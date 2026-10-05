@@ -13,9 +13,12 @@ export default async function analyticsRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)
 
   async function locate(request: { user: any }, vlmSceneId: string) {
-    const access = await getSceneAccess(actorFromClaims(request.user), vlmSceneId)
+    const actor = actorFromClaims(request.user)
+    const access = await getSceneAccess(actor, vlmSceneId)
     if (!READ_LEVELS.has(access.level)) return { allowed: false as const }
     const scene = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.vlmSceneId, vlmSceneId) })
+    // The VLM scene grants access to its analytics only while the claim that linked them is active.
+    if (scene && scene.claimStatus !== 'active' && actor.role !== 'admin') return { allowed: false as const }
     return { allowed: true as const, scene }
   }
 

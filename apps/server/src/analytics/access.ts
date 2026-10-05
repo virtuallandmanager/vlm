@@ -10,6 +10,8 @@ export interface AnalyticsAccess {
   canRead: boolean
   canManage: boolean
   scene: typeof analyticsScenes.$inferSelect | null
+  /** Read-only access to data from before this instant (a lapsed claimer in the grace period). */
+  until?: Date
 }
 
 const NONE = (scene: AnalyticsAccess['scene']): AnalyticsAccess => ({ canRead: false, canManage: false, scene })
@@ -21,10 +23,11 @@ export async function getAnalyticsAccess(actor: Actor, analyticsSceneId: string,
   if (scene.claimedByUserId === actor.userId) {
     if (scene.claimStatus === 'active') return { canRead: true, canManage: true, scene }
     if (scene.claimStatus === 'lapsed' && scene.lapsedAt && now.getTime() - scene.lapsedAt.getTime() < LAPSE_GRACE_MS) {
-      return { canRead: true, canManage: false, scene }
+      return { canRead: true, canManage: false, scene, until: scene.lapsedAt }
     }
   }
-  if (scene.vlmSceneId) {
+  // The linked VLM scene's team only has access while the claim that linked it is active.
+  if (scene.vlmSceneId && scene.claimStatus === 'active') {
     const access = await getSceneAccess(actor, scene.vlmSceneId, now)
     if (isFullAccess(access)) return { canRead: true, canManage: true, scene }
     if (access.level === 'editor' || access.level === 'viewer') return { canRead: true, canManage: false, scene }
