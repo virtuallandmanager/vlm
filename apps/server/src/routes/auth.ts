@@ -9,6 +9,7 @@ import { authenticate } from '../middleware/auth.js'
 import { config } from '../config.js'
 import { sendPasswordResetEmail } from '../services/email.js'
 import { initialRoleForNewUser } from '../auth/roles.js'
+import { linkWalletGrants } from '../auth/permissions.js'
 import { verifyDclSignedFetch, hasDclAuthHeaders } from '../middleware/dcl-auth.js'
 
 interface RegisterBody {
@@ -255,6 +256,8 @@ export default async function authRoutes(app: FastifyInstance) {
         })
         dbUser = newUser
       }
+
+      if (verifiedWallet) await linkWalletGrants(dbUser.id, verifiedWallet)
 
       const claims = {
         id: dbUser.id,
