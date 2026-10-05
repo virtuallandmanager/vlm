@@ -1,4 +1,5 @@
 import { Vec3, TransformData } from './types/math.js';
+import type { AnalyticsSceneRef } from './analytics.js';
 
 // ---------------------------------------------------------------------------
 // Platform adapter — the single interface every metaverse platform implements
@@ -16,6 +17,10 @@ export interface VLMPlatformAdapter {
    * If not implemented, falls back to regular fetch with proof in body.
    */
   signedRequest?(url: string, init: { method: string; body: string; headers?: Record<string, string> }): Promise<{ status: number; body: string }>;
+  /** Optional analytics probe; adapters without one produce no automatic analytics. */
+  analytics?: AnalyticsProbe;
+  /** Where this scene is, for analytics ingestion. */
+  getAnalyticsScene?(): Promise<AnalyticsSceneRef>;
 
   // --- Scene Metadata ---
   /** Get scene metadata from the platform (ID, location, realm, etc.) */
@@ -72,6 +77,16 @@ export interface VLMPlatformAdapter {
 
   // --- Capabilities ---
   readonly capabilities: PlatformCapabilities;
+}
+
+export interface AnalyticsProbe {
+  getPlayerPose(): { position: Vec3; headingDeg: number } | null;
+  getCameraMode(): 'first' | 'third' | null;
+  isInsideScene(position: Vec3): boolean;
+  pollInteractions(): Array<{ kind: 'click' | 'hover'; target: string }>;
+  pollVideoEvents(): Array<{ target: string; state: 'play' | 'pause' | 'end' | 'error' }>;
+  pollEmotes(): string[];
+  showNotice(text: string): void;
 }
 
 // ---------------------------------------------------------------------------
