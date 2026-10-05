@@ -85,6 +85,12 @@ describe('POST /api/analytics/claims/check-signed', () => {
     expect(await counts()).toEqual(before)
   })
 
+  it('directory down: reports unavailable so the SDK retries, distinct from "not the owner"', async () => {
+    await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'] })
+    dir.down = true
+    expect((await post('gc:1,1', signed())).json()).toEqual({ eligible: false, known: true, unavailable: true })
+  })
+
   it('a burst from one IP with different wallets gets 429', async () => {
     const codes: number[] = []
     for (let i = 0; i < 6; i++) {

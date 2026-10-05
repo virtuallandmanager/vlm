@@ -7,6 +7,9 @@ import { DclHUDRenderer, setSceneActionHandler } from './DclHUDRenderer.js'
 import { locationKeyFor } from 'vlm-shared'
 import type { VLMInitConfig, VLMStorage } from 'vlm-shared'
 
+// Owner-HUD eligibility re-checks while the location is unknown or Decentraland is down (~2.5 min).
+const OWNER_CHECK_BACKOFF_MS = [10_000, 20_000, 40_000, 80_000]
+
 /**
  * Create a VLM instance for Decentraland SDK 7.
  *
@@ -76,20 +79,30 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
     const sceneRef = await getAnalyticsSceneRef()
     const wallet = user.isGuest ? null : (user.walletAddress || '').toLowerCase() || null
     const probe = new VLMHttpClient(resolveApiUrl(config ?? {}))
-    const check = () =>
+    const check = (): Promise<{ eligible: boolean; known: boolean; unavailable?: boolean }> =>
       wallet
         ? probe.checkAnalyticsClaimSigned(locationKeyFor(sceneRef, wallet), adapter)
         : Promise.resolve({ eligible: false, known: false })
+    // Worth another try: the location isn't registered yet (a brand-new owner's row appears after
+    // their first ingest batch) or Decentraland couldn't answer.
+    const retryable = (r: { known: boolean; unavailable?: boolean }) => !r.known || !!r.unavailable
 
     const first = await check()
     if (!first.eligible) {
       console.log('[VLM] Analytics running; setup tools are only shown to this LAND or World owner')
-      if (wallet && !first.known) {
-        // A brand-new owner's analytics row appears after their first ingest batch; re-check once in the background
-        void new Promise((r) => setTimeout(r, 10_000))
-          .then(check)
-          .then((second) => (second.eligible ? setupOwnerHud() : undefined))
-          .catch((err) => console.log('[VLM] Setup unavailable:', String(err)))
+      if (wallet && retryable(first)) {
+        // Re-check in the background with backoff (10 s, 20 s, 40 s, 80 s), then give up quietly.
+        void (async () => {
+          for (const delay of OWNER_CHECK_BACKOFF_MS) {
+            await new Promise((r) => setTimeout(r, delay))
+            const next = await check()
+            if (next.eligible) {
+              await setupOwnerHud()
+              return
+            }
+            if (!retryable(next)) return
+          }
+        })().catch((err) => console.log('[VLM] Setup unavailable:', String(err)))
       }
       return vlm
     }

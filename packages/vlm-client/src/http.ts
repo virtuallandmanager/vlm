@@ -112,7 +112,11 @@ export class VLMHttpClient {
    * Ask whether the signed-in wallet may set up this location, without creating an account.
    * Any failure counts as "not eligible, not known".
    */
-  async checkAnalyticsClaimSigned(locationKey: string, adapter: VLMPlatformAdapter): Promise<{ eligible: boolean; known: boolean }> {
+  /** `unavailable`: Decentraland could not answer; worth retrying (unlike a plain "not eligible"). */
+  async checkAnalyticsClaimSigned(
+    locationKey: string,
+    adapter: VLMPlatformAdapter,
+  ): Promise<{ eligible: boolean; known: boolean; unavailable?: boolean }> {
     if (!adapter.signedRequest) return { eligible: false, known: false }
     try {
       const res = await adapter.signedRequest(`${this.baseUrl}/api/analytics/claims/check-signed`, {
@@ -121,7 +125,9 @@ export class VLMHttpClient {
       })
       if (res.status < 200 || res.status >= 300) return { eligible: false, known: false }
       const data = JSON.parse(res.body)
-      return { eligible: !!data.eligible, known: !!data.known }
+      return data.unavailable
+        ? { eligible: !!data.eligible, known: !!data.known, unavailable: true }
+        : { eligible: !!data.eligible, known: !!data.known }
     } catch {
       return { eligible: false, known: false }
     }

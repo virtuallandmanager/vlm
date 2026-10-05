@@ -50,7 +50,8 @@ export async function analyticsClaimSignedRoutes(app: FastifyInstance) {
     try {
       return reply.send({ eligible: await controls(scene, wallet), known: true })
     } catch (err) {
-      if (err instanceof DirectoryUnavailableError) return reply.send({ eligible: false, known: true })
+      // Distinct from "not the owner": the SDK retries later instead of giving up.
+      if (err instanceof DirectoryUnavailableError) return reply.send({ eligible: false, known: true, unavailable: true })
       throw err
     }
   })
