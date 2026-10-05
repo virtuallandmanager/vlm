@@ -1,0 +1,104 @@
+import { and, eq, inArray, sql } from 'drizzle-orm'
+import { db } from '../db/connection.js'
+import { bookings, scenes, venues } from '../db/schema.js'
+import { publishVenueEvent } from '../realtime/bus.js'
+
+const setupLead = sql`make_interval(mins => (${venues.rules}->>'setupLeadMinutes')::int)`
+const grace = sql`make_interval(mins => (${venues.rules}->>'graceMinutes')::int)`
+
+/**
+ * Move bookings through confirmed → live → ended. Every transition is a
+ * conditional UPDATE … RETURNING, so concurrent sweeps (or servers) can't
+ * apply the same transition twice.
+ */
+export async function runLifecycleSweep(at = new Date()) {
+  const wentLive: string[] = []
+  const ended: string[] = []
+
+  // ── End: confirmed or live bookings past endsAt + grace ─────────────────
+  const due = await db
+    .select({ booking: bookings, venue: venues })
+    .from(bookings)
+    .innerJoin(venues, eq(bookings.venueId, venues.id))
+    .where(and(inArray(bookings.status, ['confirmed', 'live']), sql`${bookings.endsAt} + ${grace} <= ${at.toISOString()}::timestamptz`))
+
+  for (const { booking, venue } of due) {
+    const [won] = await db
+      .update(bookings)
+      .set({ status: 'ended', updatedAt: at })
+      .where(and(eq(bookings.id, booking.id), inArray(bookings.status, ['confirmed', 'live'])))
+      .returning({ id: bookings.id })
+    if (!won) continue
+    ended.push(booking.id)
+    if (booking.bookingPresetId) {
+      const reverted = await db
+        .update(scenes)
+        .set({ activePresetId: venue.defaultPresetId, updatedAt: at })
+        .where(and(eq(scenes.id, venue.sceneId), eq(scenes.activePresetId, booking.bookingPresetId)))
+        .returning({ id: scenes.id })
+      if (reverted.length) await publishVenueEvent({ type: 'preset_changed', sceneId: venue.sceneId, presetId: venue.defaultPresetId })
+    }
+    await publishVenueEvent({ type: 'booking_ended', sceneId: venue.sceneId, bookingId: booking.id, reason: 'expired' })
+  }
+
+  // ── Go live: confirmed bookings inside the live window ─────────────────
+  const starting = await db
+    .select({ booking: bookings, venue: venues })
+    .from(bookings)
+    .innerJoin(venues, eq(bookings.venueId, venues.id))
+    .where(
+      and(
+        eq(bookings.status, 'confirmed'),
+        sql`${bookings.startsAt} - ${setupLead} <= ${at.toISOString()}::timestamptz`,
+        sql`${bookings.endsAt} + ${grace} > ${at.toISOString()}::timestamptz`,
+      ),
+    )
+
+  for (const { booking, venue } of starting) {
+    const [won] = await db
+      .update(bookings)
+      .set({ status: 'live', updatedAt: at })
+      .where(and(eq(bookings.id, booking.id), eq(bookings.status, 'confirmed')))
+      .returning({ id: bookings.id })
+    if (!won) continue
+    wentLive.push(booking.id)
+    if (booking.bookingPresetId) {
+      await db.update(scenes).set({ activePresetId: booking.bookingPresetId, updatedAt: at }).where(eq(scenes.id, venue.sceneId))
+      await publishVenueEvent({ type: 'preset_changed', sceneId: venue.sceneId, presetId: booking.bookingPresetId })
+    }
+    await publishVenueEvent({ type: 'grants_changed', sceneId: venue.sceneId })
+  }
+
+  // ── Purge booking presets 30 days after the booking finished ───────────
+  const purged = await db.execute(sql`
+    DELETE FROM scene_presets
+    WHERE id IN (
+      SELECT booking_preset_id FROM bookings
+      WHERE status IN ('ended', 'canceled')
+        AND booking_preset_id IS NOT NULL
+        AND ends_at < ${at.toISOString()}::timestamptz - interval '30 days'
+    )
+    AND id NOT IN (SELECT active_preset_id FROM scenes WHERE active_preset_id IS NOT NULL)
+    RETURNING id
+  `)
+  const purgedPresets = (purged as unknown as unknown[]).length
+
+  return { wentLive, ended, purgedPresets }
+}
+
+export function startLifecycleSweep(intervalMs: number): () => void {
+  if (intervalMs <= 0) return () => {}
+  let running = false
+  const timer = setInterval(async () => {
+    if (running) return
+    running = true
+    try {
+      await runLifecycleSweep()
+    } catch (err) {
+      console.error('[vlm-server] Lifecycle sweep failed:', err)
+    } finally {
+      running = false
+    }
+  }, intervalMs)
+  return () => clearInterval(timer)
+}

@@ -8,6 +8,7 @@ import { VLMSceneRoom } from './ws/VLMSceneRoom.js'
 import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
 import { runMigrations } from './db/migrate.js'
 import { buildApp } from './app.js'
+import { startLifecycleSweep } from './venues/lifecycle.js'
 import { initBus } from './realtime/bus.js'
 
 async function main() {
@@ -68,6 +69,8 @@ async function main() {
   // ── Platform hook crons (cleanup stale callbacks + keepalive ping) ─────
   startHookCrons()
   console.log(`[vlm-server] Platform hook crons started`)
+  startLifecycleSweep(config.lifecycleSweepMs)
+  console.log(`[vlm-server] Venue lifecycle sweep every ${config.lifecycleSweepMs}ms`)
 
   console.log(`[vlm-server] Ready at ${config.publicUrl}`)
 }

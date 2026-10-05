@@ -114,6 +114,9 @@ export const config = {
   maxRoomsPerServer: parseInt(env('MAX_ROOMS') || (mode === 'single' ? '50' : '500')),
   maxUploadSize: parseInt(env('MAX_UPLOAD_MB') || '100') * 1024 * 1024,
 
+  // How often the venue booking lifecycle sweep runs (0 disables, used in tests)
+  lifecycleSweepMs: parseInt(env('LIFECYCLE_SWEEP_MS') || '5000'),
+
   // ── Dashboard ───────────────────────────────────────────────────────────
   dashboardDir: env('DASHBOARD_DIR') || './dashboard',
 } as const
