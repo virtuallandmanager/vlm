@@ -119,6 +119,9 @@ export const config = {
   // How often the venue booking lifecycle sweep runs (0 disables, used in tests)
   lifecycleSweepMs: parseInt(env('LIFECYCLE_SWEEP_MS') || '5000'),
 
+  // Analytics background jobs (session close, rollups, retention); disabled in tests
+  analyticsJobsEnabled: env('ANALYTICS_JOBS') !== 'false',
+
   // ── Decentraland directory (analytics scene validation & claims) ───────
   catalystUrl: env('DCL_CATALYST_URL') || 'https://peer.decentraland.org',
   worldsUrl: env('DCL_WORLDS_URL') || 'https://worlds-content-server.decentraland.org',

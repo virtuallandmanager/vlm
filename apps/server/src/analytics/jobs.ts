@@ -1,0 +1,270 @@
+import { and, eq, gte, isNull, lt, lte, sql } from 'drizzle-orm'
+import { db } from '../db/connection.js'
+import {
+  analyticsCopresenceDaily,
+  analyticsDirtyHours,
+  analyticsEvents,
+  analyticsHeatmapDaily,
+  analyticsPositions,
+  analyticsRollupHourly,
+  analyticsScenes,
+  analyticsSessions,
+} from '../db/schema.js'
+import { config } from '../config.js'
+import { getSubscription } from '../integrations/stripe.js'
+import type { AnalyticsSceneRow } from './registry.js'
+
+const HOUR = 3_600_000
+const DAY = 86_400_000
+/** Date literal for raw sql templates (postgres-js rejects Date params there). */
+const ts = (d: Date) => sql`${d.toISOString()}::timestamptz`
+const rowsOf = <T>(r: unknown) => r as unknown as T[]
+
+/** Run fn only on the server that wins a Postgres advisory lock (no-op elsewhere). */
+async function withJobLock<T>(key: number, fn: () => Promise<T>): Promise<T | null> {
+  return db.transaction(async (tx) => {
+    const [row] = rowsOf<{ locked: boolean }>(await tx.execute(sql`select pg_try_advisory_xact_lock(${key}) as locked`))
+    if (!row?.locked) return null
+    return fn()
+  })
+}
+
+export async function runSessionCloseSweep(now = new Date()): Promise<number> {
+  const closed = await db
+    .update(analyticsSessions)
+    .set({ endedAt: sql`${analyticsSessions.lastSeenAt}` })
+    .where(and(isNull(analyticsSessions.endedAt), lt(analyticsSessions.lastSeenAt, new Date(now.getTime() - 60_000))))
+    .returning({ id: analyticsSessions.id })
+  return closed.length
+}
+
+async function jsonCounts(query: ReturnType<typeof sql>): Promise<Record<string, number>> {
+  const rows = rowsOf<{ k: string | null; n: number }>(await db.execute(query))
+  const out: Record<string, number> = {}
+  for (const r of rows) if (r.k) out[r.k] = Number(r.n)
+  return out
+}
+
+export async function rollupHour(sceneId: string, hour: Date): Promise<void> {
+  const h0 = hour
+  const h1 = new Date(hour.getTime() + HOUR)
+  const inHour = sql`scene_id = ${sceneId} and started_at >= ${ts(h0)} and started_at < ${ts(h1)}`
+
+  const [base] = rowsOf<Record<string, number | null>>(
+    await db.execute(sql`
+      select count(*)::int as sessions,
+             count(distinct visitor_hash)::int as unique_visitors,
+             count(*) filter (where not is_returning)::int as new_visitors,
+             count(*) filter (where is_returning)::int as returning_visitors,
+             count(*) filter (where verified)::int as verified_sessions,
+             coalesce(round(avg(duration_sec)), 0)::int as dwell_avg,
+             coalesce(round(percentile_cont(0.5) within group (order by duration_sec)), 0)::int as dwell_p50,
+             coalesce(round(percentile_cont(0.9) within group (order by duration_sec)), 0)::int as dwell_p90
+      from analytics_sessions where ${inHour}`),
+  )
+
+  const [peak] = rowsOf<{ peak: number }>(
+    await db.execute(sql`
+      select coalesce(max(c), 0)::int as peak from (
+        select m, count(s.id) as c
+        from generate_series(${ts(h0)}, ${ts(h1)} - interval '1 minute', interval '1 minute') m
+        join analytics_sessions s
+          on s.scene_id = ${sceneId}
+         and s.started_at < m + interval '1 minute'
+         and coalesce(s.ended_at, s.last_seen_at) >= m
+        group by m
+      ) x`),
+  )
+
+  const evIn = sql`scene_id = ${sceneId} and occurred_at >= ${ts(h0)} and occurred_at < ${ts(h1)}`
+  const interactions = await jsonCounts(sql`
+    select data->>'target' as k, count(*)::int as n from analytics_events
+    where ${evIn} and type = 'interact' and data->>'kind' = 'click'
+    group by 1 order by 2 desc limit 100`)
+  const emotes = await jsonCounts(sql`
+    select data->>'emote' as k, count(*)::int as n from analytics_events where ${evIn} and type = 'emote' group by 1`)
+  const countries = await jsonCounts(sql`select country as k, count(*)::int as n from analytics_sessions where ${inHour} group by 1`)
+  const platforms = await jsonCounts(sql`select platform as k, count(*)::int as n from analytics_sessions where ${inHour} group by 1`)
+  const cameraModes = await jsonCounts(sql`select camera_mode as k, count(*)::int as n from analytics_sessions where ${inHour} group by 1`)
+
+  const videoRows = rowsOf<{ target: string; plays: number; watch: number }>(
+    await db.execute(sql`
+      select target, count(*) filter (where state = 'play')::int as plays,
+             coalesce(round(sum(case when state = 'play' then least(extract(epoch from (next_at - occurred_at)), 3600) end)), 0)::int as watch
+      from (
+        select data->>'target' as target, data->>'state' as state, occurred_at,
+               lead(occurred_at) over (partition by session_id, data->>'target' order by occurred_at, seq) as next_at
+        from analytics_events where ${evIn} and type = 'video'
+      ) v group by target`),
+  )
+  const video: Record<string, { plays: number; watchSec: number }> = {}
+  for (const v of videoRows) video[v.target] = { plays: Number(v.plays), watchSec: Number(v.watch) }
+
+  const values = {
+    sessions: Number(base.sessions),
+    uniqueVisitors: Number(base.unique_visitors),
+    newVisitors: Number(base.new_visitors),
+    returningVisitors: Number(base.returning_visitors),
+    verifiedSessions: Number(base.verified_sessions),
+    peakConcurrency: Number(peak.peak),
+    dwellAvgSec: Number(base.dwell_avg),
+    dwellP50Sec: Number(base.dwell_p50),
+    dwellP90Sec: Number(base.dwell_p90),
+    interactions,
+    video,
+    emotes,
+    countries,
+    platforms,
+    cameraModes,
+  }
+  await db
+    .insert(analyticsRollupHourly)
+    .values({ sceneId, hour: h0, ...values })
+    .onConflictDoUpdate({ target: [analyticsRollupHourly.sceneId, analyticsRollupHourly.hour], set: values })
+}
+
+export async function rollupDay(sceneId: string, day: string): Promise<void> {
+  const d0 = new Date(`${day}T00:00:00Z`)
+  const d1 = new Date(d0.getTime() + DAY)
+  await db.transaction(async (tx) => {
+    await tx.delete(analyticsHeatmapDaily).where(and(eq(analyticsHeatmapDaily.sceneId, sceneId), eq(analyticsHeatmapDaily.day, day)))
+    await tx.execute(sql`
+      insert into analytics_heatmap_daily (scene_id, day, cell_x, cell_z, dwell_sec, visits)
+      select ${sceneId}, ${day}::date, floor(x)::int, floor(z)::int,
+             round(sum(least(coalesce(gap, 3), 15)))::int, count(distinct session_id)::int
+      from (
+        select session_id, x, z,
+               extract(epoch from (lead(occurred_at) over (partition by session_id order by occurred_at, seq) - occurred_at)) as gap
+        from analytics_positions
+        where scene_id = ${sceneId} and occurred_at >= ${ts(d0)} and occurred_at < ${ts(d1)}
+      ) p
+      group by 3, 4`)
+
+    await tx.delete(analyticsCopresenceDaily).where(and(eq(analyticsCopresenceDaily.sceneId, sceneId), eq(analyticsCopresenceDaily.day, day)))
+    await tx.execute(sql`
+      insert into analytics_copresence_daily (scene_id, day, visitor_a, visitor_b, overlap_sec)
+      select ${sceneId}, ${day}::date, va, vb, overlap from (
+        select least(a.visitor_hash, b.visitor_hash) as va, greatest(a.visitor_hash, b.visitor_hash) as vb,
+               round(sum(extract(epoch from (
+                 least(coalesce(a.ended_at, a.last_seen_at), coalesce(b.ended_at, b.last_seen_at)) - greatest(a.started_at, b.started_at)
+               ))))::int as overlap
+        from analytics_sessions a
+        join analytics_sessions b
+          on b.scene_id = a.scene_id and a.id < b.id and a.visitor_hash <> b.visitor_hash
+         and a.started_at < coalesce(b.ended_at, b.last_seen_at)
+         and b.started_at < coalesce(a.ended_at, a.last_seen_at)
+        where a.scene_id = ${sceneId} and a.started_at >= ${ts(d0)} and a.started_at < ${ts(d1)}
+        group by 1, 2
+      ) x where overlap >= 300 order by overlap desc limit 1000
+      on conflict do nothing`)
+  })
+
+  await db.execute(sql`
+    update analytics_scenes set verified_session_share = coalesce((
+      select avg(case when verified then 1.0 else 0.0 end) from analytics_sessions
+      where scene_id = ${sceneId} and started_at >= ${ts(new Date(d1.getTime() - 7 * DAY))}
+    ), 0) where id = ${sceneId}`)
+}
+
+export async function runRollups(now = new Date()): Promise<{ hours: number; days: number }> {
+  const dirty = await db.select().from(analyticsDirtyHours).where(lte(analyticsDirtyHours.hour, now))
+  const days = new Map<string, Set<string>>()
+  for (const d of dirty) {
+    await rollupHour(d.sceneId, d.hour)
+    const day = d.hour.toISOString().slice(0, 10)
+    if (!days.has(d.sceneId)) days.set(d.sceneId, new Set())
+    days.get(d.sceneId)!.add(day)
+  }
+  let dayCount = 0
+  for (const [sceneId, set] of days) {
+    for (const day of set) {
+      await rollupDay(sceneId, day)
+      dayCount++
+    }
+  }
+  for (const d of dirty) {
+    // Keep the current hour dirty so it's recomputed as more events arrive.
+    if (d.hour.getTime() + HOUR <= now.getTime()) {
+      await db.delete(analyticsDirtyHours).where(and(eq(analyticsDirtyHours.sceneId, d.sceneId), eq(analyticsDirtyHours.hour, d.hour)))
+    }
+  }
+  return { hours: dirty.length, days: dayCount }
+}
+
+export async function retentionDaysFor(scene: AnalyticsSceneRow): Promise<number> {
+  if (scene.isPreview) return 7
+  if (!scene.claimedByUserId || scene.claimStatus !== 'active') return 30
+  if (config.allFeaturesUnlocked) return Infinity
+  const sub = await getSubscription(scene.claimedByUserId)
+  return sub.limits.analyticsRetentionDays
+}
+
+async function deleteOlder(table: 'analytics_events' | 'analytics_positions' | 'analytics_sessions', sceneId: string, cutoff: Date) {
+  const col = table === 'analytics_sessions' ? sql.raw('last_seen_at') : sql.raw('occurred_at')
+  let total = 0
+  for (;;) {
+    const rows = rowsOf<{ id: unknown }>(
+      await db.execute(sql`
+        delete from ${sql.raw(table)} where ctid in (
+          select ctid from ${sql.raw(table)} where scene_id = ${sceneId} and ${col} < ${ts(cutoff)} limit 10000
+        ) returning 1 as id`),
+    )
+    total += rows.length
+    if (rows.length < 10000) return total
+  }
+}
+
+export async function runRetention(now = new Date()): Promise<{ deleted: number }> {
+  const scenes = await db.select().from(analyticsScenes)
+  let deleted = 0
+  for (const scene of scenes) {
+    const days = await retentionDaysFor(scene)
+    if (!Number.isFinite(days)) continue
+    const cutoff = new Date(now.getTime() - days * DAY)
+    deleted += await deleteOlder('analytics_events', scene.id, cutoff)
+    deleted += await deleteOlder('analytics_positions', scene.id, cutoff)
+    deleted += await deleteOlder('analytics_sessions', scene.id, cutoff)
+  }
+  return { deleted }
+}
+
+const dailyJobs: Array<{ name: string; fn: (now: Date) => Promise<unknown> }> = [{ name: 'retention', fn: runRetention }]
+
+export function registerDailyJob(name: string, fn: (now: Date) => Promise<unknown>): void {
+  dailyJobs.push({ name, fn })
+}
+
+export function startAnalyticsJobs(): () => void {
+  if (!config.analyticsJobsEnabled) return () => {}
+  const timers: NodeJS.Timeout[] = []
+  const every = (ms: number, key: number, name: string, fn: () => Promise<unknown>) => {
+    let running = false
+    const t = setInterval(async () => {
+      if (running) return
+      running = true
+      try {
+        await withJobLock(key, fn)
+      } catch (err) {
+        console.error(`[vlm-server] analytics job ${name} failed:`, err)
+      } finally {
+        running = false
+      }
+    }, ms)
+    t.unref()
+    timers.push(t)
+  }
+  every(30_000, 71001, 'session-close', () => runSessionCloseSweep())
+  every(5 * 60_000, 71002, 'rollups', () => runRollups())
+  every(60 * 60_000, 71003, 'daily', async () => {
+    // Runs hourly but each daily job only does work once per UTC day.
+    const today = new Date().toISOString().slice(0, 10)
+    for (const job of dailyJobs) {
+      if (lastDailyRun.get(job.name) === today) continue
+      await job.fn(new Date())
+      lastDailyRun.set(job.name, today)
+    }
+  })
+  return () => timers.forEach(clearInterval)
+}
+
+const lastDailyRun = new Map<string, string>()

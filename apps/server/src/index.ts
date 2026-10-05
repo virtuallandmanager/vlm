@@ -9,6 +9,7 @@ import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
 import { runMigrations } from './db/migrate.js'
 import { buildApp } from './app.js'
 import { startLifecycleSweep } from './venues/lifecycle.js'
+import { startAnalyticsJobs } from './analytics/jobs.js'
 import { initBus } from './realtime/bus.js'
 
 async function main() {
@@ -71,6 +72,8 @@ async function main() {
   console.log(`[vlm-server] Platform hook crons started`)
   startLifecycleSweep(config.lifecycleSweepMs)
   console.log(`[vlm-server] Venue lifecycle sweep every ${config.lifecycleSweepMs}ms`)
+  startAnalyticsJobs()
+  console.log('[vlm-server] Analytics jobs started')
 
   console.log(`[vlm-server] Ready at ${config.publicUrl}`)
 }

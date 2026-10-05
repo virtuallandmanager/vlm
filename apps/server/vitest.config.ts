@@ -24,6 +24,7 @@ export default defineConfig({
       VLM_MODE: 'single',
       LOG_LEVEL: 'silent',
       LIFECYCLE_SWEEP_MS: '0',
+      ANALYTICS_JOBS: 'false',
     },
   },
 })
