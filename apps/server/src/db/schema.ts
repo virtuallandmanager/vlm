@@ -1022,3 +1022,10 @@ export const bookingsRelations = relations(bookings, ({ one, many }) => ({
 export const accessGrantsRelations = relations(accessGrants, ({ one }) => ({
   booking: one(bookings, { fields: [accessGrants.bookingId], references: [bookings.id] }),
 }))
+
+export const walletChallenges = pgTable('wallet_challenges', {
+  nonce: text('nonce').primaryKey(),
+  address: text('address').notNull(),
+  message: text('message').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+})

@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto'
 import { config } from './config.js'
 import { registerJwt } from './middleware/auth.js'
 import authRoutes from './routes/auth.js'
+import walletAuthRoutes from './routes/wallet-auth.js'
+import analyticsClaimRoutes from './routes/analytics-claims.js'
 import sceneRoutes from './routes/scenes.js'
 import analyticsRoutes from './routes/analytics.js'
 import eventRoutes from './routes/events.js'
@@ -102,9 +104,11 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       }
     })
     await scope.register(authRoutes)
+    await scope.register(walletAuthRoutes)
   })
   await app.register(sceneRoutes)
   await app.register(analyticsRoutes)
+  await app.register(analyticsClaimRoutes)
   await app.register(eventRoutes)
   await app.register(giveawayRoutes)
   await app.register(mediaRoutes)

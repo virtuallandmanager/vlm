@@ -10,6 +10,7 @@ import { config } from '../config.js'
 import { sendPasswordResetEmail } from '../services/email.js'
 import { initialRoleForNewUser } from '../auth/roles.js'
 import { linkWalletGrants } from '../auth/permissions.js'
+import { resolveVerifiedWalletUser } from '../auth/wallet-users.js'
 import { verifyDclSignedFetch, hasDclAuthHeaders } from '../middleware/dcl-auth.js'
 
 interface RegisterBody {
@@ -235,26 +236,29 @@ export default async function authRoutes(app: FastifyInstance) {
         verifiedWallet ??
         `preview:${platformUser?.id || platformUser?.walletAddress || crypto.randomUUID()}`
 
-      let authMethod = await db.query.userAuthMethods.findFirst({
-        where: and(eq(userAuthMethods.type, 'wallet'), eq(userAuthMethods.identifier, identifier)),
-        with: { user: true },
-      })
-
       let dbUser
-      if (authMethod) {
-        dbUser = authMethod.user
+      if (verifiedWallet) {
+        dbUser = await resolveVerifiedWalletUser(verifiedWallet, displayName)
       } else {
-        const [newUser] = await db
-          .insert(users)
-          .values({ displayName, email: null, role: await initialRoleForNewUser() })
-          .returning()
-        await db.insert(userAuthMethods).values({
-          userId: newUser.id,
-          type: 'wallet',
-          identifier,
-          metadata: { world, sceneId, verified: !!verifiedWallet },
+        const authMethod = await db.query.userAuthMethods.findFirst({
+          where: and(eq(userAuthMethods.type, 'wallet'), eq(userAuthMethods.identifier, identifier)),
+          with: { user: true },
         })
-        dbUser = newUser
+        if (authMethod) {
+          dbUser = authMethod.user
+        } else {
+          const [newUser] = await db
+            .insert(users)
+            .values({ displayName, email: null, role: await initialRoleForNewUser() })
+            .returning()
+          await db.insert(userAuthMethods).values({
+            userId: newUser.id,
+            type: 'wallet',
+            identifier,
+            metadata: { world, sceneId, verified: false },
+          })
+          dbUser = newUser
+        }
       }
 
       if (verifiedWallet) await linkWalletGrants(dbUser.id, verifiedWallet)
