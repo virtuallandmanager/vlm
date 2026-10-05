@@ -9,10 +9,15 @@ export interface ElementStore {
   instances: Record<string, SceneElementInstance>;
 }
 
+export interface ModelStore extends ElementStore {
+  /** Sks of model elements whose file the platform cannot load (adapter resolveModelSrc returned null). */
+  missing: Set<string>;
+}
+
 export interface VLMStorage {
   videos: ElementStore;
   images: ElementStore;
-  models: ElementStore;
+  models: ModelStore;
   sounds: ElementStore;
   nfts: ElementStore;
   claimPoints: ElementStore;

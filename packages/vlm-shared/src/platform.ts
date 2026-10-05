@@ -39,6 +39,12 @@ export interface VLMPlatformAdapter {
   // --- Rendering ---
   setPlaneRenderer(entity: EntityHandle): void;
   setGltfModel(entity: EntityHandle, src: string): void;
+  /**
+   * Optional: map an element's modelSrc to what this platform can load.
+   * Return the src to use, or null when the model is unavailable (no entity is created).
+   * Must be synchronous. Adapters without it use modelSrc as-is.
+   */
+  resolveModelSrc?(src: string): string | null;
   setMaterial(entity: EntityHandle, material: MaterialData): void;
   setVideoMaterial(entity: EntityHandle, video: VideoMaterialData): void;
 

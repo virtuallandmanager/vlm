@@ -28,7 +28,7 @@ export class SceneManager {
     this.managers = {
       video: new VideoManager(adapter, storage),
       image: new ImageManager(adapter, storage),
-      model: new MeshManager(adapter, storage),
+      model: new MeshManager(adapter, storage, events),
       sound: new SoundManager(adapter, storage),
     }
   }
@@ -60,6 +60,15 @@ export class SceneManager {
           }
         }
         break
+      case 'upsert': {
+        // Full element snapshot: drop whatever we have for it (no-op if absent), then rebuild.
+        const manager = this.managers[message.element]
+        const data = message.elementData
+        if (!manager || !data?.sk) break
+        manager.delete(data.sk)
+        if (data.enabled !== false) manager.create(data)
+        break
+      }
       case 'delete':
         if (message.instance) {
           const instanceId = message.instanceData?.sk || message.id

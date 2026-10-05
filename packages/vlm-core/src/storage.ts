@@ -5,7 +5,7 @@ export class VLMStorageImpl {
     return {
       videos: { configs: {}, instances: {} },
       images: { configs: {}, instances: {} },
-      models: { configs: {}, instances: {} },
+      models: { configs: {}, instances: {}, missing: new Set<string>() },
       sounds: { configs: {}, instances: {} },
       nfts: { configs: {}, instances: {} },
       claimPoints: { configs: {}, instances: {} },

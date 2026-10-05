@@ -313,6 +313,11 @@ export class VLM {
     }
   }
 
+  /** Model elements whose files this platform can't load (see adapter.resolveModelSrc). */
+  missingModels(): number {
+    return this.storage.models.missing.size
+  }
+
   sendMessage(id: string, data?: unknown): void {
     this.colyseus.send('user_message', { messageId: id, data, type: 'outbound' })
   }

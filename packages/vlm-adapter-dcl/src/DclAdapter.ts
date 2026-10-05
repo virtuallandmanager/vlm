@@ -33,10 +33,34 @@ import type {
   PointerCallback,
   Vec3,
 } from 'vlm-shared'
+import { localModelFile } from 'vlm-shared'
 
 export class DclAdapter implements VLMPlatformAdapter {
   // Video player entities -- DCL uses a separate entity for the VideoPlayer component
   private videoPlayerEntities: Map<number, Entity> = new Map()
+
+  // Files deployed with this scene (lowercased path -> path as deployed), from getSceneInformation().content.
+  // Decentraland can't load GLBs from URLs, so VLM-hosted models must be synced into models/vlm/.
+  // Loaded once; getSceneInfo() awaits it, and VLM.authenticate() awaits getSceneInfo() before
+  // joining the scene room, so the set is ready before any model element is created.
+  private sceneFiles: Map<string, string> = new Map()
+  private sceneFilesReady: Promise<void>
+
+  constructor() {
+    this.sceneFilesReady = this.loadSceneFiles()
+  }
+
+  private async loadSceneFiles(): Promise<void> {
+    try {
+      const { getSceneInformation } = await import('~system/Runtime' as any)
+      const info = await getSceneInformation({})
+      for (const entry of (info?.content ?? []) as Array<{ file?: string }>) {
+        if (entry?.file) this.sceneFiles.set(entry.file.toLowerCase(), entry.file)
+      }
+    } catch {
+      // Outside the DCL runtime: no deployed files known; URL models resolve to null (missing).
+    }
+  }
 
   readonly capabilities: PlatformCapabilities = {
     video: true,
@@ -144,6 +168,7 @@ export class DclAdapter implements VLMPlatformAdapter {
   }
 
   async getSceneInfo(): Promise<SceneInfo> {
+    await this.sceneFilesReady
     try {
       const { getSceneInformation } = await import('~system/Runtime' as any)
       const info = await getSceneInformation({})
@@ -247,6 +272,16 @@ export class DclAdapter implements VLMPlatformAdapter {
 
   setGltfModel(entity: EntityHandle, src: string): void {
     GltfContainer.createOrReplace(entity as Entity, { src })
+  }
+
+  /**
+   * VLM-hosted GLB URL -> its synced `models/vlm/<basename>` file, or null when that file isn't
+   * deployed with the scene. Anything that isn't an http(s) .glb URL is passed through unchanged.
+   */
+  resolveModelSrc(src: string): string | null {
+    const local = localModelFile(src)
+    if (local === null) return src
+    return this.sceneFiles.get(local.toLowerCase()) ?? null
   }
 
   setMaterial(entity: EntityHandle, material: MaterialData): void {

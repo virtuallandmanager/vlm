@@ -1,4 +1,5 @@
 import type { VLMPlatformAdapter, VLMStorage, EntityHandle } from 'vlm-shared'
+import type { EventBus } from '../events/EventBus.js'
 
 // Internal tracking of element config
 interface MeshConfig {
@@ -28,9 +29,25 @@ export class MeshManager {
   private configs: Map<string, MeshConfig> = new Map()
   private instances: Map<string, MeshInstance> = new Map()
 
-  constructor(adapter: VLMPlatformAdapter, storage: VLMStorage) {
+  private events?: EventBus
+
+  constructor(adapter: VLMPlatformAdapter, storage: VLMStorage, events?: EventBus) {
     this.adapter = adapter
     this.storage = storage
+    this.events = events
+  }
+
+  /** What the platform should load for this modelSrc; null = unavailable. */
+  private resolveSrc(src: string): string | null {
+    return this.adapter.resolveModelSrc ? this.adapter.resolveModelSrc(src) : src
+  }
+
+  private setMissing(sk: string, missing: boolean): void {
+    const set = this.storage.models.missing
+    if (set.has(sk) === missing) return
+    if (missing) set.add(sk)
+    else set.delete(sk)
+    this.events?.emit('models_missing', set.size)
   }
 
   init(elements: any[]): void {
@@ -64,6 +81,13 @@ export class MeshManager {
     const config = this.configs.get(configSk)
     if (!config || !config.modelSrc) return
 
+    // Resolve before creating anything: a model the platform can't load must never produce an entity.
+    const src = this.resolveSrc(config.modelSrc)
+    if (src === null) {
+      this.setMissing(configSk, true)
+      return
+    }
+
     const entity = this.adapter.createEntity()
 
     const position = data.position || { x: 0, y: 0, z: 0 }
@@ -71,7 +95,7 @@ export class MeshManager {
     const scale = data.scale || { x: 1, y: 1, z: 1 }
 
     this.adapter.setTransform(entity, { position, rotation, scale })
-    this.adapter.setGltfModel(entity, config.modelSrc)
+    this.adapter.setGltfModel(entity, src)
 
     // Set collider if needed
     if (data.withCollisions) {
@@ -97,6 +121,7 @@ export class MeshManager {
 
   // CRUD operations
   create(elementData: any): void {
+    if (!this.adapter.capabilities.gltfModels) return
     this.createConfig(elementData)
     for (const inst of elementData.instances || []) {
       if (inst.enabled !== false) {
@@ -123,10 +148,15 @@ export class MeshManager {
     this.storage.models.configs[key] = { ...this.storage.models.configs[key], ...elementData }
 
     // If model source changed, re-apply to all instances
+    // (An unresolvable new src leaves existing entities on their old model and flags the element missing.)
     if (elementData.modelSrc !== undefined && config.modelSrc) {
-      for (const instance of this.instances.values()) {
-        if (instance.configSk === elementData.sk) {
-          this.adapter.setGltfModel(instance.entity, config.modelSrc)
+      const src = this.resolveSrc(config.modelSrc)
+      this.setMissing(config.sk, src === null)
+      if (src !== null) {
+        for (const instance of this.instances.values()) {
+          if (instance.configSk === elementData.sk) {
+            this.adapter.setGltfModel(instance.entity, src)
+          }
         }
       }
     }
@@ -180,6 +210,7 @@ export class MeshManager {
       delete this.storage.models.configs[configKey]
     }
     this.configs.delete(elementId)
+    this.setMissing(elementId, false)
 
     for (const [sk, instance] of this.instances) {
       if (instance.configSk === elementId) {
@@ -209,5 +240,9 @@ export class MeshManager {
     this.instances.clear()
     this.storage.models.configs = {}
     this.storage.models.instances = {}
+    if (this.storage.models.missing.size > 0) {
+      this.storage.models.missing.clear()
+      this.events?.emit('models_missing', 0)
+    }
   }
 }
