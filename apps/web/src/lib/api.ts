@@ -47,6 +47,15 @@ export function useApi() {
     removeSceneCollaborator: (sceneId: string, userId: string) =>
       apiFetch(`/api/scenes/${sceneId}/collaborators/${userId}`, { method: 'DELETE' }),
 
+    // Scene roles (wallet-based)
+    getSceneRoles: (sceneId: string) =>
+      apiFetch<{ host: { userId: string; displayName: string | null; wallets: string[] }; roles: { wallet: string; role: 'cohost' | 'editor' | 'viewer'; userId: string | null; displayName: string | null; createdAt: string }[] }>(`/api/scenes/${sceneId}/roles`),
+    addSceneRole: (sceneId: string, wallet: string, role: 'cohost' | 'editor' | 'viewer') =>
+      apiFetch(`/api/scenes/${sceneId}/roles`, { method: 'POST', body: JSON.stringify({ wallet, role }) }),
+    removeSceneRole: (sceneId: string, wallet: string) => apiFetch(`/api/scenes/${sceneId}/roles/${wallet}`, { method: 'DELETE' }),
+    transferHost: (sceneId: string, wallet: string) =>
+      apiFetch<{ host: string }>(`/api/scenes/${sceneId}/transfer-host`, { method: 'POST', body: JSON.stringify({ wallet }) }),
+
     // Scene State
     getSceneState: (sceneId: string) =>
       apiFetch<{ state: Record<string, any> }>(`/api/scenes/${sceneId}/state`),

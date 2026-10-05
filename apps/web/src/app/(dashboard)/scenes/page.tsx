@@ -80,7 +80,9 @@ function ScenesContent() {
           {scenes.map(scene => (
             <button key={scene.id} onClick={() => router.push(`/scenes?id=${scene.id}`)}
               className="rounded-xl border border-gray-800 bg-gray-900 p-4 hover:border-gray-600 transition-colors text-left">
-              <h3 className="font-semibold">{scene.name}</h3>
+              <h3 className="font-semibold">{scene.name}
+                {scene.relationship && scene.relationship !== 'owner' && <span className="ml-2 rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-400">{({ cohost: 'Co-host', editor: 'Editor', viewer: 'Viewer' } as Record<string, string>)[scene.relationship] ?? scene.relationship}</span>}
+              </h3>
               <p className="mt-1 text-sm text-gray-400">{scene.description || 'No description'}</p>
               <p className="mt-2 text-xs text-gray-600">ID: {scene.id}</p>
             </button>

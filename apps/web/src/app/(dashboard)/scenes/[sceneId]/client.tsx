@@ -2,6 +2,7 @@
 import { useApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useSceneRoom } from '@/lib/colyseus'
+import { SceneRoles } from './SceneRoles'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
 
@@ -11,7 +12,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 // ---------------------------------------------------------------------------
 
 type ElementType = 'video' | 'image' | 'sound' | 'model' | 'widget'
-type TabKey = ElementType | 'moderation'
+type TabKey = ElementType | 'moderation' | 'roles'
 
 interface Instance {
   id: string
@@ -53,6 +54,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'sound', label: 'Sounds' },
   { key: 'widget', label: 'Widgets' },
   { key: 'moderation', label: 'Moderation' },
+  { key: 'roles', label: 'Roles' },
 ]
 
 const CONTROL_TYPES = [
@@ -1137,7 +1139,7 @@ export default function SceneEditorPage() {
 
   const activePreset = scene?.presets?.[0] // Use first preset as active for now
   const elements = activePreset?.elements || []
-  const filteredElements = activeTab === 'moderation' ? [] : elements.filter(el => el.type === activeTab)
+  const filteredElements = activeTab === 'moderation' || activeTab === 'roles' ? [] : elements.filter(el => el.type === activeTab)
 
   // -----------------------------------------------------------------------
   // Update handlers
@@ -1409,7 +1411,7 @@ export default function SceneEditorPage() {
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-800 pb-px">
         {TABS.map(tab => {
-          const count = tab.key === 'moderation' ? 0 : elements.filter(el => el.type === tab.key).length
+          const count = tab.key === 'moderation' || tab.key === 'roles' ? 0 : elements.filter(el => el.type === tab.key).length
           return (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)}
               className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
@@ -1427,6 +1429,9 @@ export default function SceneEditorPage() {
       {activeTab === 'moderation' && (
         <ModerationPanel sendMessage={sendMessage} />
       )}
+
+      {/* Roles tab */}
+      {activeTab === 'roles' && <SceneRoles sceneId={sceneId} />}
 
       {/* Widget tab */}
       {activeTab === 'widget' && (
@@ -1452,7 +1457,7 @@ export default function SceneEditorPage() {
       )}
 
       {/* Element list (video/image/model/sound) */}
-      {activeTab !== 'moderation' && activeTab !== 'widget' && (
+      {activeTab !== 'moderation' && activeTab !== 'widget' && activeTab !== 'roles' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm text-gray-400">{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}s ({filteredElements.length})</p>
