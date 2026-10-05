@@ -10,7 +10,11 @@ import {
   analyticsCopresenceDaily,
   analyticsDirtyHours,
 } from '../src/db/schema.js'
-import { runSessionCloseSweep, rollupHour, rollupDay, runRollups, runRetention } from '../src/analytics/jobs.js'
+import { runSessionCloseSweep, rollupHour, rollupDay, runRollups, runRetention, registerDailyJob, runDailyJobs } from '../src/analytics/jobs.js'
+import { writeBatch } from '../src/analytics/writer.js'
+import type { AnalyticsSceneRow } from '../src/analytics/registry.js'
+import type { IngestBatch } from 'vlm-shared'
+import { randomUUID } from 'node:crypto'
 import { resetDb } from './helpers/db.js'
 import { createUser } from './helpers/factories.js'
 import { createAnalyticsScene, insertSession } from './helpers/analytics.js'
@@ -104,5 +108,68 @@ describe('analytics jobs', () => {
     // Test env runs with all features unlocked (no Stripe key) → claimed scenes keep everything
     expect(await left(claimed.id)).toBe(2)
     expect(await db.select().from(analyticsRollupHourly)).toHaveLength(3)
+  })
+
+  const mkBatch = (sessionId: string, events: Array<Record<string, unknown>>) =>
+    ({ v: 1, sessionId, visitorId: '0xabc', isGuest: true, noticeShown: false, scene: {}, events }) as unknown as IngestBatch
+  const write = (scene: AnalyticsSceneRow, b: IngestBatch) =>
+    writeBatch({ scene, batch: b, verified: false, signer: null, country: null, keepPosProbability: 1 })
+
+  it('ingest drops positions beyond 32000 m', async () => {
+    const s = await createAnalyticsScene()
+    const sid = randomUUID()
+    await write(s, mkBatch(sid, [
+      { t: at(1).getTime(), type: 'pos', seq: 1, data: { x: 40000, y: 0, z: 1 } },
+      { t: at(2).getTime(), type: 'pos', seq: 2, data: { x: 5, y: 0, z: 1 } },
+    ]))
+    const rows = await db.select().from(analyticsPositions)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].x).toBe(5)
+  })
+
+  it('an out-of-range position does not break runRollups for other scenes', async () => {
+    const bad = await createAnalyticsScene()
+    const good = await createAnalyticsScene()
+    const sess = await insertSession(bad.id, { startedAt: at(0), lastSeenAt: at(1), endedAt: at(1) })
+    await insertSession(good.id, { startedAt: at(0), lastSeenAt: at(1), endedAt: at(1) })
+    await db.insert(analyticsPositions).values({ sceneId: bad.id, sessionId: sess.id, seq: 1, occurredAt: at(0), x: 40000, y: 0, z: 0 })
+    await db.insert(analyticsDirtyHours).values([{ sceneId: bad.id, hour: H }, { sceneId: good.id, hour: H }])
+    await expect(runRollups(new Date('2026-10-01T12:00:00Z'))).resolves.toBeDefined()
+    const r = await db.select().from(analyticsRollupHourly).where(eq(analyticsRollupHourly.sceneId, good.id))
+    expect(r).toHaveLength(1)
+  })
+
+  it('marks the session start hour dirty when a later batch arrives', async () => {
+    const s = await createAnalyticsScene()
+    const sid = randomUUID()
+    await write(s, mkBatch(sid, [{ t: at(-90).getTime(), type: 'session.start', seq: 0, data: {} }]))
+    await db.delete(analyticsDirtyHours)
+    await write(s, mkBatch(sid, [{ t: at(5).getTime(), type: 'emote', seq: 1, data: { emote: 'wave' } }]))
+    const hours = (await db.select().from(analyticsDirtyHours)).map((d) => d.hour.toISOString()).sort()
+    expect(hours).toEqual(['2026-10-01T08:00:00.000Z', '2026-10-01T10:00:00.000Z'])
+  })
+
+  it('a late event for an already-rolled-up past hour is rolled up on the next run', async () => {
+    const s = await createAnalyticsScene()
+    const now = new Date('2026-10-01T12:00:00Z')
+    const sess = await insertSession(s.id, { startedAt: at(0), lastSeenAt: at(1), endedAt: at(1) })
+    await db.insert(analyticsDirtyHours).values({ sceneId: s.id, hour: H })
+    await runRollups(now)
+    await db.insert(analyticsEvents).values({ sceneId: s.id, sessionId: sess.id, seq: 1, visitorHash: 'x', type: 'emote', occurredAt: at(2), data: { emote: 'wave' } })
+    await db.insert(analyticsDirtyHours).values({ sceneId: s.id, hour: H })
+    expect(await runRollups(now)).toMatchObject({ hours: 1 })
+    const [r] = await db.select().from(analyticsRollupHourly).where(eq(analyticsRollupHourly.sceneId, s.id))
+    expect(r.emotes).toEqual({ wave: 1 })
+  })
+
+  it('a daily job runs once per UTC day across restarts', async () => {
+    let calls = 0
+    registerDailyJob('test-daily', async () => { calls++ })
+    const day1 = new Date('2026-10-02T03:00:00Z')
+    await runDailyJobs(day1)
+    await runDailyJobs(new Date('2026-10-02T20:00:00Z'))
+    expect(calls).toBe(1)
+    await runDailyJobs(new Date('2026-10-03T01:00:00Z'))
+    expect(calls).toBe(2)
   })
 })

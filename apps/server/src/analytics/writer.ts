@@ -34,7 +34,7 @@ export async function writeBatch(input: {
     .filter((e) => e.type === 'pos')
     .filter(() => keepPosProbability >= 1 || random() < keepPosProbability)
     .map((e) => ({ e, x: num(e.data?.x), y: num(e.data?.y), z: num(e.data?.z) }))
-    .filter((p) => [p.x, p.y, p.z].every((v) => v !== null && Math.abs(v) <= 1e6))
+    .filter((p) => [p.x, p.y, p.z].every((v) => v !== null && Math.abs(v) <= 32000))
   const others = batch.events.filter((e) => e.type !== 'pos')
 
   return db.transaction(async (tx) => {
@@ -127,10 +127,13 @@ export async function writeBatch(input: {
         },
         setWhere: sql`${analyticsSessions.sceneId} = excluded.scene_id and ${analyticsSessions.visitorHash} = excluded.visitor_hash`,
       })
-      .returning({ id: analyticsSessions.id })
+      .returning({ id: analyticsSessions.id, startedAt: analyticsSessions.startedAt })
     if (upserted.length === 0) throw new SessionSceneMismatchError('session id already belongs to another scene or visitor')
 
-    const hours = [...new Set(times.map((t) => hourOf(t).getTime()))].map((h) => ({ sceneId: scene.id, hour: new Date(h) }))
+    // Sessions are rolled up in their start hour, so mark that hour dirty too.
+    const hourSet = new Set(times.map((t) => hourOf(t).getTime()))
+    hourSet.add(hourOf(upserted[0].startedAt.getTime()).getTime())
+    const hours = [...hourSet].map((h) => ({ sceneId: scene.id, hour: new Date(h) }))
     await tx.insert(analyticsDirtyHours).values(hours).onConflictDoNothing()
     return { accepted }
   })

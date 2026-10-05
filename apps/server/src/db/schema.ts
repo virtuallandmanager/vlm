@@ -428,6 +428,11 @@ export const analyticsDirtyHours = pgTable('analytics_dirty_hours', {
   hour: timestamp('hour', { withTimezone: true }).notNull(),
 }, (t) => ({ pk: primaryKey({ columns: [t.sceneId, t.hour] }) }))
 
+export const analyticsJobRuns = pgTable('analytics_job_runs', {
+  name: text('name').primaryKey(),
+  lastRunDay: date('last_run_day').notNull(),
+})
+
 export const analyticsRollupHourly = pgTable('analytics_rollup_hourly', {
   sceneId: uuid('scene_id').notNull().references(() => analyticsScenes.id, { onDelete: 'cascade' }),
   hour: timestamp('hour', { withTimezone: true }).notNull(),
