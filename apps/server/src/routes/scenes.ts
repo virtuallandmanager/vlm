@@ -181,6 +181,14 @@ export default async function sceneRoutes(app: FastifyInstance) {
     const access = await accessFor(request, sceneId)
     if (access.level === 'none') return reply.status(403).send({ error: 'Forbidden' })
 
+    if (access.level === 'grant') {
+      // Venue crew see only what's live and their own booking's copy — never the
+      // owner's other presets, other renters' bookings, or the collaborator list.
+      const visible = new Set([scene.activePresetId, access.booking?.bookingPresetId].filter(Boolean))
+      const { collaborators: _hidden, ...rest } = scene
+      return reply.send({ scene: { ...rest, presets: scene.presets.filter((p) => visible.has(p.id)) } })
+    }
+
     return reply.send({ scene })
   })
 
@@ -448,7 +456,8 @@ export default async function sceneRoutes(app: FastifyInstance) {
       const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
       if (!scene) return reply.status(404).send({ error: 'Scene not found' })
 
-      if ((await accessFor(request, sceneId)).level === 'none') {
+      const level = (await accessFor(request, sceneId)).level
+      if (level === 'none' || level === 'grant') {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 

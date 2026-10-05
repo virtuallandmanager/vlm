@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { sceneElementInstances, sceneElements, accessGrants, scenes } from '../src/db/schema.js'
+import { sceneElementInstances, sceneElements, accessGrants, scenes, scenePresets, sceneCollaborators } from '../src/db/schema.js'
 import { getSceneAccess } from '../src/auth/permissions.js'
 import { actorFromClaims } from '../src/auth/actor.js'
 import { resetDb } from './helpers/db.js'
@@ -310,6 +310,35 @@ describe('/api/venues', () => {
       payload: { renterWallet: randomWallet(), title: 'x', startsAt: startsAt.toISOString(), endsAt: new Date(startsAt.getTime() + 2 * H).toISOString() },
     })
     expect(res.statusCode).toBe(403)
+  })
+
+  it('grant holders see only the active and their own booking preset, and no collaborators', async () => {
+    const s = await venueSetup()
+    const hostWallet = randomWallet()
+    const host = await createUser({ wallet: hostWallet })
+    const { booking } = (await book(s, hostWallet)).json()
+    const other = (await book(s, randomWallet(), 72 * H)).json().booking
+    const extra = await db.insert(scenePresets).values({ sceneId: s.scene.id, name: 'Owner Private' }).returning()
+    const collab = await createUser({ email: 'collab@secret.dev' })
+    await db.insert(sceneCollaborators).values({ sceneId: s.scene.id, userId: collab.id, role: 'viewer' })
+
+    const res = await app.inject({ method: 'GET', url: `/api/scenes/${s.scene.id}`, headers: as(host) })
+    expect(res.statusCode).toBe(200)
+    const scene = res.json().scene
+    expect(scene.collaborators).toBeUndefined()
+    const ids = scene.presets.map((p: any) => p.id).sort()
+    expect(ids).toEqual([s.preset.id, booking.bookingPresetId].sort())
+    expect(ids).not.toContain(other.bookingPresetId)
+    expect(ids).not.toContain(extra[0].id)
+    expect(JSON.stringify(res.json())).not.toContain('collab@secret.dev')
+
+    const collabs = await app.inject({ method: 'GET', url: `/api/scenes/${s.scene.id}/collaborators`, headers: as(host) })
+    expect(collabs.statusCode).toBe(403)
+
+    // the owner still gets everything
+    const own = await app.inject({ method: 'GET', url: `/api/scenes/${s.scene.id}`, headers: as(s.admin) })
+    expect(own.json().scene.presets).toHaveLength(4)
+    expect(own.json().scene.collaborators).toHaveLength(1)
   })
 
   it('preset clone remaps parentInstanceId to the cloned parent', async () => {
