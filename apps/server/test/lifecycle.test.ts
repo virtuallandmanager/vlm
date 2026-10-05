@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import { bookings, scenes, scenePresets } from '../src/db/schema.js'
 import { createVenue, createBooking, addGrant } from '../src/venues/service.js'
@@ -102,6 +103,24 @@ describe('runLifecycleSweep', () => {
     expect(r.purgedPresets).toBe(1)
     expect(await db.query.scenePresets.findFirst({ where: eq(scenePresets.id, s.booking.bookingPresetId!) })).toBeUndefined()
     expect((await db.query.bookings.findFirst({ where: eq(bookings.id, s.booking.id) }))!.bookingPresetId).toBeNull()
+  })
+
+  it('a failed preset swap rolls back the status flip so the next sweep retries', async () => {
+    const s = await seed()
+    const at = new Date(s.booking.startsAt.getTime() - 60 * M)
+    published.length = 0
+    await db.execute(sql`CREATE OR REPLACE FUNCTION vlm_test_fail() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'boom'; END $$ LANGUAGE plpgsql`)
+    await db.execute(sql`CREATE TRIGGER vlm_test_fail BEFORE UPDATE ON scenes FOR EACH ROW EXECUTE FUNCTION vlm_test_fail()`)
+    try {
+      await expect(runLifecycleSweep(at)).rejects.toThrow()
+      expect(await statusOf(s.booking.id)).toBe('confirmed')
+      expect(published).toEqual([])
+    } finally {
+      await db.execute(sql`DROP TRIGGER vlm_test_fail ON scenes`)
+      await db.execute(sql`DROP FUNCTION vlm_test_fail()`)
+    }
+    expect((await runLifecycleSweep(at)).wentLive).toEqual([s.booking.id])
+    expect(await activePreset(s.scene.id)).toBe(s.booking.bookingPresetId)
   })
 
   it('does not revert if the owner already switched presets away from the booking', async () => {

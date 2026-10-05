@@ -55,6 +55,9 @@ function assertValidRules(r: VenueRules) {
     const v = (r as any)[k]
     if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) throw new VenueError(400, `rules.${k} must be a number >= 0`)
   }
+  for (const k of ['setupLeadMinutes', 'graceMinutes', 'bufferMinutes'] as const) {
+    if (!Number.isInteger(r[k])) throw new VenueError(400, `rules.${k} must be a whole number`)
+  }
   if (r.minHours > r.maxHours) throw new VenueError(400, 'rules.minHours must not exceed rules.maxHours')
 }
 

@@ -1,8 +1,9 @@
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { bookings, scenes, venues } from '../db/schema.js'
-import { publishVenueEvent } from '../realtime/bus.js'
+import { publishVenueEvent, type VenueEvent } from '../realtime/bus.js'
 
+// Must match liveWindowStart / liveWindowEnd in src/auth/permissions.ts.
 const setupLead = sql`make_interval(mins => (${venues.rules}->>'setupLeadMinutes')::int)`
 const grace = sql`make_interval(mins => (${venues.rules}->>'graceMinutes')::int)`
 
@@ -23,22 +24,29 @@ export async function runLifecycleSweep(at = new Date()) {
     .where(and(inArray(bookings.status, ['confirmed', 'live']), sql`${bookings.endsAt} + ${grace} <= ${at.toISOString()}::timestamptz`))
 
   for (const { booking, venue } of due) {
-    const [won] = await db
-      .update(bookings)
-      .set({ status: 'ended', updatedAt: at })
-      .where(and(eq(bookings.id, booking.id), inArray(bookings.status, ['confirmed', 'live'])))
-      .returning({ id: bookings.id })
-    if (!won) continue
+    // Status flip and preset revert commit together, so a failure can't strand the booking.
+    const events = await db.transaction(async (tx) => {
+      const [won] = await tx
+        .update(bookings)
+        .set({ status: 'ended', updatedAt: at })
+        .where(and(eq(bookings.id, booking.id), inArray(bookings.status, ['confirmed', 'live'])))
+        .returning({ id: bookings.id })
+      if (!won) return null
+      const evs: VenueEvent[] = []
+      if (booking.bookingPresetId) {
+        const reverted = await tx
+          .update(scenes)
+          .set({ activePresetId: venue.defaultPresetId, updatedAt: at })
+          .where(and(eq(scenes.id, venue.sceneId), eq(scenes.activePresetId, booking.bookingPresetId)))
+          .returning({ id: scenes.id })
+        if (reverted.length) evs.push({ type: 'preset_changed', sceneId: venue.sceneId, presetId: venue.defaultPresetId })
+      }
+      evs.push({ type: 'booking_ended', sceneId: venue.sceneId, bookingId: booking.id, reason: 'expired' })
+      return evs
+    })
+    if (!events) continue
     ended.push(booking.id)
-    if (booking.bookingPresetId) {
-      const reverted = await db
-        .update(scenes)
-        .set({ activePresetId: venue.defaultPresetId, updatedAt: at })
-        .where(and(eq(scenes.id, venue.sceneId), eq(scenes.activePresetId, booking.bookingPresetId)))
-        .returning({ id: scenes.id })
-      if (reverted.length) await publishVenueEvent({ type: 'preset_changed', sceneId: venue.sceneId, presetId: venue.defaultPresetId })
-    }
-    await publishVenueEvent({ type: 'booking_ended', sceneId: venue.sceneId, bookingId: booking.id, reason: 'expired' })
+    for (const e of events) await publishVenueEvent(e)
   }
 
   // ── Go live: confirmed bookings inside the live window ─────────────────
@@ -55,18 +63,24 @@ export async function runLifecycleSweep(at = new Date()) {
     )
 
   for (const { booking, venue } of starting) {
-    const [won] = await db
-      .update(bookings)
-      .set({ status: 'live', updatedAt: at })
-      .where(and(eq(bookings.id, booking.id), eq(bookings.status, 'confirmed')))
-      .returning({ id: bookings.id })
-    if (!won) continue
+    const events = await db.transaction(async (tx) => {
+      const [won] = await tx
+        .update(bookings)
+        .set({ status: 'live', updatedAt: at })
+        .where(and(eq(bookings.id, booking.id), eq(bookings.status, 'confirmed')))
+        .returning({ id: bookings.id })
+      if (!won) return null
+      const evs: VenueEvent[] = []
+      if (booking.bookingPresetId) {
+        await tx.update(scenes).set({ activePresetId: booking.bookingPresetId, updatedAt: at }).where(eq(scenes.id, venue.sceneId))
+        evs.push({ type: 'preset_changed', sceneId: venue.sceneId, presetId: booking.bookingPresetId })
+      }
+      evs.push({ type: 'grants_changed', sceneId: venue.sceneId })
+      return evs
+    })
+    if (!events) continue
     wentLive.push(booking.id)
-    if (booking.bookingPresetId) {
-      await db.update(scenes).set({ activePresetId: booking.bookingPresetId, updatedAt: at }).where(eq(scenes.id, venue.sceneId))
-      await publishVenueEvent({ type: 'preset_changed', sceneId: venue.sceneId, presetId: booking.bookingPresetId })
-    }
-    await publishVenueEvent({ type: 'grants_changed', sceneId: venue.sceneId })
+    for (const e of events) await publishVenueEvent(e)
   }
 
   // ── Purge booking presets 30 days after the booking finished ───────────

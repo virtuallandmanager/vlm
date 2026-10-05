@@ -292,7 +292,7 @@ describe('/api/venues', () => {
   it('rejects bad venue rules on create and patch', async () => {
     const s = await venueSetup()
     const other = await createScene(s.admin, 'Other')
-    for (const rules of [{ bufferMinutes: 'x' }, { minHours: 5, maxHours: 2 }, { graceMinutes: -1 }]) {
+    for (const rules of [{ bufferMinutes: 'x' }, { minHours: 5, maxHours: 2 }, { graceMinutes: -1 }, { graceMinutes: 7.5 }]) {
       const c = await app.inject({ method: 'POST', url: '/api/venues', headers: as(s.admin), payload: { sceneId: other.scene.id, name: 'R', slug: 'r', rules } })
       expect(c.statusCode).toBe(400)
       const p = await app.inject({ method: 'PATCH', url: `/api/venues/${s.venue.id}`, headers: as(s.admin), payload: { rules } })
