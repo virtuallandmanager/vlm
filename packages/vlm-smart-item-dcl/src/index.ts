@@ -13,7 +13,7 @@
  *   Drag "VLM Manager" from the asset catalog, set sceneId, deploy.
  *
  * Usage from code:
- *   import { VLMSmartItem } from 'vlm-smart-item-dcl'
+ *   import { VLMSmartItem } from 'vlm-dcl'
  *   const item = new VLMSmartItem()
  *   item.init({ inventory })
  *   item.spawn(entity, { sceneId: 'your-scene-id' }, channel)
@@ -274,6 +274,6 @@ export function startVLMManager(entity: Entity, options: VLMManagerOptions = {})
 export default new VLMSmartItem()
 
 // Named exports for code-based usage
-export { createVLM } from 'vlm-adapter-dcl'
+export { createVLM, startVLMAnalytics, stopVLMAnalytics } from 'vlm-adapter-dcl'
 export type { VLM } from 'vlm-core'
 export type { VLMInitConfig, VLMStorage } from 'vlm-shared'

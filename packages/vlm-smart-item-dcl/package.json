@@ -1,17 +1,18 @@
 {
-  "name": "vlm-smart-item-dcl",
+  "name": "vlm-dcl",
   "version": "2.0.0",
-  "description": "VLM Smart Item for Decentraland — drag into any scene to connect to VLM",
+  "description": "Virtual Land Manager for Decentraland SDK7 \u2014 analytics, in-world HUD and live scene management. Use from code or as a Creator Hub script.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "echo 'vlm-smart-item-dcl: skip in CI, build locally with pnpm run bundle'",
+    "build": "echo 'vlm-dcl: skip in CI, build locally with pnpm run bundle'",
     "bundle": "tsc && node build.mjs",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist .turbo"
+    "clean": "rm -rf dist .turbo",
+    "prepublishOnly": "pnpm run bundle"
   },
   "peerDependencies": {
-    "@dcl/sdk": ">=7.7.0"
+    "@dcl/sdk": ">=7.15.0"
   },
   "dependencies": {},
   "devDependencies": {
@@ -29,8 +30,21 @@
   "files": [
     "dist",
     "creator-hub",
-    "asset.json",
-    "models",
     "README.md"
+  ],
+  "license": "AGPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/virtuallandmanager/vlm.git",
+    "directory": "packages/vlm-smart-item-dcl"
+  },
+  "homepage": "https://vlm.gg",
+  "keywords": [
+    "decentraland",
+    "sdk7",
+    "analytics",
+    "vlm",
+    "virtual land manager",
+    "creator hub"
   ]
 }

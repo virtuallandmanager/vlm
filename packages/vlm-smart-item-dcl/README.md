@@ -1,68 +1,55 @@
-# VLM Smart Item for Decentraland
+# vlm-dcl
 
-Drop this into any Decentraland scene to connect it to Virtual Land Manager. No code required.
+[Virtual Land Manager](https://vlm.gg) for Decentraland SDK7 scenes: visitor analytics,
+the in-world management HUD, and live scene content managed from the VLM dashboard.
 
-## Creator Hub (No Code)
+Version 2 is a rewrite. It is not compatible with the 0.x (SDK6-era) API.
 
-1. Import the VLM asset pack into Creator Hub
-2. Drag "VLM Manager" into your scene
-3. Set your **Scene ID** (from the VLM dashboard)
-4. Deploy
-
-Your scene is now VLM-managed. Video screens, images, 3D models, sounds, and widgets configured in the VLM dashboard will appear in your scene and update in real-time.
-
-## From Code
-
-```typescript
-import { VLMSmartItem } from 'vlm-smart-item-dcl'
-
-const vlmItem = new VLMSmartItem()
-
-// Initialize (call once)
-vlmItem.init({ inventory: {} })
-
-// Spawn (call for each instance)
-vlmItem.spawn(myEntity, {
-  sceneId: 'your-scene-id-here',
-  serverUrl: 'https://vlm.gg',
-  showBeacon: false,
-  enableHud: true,
-  enableAnalytics: true,
-  autoConnect: true,
-  env: 'prod',
-}, channel)
+```sh
+npm install vlm-dcl
 ```
 
-Or use `createVLM` directly for full control:
+## From code
 
-```typescript
-import { createVLM } from 'vlm-smart-item-dcl'
+```ts
+import { createVLM } from 'vlm-dcl'
 
-const vlm = await createVLM({ sceneId: 'your-scene-id' })
+export async function main() {
+  const vlm = await createVLM()
+  vlm.track('scene_loaded') // optional custom analytics event
+}
 ```
 
-## Parameters
+`createVLM()` starts analytics straight away, with no account or scene ID needed. Scene owners
+get the management HUD (top right) and can claim the scene's analytics on vlm.gg later.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| sceneId | text | — | Your VLM scene ID (required) |
-| serverUrl | text | https://vlm.gg | VLM server URL |
-| showBeacon | boolean | false | Show VLM logo cube in scene |
-| enableHud | boolean | true | Enable in-world management HUD |
-| enableAnalytics | boolean | true | Track visitor sessions and actions |
-| autoConnect | boolean | true | Connect on scene load |
-| env | options | prod | Server environment |
+Analytics only (no HUD, no live content):
 
-## Actions
+```ts
+import { startVLMAnalytics } from 'vlm-dcl'
 
-Other Smart Items can trigger these actions on the VLM Manager:
+export function main() {
+  startVLMAnalytics()
+}
+```
 
-| Action | Description |
-|--------|-------------|
-| connect | Connect to VLM server |
-| disconnect | Disconnect from VLM |
-| toggleHud | Show/hide the management HUD |
-| switchPreset | Switch to a different scene preset |
-| triggerGiveaway | Trigger a giveaway by ID |
-| sendMessage | Send a custom message to other clients |
-| recordAction | Log an analytics action |
+## Creator Hub
+
+1. In a terminal in your scene folder, run `npm install vlm-dcl`.
+2. Copy `node_modules/vlm-dcl/creator-hub/VLMManager.ts` to `assets/scene/Scripts/VLMManager.ts`.
+3. In Creator Hub, add an entity (e.g. "VLM Manager"), add a **Script** component, and pick
+   `VLMManager.ts`.
+4. Fill in the fields, or leave them as they are:
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| sceneId | (blank) | VLM scene ID. Blank: set the scene up from the in-world HUD |
+| env | `prod` | `prod`, `staging` or `dev` (anything else means `prod`) |
+| serverUrl | (blank) | Only for self-hosted VLM servers |
+| enableHud | on | In-world management HUD for scene owners |
+| enableAnalytics | on | Visitor analytics |
+| showBeacon | off | Show the VLM Manager entity's mesh (handy for finding it) |
+
+## Requirements
+
+`@dcl/sdk` 7.15 or later (Creator Hub's Script component needs 7.15+).
