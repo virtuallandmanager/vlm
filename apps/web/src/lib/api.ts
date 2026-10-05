@@ -23,12 +23,13 @@ export function mediaContentType(file: File): string {
   return file.name.toLowerCase().endsWith('.glb') ? 'model/gltf-binary' : 'application/octet-stream'
 }
 
-export const MEDIA_UPLOAD_RULES = 'Only PNG, JPG, WebP, GIF (≤ 10 MB) or GLB (≤ 50 MB)'
+export const MEDIA_UPLOAD_RULES = 'Only PNG, JPG, WebP, GIF (≤ 10 MB), GLB (≤ 50 MB) or MP4/WebM video (≤ 70 MB)'
 
 /** Human-readable message for a failed media upload. */
 export function uploadErrorMessage(err: any): string {
   const msg = err?.message || ''
-  if (msg === 'unsupported_type' || msg === 'too_large') return MEDIA_UPLOAD_RULES
+  // 'HTTP 413' is a non-JSON 413 (e.g. a proxy's body-size page) — still a size problem.
+  if (msg === 'unsupported_type' || msg === 'too_large' || msg === 'HTTP 413') return MEDIA_UPLOAD_RULES
   return msg || 'Upload failed'
 }
 
@@ -48,6 +49,7 @@ export function useApi() {
     }
     const res = await fetch(`${API_URL}${path}`, { ...options, headers })
     if (!res.ok) {
+      // Non-JSON error bodies (proxy pages, e.g. a 413 from the edge) become `HTTP <status>`.
       const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
       throw new Error(err.error || `API error ${res.status}`)
     }

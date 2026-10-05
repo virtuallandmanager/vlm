@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, tokenFor } from './helpers/factories.js'
-import { classifyUpload, IMAGE_MAX_BYTES, MODEL_MAX_BYTES } from '../src/storage/upload-policy.js'
+import { classifyUpload, extensionFor, IMAGE_MAX_BYTES, MODEL_MAX_BYTES, VIDEO_MAX_BYTES } from '../src/storage/upload-policy.js'
+import { config } from '../src/config.js'
 
 describe('classifyUpload', () => {
   it('enforces image size boundary', () => {
@@ -12,6 +13,22 @@ describe('classifyUpload', () => {
     expect(classifyUpload('DUCK.GLB', 'application/octet-stream', 10)).toEqual({ ok: true, contentType: 'model/gltf-binary' })
     expect(classifyUpload('duck.glb', 'model/gltf-binary', MODEL_MAX_BYTES)).toEqual({ ok: true, contentType: 'model/gltf-binary' })
     expect(classifyUpload('duck.glb', 'model/gltf-binary', MODEL_MAX_BYTES + 1)).toMatchObject({ ok: false, status: 413 })
+  })
+  it('accepts MP4 and WebM video up to 70 MB', () => {
+    expect(VIDEO_MAX_BYTES).toBe(70 * 1024 * 1024)
+    expect(classifyUpload('clip.mp4', 'video/mp4', VIDEO_MAX_BYTES)).toEqual({ ok: true, contentType: 'video/mp4' })
+    expect(classifyUpload('clip.webm', 'VIDEO/WEBM', VIDEO_MAX_BYTES)).toEqual({ ok: true, contentType: 'video/webm' })
+    expect(classifyUpload('clip.mp4', 'video/mp4', VIDEO_MAX_BYTES + 1)).toEqual({ ok: false, status: 413, error: 'too_large' })
+    expect(classifyUpload('clip.webm', 'video/webm', VIDEO_MAX_BYTES + 1)).toEqual({ ok: false, status: 413, error: 'too_large' })
+    expect(classifyUpload('clip.mov', 'video/quicktime', 5)).toMatchObject({ ok: false, status: 415 })
+  })
+  it('maps video types to mp4/webm extensions', () => {
+    expect(extensionFor('video/mp4')).toBe('mp4')
+    expect(extensionFor('video/webm')).toBe('webm')
+  })
+  it('a max-size video fits the request body limit as base64 JSON', () => {
+    const base64Len = Math.ceil(VIDEO_MAX_BYTES / 3) * 4
+    expect(base64Len + 1024).toBeLessThan(config.maxUploadSize)
   })
   it('rejects other types', () => {
     expect(classifyUpload('a.html', 'text/html', 5)).toEqual({ ok: false, status: 415, error: 'unsupported_type' })
@@ -48,6 +65,12 @@ describe('POST /api/media/upload', () => {
     expect(res.statusCode).toBe(201)
     expect(res.json().asset.contentType).toBe('model/gltf-binary')
     expect(res.json().asset.storageKey).toMatch(/\.glb$/)
+  })
+  it('accepts a small MP4 and stores it as .mp4', async () => {
+    const res = await upload('clip.mp4', 'video/mp4', 1024)
+    expect(res.statusCode).toBe(201)
+    expect(res.json().asset.contentType).toBe('video/mp4')
+    expect(res.json().asset.storageKey).toMatch(/\.mp4$/)
   })
   it('rejects text/html with 415', async () => {
     const res = await upload('a.html', 'text/html', 100)

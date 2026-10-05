@@ -78,7 +78,7 @@ export default function MediaPage() {
             ref={fileInputRef}
             type="file"
             multiple
-            accept="image/png,image/jpeg,image/webp,image/gif,.glb,model/gltf-binary"
+            accept="image/png,image/jpeg,image/webp,image/gif,.glb,model/gltf-binary,video/mp4,video/webm"
             className="hidden"
             onChange={handleUpload}
           />
