@@ -74,4 +74,23 @@ describe('compat endpoints keep the dashboard shape', () => {
     const no = await app.inject({ method: 'GET', url: `/api/analytics/scenes/${scene.id}/sessions`, headers: { authorization: `Bearer ${tokenFor(stranger)}` } })
     expect(no.statusCode).toBe(403)
   })
+
+  it('sessions endpoint never leaks visitorHash and exposes a stable 16-hex userId', async () => {
+    const owner = await createUser()
+    const { scene } = await createScene(owner)
+    const s = await createAnalyticsScene({ vlmSceneId: scene.id })
+    const hash = 'abcdef0123456789abcdef0123456789'
+    await insertSession(s.id, { visitorHash: hash })
+    await insertSession(s.id, { visitorHash: hash, wallet: '0xabc' })
+    const res = await app.inject({ method: 'GET', url: `/api/analytics/scenes/${scene.id}/sessions`, headers: { authorization: `Bearer ${tokenFor(owner)}` } })
+    const { sessions } = res.json()
+    expect(sessions).toHaveLength(2)
+    for (const r of sessions) {
+      expect(r).not.toHaveProperty('visitorHash')
+      expect(r.userId).toMatch(/^[0-9a-f]{16}$/)
+    }
+    expect(sessions[0].userId).toBe(sessions[1].userId)
+    expect(sessions.map((r: any) => r.walletAddress).sort()).toEqual(['0xabc', null])
+    expect(res.body).not.toContain(hash)
+  })
 })

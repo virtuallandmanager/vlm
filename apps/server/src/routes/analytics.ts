@@ -41,6 +41,8 @@ export default async function analyticsRoutes(app: FastifyInstance) {
     const recentSessions = await db
       .select({
         id: analyticsSessions.id,
+        visitorHash: analyticsSessions.visitorHash,
+        wallet: analyticsSessions.wallet,
         displayName: analyticsSessions.displayName,
         platform: analyticsSessions.platform,
         startedAt: analyticsSessions.startedAt,
@@ -50,7 +52,16 @@ export default async function analyticsRoutes(app: FastifyInstance) {
       .where(and(eq(analyticsSessions.sceneId, sceneId), gte(analyticsSessions.startedAt, since)))
       .orderBy(desc(analyticsSessions.startedAt))
       .limit(50)
-    return reply.send({ visitors, actions, activeSessions: active, recentSessions })
+    return reply.send({
+      visitors,
+      actions,
+      activeSessions: active,
+      recentSessions: recentSessions.map(({ visitorHash, wallet, ...r }) => ({
+        ...r,
+        userId: visitorHash.slice(0, 16),
+        walletAddress: wallet,
+      })),
+    })
   })
 
   app.get<{ Params: { sceneId: string }; Querystring: { limit?: string; offset?: string } }>(
@@ -62,7 +73,25 @@ export default async function analyticsRoutes(app: FastifyInstance) {
       const limit = Math.min(Math.max(parseInt(request.query.limit || '50', 10) || 50, 1), 200)
       const offset = Math.max(parseInt(request.query.offset || '0', 10) || 0, 0)
       const rows = await db
-        .select()
+        .select({
+          id: analyticsSessions.id,
+          visitorHash: analyticsSessions.visitorHash,
+          wallet: analyticsSessions.wallet,
+          displayName: analyticsSessions.displayName,
+          platform: analyticsSessions.platform,
+          device: analyticsSessions.device,
+          realm: analyticsSessions.realm,
+          country: analyticsSessions.country,
+          cameraMode: analyticsSessions.cameraMode,
+          isGuest: analyticsSessions.isGuest,
+          verified: analyticsSessions.verified,
+          isReturning: analyticsSessions.isReturning,
+          startedAt: analyticsSessions.startedAt,
+          lastSeenAt: analyticsSessions.lastSeenAt,
+          endedAt: analyticsSessions.endedAt,
+          durationSec: analyticsSessions.durationSec,
+          eventCount: analyticsSessions.eventCount,
+        })
         .from(analyticsSessions)
         .where(eq(analyticsSessions.sceneId, found.scene.id))
         .orderBy(desc(analyticsSessions.startedAt))
@@ -79,8 +108,24 @@ export default async function analyticsRoutes(app: FastifyInstance) {
         : []
       const bySession = new Map<string, typeof events>()
       for (const e of events) bySession.set(e.sessionId, [...(bySession.get(e.sessionId) ?? []), e])
-      const sessions = rows.map((r) => ({
-        ...r,
+      const sessions = rows.map(({ visitorHash, wallet, ...r }) => ({
+        id: r.id,
+        userId: visitorHash.slice(0, 16),
+        walletAddress: wallet,
+        displayName: r.displayName,
+        platform: r.platform,
+        device: r.device,
+        realm: r.realm,
+        country: r.country,
+        cameraMode: r.cameraMode,
+        isGuest: r.isGuest,
+        verified: r.verified,
+        isReturning: r.isReturning,
+        startedAt: r.startedAt,
+        lastSeenAt: r.lastSeenAt,
+        endedAt: r.endedAt,
+        durationSec: r.durationSec,
+        eventCount: r.eventCount,
         actions: (bySession.get(r.id) ?? []).map((e) => ({
           name: e.type === 'custom' ? (e.data as { name?: string } | null)?.name ?? 'custom' : e.type,
           metadata: e.data,
