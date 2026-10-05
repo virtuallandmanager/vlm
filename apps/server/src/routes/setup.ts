@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
-import { eq } from 'drizzle-orm'
-import { validateSceneRef, type AnalyticsSceneRef } from 'vlm-shared'
+import { and, eq, inArray } from 'drizzle-orm'
+import { localModelFile, validateSceneRef, type AnalyticsSceneRef } from 'vlm-shared'
 import { db } from '../db/connection.js'
-import { scenes } from '../db/schema.js'
+import { analyticsScenes, mediaAssets, sceneElements, scenes } from '../db/schema.js'
 import { hasDclAuthHeaders, verifyDclSignedFetch } from '../middleware/dcl-auth.js'
 import { resolveAnalyticsScene } from '../analytics/registry.js'
 import { DirectoryUnavailableError } from '../analytics/dcl-directory.js'
@@ -111,5 +111,38 @@ export default async function setupRoutes(app: FastifyInstance) {
       }
       throw err
     }
+  })
+
+  /** Public: the hosted (.glb) models a set-up location's active preset uses, for `npx vlm-dcl sync`. */
+  app.get<{ Querystring: { location?: string } }>('/api/setup/models', async (request, reply) => {
+    const raw = typeof request.query?.location === 'string' ? request.query.location : ''
+    let key: string | null = null
+    if (/^gc:-?\d{1,3},-?\d{1,3}$/.test(raw)) key = raw
+    else if (/^world:[a-z0-9-]+(\.[a-z0-9-]+)*\.eth$/i.test(raw)) key = raw.toLowerCase()
+    if (!key) return reply.status(400).send({ error: 'invalid_location' })
+    if (!checkRequesterLimits(limiter, { requesterKey: `ip:${request.ip}`, verified: false, eventCount: 1 }).ok) {
+      return reply.status(429).send({ error: 'rate_limited' })
+    }
+    const analytics = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, key) })
+    const setup = analytics ? await getActiveSetup(analytics.id) : null
+    if (!setup) return reply.status(404).send({ error: 'not_set_up' })
+    const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, setup.vlmSceneId) })
+    const elements = scene?.activePresetId
+      ? await db.select().from(sceneElements).where(and(eq(sceneElements.presetId, scene.activePresetId), eq(sceneElements.type, 'model')))
+      : []
+    const hosted = elements.flatMap((e) => {
+      const url = (e.properties as { modelSrc?: unknown } | null)?.modelSrc
+      const file = typeof url === 'string' ? localModelFile(url) : null
+      return typeof url === 'string' && file ? [{ elementId: e.id, name: e.name, url, file }] : []
+    })
+    const sizes = new Map<string, number>()
+    if (hosted.length) {
+      const rows = await db
+        .select({ url: mediaAssets.publicUrl, size: mediaAssets.sizeBytes })
+        .from(mediaAssets)
+        .where(inArray(mediaAssets.publicUrl, [...new Set(hosted.map((m) => m.url))]))
+      for (const r of rows) if (r.url) sizes.set(r.url, r.size)
+    }
+    return reply.send({ sceneId: setup.vlmSceneId, models: hosted.map((m) => ({ ...m, sizeBytes: sizes.get(m.url) ?? null })) })
   })
 }
