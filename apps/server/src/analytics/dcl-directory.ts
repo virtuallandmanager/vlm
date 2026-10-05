@@ -30,16 +30,16 @@ const lower = (v: unknown) => (typeof v === 'string' && v ? v.toLowerCase() : nu
 const lowerList = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string').map((x: string) => x.toLowerCase()) : [])
 
 async function getJson(url: string, init?: RequestInit): Promise<unknown | null> {
-  let res: Response
   try {
-    res = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) })
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) })
+    // Only 404/400 mean "not found"; every other non-2xx is an upstream problem, not an answer.
+    if (res.status === 404 || res.status === 400) return null
+    if (!res.ok) throw new DirectoryUnavailableError(`${url}: HTTP ${res.status}`)
+    return await res.json()
   } catch (err) {
+    if (err instanceof DirectoryUnavailableError) throw err
     throw new DirectoryUnavailableError(`${url}: ${(err as Error).message}`)
   }
-  if (res.status === 404) return null
-  if (res.status >= 500) throw new DirectoryUnavailableError(`${url}: HTTP ${res.status}`)
-  if (!res.ok) return null
-  return res.json()
 }
 
 export class HttpDclDirectory implements DclDirectory {

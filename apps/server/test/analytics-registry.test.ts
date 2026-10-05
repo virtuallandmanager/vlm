@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import { analyticsScenes } from '../src/db/schema.js'
-import { setDclDirectory } from '../src/analytics/dcl-directory.js'
+import { setDclDirectory, HttpDclDirectory, DirectoryUnavailableError } from '../src/analytics/dcl-directory.js'
 import { resolveAnalyticsScene, clearRegistryCache } from '../src/analytics/registry.js'
 import { resetDb } from './helpers/db.js'
 import { FakeDclDirectory } from './helpers/fake-dcl.js'
@@ -84,5 +84,58 @@ describe('resolveAnalyticsScene', () => {
     dir.addScene({ entityId: 'bafyA', base: '10,10', parcels: ['10,10', '10,11'] })
     await Promise.all([resolveAnalyticsScene(gc(), null), resolveAnalyticsScene(gc(), null)])
     expect(await db.select().from(analyticsScenes).where(eq(analyticsScenes.locationKey, 'gc:10,10'))).toHaveLength(1)
+  })
+
+  it('a bogus parcel claim gets 422 without poisoning the cache for correct batches', async () => {
+    dir.addScene({ entityId: 'bafyA', base: '10,10', parcels: ['10,10', '10,11'] })
+    const bad = await resolveAnalyticsScene(gc({ entityId: 'bafyA', parcels: ['10,10', '99,99'] }), null)
+    expect(bad).toMatchObject({ ok: false, status: 422 })
+    expect((await resolveAnalyticsScene(gc({ entityId: 'bafyA' }), null)).ok).toBe(true)
+  })
+
+  it('a cache hit still rejects parcels outside the scene', async () => {
+    dir.addScene({ entityId: 'bafyA', base: '10,10', parcels: ['10,10', '10,11'] })
+    expect((await resolveAnalyticsScene(gc(), null)).ok).toBe(true)
+    const calls = dir.calls
+    expect(await resolveAnalyticsScene(gc({ parcels: ['10,10', '99,99'] }), null)).toMatchObject({ ok: false, status: 422 })
+    expect(dir.calls).toBe(calls)
+  })
+
+  it('worlds: entity id must equal the parsed URN id, and the parsed id is stored', async () => {
+    dir.worlds.set('foo.dcl.eth', { sceneUrns: ['urn:decentraland:entity:bafyW?=&baseUrl=x'] })
+    const w = { realm: 'foo.dcl.eth', isWorld: true, isPreview: false, worldName: 'foo.dcl.eth' }
+    expect(await resolveAnalyticsScene({ ...w, entityId: 'urn' }, null)).toMatchObject({ ok: false, status: 422 })
+    const r = await resolveAnalyticsScene({ ...w, entityId: 'bafyW' }, null)
+    expect(r.ok && r.scene.activeEntityId).toBe('bafyW')
+  })
+
+  it('upstream down: a second batch within 60s makes no further directory calls', async () => {
+    dir.addScene({ entityId: 'bafyA', base: '10,10', parcels: ['10,10', '10,11'] })
+    await resolveAnalyticsScene(gc(), null)
+    dir.down = true
+    const later = Date.now() + 11 * 60_000
+    expect((await resolveAnalyticsScene(gc(), null, new Date(later))).ok).toBe(true)
+    const calls = dir.calls
+    expect((await resolveAnalyticsScene(gc(), null, new Date(later + 30_000))).ok).toBe(true)
+    expect(dir.calls).toBe(calls)
+  })
+})
+
+describe('HttpDclDirectory error semantics', () => {
+  afterEach(() => vi.restoreAllMocks())
+  const stub = (res: Response) => vi.spyOn(globalThis, 'fetch').mockResolvedValue(res)
+  const http = () => new HttpDclDirectory('http://catalyst.test', 'http://worlds.test')
+
+  it('404 means not found', async () => {
+    stub(new Response('', { status: 404 }))
+    expect(await http().getActiveSceneAt('1,1')).toBeNull()
+  })
+  it('429 is upstream unavailable', async () => {
+    stub(new Response('', { status: 429 }))
+    await expect(http().getActiveSceneAt('1,1')).rejects.toBeInstanceOf(DirectoryUnavailableError)
+  })
+  it('a 200 with a non-JSON body is upstream unavailable', async () => {
+    stub(new Response('<html>oops</html>', { status: 200 }))
+    await expect(http().getActiveSceneAt('1,1')).rejects.toBeInstanceOf(DirectoryUnavailableError)
   })
 })
