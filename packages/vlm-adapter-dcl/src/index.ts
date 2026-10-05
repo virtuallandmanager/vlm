@@ -2,7 +2,6 @@ import { VLM, resolveApiUrl } from 'vlm-core'
 import { VLMHttpClient } from 'vlm-client'
 import type { VLMConnectionState } from 'vlm-core'
 import { DclAdapter } from './DclAdapter'
-import type { Collector } from 'vlm-core'
 import { startVLMAnalytics, getAnalyticsSceneRef } from './analytics.js'
 import { DclHUDRenderer, setSceneActionHandler } from './DclHUDRenderer.js'
 import { locationKeyFor } from 'vlm-shared'
@@ -21,20 +20,14 @@ import type { VLMInitConfig, VLMStorage } from 'vlm-shared'
  * If sceneId is provided, skips scene discovery and connects directly.
  * If no sceneId, authenticates first, then shows scene picker or auto-creates.
  */
-// Analytics start once per scene runtime; every createVLM call (retries included) attaches the shared collector.
-let sharedAnalytics: Promise<Collector | null> | null = null
-
 export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: boolean }): Promise<VLM> {
   const adapter = new DclAdapter()
   const vlm = new VLM(adapter)
   if (config?.analytics !== false) {
-    if (!sharedAnalytics) {
-      sharedAnalytics = startVLMAnalytics({ env: config?.env, apiUrl: config?.apiUrl, adapter }).catch((err) => {
-        console.log('[VLM analytics] disabled:', String(err))
-        return null
-      })
-    }
-    sharedAnalytics.then((c) => { if (c) vlm.attachAnalytics(c) })
+    // Analytics start once per scene runtime; every createVLM call (retries included) attaches the shared collector.
+    void startVLMAnalytics({ env: config?.env, apiUrl: config?.apiUrl, adapter }).then((c) => {
+      if (c) vlm.attachAnalytics(c)
+    })
   }
   const enableHud = config?.enableHud !== false
 
@@ -255,4 +248,4 @@ export default VLMCompat
 export { DclAdapter }
 export { DclHUDRenderer } from './DclHUDRenderer.js'
 export type { VLMInitConfig }
-export { startVLMAnalytics, DclAnalyticsProbe, getAnalyticsSceneRef } from './analytics.js'
+export { startVLMAnalytics, stopVLMAnalytics, DclAnalyticsProbe, getAnalyticsSceneRef } from './analytics.js'

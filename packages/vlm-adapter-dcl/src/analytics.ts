@@ -163,10 +163,34 @@ export async function getAnalyticsSceneRef(): Promise<AnalyticsSceneRef> {
   }
 }
 
-/** Analytics only: no realtime room, no HUD, no login flow. */
-export async function startVLMAnalytics(
+// One collector per scene runtime: repeated starts (and every createVLM call) share it.
+let shared: Promise<Collector | null> | null = null
+
+/**
+ * Analytics only: no realtime room, no HUD, no login flow. Starts the scene's collector once;
+ * later calls return the same collector (their options are ignored).
+ */
+export function startVLMAnalytics(
   opts: { env?: 'dev' | 'staging' | 'prod'; apiUrl?: string; adapter?: DclAdapter } = {},
 ): Promise<Collector | null> {
+  if (!shared) {
+    shared = start(opts).catch((err) => {
+      console.log('[VLM analytics] disabled:', String(err))
+      return null
+    })
+  }
+  return shared
+}
+
+/** Stop the shared collector (sends session.leave and flushes). A later start creates a new one. */
+export async function stopVLMAnalytics(): Promise<void> {
+  const current = shared
+  shared = null
+  const collector = current ? await current : null
+  await collector?.destroy()
+}
+
+async function start(opts: { env?: 'dev' | 'staging' | 'prod'; apiUrl?: string; adapter?: DclAdapter }): Promise<Collector | null> {
   try {
     const adapter = opts.adapter ?? new DclAdapter()
     const [user, env, scene] = await Promise.all([adapter.getPlatformUser(), adapter.getEnvironment(), getAnalyticsSceneRef()])

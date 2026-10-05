@@ -268,7 +268,9 @@ export class VLM {
       this.hud.destroy()
       this.hud = null
     }
-    await this.analytics?.destroy()
+    // The collector is shared per scene runtime (other VLM instances may use it): detach only.
+    // Stop it explicitly with the adapter's stopVLMAnalytics().
+    this.analytics = null
     this.colyseus.leaveRoom()
     this.setState('idle')
   }
