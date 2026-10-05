@@ -1,5 +1,5 @@
 'use client'
-import { useApi } from '@/lib/api'
+import { useApi, fileToBase64, mediaContentType, uploadErrorMessage, isGlbAsset, MEDIA_UPLOAD_RULES } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useEffect, useState, useRef } from 'react'
 
@@ -37,15 +37,12 @@ export default function MediaPage() {
     setUploading(true)
     try {
       for (const file of Array.from(files)) {
-        const buffer = await file.arrayBuffer()
-        const base64 = btoa(
-          new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-        )
-        const { asset } = await api.uploadMedia(file.name, file.type, base64)
+        const base64 = await fileToBase64(file)
+        const { asset } = await api.uploadMedia(file.name, mediaContentType(file), base64)
         setAssets(prev => [asset, ...prev])
       }
     } catch (err: any) {
-      alert('Upload failed: ' + (err.message || 'Unknown error'))
+      alert('Upload failed: ' + uploadErrorMessage(err))
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -81,6 +78,7 @@ export default function MediaPage() {
             ref={fileInputRef}
             type="file"
             multiple
+            accept="image/png,image/jpeg,image/webp,image/gif,.glb,model/gltf-binary"
             className="hidden"
             onChange={handleUpload}
           />
@@ -91,6 +89,7 @@ export default function MediaPage() {
           >
             {uploading ? 'Uploading...' : '+ Upload File'}
           </button>
+          <p className="mt-1 text-xs text-gray-500 text-right">{MEDIA_UPLOAD_RULES}</p>
         </div>
       </div>
 
@@ -108,6 +107,11 @@ export default function MediaPage() {
                     alt={asset.filename}
                     className="w-full h-full object-cover"
                   />
+                ) : isGlbAsset(asset) ? (
+                  <div className="text-center text-gray-500">
+                    <div className="text-3xl mb-1">GLB</div>
+                    <div className="text-xs uppercase">3D model</div>
+                  </div>
                 ) : (
                   <div className="text-center text-gray-500">
                     <div className="text-3xl mb-1">

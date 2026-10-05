@@ -1,5 +1,5 @@
 'use client'
-import { useApi } from '@/lib/api'
+import { useApi, fileToBase64, mediaContentType, uploadErrorMessage, isGlbAsset } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useSceneRoom } from '@/lib/colyseus'
 import { SceneRoles } from './SceneRoles'
@@ -198,6 +198,7 @@ function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
   const [showPicker, setShowPicker] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [uploadError, setUploadError] = useState('')
 
   const updateProp = (key: string, value: any) => {
     onUpdateElement(element.id, { properties: { ...props, [key]: value } })
@@ -229,14 +230,15 @@ function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
     const files = e.target.files
     if (!files?.length) return
     setUploading(true)
+    setUploadError('')
     for (const file of Array.from(files)) {
       try {
-        const buffer = await file.arrayBuffer()
-        const base64 = btoa(new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), ''))
-        const { asset } = await api.uploadMedia(file.name, file.type, base64)
+        const base64 = await fileToBase64(file)
+        const { asset } = await api.uploadMedia(file.name, mediaContentType(file), base64)
         addToPlaylist(asset.publicUrl)
       } catch (err: any) {
         console.error('Upload failed:', err)
+        setUploadError(uploadErrorMessage(err))
       }
     }
     setUploading(false)
@@ -321,6 +323,7 @@ function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
             Media Library
           </button>
         </div>
+        {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
 
         <div className="flex items-center gap-2">
           <input type="text" value={urlInput} onChange={e => setUrlInput(e.target.value)}
@@ -377,13 +380,23 @@ function MediaPicker({ api, accept, onSelect, onClose }: {
   const [loading, setLoading] = useState(true)
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+
+  // `accept` is a comma-separated list like an <input accept>: "image/*", "model/gltf-binary", ".glb".
+  // GLBs match by content type or by a .glb filename (old uploads may be stored as octet-stream).
+  const matchesAccept = (a: any) => {
+    if (!accept) return true
+    return accept.split(',').map(t => t.trim().toLowerCase()).filter(Boolean).some(t => {
+      if (t === '.glb' || t === 'model/gltf-binary') return isGlbAsset(a)
+      if (t.startsWith('.')) return !!a.filename?.toLowerCase().endsWith(t)
+      if (t.endsWith('/*')) return !!a.contentType?.startsWith(t.slice(0, -1))
+      return a.contentType === t
+    })
+  }
 
   useEffect(() => {
     api.getMedia().then(data => {
-      const filtered = accept
-        ? data.assets.filter((a: any) => a.contentType?.startsWith(accept.replace('/*', '/')))
-        : data.assets
-      setAssets(filtered)
+      setAssets(data.assets.filter(matchesAccept))
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
@@ -392,13 +405,14 @@ function MediaPicker({ api, accept, onSelect, onClose }: {
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
+    setUploadError('')
     try {
-      const buffer = await file.arrayBuffer()
-      const base64 = btoa(new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), ''))
-      const { asset } = await api.uploadMedia(file.name, file.type, base64)
+      const base64 = await fileToBase64(file)
+      const { asset } = await api.uploadMedia(file.name, mediaContentType(file), base64)
       setAssets(prev => [asset, ...prev])
     } catch (err: any) {
       console.error('Upload failed:', err)
+      setUploadError(uploadErrorMessage(err))
     }
     setUploading(false)
     if (fileRef.current) fileRef.current.value = ''
@@ -417,6 +431,7 @@ function MediaPicker({ api, accept, onSelect, onClose }: {
             <button onClick={onClose} className="text-gray-400 hover:text-white text-lg px-2">&times;</button>
           </div>
         </div>
+        {uploadError && <p className="px-4 pt-3 text-xs text-red-400">{uploadError}</p>}
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <p className="text-gray-400 text-sm text-center py-8">Loading...</p>
@@ -432,7 +447,7 @@ function MediaPicker({ api, accept, onSelect, onClose }: {
                       className="w-full h-24 object-cover" />
                   ) : (
                     <div className="w-full h-24 flex items-center justify-center text-gray-500 text-2xl">
-                      {asset.contentType?.startsWith('video/') ? 'V' : asset.contentType?.startsWith('audio/') ? 'A' : 'F'}
+                      {isGlbAsset(asset) ? 'GLB' : asset.contentType?.startsWith('video/') ? 'V' : asset.contentType?.startsWith('audio/') ? 'A' : 'F'}
                     </div>
                   )}
                   <div className="px-2 py-1.5">
@@ -464,18 +479,20 @@ function ImageElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [showPicker, setShowPicker] = useState(false)
+  const [uploadError, setUploadError] = useState('')
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
+    setUploadError('')
     try {
-      const buffer = await file.arrayBuffer()
-      const base64 = btoa(new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), ''))
-      const { asset } = await api.uploadMedia(file.name, file.type, base64)
+      const base64 = await fileToBase64(file)
+      const { asset } = await api.uploadMedia(file.name, mediaContentType(file), base64)
       onUpdateElement(element.id, { properties: { ...props, textureSrc: asset.publicUrl } })
     } catch (err: any) {
       console.error('Upload failed:', err)
+      setUploadError(uploadErrorMessage(err))
     }
     setUploading(false)
     if (fileRef.current) fileRef.current.value = ''
@@ -517,6 +534,7 @@ function ImageElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
           </button>
           <span className="text-xs text-gray-500">or paste a URL above</span>
         </div>
+        {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
       </div>
 
       {showPicker && (
@@ -542,14 +560,40 @@ function ImageElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
 // Model Element Editor
 // ---------------------------------------------------------------------------
 
-function ModelElementEditor({ element, onUpdateElement, onUpdateInstance, onDeleteInstance, onAddInstance }: {
+function ModelElementEditor({ element, onUpdateElement, onUpdateInstance, onDeleteInstance, onAddInstance, api }: {
   element: Element
   onUpdateElement: (id: string, data: Record<string, any>) => void
   onUpdateInstance: (id: string, data: Partial<Instance>) => void
   onDeleteInstance: (id: string) => void
   onAddInstance: (elementId: string) => void
+  api: ReturnType<typeof import('@/lib/api').useApi>
 }) {
   const props = element.properties || {}
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+
+  const setModel = (url: string) => {
+    onUpdateElement(element.id, { properties: { ...props, modelSrc: url } })
+  }
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setUploadError('')
+    try {
+      const base64 = await fileToBase64(file)
+      const { asset } = await api.uploadMedia(file.name, mediaContentType(file), base64)
+      setModel(asset.publicUrl)
+    } catch (err: any) {
+      console.error('Upload failed:', err)
+      setUploadError(uploadErrorMessage(err))
+    }
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ''
+  }
 
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
@@ -563,8 +607,25 @@ function ModelElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
         </label>
       </div>
 
-      <TextInput label="Model URL" value={props.modelSrc || ''}
-        onChange={v => onUpdateElement(element.id, { properties: { ...props, modelSrc: v } })} />
+      <div className="space-y-2">
+        <TextInput label="Model URL" value={props.modelSrc || ''} onChange={setModel} />
+        <div className="flex items-center gap-2">
+          <label className={`rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 transition-colors cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+            {uploading ? 'Uploading...' : 'Upload GLB'}
+            <input ref={fileRef} type="file" accept=".glb,model/gltf-binary" onChange={handleUpload} className="hidden" />
+          </label>
+          <button onClick={() => setShowPicker(true)}
+            className="rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 transition-colors">
+            Choose from Media
+          </button>
+        </div>
+        {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
+        <p className="text-xs text-gray-500">GLBs need <code className="text-gray-400">npx vlm-dcl sync</code> + a redeploy before they appear in-world.</p>
+      </div>
+
+      {showPicker && (
+        <MediaPicker api={api} accept=".glb,model/gltf-binary" onSelect={setModel} onClose={() => setShowPicker(false)} />
+      )}
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -1053,7 +1114,7 @@ export default function SceneEditorPage() {
   const sceneId = (searchParams.get('id') || params.sceneId) as string
   const { token, user } = useAuth()
   const api = useApi()
-  const { room, connected, sendUpdate, sendMessage } = useSceneRoom(sceneId, token)
+  const { room, connected, sendMessage } = useSceneRoom(sceneId, token)
 
   const [scene, setScene] = useState<Scene | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1147,17 +1208,8 @@ export default function SceneEditorPage() {
 
   const handleUpdateElement = useCallback(async (elementId: string, data: Record<string, any>) => {
     try {
+      // The server broadcasts the full element upsert to the scene room after this write.
       await api.updateElement(elementId, data)
-
-      // Broadcast via Colyseus
-      const el = elements.find(e => e.id === elementId)
-      if (el) {
-        sendUpdate({
-          action: 'update',
-          element: el.type,
-          elementData: { id: elementId, ...data },
-        })
-      }
 
       // Update local state
       setScene(prev => {
@@ -1180,22 +1232,11 @@ export default function SceneEditorPage() {
     } catch (err: any) {
       console.error('Failed to update element:', err)
     }
-  }, [api, elements, sendUpdate])
+  }, [api])
 
   const handleUpdateInstance = useCallback(async (instanceId: string, data: Partial<Instance>) => {
     try {
       await api.updateInstance(instanceId, data)
-
-      // Find which element this instance belongs to
-      const parentEl = elements.find(el => el.instances.some(i => i.id === instanceId))
-      if (parentEl) {
-        sendUpdate({
-          action: 'update_instance',
-          element: parentEl.type,
-          elementData: { id: parentEl.id },
-          instanceData: { id: instanceId, ...data },
-        })
-      }
 
       // Update local state
       setScene(prev => {
@@ -1216,16 +1257,11 @@ export default function SceneEditorPage() {
     } catch (err: any) {
       console.error('Failed to update instance:', err)
     }
-  }, [api, elements, sendUpdate])
+  }, [api])
 
   const handleDeleteInstance = useCallback(async (instanceId: string) => {
     try {
       await api.deleteInstance(instanceId)
-
-      sendUpdate({
-        action: 'delete_instance',
-        instanceData: { id: instanceId },
-      })
 
       // Remove from local state
       setScene(prev => {
@@ -1244,7 +1280,7 @@ export default function SceneEditorPage() {
     } catch (err: any) {
       console.error('Failed to delete instance:', err)
     }
-  }, [api, sendUpdate])
+  }, [api])
 
   const handleAddInstance = useCallback(async (elementId: string) => {
     try {
@@ -1253,12 +1289,6 @@ export default function SceneEditorPage() {
         rotation: { x: 0, y: 0, z: 0 },
         scale: { x: 1, y: 1, z: 1 },
         enabled: true,
-      })
-
-      sendUpdate({
-        action: 'add_instance',
-        elementData: { id: elementId },
-        instanceData: instance,
       })
 
       // Add to local state
@@ -1278,7 +1308,7 @@ export default function SceneEditorPage() {
     } catch (err: any) {
       console.error('Failed to create instance:', err)
     }
-  }, [api, sendUpdate])
+  }, [api])
 
   // -----------------------------------------------------------------------
   // Widget: Add / Delete
@@ -1317,11 +1347,10 @@ export default function SceneEditorPage() {
           }),
         }
       })
-      sendUpdate({ action: 'add_element', element: type, elementData: { ...element, instances: [instance] } })
     } catch (err: any) {
       console.error(`Failed to add ${type}:`, err)
     }
-  }, [api, activePreset, elements, sendUpdate])
+  }, [api, activePreset, elements])
 
   const handleAddWidget = useCallback(async () => {
     if (!activePreset) return
@@ -1343,11 +1372,10 @@ export default function SceneEditorPage() {
           }),
         }
       })
-      sendUpdate({ action: 'add_element', element: 'widget', elementData: element })
     } catch (err: any) {
       console.error('Failed to add widget:', err)
     }
-  }, [api, activePreset, elements, sendUpdate])
+  }, [api, activePreset, elements])
 
   const handleDeleteWidget = useCallback(async (elementId: string) => {
     try {
@@ -1362,11 +1390,10 @@ export default function SceneEditorPage() {
           })),
         }
       })
-      sendUpdate({ action: 'delete_element', element: 'widget', elementData: { id: elementId } })
     } catch (err: any) {
       console.error('Failed to delete widget:', err)
     }
-  }, [api, sendUpdate])
+  }, [api])
 
   // -----------------------------------------------------------------------
   // Copy scene ID
@@ -1481,7 +1508,7 @@ export default function SceneEditorPage() {
               switch (el.type) {
                 case 'video': return <VideoElementEditor key={el.id} {...editorProps} api={api} />
                 case 'image': return <ImageElementEditor key={el.id} {...editorProps} api={api} />
-                case 'model': return <ModelElementEditor key={el.id} {...editorProps} />
+                case 'model': return <ModelElementEditor key={el.id} {...editorProps} api={api} />
                 case 'sound': return <SoundElementEditor key={el.id} {...editorProps} />
                 default: return null
               }

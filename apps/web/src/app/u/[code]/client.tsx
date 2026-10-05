@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
+import { fileToBase64 } from '@/lib/api'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3010'
 
@@ -54,10 +55,7 @@ export default function CompanionUploadClient() {
       if (remaining <= 0) break
 
       try {
-        const buffer = await file.arrayBuffer()
-        const base64 = btoa(
-          new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''),
-        )
+        const base64 = await fileToBase64(file)
 
         const res = await fetch(`${API_URL}/api/upload/${code}`, {
           method: 'POST',

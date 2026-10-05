@@ -3,6 +3,40 @@ import { useCallback } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
 
+/** Read a File as base64 (no `data:…;base64,` prefix) for JSON upload bodies. */
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result || '')
+      const comma = result.indexOf(',')
+      resolve(comma >= 0 ? result.slice(comma + 1) : result)
+    }
+    reader.onerror = () => reject(reader.error || new Error('Could not read file'))
+    reader.readAsDataURL(file)
+  })
+}
+
+/** Content type to send for a media upload; browsers often leave `type` empty for .glb files. */
+export function mediaContentType(file: File): string {
+  if (file.type) return file.type
+  return file.name.toLowerCase().endsWith('.glb') ? 'model/gltf-binary' : 'application/octet-stream'
+}
+
+export const MEDIA_UPLOAD_RULES = 'Only PNG, JPG, WebP, GIF (≤ 10 MB) or GLB (≤ 50 MB)'
+
+/** Human-readable message for a failed media upload. */
+export function uploadErrorMessage(err: any): string {
+  const msg = err?.message || ''
+  if (msg === 'unsupported_type' || msg === 'too_large') return MEDIA_UPLOAD_RULES
+  return msg || 'Upload failed'
+}
+
+/** True if a media asset is a GLB model (old uploads may be stored as octet-stream). */
+export function isGlbAsset(asset: { contentType?: string; filename?: string }): boolean {
+  return asset.contentType === 'model/gltf-binary' || !!asset.filename?.toLowerCase().endsWith('.glb')
+}
+
 export function useApi() {
   const { token } = useAuth()
 

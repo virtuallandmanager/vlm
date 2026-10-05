@@ -1,5 +1,5 @@
 'use client'
-import { useApi } from '@/lib/api'
+import { useApi, fileToBase64 } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -55,10 +55,7 @@ function UploadForm({ onUploaded }: { onUploaded: (asset: any) => void }) {
     if (!file || !name) return
     setUploading(true)
     try {
-      const buffer = await file.arrayBuffer()
-      const base64 = btoa(
-        new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''),
-      )
+      const base64 = await fileToBase64(file)
       const tags = tagsInput
         .split(',')
         .map((t) => t.trim())
