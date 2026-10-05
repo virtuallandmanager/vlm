@@ -7,6 +7,7 @@ import { DclAdapter } from './DclAdapter'
 import { startVLMAnalytics, getAnalyticsSceneRef } from './analytics.js'
 import { DclHUDRenderer, setSceneActionHandler } from './DclHUDRenderer.js'
 import type { HUDMediaItem, HUDLayoutItem } from './DclHUDRenderer.js'
+import { locationKeyFor } from 'vlm-shared'
 import type { VLMInitConfig, VLMStorage } from 'vlm-shared'
 
 // Setup-status re-checks while Decentraland's directory is unavailable (~2.5 min).
@@ -88,7 +89,8 @@ function placementInFrontOfPlayer(kind: 'image' | 'model') {
  * If not, asks the VLM server what the signed-in wallet gets at this location:
  * - a member of this location's setup (host / co-host / editor / viewer) connects straight to its scene;
  * - an owner, operator or deployer of the land with no setup yet gets a one-press "Set up VLM here" card;
- * - everyone else (visitors, guests, wallets without a role) gets no VLM UI at all.
+ * - everyone else (visitors, guests, wallets without a role) gets no VLM UI at all, but still
+ *   connects content-only when the location is set up, so they see its images, video and models.
  */
 export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: boolean }): Promise<VLM> {
   const adapter = new DclAdapter()
@@ -165,8 +167,32 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
   try {
     const sceneRef = await getAnalyticsSceneRef()
     const user = await adapter.getPlatformUser()
-    if (user.isGuest) return vlm
     const probe = new VLMHttpClient(resolveApiUrl(config ?? {}))
+
+    // Visitors (role-less wallets and guests) at a set-up location: join the scene room for its
+    // content only — no renderer, no HUD; failures are only logged. Platform auth gives guests a
+    // guest session, which the room accepts as an analytics/content client.
+    let contentStarted = false
+    const connectContentOnly = (sceneId: string) => {
+      if (contentStarted) return
+      contentStarted = true
+      void (async () => {
+        await vlm.authenticate({ env: 'prod', ...config })
+        await vlm.connectToScene(sceneId)
+        console.log('[VLM] Showing VLM content for scene', sceneId)
+      })().catch((err) => console.log('[VLM] VLM content unavailable:', String(err)))
+    }
+
+    if (user.isGuest) {
+      // Guests can't sign requests, so look the scene up by location (previews are never set up publicly)
+      if (!sceneRef.isPreview) {
+        void probe
+          .getSceneForLocation(locationKeyFor(sceneRef, null))
+          .then((sceneId) => { if (sceneId) connectContentOnly(sceneId) })
+          .catch((err) => console.log('[VLM] VLM content unavailable:', String(err)))
+      }
+      return vlm
+    }
 
     const reconnect = async (sceneId: string) => {
       try {
@@ -390,6 +416,8 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       else if (status.state === 'unavailable') return false
       else if (status.state === 'taken') console.log(`[VLM] Analytics running; VLM here is already set up by ${status.host}`)
       else console.log("[VLM] Analytics running; VLM setup is only offered to this land's owners, operators and deployer")
+      // Not a member, but the location is set up: show its content (no HUD)
+      if ((status.state === 'taken' || status.state === 'none') && status.sceneId) connectContentOnly(status.sceneId)
       return true
     }
 

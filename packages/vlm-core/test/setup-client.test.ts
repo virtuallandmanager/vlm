@@ -27,6 +27,36 @@ describe('VLMHttpClient setup calls', () => {
   })
 })
 
+describe('VLMHttpClient.getSceneForLocation', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('GETs the public scene lookup with an encoded location and returns the sceneId', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ sceneId: 's7' }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new VLMHttpClient('https://api.example')
+    expect(await client.getSceneForLocation('world:venue.dcl.eth')).toBe('s7')
+    expect((fetchMock.mock.calls[0] as any)[0]).toBe('https://api.example/api/setup/scene?location=world%3Avenue.dcl.eth')
+  })
+
+  it('returns null when not set up, on errors, or on a malformed body', async () => {
+    const client = new VLMHttpClient('https://api.example')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"not_set_up"}', { status: 404 })))
+    expect(await client.getSceneForLocation('gc:1,1')).toBeNull()
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline') }))
+    expect(await client.getSceneForLocation('gc:1,1')).toBeNull()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })))
+    expect(await client.getSceneForLocation('gc:1,1')).toBeNull()
+  })
+})
+
+describe('VLMHttpClient setup status sceneId for visitors', () => {
+  it('passes through sceneId on none/taken', async () => {
+    const client = new VLMHttpClient('https://api.example')
+    const body = JSON.stringify({ state: 'none', sceneId: 's3' })
+    expect(await client.getSetupStatus(REF as any, { signedRequest: async () => ({ status: 200, body }) } as any)).toEqual({ state: 'none', sceneId: 's3' })
+  })
+})
+
 describe('VLMHttpClient role calls', () => {
   afterEach(() => vi.unstubAllGlobals())
 

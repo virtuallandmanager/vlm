@@ -5,8 +5,9 @@ import { VLMAuth } from './auth.js'
 export type SetupStatus =
   | { state: 'eligible' }
   | { state: 'member'; sceneId: string; role: 'host' | 'cohost' | 'editor' | 'viewer' }
-  | { state: 'taken'; host: string }
-  | { state: 'none' }
+  | { state: 'taken'; host: string; sceneId?: string }
+  /** `sceneId` is present when the location is set up — visitors connect content-only. */
+  | { state: 'none'; sceneId?: string }
   | { state: 'unavailable' }
 
 export interface SceneRoleEntry {
@@ -163,6 +164,18 @@ export class VLMHttpClient {
       return JSON.parse(res.body) as SetupStatus
     } catch {
       return { state: 'none' }
+    }
+  }
+
+  /** Public: the VLM scene set up at a location key (`gc:x,y` / `world:name.eth`), or null. Used for guests (no signed fetch). */
+  async getSceneForLocation(locationKey: string): Promise<string | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/setup/scene?location=${encodeURIComponent(locationKey)}`)
+      if (!res.ok) return null
+      const data = (await res.json()) as { sceneId?: unknown }
+      return typeof data?.sceneId === 'string' && data.sceneId ? data.sceneId : null
+    } catch {
+      return null
     }
   }
 
