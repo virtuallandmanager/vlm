@@ -13,6 +13,7 @@ const MAX_DIRECTORY_CALLS = 100
 class BudgetExhausted extends Error {}
 
 let signedLimiter = new TokenBucketLimiter()
+let sweepTimer: NodeJS.Timeout | null = null
 
 /** Test hook. */
 export function setSignedClaimLimiter(l: TokenBucketLimiter): void {
@@ -21,6 +22,10 @@ export function setSignedClaimLimiter(l: TokenBucketLimiter): void {
 
 /** Unauthenticated-by-JWT eligibility probe for the in-world SDK. Never creates users, auth methods or sessions. */
 export async function analyticsClaimSignedRoutes(app: FastifyInstance) {
+  if (!sweepTimer) {
+    sweepTimer = setInterval(() => signedLimiter.sweep(new Date().toISOString().slice(0, 10)), 60_000)
+    sweepTimer.unref()
+  }
   app.post<{ Body: { locationKey?: string } }>('/api/analytics/claims/check-signed', async (request, reply) => {
     const no = { eligible: false, known: false }
     const key = request.body?.locationKey
