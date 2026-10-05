@@ -276,11 +276,13 @@ export class DclAdapter implements VLMPlatformAdapter {
 
   /**
    * VLM-hosted GLB URL -> its synced `models/vlm/<basename>` file, or null when that file isn't
-   * deployed with the scene. Anything that isn't an http(s) .glb URL is passed through unchanged.
+   * deployed with the scene. Decentraland can't load models from URLs, so any other http(s) URL
+   * (.gltf, extensionless, …) is null too (reported missing, never a broken GltfContainer).
+   * Non-URL srcs (scene-relative paths) are passed through unchanged.
    */
   resolveModelSrc(src: string): string | null {
     const local = localModelFile(src)
-    if (local === null) return src
+    if (local === null) return /^https?:\/\//i.test(src.trim()) ? null : src
     return this.sceneFiles.get(local.toLowerCase()) ?? null
   }
 

@@ -66,8 +66,11 @@ interface HUDState {
   // Media library + layout editing (host, co-hosts, editors)
   media: HUDMediaItem[]
   mediaLoaded: boolean
+  /** The last media/layout load failed (the error is in editMessage) — show that, not "Loading…". */
+  mediaFailed: boolean
   layout: HUDLayoutItem[]
   layoutLoaded: boolean
+  layoutFailed: boolean
   editMessage: { text: string; error: boolean } | null
   confirmDelete: string | null
   missingModels: number
@@ -112,8 +115,10 @@ const state: HUDState = {
 
   media: [],
   mediaLoaded: false,
+  mediaFailed: false,
   layout: [],
   layoutLoaded: false,
+  layoutFailed: false,
   editMessage: null,
   confirmDelete: null,
   missingModels: 0,
@@ -677,8 +682,8 @@ function SceneLayoutPanel() {
         <EditMessage />
         {elements.length === 0 ? (
           <UiEntity uiTransform={{ width: '100%', padding: 16, flexDirection: 'column', alignItems: 'center' }}>
-            <Label value={state.layoutLoaded ? 'No elements yet' : 'Loading…'} fontSize={12} color={C.textDim} />
-            {state.layoutLoaded && editable && (
+            <Label value={state.layoutFailed ? "Couldn't load the layout" : state.layoutLoaded ? 'No elements yet' : 'Loading…'} fontSize={12} color={C.textDim} />
+            {state.layoutLoaded && !state.layoutFailed && editable && (
               <Label value="Place images and models from the Assets panel" fontSize={10} color={C.textMuted}
                 uiTransform={{ margin: { top: 4 } }} />
             )}
@@ -758,8 +763,8 @@ function AssetBrowserPanel() {
             <EditMessage />
             {state.media.length === 0 ? (
               <UiEntity uiTransform={{ width: '100%', padding: 16, flexDirection: 'column', alignItems: 'center' }}>
-                <Label value={state.mediaLoaded ? 'No images or models yet' : 'Loading…'} fontSize={12} color={C.textDim} />
-                {state.mediaLoaded && (
+                <Label value={state.mediaFailed ? "Couldn't load your media library" : state.mediaLoaded ? 'No images or models yet' : 'Loading…'} fontSize={12} color={C.textDim} />
+                {state.mediaLoaded && !state.mediaFailed && (
                   <Label value="Upload them on the dashboard's Media page" fontSize={10} color={C.textMuted}
                     uiTransform={{ margin: { top: 4 } }} />
                 )}
@@ -1257,12 +1262,25 @@ export class DclHUDRenderer implements HUDRenderer {
   setMedia(list: HUDMediaItem[]): void {
     state.media = list
     state.mediaLoaded = true
+    state.mediaFailed = false
   }
 
   setLayout(list: HUDLayoutItem[]): void {
     state.layout = list
     state.layoutLoaded = true
+    state.layoutFailed = false
     if (state.confirmDelete && !list.some((el) => el.id === state.confirmDelete)) state.confirmDelete = null
+  }
+
+  /** A media / layout refresh failed: stop showing "Loading…" (the error goes to setEditMessage). */
+  setLoadFailed(list: 'media' | 'layout'): void {
+    if (list === 'media') {
+      state.mediaLoaded = true
+      state.mediaFailed = true
+    } else {
+      state.layoutLoaded = true
+      state.layoutFailed = true
+    }
   }
 
   setMissingModels(n: number): void {

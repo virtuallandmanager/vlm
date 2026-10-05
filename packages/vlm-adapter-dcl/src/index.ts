@@ -267,7 +267,13 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
           enabled: true,
           properties: kind === 'image' ? { textureSrc: asset.publicUrl } : { modelSrc: asset.publicUrl },
         })
-        await vlm.httpClient.createInstance(element.id, { ...where, enabled: true })
+        try {
+          await vlm.httpClient.createInstance(element.id, { ...where, enabled: true })
+        } catch (err) {
+          // Don't leave an element with no instance behind (best effort)
+          await vlm.httpClient.deleteElement(element.id).catch(() => {})
+          throw err
+        }
         layout = [...layout.filter((el) => el.id !== element.id), toLayoutItem(element)]
         renderer?.setLayout(layout)
         renderer?.setEditMessage(
@@ -313,6 +319,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
             if (action === 'layout_refresh') await refreshLayout()
             else await refreshMedia()
           } catch (err) {
+            renderer?.setLoadFailed(action === 'layout_refresh' ? 'layout' : 'media')
             renderer?.setEditMessage(friendlyEditError(err), true)
           }
           return
