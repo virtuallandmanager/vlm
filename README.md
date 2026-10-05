@@ -150,6 +150,12 @@ When the server is running, Swagger UI is available at `/api/docs`.
 - [VLM_V2_WEBXR_SPEC.md](VLM_V2_WEBXR_SPEC.md) — WebXR "phygital" adapter for AR experiences in physical spaces (iPhone, Vision Pro, Quest)
 - [VLM_V2_DCL_INSPECTOR_INTEGRATION.md](VLM_V2_DCL_INSPECTOR_INTEGRATION.md) — Embed DCL 3D inspector in dashboard + VLM Smart Item for Creator Hub
 
+## Testing
+
+nvm use 20
+pnpm docker:dev          # Postgres on :5432
+pnpm --filter vlm-server test
+
 ## Tech Stack
 
 - **Server:** Fastify 5, Colyseus, Drizzle ORM, PostgreSQL
