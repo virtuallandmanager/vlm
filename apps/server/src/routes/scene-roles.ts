@@ -49,7 +49,7 @@ export default async function sceneRoleRoutes(app: FastifyInstance) {
   app.post<{ Params: { sceneId: string }; Body: { wallet?: string; role?: string } }>('/api/scenes/:sceneId/roles', async (request, reply) => {
     const scene = await guard(request, reply)
     if (!scene) return
-    const wallet = request.body?.wallet?.toLowerCase() ?? ''
+    const wallet = typeof request.body?.wallet === 'string' ? request.body.wallet.toLowerCase() : ''
     const role = request.body?.role ?? ''
     if (!WALLET_RE.test(wallet) || !ROLES.has(role)) return reply.status(400).send({ error: 'wallet (0x…) and role (cohost, editor or viewer) are required' })
     if ((await verifiedWalletsOf(scene.ownerId)).includes(wallet)) return reply.status(409).send({ error: 'is_host' })
@@ -74,18 +74,17 @@ export default async function sceneRoleRoutes(app: FastifyInstance) {
   app.post<{ Params: { sceneId: string }; Body: { wallet?: string } }>('/api/scenes/:sceneId/transfer-host', async (request, reply) => {
     const scene = await guard(request, reply, true)
     if (!scene) return
-    const wallet = request.body?.wallet?.toLowerCase() ?? ''
+    const wallet = typeof request.body?.wallet === 'string' ? request.body.wallet.toLowerCase() : ''
+    const previousWallet = (await verifiedWalletsOf(scene.ownerId))[0]
+    if (!previousWallet) return reply.status(409).send({ error: 'host_has_no_wallet' })
     const target = WALLET_RE.test(wallet) ? await activeRow(scene.id, wallet) : undefined
     if (!target || target.role !== 'cohost' || !target.userId) return reply.status(409).send({ error: 'not_a_signed_in_cohost' })
-    const previousWallet = (await verifiedWalletsOf(scene.ownerId))[0]
     const now = new Date()
     await db.transaction(async (tx) => {
       await tx.update(scenes).set({ ownerId: target.userId!, updatedAt: now }).where(eq(scenes.id, scene.id))
       await tx.update(sceneRoles).set({ revokedAt: now }).where(eq(sceneRoles.id, target.id))
-      if (previousWallet) {
-        await tx.update(sceneRoles).set({ revokedAt: now }).where(and(eq(sceneRoles.sceneId, scene.id), eq(sceneRoles.walletAddress, previousWallet), isNull(sceneRoles.revokedAt)))
-        await tx.insert(sceneRoles).values({ sceneId: scene.id, walletAddress: previousWallet, userId: scene.ownerId, role: 'cohost', grantedByUserId: scene.ownerId })
-      }
+      await tx.update(sceneRoles).set({ revokedAt: now }).where(and(eq(sceneRoles.sceneId, scene.id), eq(sceneRoles.walletAddress, previousWallet), isNull(sceneRoles.revokedAt)))
+      await tx.insert(sceneRoles).values({ sceneId: scene.id, walletAddress: previousWallet, userId: scene.ownerId, role: 'cohost', grantedByUserId: scene.ownerId })
     })
     return reply.send({ host: target.userId })
   })
