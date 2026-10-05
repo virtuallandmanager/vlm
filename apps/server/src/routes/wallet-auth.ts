@@ -1,11 +1,12 @@
 import type { FastifyInstance } from 'fastify'
 import { randomBytes } from 'node:crypto'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getAddress, verifyMessage } from 'ethers'
 import { db } from '../db/connection.js'
-import { walletChallenges } from '../db/schema.js'
+import { userAuthMethods, walletChallenges } from '../db/schema.js'
 import { config } from '../config.js'
 import { actorFromClaims } from '../auth/actor.js'
+import { authenticate } from '../middleware/auth.js'
 import { linkWalletGrants } from '../auth/permissions.js'
 import { linkVerifiedWallet, resolveVerifiedWalletUser } from '../auth/wallet-users.js'
 
@@ -89,5 +90,16 @@ export default async function walletAuthRoutes(app: FastifyInstance) {
       accessToken: app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry }),
       refreshToken: app.jwt.sign({ ...claims, refresh: true }, { expiresIn: config.jwtRefreshExpiry }),
     })
+  })
+
+  /** Verified wallets linked to the signed-in user (legacy unverified records are not shown). */
+  app.get('/api/auth/wallets', { preHandler: authenticate }, async (request) => {
+    const methods = await db.query.userAuthMethods.findMany({
+      where: and(eq(userAuthMethods.userId, request.user.id), eq(userAuthMethods.type, 'wallet')),
+    })
+    const wallets = methods
+      .filter((m) => (m.metadata as { verified?: unknown } | null)?.verified === true)
+      .map((m) => ({ address: m.identifier, linkedAt: m.createdAt.toISOString() }))
+    return { wallets }
   })
 }

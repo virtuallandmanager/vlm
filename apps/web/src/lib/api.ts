@@ -22,6 +22,11 @@ export function useApi() {
   }, [token])
 
   return {
+    // Linked wallets
+    getWallets: () => apiFetch<{ wallets: { address: string; linkedAt: string }[] }>('/api/auth/wallets'),
+    linkWallet: (proof: { address: string; nonce: string; signature: string }) =>
+      apiFetch<{ linked: boolean }>('/api/auth/wallet/verify', { method: 'POST', body: JSON.stringify(proof) }),
+
     // Scenes
     getScenes: () => apiFetch<{ scenes: any[] }>('/api/scenes'),
     getScene: (id: string) => apiFetch<{ scene: any }>(`/api/scenes/${id}`),

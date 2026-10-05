@@ -44,6 +44,30 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
   }
 }
 
+/**
+ * Sign-In with Ethereum, first half: the server issues a one-time message and the browser
+ * wallet signs it (no transaction, no gas). POST the result to /api/auth/wallet/verify — without
+ * a session to sign in, with one to link the wallet to the signed-in account.
+ */
+export async function signWalletChallenge(): Promise<{ address: string; nonce: string; signature: string }> {
+  const wallet = getBrowserWallet()
+  if (!wallet) throw new Error('No browser wallet found. Install MetaMask or another Ethereum wallet.')
+  const accounts = (await wallet.request({ method: 'eth_requestAccounts' })) as string[]
+  const address = accounts?.[0]
+  if (!address) throw new Error('No wallet account selected')
+
+  const challengeRes = await fetch(`${API_URL}/api/auth/wallet/challenge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ address }),
+  })
+  if (!challengeRes.ok) throw new Error(await errorMessage(challengeRes, 'Could not start wallet sign-in'))
+  const { nonce, message } = await challengeRes.json()
+
+  const signature = (await wallet.request({ method: 'personal_sign', params: [toHex(message), address] })) as string
+  return { address, nonce, signature }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [token, setToken] = useState<string | null>(null)
@@ -100,29 +124,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('vlm_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
   }, [])
 
-  // Sign-In with Ethereum: the server issues a one-time message, the wallet signs it
-  // (no transaction, no gas), and the server returns the same session as an email login.
   const loginWithWallet = useCallback(async () => {
-    const wallet = getBrowserWallet()
-    if (!wallet) throw new Error('No browser wallet found. Install MetaMask or another Ethereum wallet.')
-    const accounts = (await wallet.request({ method: 'eth_requestAccounts' })) as string[]
-    const address = accounts?.[0]
-    if (!address) throw new Error('No wallet account selected')
-
-    const challengeRes = await fetch(`${API_URL}/api/auth/wallet/challenge`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address }),
-    })
-    if (!challengeRes.ok) throw new Error(await errorMessage(challengeRes, 'Could not start wallet sign-in'))
-    const { nonce, message } = await challengeRes.json()
-
-    const signature = (await wallet.request({ method: 'personal_sign', params: [toHex(message), address] })) as string
-
+    const proof = await signWalletChallenge()
     const res = await fetch(`${API_URL}/api/auth/wallet/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address, nonce, signature }),
+      body: JSON.stringify(proof),
     })
     if (!res.ok) throw new Error(await errorMessage(res, 'Wallet sign-in failed'))
     const data = await res.json()
