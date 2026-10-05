@@ -91,4 +91,23 @@ describe('setup domain', () => {
     dir.worldOwners.set('y.dcl.eth', randomWallet())
     expect(await releaseIfRedeployed((await getActiveSetup(s.id))!, s, dir)).toBeNull()
   })
+
+  it('unknown deployer keeps the setup unchanged', async () => {
+    const s = await createAnalyticsScene({ locationKey: 'gc:6,6', parcels: ['6,6'], baseParcel: '6,6', activeEntityId: 'bafyA' })
+    const { setup } = await setUpLocation(s, randomWallet())
+    dir.addScene({ entityId: 'bafyD', base: '6,6', parcels: ['6,6'] })
+    expect(await releaseIfRedeployed(setup, s, dir)).toMatchObject({ id: setup.id, deploymentEntityId: 'bafyA', endedAt: null })
+    expect(await getActiveSetup(s.id)).toMatchObject({ id: setup.id, endedAt: null })
+  })
+
+  it('a stale release call cannot end a newer setup', async () => {
+    const s = await createAnalyticsScene({ locationKey: 'gc:7,7', parcels: ['7,7'], baseParcel: '7,7', activeEntityId: 'bafyA' })
+    const { setup: a } = await setUpLocation(s, randomWallet())
+    dir.addScene({ entityId: 'bafyE', base: '7,7', parcels: ['7,7'] }, randomWallet())
+    expect(await releaseIfRedeployed(a, s, dir)).toBeNull()
+    const b = await setUpLocation(s, randomWallet())
+    expect(await releaseIfRedeployed(a, s, dir)).toBeNull()
+    expect(await getActiveSetup(s.id)).toMatchObject({ id: b.setup.id, endedAt: null })
+    expect((await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.id, s.id) }))!.vlmSceneId).toBe(b.vlmSceneId)
+  })
 })

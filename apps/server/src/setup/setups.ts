@@ -57,20 +57,35 @@ export async function releaseIfRedeployed(
   const current = await currentDeployment(scene, dir)
   if (!current.entityId || current.entityId === setup.deploymentEntityId) return setup
   const team = await teamWallets(setup.vlmSceneId)
-  let keep: boolean
   if (scene.kind === 'world') {
+    // The Worlds API doesn't expose the actual deployer, so keep when any team wallet could have deployed.
     const allowed = new Set([(await dir.getWorldOwner(scene.worldName!)) ?? '', ...(await dir.getWorldDeployers(scene.worldName!))])
-    keep = team.some((w) => allowed.has(w))
+    if (!team.some((w) => allowed.has(w))) return release(setup, scene, now)
   } else {
-    keep = !!current.deployer && team.includes(current.deployer.toLowerCase())
+    // Unknown deployer: keep the setup unchanged (entity not recorded) so it is rechecked next time.
+    if (!current.deployer) return setup
+    if (!team.includes(current.deployer.toLowerCase())) return release(setup, scene, now)
   }
-  if (keep) {
-    const [row] = await db.update(locationSetups).set({ deploymentEntityId: current.entityId }).where(eq(locationSetups.id, setup.id)).returning()
-    return row
-  }
+  const [row] = await db
+    .update(locationSetups)
+    .set({ deploymentEntityId: current.entityId })
+    .where(and(eq(locationSetups.id, setup.id), isNull(locationSetups.endedAt)))
+    .returning()
+  return row ?? null
+}
+
+async function release(setup: LocationSetupRow, scene: AnalyticsSceneRow, now: Date): Promise<null> {
   await db.transaction(async (tx) => {
-    await tx.update(locationSetups).set({ endedAt: now, endReason: 'redeployed' }).where(eq(locationSetups.id, setup.id))
-    await tx.update(analyticsScenes).set({ vlmSceneId: null, updatedAt: now }).where(eq(analyticsScenes.id, scene.id))
+    const ended = await tx
+      .update(locationSetups)
+      .set({ endedAt: now, endReason: 'redeployed' })
+      .where(and(eq(locationSetups.id, setup.id), isNull(locationSetups.endedAt)))
+      .returning({ id: locationSetups.id })
+    if (!ended.length) return
+    await tx
+      .update(analyticsScenes)
+      .set({ vlmSceneId: null, updatedAt: now })
+      .where(and(eq(analyticsScenes.id, scene.id), eq(analyticsScenes.vlmSceneId, setup.vlmSceneId)))
   })
   return null
 }
