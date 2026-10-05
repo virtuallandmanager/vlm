@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { and, eq, inArray } from 'drizzle-orm'
 import { localModelFile, validateSceneRef, type AnalyticsSceneRef } from 'vlm-shared'
 import { db } from '../db/connection.js'
@@ -72,7 +72,12 @@ export default async function setupRoutes(app: FastifyInstance) {
       if (setup) {
         const role = await roleOf(setup.vlmSceneId, wallet)
         if (role) return reply.send({ state: 'member', sceneId: setup.vlmSceneId, role })
-        return reply.send((await controls(scene, wallet)) ? { state: 'taken', host: await hostShort(setup.vlmSceneId) } : { state: 'none' })
+        // Non-members still get the sceneId so the client can connect content-only (no HUD).
+        return reply.send(
+          (await controls(scene, wallet))
+            ? { state: 'taken', host: await hostShort(setup.vlmSceneId), sceneId: setup.vlmSceneId }
+            : { state: 'none', sceneId: setup.vlmSceneId },
+        )
       }
       return reply.send({ state: (await controls(scene, wallet)) ? 'eligible' : 'none' })
     } catch (err) {
@@ -113,19 +118,43 @@ export default async function setupRoutes(app: FastifyInstance) {
     }
   })
 
-  /** Public: the hosted (.glb) models a set-up location's active preset uses, for `npx vlm-dcl sync`. */
-  app.get<{ Querystring: { location?: string } }>('/api/setup/models', async (request, reply) => {
+  /**
+   * Public location lookup shared by /api/setup/scene and /api/setup/models: gc/world keys only (no previews),
+   * rate-limited per IP. Sends the error reply itself and returns null, or returns the active setup.
+   */
+  async function publicSetupFor(request: FastifyRequest<{ Querystring: { location?: string } }>, reply: FastifyReply) {
     const raw = typeof request.query?.location === 'string' ? request.query.location : ''
     let key: string | null = null
     if (/^gc:-?\d{1,3},-?\d{1,3}$/.test(raw)) key = raw
     else if (/^world:[a-z0-9-]+(\.[a-z0-9-]+)*\.eth$/i.test(raw)) key = raw.toLowerCase()
-    if (!key) return reply.status(400).send({ error: 'invalid_location' })
+    if (!key) {
+      reply.status(400).send({ error: 'invalid_location' })
+      return null
+    }
     if (!checkRequesterLimits(limiter, { requesterKey: `ip:${request.ip}`, verified: false, eventCount: 1 }).ok) {
-      return reply.status(429).send({ error: 'rate_limited' })
+      reply.status(429).send({ error: 'rate_limited' })
+      return null
     }
     const analytics = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, key) })
     const setup = analytics ? await getActiveSetup(analytics.id) : null
-    if (!setup) return reply.status(404).send({ error: 'not_set_up' })
+    if (!setup) {
+      reply.status(404).send({ error: 'not_set_up' })
+      return null
+    }
+    return setup
+  }
+
+  /** Public: the VLM scene for a set-up location, so guests (no signed fetch) can connect content-only. */
+  app.get<{ Querystring: { location?: string } }>('/api/setup/scene', async (request, reply) => {
+    const setup = await publicSetupFor(request, reply)
+    if (!setup) return reply
+    return reply.send({ sceneId: setup.vlmSceneId })
+  })
+
+  /** Public: the hosted (.glb) models a set-up location's active preset uses, for `npx vlm-dcl sync`. */
+  app.get<{ Querystring: { location?: string } }>('/api/setup/models', async (request, reply) => {
+    const setup = await publicSetupFor(request, reply)
+    if (!setup) return reply
     const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, setup.vlmSceneId) })
     const elements = scene?.activePresetId
       ? await db.select().from(sceneElements).where(and(eq(sceneElements.presetId, scene.activePresetId), eq(sceneElements.type, 'model')))

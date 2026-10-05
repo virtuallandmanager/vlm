@@ -76,3 +76,57 @@ describe('GET /api/setup/models', () => {
     expect(last).toBe(429)
   })
 })
+
+describe('GET /api/setup/scene', () => {
+  let app: Awaited<ReturnType<typeof testApp>>
+  beforeEach(async () => {
+    await resetDb()
+    app = await testApp()
+    setSetupLimiter(new TokenBucketLimiter())
+  })
+  afterEach(async () => {
+    await app.close()
+  })
+  const get = (location: string) => app.inject({ method: 'GET', url: `/api/setup/scene?location=${encodeURIComponent(location)}` })
+
+  async function setup(locationKey: string, endedAt?: Date) {
+    const owner = await createUser()
+    const { scene } = await createScene(owner)
+    const a = await createAnalyticsScene({ locationKey })
+    await createSetup(a.id, scene.id, { endedAt: endedAt ?? null })
+    return scene
+  }
+
+  it('returns the sceneId of the active setup', async () => {
+    const scene = await setup('gc:5,6')
+    const res = await get('gc:5,6')
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ sceneId: scene.id })
+  })
+
+  it('resolves worlds case-insensitively', async () => {
+    const scene = await setup('world:venue.dcl.eth')
+    expect((await get('world:Venue.DCL.eth')).json()).toEqual({ sceneId: scene.id })
+  })
+
+  it('404 not_set_up for an unknown location or ended setup', async () => {
+    await setup('gc:5,6', new Date())
+    for (const loc of ['gc:5,6', 'gc:9,9']) {
+      const res = await get(loc)
+      expect(res.statusCode).toBe(404)
+      expect(res.json()).toEqual({ error: 'not_set_up' })
+    }
+  })
+
+  it('400 for a bad or preview location', async () => {
+    expect((await get('nope')).statusCode).toBe(400)
+    expect((await get('preview:abc')).statusCode).toBe(400)
+    expect((await app.inject({ method: 'GET', url: '/api/setup/scene' })).statusCode).toBe(400)
+  })
+
+  it('429 when the per-IP limit is exceeded', async () => {
+    let last = 200
+    for (let i = 0; i < 500 && last !== 429; i++) last = (await get('gc:9,9')).statusCode
+    expect(last).toBe(429)
+  })
+})

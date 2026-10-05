@@ -69,8 +69,14 @@ describe('setup routes', () => {
     expect(res.statusCode).toBe(200)
     const { sceneId } = res.json()
     expect((await status(OP)).json()).toEqual({ state: 'member', sceneId, role: 'host' })
-    expect((await status(OWNER)).json()).toEqual({ state: 'taken', host: '0x0000…00bb' })
+    expect((await status(OWNER)).json()).toEqual({ state: 'taken', host: '0x0000…00bb', sceneId })
     expect((await setup(OWNER)).statusCode).toBe(409)
+  })
+
+  it('a role-less visitor at a set-up location gets the sceneId (content-only connect)', async () => {
+    expect((await status(VISITOR)).json()).toEqual({ state: 'none' })
+    const { sceneId } = (await setup(OP)).json()
+    expect((await status(VISITOR)).json()).toEqual({ state: 'none', sceneId })
   })
 
   it('a wallet with a scene role sees member with that role', async () => {

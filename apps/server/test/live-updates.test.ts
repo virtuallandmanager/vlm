@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { db } from '../src/db/connection.js'
 import { scenePresets } from '../src/db/schema.js'
 import { resetDb } from './helpers/db.js'
-import { createUser, createScene, tokenFor, testApp } from './helpers/factories.js'
+import { createUser, createScene, tokenFor, testApp, randomWallet } from './helpers/factories.js'
 import { startGameServer, joinScene, serverRoom } from './helpers/game-server.js'
 import { initBus } from '../src/realtime/bus.js'
 
@@ -17,6 +17,27 @@ describe('REST edits broadcast live updates to scene rooms', () => {
   afterEach(async () => {
     await app.close()
     await gs.stop()
+  })
+
+  it('role-less wallet and guest sessions join content-only: init + live upserts', async () => {
+    const host = await createUser()
+    const { scene, preset } = await createScene(host)
+    // A verified wallet with no relation to the scene, and a platform-auth guest token.
+    const visitor = await createUser({ role: 'viewer', email: null, wallet: randomWallet() })
+    const guestToken = tokenFor(visitor, { id: 'guest:abc', wallet: null, verified: false, guest: true })
+    const v = await joinScene(gs.url, scene.id, tokenFor(visitor))
+    const g = await joinScene(gs.url, scene.id, guestToken)
+    for (const c of [v, g]) expect((await c.waitFor('scene_preset_update')).action).toBe('init')
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/presets/${preset.id}/elements`,
+      headers: { authorization: `Bearer ${tokenFor(host)}` },
+      payload: { type: 'image', name: 'Poster', properties: { textureSrc: 'https://cdn.vlm.gg/u1/a.png' } },
+    })
+    expect(created.statusCode).toBe(201)
+    for (const c of [v, g]) {
+      expect(await c.waitFor('scene_preset_update')).toMatchObject({ action: 'upsert', element: 'image' })
+    }
   })
 
   it('element and instance create/update/delete reach the room as upserts and deletes', async () => {
