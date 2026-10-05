@@ -1,15 +1,19 @@
 {
   "name": "vlm-dcl",
   "version": "2.1.0",
-  "description": "Virtual Land Manager for Decentraland SDK7 \u2014 analytics, in-world HUD and live scene management. Use from code or as a Creator Hub script.",
+  "description": "Virtual Land Manager for Decentraland SDK7 — analytics, in-world HUD and live scene management. Use from code or as a Creator Hub script.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "vlm-dcl": "bin/vlm-dcl.mjs"
+  },
   "scripts": {
     "build": "echo 'vlm-dcl: skip in CI, build locally with pnpm run bundle'",
     "bundle": "tsc && node build.mjs",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo",
-    "prepublishOnly": "pnpm run bundle"
+    "prepublishOnly": "pnpm run bundle",
+    "test": "node --test test/"
   },
   "peerDependencies": {
     "@dcl/sdk": ">=7.15.0"
@@ -29,6 +33,7 @@
   },
   "files": [
     "dist",
+    "bin",
     "creator-hub",
     "README.md"
   ],
