@@ -124,6 +124,12 @@ function checkScene(s: unknown): AnalyticsSceneRef | string {
   }
 }
 
+/** The scene ref if it is well-formed, else null (the same check ingest applies to batch.scene). */
+export function validateSceneRef(v: unknown): AnalyticsSceneRef | null {
+  const r = checkScene(v)
+  return typeof r === 'string' ? null : r
+}
+
 const MAX_NESTING = 20 // levels of objects/arrays, counted from the batch root
 
 /** True when the string contains a UTF-16 high/low surrogate that is not part of a valid pair. */

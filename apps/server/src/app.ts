@@ -8,6 +8,7 @@ import { config } from './config.js'
 import { registerJwt } from './middleware/auth.js'
 import authRoutes from './routes/auth.js'
 import walletAuthRoutes from './routes/wallet-auth.js'
+import setupRoutes from './routes/setup.js'
 import analyticsClaimRoutes, { analyticsClaimSignedRoutes } from './routes/analytics-claims.js'
 import analyticsReadRoutes from './routes/analytics-read.js'
 import sceneRoutes from './routes/scenes.js'
@@ -111,6 +112,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(analyticsRoutes)
   await app.register(analyticsClaimRoutes)
   await app.register(analyticsClaimSignedRoutes)
+  await app.register(setupRoutes)
   await app.register(analyticsReadRoutes)
   await app.register(eventRoutes)
   await app.register(giveawayRoutes)
