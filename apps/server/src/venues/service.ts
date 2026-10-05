@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, notLike, sql } from 'drizzle-orm'
 import {
   DEFAULT_VENUE_RULES,
   VENUE_ROLE_SCOPES,
@@ -45,9 +45,14 @@ function pgCode(err: any): string | undefined {
   return err?.code ?? err?.cause?.code
 }
 
-export function computeBlockedRange(startsAt: Date, endsAt: Date, bufferMinutes: number) {
-  const buf = bufferMinutes * 60_000
-  return `[${new Date(startsAt.getTime() - buf).toISOString()},${new Date(endsAt.getTime() + buf).toISOString()})`
+/**
+ * The span a booking reserves: its whole live window (setup lead before, grace after) plus the
+ * venue buffer on each side, so two bookings' live windows can never overlap.
+ */
+export function computeBlockedRange(startsAt: Date, endsAt: Date, rules: Pick<VenueRules, 'setupLeadMinutes' | 'graceMinutes' | 'bufferMinutes'>) {
+  const from = startsAt.getTime() - (rules.setupLeadMinutes + rules.bufferMinutes) * 60_000
+  const to = endsAt.getTime() + (rules.graceMinutes + rules.bufferMinutes) * 60_000
+  return `[${new Date(from).toISOString()},${new Date(to).toISOString()})`
 }
 
 function assertValidRules(r: VenueRules) {
@@ -207,9 +212,16 @@ export interface CreateBookingInput {
   createdByUserId: string
 }
 
+/** Only wallets proven by a verified signed fetch count; legacy and preview rows are ignored. */
+const verifiedWalletMethod = and(
+  eq(userAuthMethods.type, 'wallet'),
+  sql`${userAuthMethods.metadata}->>'verified' = 'true'`,
+  notLike(userAuthMethods.identifier, 'preview:%'),
+)
+
 async function walletForUser(userId: string): Promise<string | null> {
   const m = await db.query.userAuthMethods.findFirst({
-    where: and(eq(userAuthMethods.userId, userId), eq(userAuthMethods.type, 'wallet')),
+    where: and(eq(userAuthMethods.userId, userId), verifiedWalletMethod),
   })
   return m && /^0x[0-9a-f]{40}$/.test(m.identifier) ? m.identifier : null
 }
@@ -243,7 +255,7 @@ export async function createBooking(input: CreateBookingInput, now = new Date())
           startsAt,
           endsAt,
           status: 'confirmed',
-          blockedRange: computeBlockedRange(startsAt, endsAt, venue.rules.bufferMinutes),
+          blockedRange: computeBlockedRange(startsAt, endsAt, venue.rules),
         })
         .returning()
       const bookingPresetId = await clonePreset(tx, venue.defaultPresetId, `booking:${booking.id}`)
@@ -343,23 +355,38 @@ export async function addGrant(input: AddGrantInput) {
     throw new VenueError(400, "Crew access must fit inside the host's booking window")
   }
   const linked = await db.query.userAuthMethods.findFirst({
-    where: and(eq(userAuthMethods.type, 'wallet'), eq(userAuthMethods.identifier, wallet)),
+    where: and(verifiedWalletMethod, eq(userAuthMethods.identifier, wallet)),
   })
+  const values = {
+    role: input.role,
+    scopes: resolveScopes(input.role, input.scopes),
+    validFrom,
+    validUntil,
+    grantedByUserId: input.grantedByUserId,
+  }
   try {
-    const [grant] = await db
-      .insert(accessGrants)
-      .values({
-        bookingId: booking.id,
-        sceneId: booking.venue.sceneId,
-        walletAddress: wallet,
-        userId: linked?.userId ?? null,
-        role: input.role,
-        scopes: resolveScopes(input.role, input.scopes),
-        validFrom,
-        validUntil,
-        grantedByUserId: input.grantedByUserId,
-      })
+    // A revoked grant for this wallet still holds the (booking, wallet) unique key: restore it.
+    const [restored] = await db
+      .update(accessGrants)
+      .set({ ...values, revokedAt: null, ...(linked && { userId: linked.userId }) })
+      .where(
+        and(eq(accessGrants.bookingId, booking.id), eq(accessGrants.walletAddress, wallet), isNotNull(accessGrants.revokedAt)),
+      )
       .returning()
+    const grant =
+      restored ??
+      (
+        await db
+          .insert(accessGrants)
+          .values({
+            ...values,
+            bookingId: booking.id,
+            sceneId: booking.venue.sceneId,
+            walletAddress: wallet,
+            userId: linked?.userId ?? null,
+          })
+          .returning()
+      )[0]
     await publishVenueEvent({ type: 'grants_changed', sceneId: booking.venue.sceneId })
     return grant
   } catch (err) {

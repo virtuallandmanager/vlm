@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { sceneElementInstances, sceneElements, accessGrants, scenes, scenePresets, sceneCollaborators } from '../src/db/schema.js'
+import { sceneElementInstances, sceneElements, accessGrants, scenes, scenePresets, sceneCollaborators, userAuthMethods } from '../src/db/schema.js'
 import { getSceneAccess } from '../src/auth/permissions.js'
 import { actorFromClaims } from '../src/auth/actor.js'
 import { resetDb } from './helpers/db.js'
@@ -339,6 +339,80 @@ describe('/api/venues', () => {
     const own = await app.inject({ method: 'GET', url: `/api/scenes/${s.scene.id}`, headers: as(s.admin) })
     expect(own.json().scene.presets).toHaveLength(4)
     expect(own.json().scene.collaborators).toHaveLength(1)
+  })
+
+  it('a revoked crew wallet can be re-added and regains access', async () => {
+    const s = await venueSetup()
+    const hostWallet = randomWallet()
+    const host = await createUser({ wallet: hostWallet })
+    const { booking } = (await book(s, hostWallet)).json()
+    const crewWallet = randomWallet()
+    const crew = await createUser({ wallet: crewWallet })
+    const url = `/api/venues/bookings/${booking.id}/grants`
+    const first = (await app.inject({ method: 'POST', url, headers: as(host), payload: { walletAddress: crewWallet, role: 'vj' } })).json().grant
+    expect((await app.inject({ method: 'DELETE', url: `/api/venues/grants/${first.id}`, headers: as(host) })).statusCode).toBe(204)
+
+    const again = await app.inject({ method: 'POST', url, headers: as(host), payload: { walletAddress: crewWallet, role: 'door' } })
+    expect(again.statusCode).toBe(201)
+    expect(again.json().grant).toMatchObject({ id: first.id, role: 'door', scopes: ['moderation'], revokedAt: null })
+    const crewActor = actorFromClaims({ id: crew.id, role: 'creator', wallet: crewWallet, verified: true })
+    expect((await getSceneAccess(crewActor, s.scene.id)).level).toBe('grant')
+    const list = (await app.inject({ method: 'GET', url, headers: as(host) })).json().grants
+    expect(list.filter((g: any) => g.walletAddress === crewWallet)).toHaveLength(1)
+
+    // re-adding an active grant is still a conflict
+    expect((await app.inject({ method: 'POST', url, headers: as(host), payload: { walletAddress: crewWallet, role: 'vj' } })).statusCode).toBe(409)
+  })
+
+  it("adjacent bookings must leave room for setup lead, grace and both buffers", async () => {
+    const s = await venueSetup()
+    // defaults: setupLead 60, grace 15, buffer 30 -> next.startsAt - prev.endsAt >= 135 min
+    const prevEnd = 24 * H + 2 * H
+    expect((await book(s, randomWallet())).statusCode).toBe(201)
+    const tooClose = await book(s, randomWallet(), prevEnd + 134 * 60_000)
+    expect(tooClose.statusCode).toBe(409)
+    const ok = await book(s, randomWallet(), prevEnd + 135 * 60_000)
+    expect(ok.statusCode).toBe(201)
+  })
+
+  it('unverified legacy wallet auth methods are not linked to grants or bookings', async () => {
+    const s = await venueSetup()
+    const hostWallet = randomWallet()
+    const host = await createUser({ wallet: hostWallet })
+    const { booking } = (await book(s, hostWallet)).json()
+    const legacyWallet = randomWallet()
+    const squatter = await createUser()
+    await db.insert(userAuthMethods).values({ userId: squatter.id, type: 'wallet', identifier: legacyWallet, metadata: { world: 'x' } })
+
+    const add = await app.inject({
+      method: 'POST',
+      url: `/api/venues/bookings/${booking.id}/grants`,
+      headers: as(host),
+      payload: { walletAddress: legacyWallet, role: 'vj' },
+    })
+    expect(add.statusCode).toBe(201)
+    expect(add.json().grant.userId).toBeNull()
+
+    const startsAt = new Date(Date.now() + 96 * H)
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/venues/${s.venue.id}/bookings`,
+      headers: as(s.admin),
+      payload: { renterUserId: squatter.id, title: 'x', startsAt: startsAt.toISOString(), endsAt: new Date(startsAt.getTime() + 2 * H).toISOString() },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().booking.renterWallet).toBeNull()
+
+    // a verified wallet still links
+    const verifiedWallet = randomWallet()
+    const real = await createUser({ wallet: verifiedWallet })
+    const add2 = await app.inject({
+      method: 'POST',
+      url: `/api/venues/bookings/${booking.id}/grants`,
+      headers: as(host),
+      payload: { walletAddress: verifiedWallet, role: 'vj' },
+    })
+    expect(add2.json().grant.userId).toBe(real.id)
   })
 
   it('preset clone remaps parentInstanceId to the cloned parent', async () => {

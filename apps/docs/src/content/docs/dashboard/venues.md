@@ -9,18 +9,22 @@ A **venue** is a scene whose owner lets others control parts of it for a booked 
 `POST /api/venues` with `sceneId`, `name`, `slug`, and `rentableElementIds` (the screens, posters and sounds renters may change). The scene's current active preset becomes the venue default.
 
 ## Bookings
-Admins create bookings with `POST /api/venues/:venueId/bookings` (`renterWallet` or `renterUserId`, `title`, `startsAt`, `endsAt`). Each booking gets its own copy of the default preset. Overlapping bookings (including the venue's buffer) are rejected.
+Admins create bookings with `POST /api/venues/:venueId/bookings` (`renterWallet` or `renterUserId`, `title`, `startsAt`, `endsAt`). Each booking gets its own copy of the default preset. Bookings whose live windows would overlap are rejected: each booking reserves its setup lead before the start, its grace after the end, and the venue's buffer on both sides, so back-to-back bookings need `setupLeadMinutes + graceMinutes + 2 × bufferMinutes` between one's end and the next one's start.
 
 - **Setup window** — from booking until `setupLeadMinutes` before start: renters and crew edit the booking's copy; the live venue is untouched.
 - **Live window** — until `graceMinutes` after the end: the copy is the live scene.
 - At the end, the venue switches back to its default preset and access ends.
 
 ## Crew
-The renter (host) adds crew by wallet with a role — `cohost`, `vj`, `lighting`, `performer`, `door` — and can toggle individual scopes. Crew don't need a VLM account; access attaches when their wallet signs in from Decentraland.
+The renter (host) adds crew by wallet with a role — `cohost`, `vj`, `lighting`, `performer`, `door` — and can toggle individual scopes. Crew don't need a VLM account; access attaches when their wallet signs in from Decentraland. Revoked crew can be added again; their old grant is restored with the new role and scopes.
 
 ## Upgrading an existing instance
 
 Before deploying to any running VLM instance, review wallet users who got `admin` role from the old auto-promote bug. The following queries list users and auth methods to review by hand. **Nothing should be deleted automatically** — review, understand the context, and make deliberate choices about role corrections.
+
+### Rotate JWT_SECRET
+
+Rotate `JWT_SECRET` when deploying this release (logs everyone out once) so tokens issued before verification existed stop working.
 
 ### Wallet users with admin role
 
