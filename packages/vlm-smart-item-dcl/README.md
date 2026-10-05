@@ -40,6 +40,17 @@ Deploy, then walk into your scene with the wallet that owns, operates or deploye
 needed. Open **Roles** in the HUD (or the scene's Roles tab on vlm.gg) to make others co-hosts,
 editors or viewers by wallet address.
 
+## Images and 3D models
+
+- Upload images (PNG, JPG, WebP, GIF up to 10 MB) and GLB models (up to 50 MB) on vlm.gg (Media),
+  or place them from the in-world HUD (Assets → Place).
+- Images appear live for everyone.
+- Decentraland only loads 3D models that are deployed with your scene, so after adding a GLB run
+  `npx vlm-dcl sync` in your scene folder (it downloads your VLM models into `models/vlm/`), then
+  deploy as usual. After that, moving, scaling and showing/hiding models is live. The HUD tells you
+  when models need a sync.
+- `npx vlm-dcl sync --dry-run` shows what would change; `--server <url>` for self-hosted VLM.
+
 ## Creator Hub
 
 1. In a terminal in your scene folder, run `npm install vlm-dcl`.
