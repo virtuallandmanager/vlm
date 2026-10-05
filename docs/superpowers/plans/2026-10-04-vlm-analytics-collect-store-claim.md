@@ -31,6 +31,7 @@
 - **Probe is poll-based** (`pollInteractions()`, `pollVideoEvents()`, `pollEmotes()` called each tick) instead of callback subscriptions — equivalent behavior, simpler to test.
 - **Signed fetch does not sign the request body** (it signs method, path, timestamp and metadata). "Verified" therefore means "sent by that wallet's client"; duplicates and replays are bounded by a unique `(session_id, seq)` index.
 - **Interaction targets** are the entity's DCL `Name` component value, or `entity:<number>`. Attributing clicks to VLM element ids is deferred to Sub-project D.
+- **`sound` and `giveaway` events are typed and accepted but not auto-collected yet.** VLM sound elements don't expose play state to the adapter, and V2 giveaways aren't implemented. `Collector.giveaway()` exists for when they are.
 - **Rate limits are per server instance** (in-memory token buckets). Redis-backed limits are deferred.
 - **Estate fallback** uses "deployer of the active scene" instead of the LAND-permissions subgraph.
 - **Dashboard wallet sign-in is added here** (`/api/auth/wallet/challenge` + `/verify`, EIP-191 `personal_sign`), because claims need a verified wallet and the dashboard has no wallet login. The same task closes the legacy-wallet follow-up from the venues branch: a verified login never lands on an account whose wallet record was never verified.
@@ -960,10 +961,11 @@ describe('Collector', () => {
 
   it('numbers events per session starting at 0', async () => {
     const r = rig()
-    await r.step(0)
-    r.c.track('a')
+    await r.step(0) // session.start (0) + first position sample (1)
+    r.c.track('a') // custom (2)
     await r.step(100)
-    expect(r.events().map((e) => e.seq)).toEqual([0, 1])
+    expect(r.types()).toEqual(['session.start', 'pos', 'custom'])
+    expect(r.events().map((e) => e.seq)).toEqual([0, 1, 2])
   })
 })
 ```
@@ -2210,10 +2212,14 @@ export type ResolveResult =
   | { ok: false; status: 422 | 503; error: 'unknown_scene' | 'upstream_unavailable' }
 
 const CACHE_MS = 10 * 60_000
-const cache = new Map<string, { ok: boolean; at: number; entityId: string | null }>()
+// Positive results per location; negative results per location + claimed entity id, so a stale
+// deployment's rejections never block batches from the new deployment at the same location.
+const positive = new Map<string, { at: number; entityId: string | null }>()
+const negative = new Map<string, number>()
 
 export function clearRegistryCache(): void {
-  cache.clear()
+  positive.clear()
+  negative.clear()
 }
 
 interface Validated {
@@ -2273,10 +2279,12 @@ export async function resolveAnalyticsScene(ref: AnalyticsSceneRef, signer: stri
   if (ref.isPreview) {
     return { ok: true, scene: await upsert(key, ref, { entityId: ref.entityId ?? null, parcels: ref.parcels ?? [], title: ref.title }, now) }
   }
+  const negKey = `${key}|${ref.entityId ?? ''}`
+  const rejectedAt = negative.get(negKey)
+  if (rejectedAt !== undefined && now.getTime() - rejectedAt < CACHE_MS) return { ok: false, status: 422, error: 'unknown_scene' }
   const row = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, key) })
-  const cached = cache.get(key)
+  const cached = positive.get(key)
   const fresh = cached && now.getTime() - cached.at < CACHE_MS
-  if (fresh && !cached!.ok) return { ok: false, status: 422, error: 'unknown_scene' }
   if (fresh && row && (!ref.entityId || ref.entityId === cached!.entityId)) return { ok: true, scene: row }
 
   let v: Validated | null
@@ -2288,16 +2296,14 @@ export async function resolveAnalyticsScene(ref: AnalyticsSceneRef, signer: stri
     throw err
   }
   if (!v) {
-    cache.set(key, { ok: false, at: now.getTime(), entityId: null })
+    negative.set(negKey, now.getTime())
     return { ok: false, status: 422, error: 'unknown_scene' }
   }
   const scene = await upsert(key, ref, v, now)
-  cache.set(key, { ok: true, at: now.getTime(), entityId: scene.activeEntityId })
+  positive.set(key, { at: now.getTime(), entityId: scene.activeEntityId })
   return { ok: true, scene }
 }
 ```
-
-Note: a failed validation for one `entityId` caches `ok: false` for the whole key. That would block the new deploy's batches for 10 minutes in the redeploy test. To avoid this, cache negative results keyed by `key + '|' + (ref.entityId ?? '')`: store failures in a second map, `negative.set(`${key}|${ref.entityId ?? ''}`, now)`, and check that map instead of `cached.ok === false`. Implement it that way. The redeploy test in Step 3 requires it.
 
 - [ ] **Step 7: Run tests and typecheck**
 
