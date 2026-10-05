@@ -3,7 +3,15 @@ import { db } from '../db/connection.js'
 import { sceneElementInstances, sceneElements, scenePresets, scenes } from '../db/schema.js'
 import { canWriteElement, diffKeys, hasScope, type SceneAccess, type SceneScope } from '../auth/permissions.js'
 
-export type GuardResult = { ok: true; broadcast: boolean } | { ok: false; code: 'forbidden' | 'not_found' }
+/** The element/instance ids the guard authorized; the room must act on these, not re-derive them. */
+export interface GuardTarget {
+  elementId?: string
+  instanceId?: string
+}
+
+export type GuardResult =
+  | { ok: true; broadcast: boolean; target?: GuardTarget }
+  | { ok: false; code: 'forbidden' | 'not_found' }
 
 const OK_BROADCAST: GuardResult = { ok: true, broadcast: true }
 const FORBIDDEN: GuardResult = { ok: false, code: 'forbidden' }
@@ -74,12 +82,12 @@ async function authorizePresetUpdate(access: SceneAccess, sceneId: string, messa
         with: { element: { with: { preset: true } } },
       })
       if (!inst || inst.element.preset.sceneId !== sceneId) return NOT_FOUND
-      return { ok: true, broadcast: await isActive(sceneId, inst.element.presetId) }
+      return { ok: true, broadcast: await isActive(sceneId, inst.element.presetId), target: { instanceId: inst.id } }
     }
     if (!elementId) return NOT_FOUND
     const el = await db.query.sceneElements.findFirst({ where: eq(sceneElements.id, elementId), with: { preset: true } })
     if (!el || el.preset.sceneId !== sceneId) return NOT_FOUND
-    return { ok: true, broadcast: await isActive(sceneId, el.presetId) }
+    return { ok: true, broadcast: await isActive(sceneId, el.presetId), target: { elementId: el.id } }
   }
 
   const elementId = elementData?.sk || elementData?.id || id
@@ -92,7 +100,7 @@ async function authorizePresetUpdate(access: SceneAccess, sceneId: string, messa
     (k) => data[k] !== undefined && JSON.stringify(data[k]) !== JSON.stringify((el as any)[k]),
   )
   if (!canWriteElement(access, el, { propertyKeys, fieldKeys })) return FORBIDDEN
-  return { ok: true, broadcast: await isActive(sceneId, el.presetId) }
+  return { ok: true, broadcast: await isActive(sceneId, el.presetId), target: { elementId: el.id } }
 }
 
 async function isActive(sceneId: string, presetId: string) {

@@ -4,7 +4,7 @@ import { initBus } from '../../src/realtime/bus.js'
 import { VLMSceneRoom } from '../../src/ws/VLMSceneRoom.js'
 
 const _require = createRequire(import.meta.url)
-const { Server, LocalPresence } = _require('colyseus') as any
+const { Server, LocalPresence, matchMaker } = _require('colyseus') as any
 const { WebSocketTransport } = _require('@colyseus/ws-transport') as any
 
 export async function startGameServer() {
@@ -39,4 +39,9 @@ export async function joinScene(url: string, sceneId: string, token?: string) {
   }
 
   return { room, inbox, waitFor, expectNone }
+}
+
+/** The server-side room instance (same process, local driver). */
+export function serverRoom(roomId: string): any {
+  return matchMaker.getRoomById(roomId)
 }

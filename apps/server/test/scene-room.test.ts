@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { sceneElements, sceneCollaborators } from '../src/db/schema.js'
+import { sceneElements, sceneElementInstances, sceneCollaborators } from '../src/db/schema.js'
 import { createVenue, createBooking, addGrant, revokeGrant } from '../src/venues/service.js'
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene, createElement, tokenFor, expiredTokenFor, randomWallet } from './helpers/factories.js'
-import { startGameServer, joinScene } from './helpers/game-server.js'
+import { startGameServer, joinScene, serverRoom } from './helpers/game-server.js'
 
 const H = 3600_000
 const update = (id: string, props: Record<string, unknown>) => ({
@@ -70,6 +70,25 @@ describe('VLMSceneRoom auth', () => {
     const c = await joinScene(gs.url, a.scene.id, tokenFor(b.owner))
     c.room.send('scene_preset_update', update(b.screen.id, { liveSrc: 'x' }))
     expect((await c.waitFor('vlm_error')).code).toBe('not_found')
+  })
+
+  it('instance create cannot be redirected to another scene element', async () => {
+    const a = await scene()
+    const b = await scene()
+    const c = await joinScene(gs.url, a.scene.id, tokenFor(a.owner))
+    await c.waitFor('scene_preset_update') // init
+    c.room.send('scene_preset_update', {
+      action: 'create',
+      element: 'video',
+      instance: true,
+      instanceData: { elementId: a.screen.id, position: { x: 2, y: 2, z: 2 } },
+      elementData: { sk: b.screen.id },
+    })
+    for (let i = 0; i < 150 && !c.inbox.some((m) => m.type === 'scene_preset_update_ack' || m.type === 'vlm_error'); i++) {
+      await new Promise((r) => setTimeout(r, 20))
+    }
+    const underB = await db.select().from(sceneElementInstances).where(eq(sceneElementInstances.elementId, b.screen.id))
+    expect(underB).toHaveLength(0)
   })
 
   it('different scenes get different rooms', async () => {
@@ -147,6 +166,41 @@ describe('VLMSceneRoom auth', () => {
       await c.waitFor('scene_preset_update_ack')
       await revokeGrant(v.grant.id)
       expect((await c.waitFor('access_revoked')).reason).toBe('revoked')
+      c.room.send('scene_preset_update', update(v.clone.id, { liveSrc: 'b' }))
+      expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+    })
+
+    it('an access lookup in flight during a revoke does not repopulate the cache', async () => {
+      const v = await venueWithCrew()
+      const c = await joinScene(gs.url, v.scene.id, tokenFor(v.crew))
+      await c.waitFor('venue_access')
+      const room = serverRoom(c.room.roomId)
+      room.accessCache.clear() // cold cache
+
+      // Gate the next lookup: it reads pre-revoke access, then stalls until released.
+      let release!: () => void
+      const gate = new Promise<void>((r) => (release = r))
+      let lookedUp!: () => void
+      const looked = new Promise<void>((r) => (lookedUp = r))
+      const original = room.lookupAccess.bind(room)
+      let first = true
+      room.lookupAccess = async (actor: unknown) => {
+        const result = await original(actor)
+        if (first) {
+          first = false
+          lookedUp()
+          await gate
+        }
+        return result
+      }
+
+      c.room.send('scene_preset_update', update(v.clone.id, { ...(v.clone.properties as object), liveSrc: 'a' }))
+      await looked
+      await revokeGrant(v.grant.id)
+      expect((await c.waitFor('access_revoked')).reason).toBe('revoked')
+      release()
+      await c.waitFor('scene_preset_update_ack') // the in-flight call may use its (stale) result once
+
       c.room.send('scene_preset_update', update(v.clone.id, { liveSrc: 'b' }))
       expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
     })

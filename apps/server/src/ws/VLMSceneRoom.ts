@@ -20,7 +20,7 @@ import { config } from '../config.js'
 import { verifySessionToken } from '../auth/tokens.js'
 import { actorFromClaims, type Actor } from '../auth/actor.js'
 import { getSceneAccess, toVenueAccessMessage, type SceneAccess } from '../auth/permissions.js'
-import { authorizeSceneMessage, propertiesOf, type GuardResult } from './scene-guard.js'
+import { authorizeSceneMessage, propertiesOf, type GuardResult, type GuardTarget } from './scene-guard.js'
 import { venueTopic, type VenueEvent } from '../realtime/bus.js'
 import type { VenueAccessMessage } from 'vlm-shared'
 
@@ -47,6 +47,8 @@ export class VLMSceneRoom extends Room {
   private accessCache: Map<string, { access: SceneAccess; at: number }> = new Map()
   private lastAccess: Map<string, VenueAccessMessage> = new Map()
   private onVenueEventBound = (e: VenueEvent) => this.onVenueEvent(e)
+  /** Bumped on every venue event; lookups that started under an older generation must not be cached. */
+  private accessGeneration = 0
   private static ACCESS_TTL_MS = 10_000
 
   async onAuth(_client: Client, options: JoinOptions): Promise<Actor> {
@@ -69,7 +71,7 @@ export class VLMSceneRoom extends Room {
     this.guarded('scene_preset_update', async (client, message, result) => {
       console.log(`[VLMSceneRoom] scene_preset_update from ${client.sessionId}`, message.action)
 
-      await this.persistPresetUpdate(message)
+      await this.persistPresetUpdate(message, result.target)
       client.send('scene_preset_update_ack', { action: message.action, id: message.elementData?.sk || message.id })
 
       // Edits to a non-active preset (e.g. a booking clone during setup) are not broadcast
@@ -82,7 +84,7 @@ export class VLMSceneRoom extends Room {
       if (this.sceneId) {
         dispatchPlatformCallbacks(this.sceneId, {
           action: 'config_update',
-          elementId: message.elementData?.sk || message.elementData?.id || message.id,
+          elementId: result.target?.elementId || message.elementData?.sk || message.elementData?.id || message.id,
           element: message.element,
           ...this.extractCompactPayload(message),
         }).catch(() => {})
@@ -283,9 +285,16 @@ export class VLMSceneRoom extends Room {
   private async getAccess(client: Client): Promise<SceneAccess> {
     const cached = this.accessCache.get(client.sessionId)
     if (cached && Date.now() - cached.at < VLMSceneRoom.ACCESS_TTL_MS) return cached.access
-    const access = await getSceneAccess(client.auth as Actor, this.sceneId)
-    this.accessCache.set(client.sessionId, { access, at: Date.now() })
+    const generation = this.accessGeneration
+    const access = await this.lookupAccess(client.auth as Actor)
+    // A venue event during the lookup may have made this result stale: use it once, don't cache it.
+    if (generation === this.accessGeneration) this.accessCache.set(client.sessionId, { access, at: Date.now() })
     return access
+  }
+
+  /** Uncached access lookup (a seam for tests). */
+  protected lookupAccess(actor: Actor): Promise<SceneAccess> {
+    return getSceneAccess(actor, this.sceneId)
   }
 
   /** Register a handler that runs only if the sender is authorized for this message. */
@@ -328,6 +337,7 @@ export class VLMSceneRoom extends Room {
         if (preset) this.broadcast('scene_change_preset', { scenePreset: serializePreset(preset), user: null })
         return
       }
+      this.accessGeneration++
       this.accessCache.clear()
       for (const client of this.clients) {
         const lost = await this.sendVenueAccess(client)
@@ -425,8 +435,12 @@ export class VLMSceneRoom extends Room {
     }
   }
 
-  private async persistPresetUpdate(message: any) {
-    const { action, element, instance, elementData, instanceData, id } = message
+  /**
+   * Persist a guarded preset update. Existing elements/instances are addressed only by the
+   * ids the guard authorized (`target`), never re-derived from the message.
+   */
+  private async persistPresetUpdate(message: any, target: GuardTarget = {}) {
+    const { action, element, instance, elementData, instanceData } = message
 
     if (action === 'create' && !instance && elementData) {
       // Create a new element
@@ -446,7 +460,7 @@ export class VLMSceneRoom extends Room {
       })
     } else if (action === 'create' && instance && instanceData) {
       // Create a new instance
-      const elementId = elementData?.sk || elementData?.id || instanceData.elementId
+      const elementId = target.elementId
       if (!elementId) return
 
       await db.insert(sceneElementInstances).values({
@@ -463,9 +477,9 @@ export class VLMSceneRoom extends Room {
         withCollisions: instanceData.withCollisions ?? false,
         properties: this.extractProperties(instanceData),
       })
-    } else if (action === 'update' && !instance && (elementData || id)) {
+    } else if (action === 'update' && !instance) {
       // Update an element
-      const elementId = elementData?.sk || elementData?.id || id
+      const elementId = target.elementId
       if (!elementId) return
 
       const updates: Record<string, unknown> = { updatedAt: new Date() }
@@ -478,9 +492,9 @@ export class VLMSceneRoom extends Room {
       }
 
       await db.update(sceneElements).set(updates).where(eq(sceneElements.id, elementId))
-    } else if (action === 'update' && instance && (instanceData || id)) {
+    } else if (action === 'update' && instance) {
       // Update an instance
-      const instanceId = instanceData?.sk || instanceData?.id || id
+      const instanceId = target.instanceId
       if (!instanceId) return
 
       const updates: Record<string, unknown> = { updatedAt: new Date() }
@@ -498,12 +512,12 @@ export class VLMSceneRoom extends Room {
         .set(updates)
         .where(eq(sceneElementInstances.id, instanceId))
     } else if (action === 'delete' && !instance) {
-      const elementId = elementData?.sk || elementData?.id || id
+      const elementId = target.elementId
       if (elementId) {
         await db.delete(sceneElements).where(eq(sceneElements.id, elementId))
       }
     } else if (action === 'delete' && instance) {
-      const instanceId = instanceData?.sk || instanceData?.id || id
+      const instanceId = target.instanceId
       if (instanceId) {
         await db.delete(sceneElementInstances).where(eq(sceneElementInstances.id, instanceId))
       }
