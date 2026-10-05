@@ -31,6 +31,7 @@ function fallbackUuid(random: () => number): string {
 }
 
 const round = (n: number, step: number) => Math.round(n / step) * step
+const round1 = (n: number) => Math.round(n * 10) / 10
 const dist = (a: Vec3, b: Vec3) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
 
 export class Collector {
@@ -48,6 +49,7 @@ export class Collector {
   private hoverSeen = new Map<string, number>()
   private noticeRequested = false
   private noticeShown = false
+  private destroyed = false
 
   constructor(private opts: CollectorOptions) {
     this.now = opts.now ?? (() => Date.now())
@@ -87,6 +89,7 @@ export class Collector {
 
   /** Call once per frame (the adapter's registerSystem). */
   tick(): void {
+    if (this.destroyed) return
     const { probe } = this.opts
     const t = this.now()
     const pose = probe.getPlayerPose()
@@ -110,9 +113,9 @@ export class Collector {
       const interval = moved ? L.posMovingMs : L.posIdleMs
       if (t - this.lastPosAt >= interval) {
         this.emit('pos', {
-          x: round(pose.position.x, 0.1),
-          y: round(pose.position.y, 0.1),
-          z: round(pose.position.z, 0.1),
+          x: round1(pose.position.x),
+          y: round1(pose.position.y),
+          z: round1(pose.position.z),
           ry: ((round(pose.headingDeg, 5) % 360) + 360) % 360,
           m: moved,
         })
@@ -145,20 +148,22 @@ export class Collector {
   }
 
   track(name: string, props?: Record<string, unknown>): void {
-    if (!this._inside) return
+    if (this.destroyed || !this._inside) return
     this.emit('custom', props === undefined ? { name } : { name, props })
   }
 
   giveaway(giveawayId: string, result: string): void {
-    if (!this._inside) return
+    if (this.destroyed || !this._inside) return
     this.emit('giveaway', { giveawayId, result })
   }
 
   async destroy(): Promise<void> {
+    if (this.destroyed) return
     if (this._inside) {
       this.emit('session.leave', { reason: 'destroy' })
       this._inside = false
     }
+    this.destroyed = true
     await this.uploader.maybeFlush(true)
   }
 

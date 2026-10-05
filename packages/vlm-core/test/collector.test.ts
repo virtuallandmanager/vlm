@@ -194,4 +194,28 @@ describe('Collector', () => {
     expect(r.types()).toEqual(['session.start', 'pos', 'custom'])
     expect(r.events().map((e) => e.seq)).toEqual([0, 1, 2])
   })
+
+  it('rounds positions to one decimal without float artifacts', async () => {
+    const r = rig()
+    r.move(8.3, 0.7)
+    await r.step(0)
+    await r.step(100)
+    const pos = r.events().find((e) => e.type === 'pos')!
+    expect(pos.data!.x).toBe(8.3)
+    expect(pos.data!.z).toBe(0.7)
+    expect(JSON.stringify(pos.data)).not.toMatch(/\d\.\d{2,}/)
+  })
+
+  it('is inert after destroy()', async () => {
+    const r = rig()
+    await r.step(0)
+    await r.c.destroy()
+    const n = r.events().length
+    r.c.track('late')
+    r.c.giveaway('g', 'win')
+    await r.step(100)
+    await r.step(70_000)
+    expect(r.types().filter((t) => t === 'session.start')).toHaveLength(1)
+    expect(r.events()).toHaveLength(n)
+  })
 })
