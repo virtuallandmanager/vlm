@@ -12,12 +12,24 @@ import { linkVerifiedWallet, resolveVerifiedWalletUser } from '../auth/wallet-us
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
 const TTL_MS = 5 * 60_000
 
+function siweOrigin(): { host: string; origin: string } {
+  for (const candidate of [config.webAppUrl, config.publicUrl]) {
+    try {
+      const u = new URL(candidate)
+      return { host: u.host, origin: u.origin }
+    } catch {
+      /* try the next candidate */
+    }
+  }
+  return { host: 'localhost', origin: 'http://localhost' }
+}
+
 export default async function walletAuthRoutes(app: FastifyInstance) {
   app.post<{ Body: { address?: string } }>('/api/auth/wallet/challenge', async (request, reply) => {
     const address = request.body?.address
     if (!address || !ADDRESS_RE.test(address)) return reply.status(400).send({ error: 'address must be a 0x wallet address' })
     const nonce = randomBytes(16).toString('hex')
-    const url = new URL(config.publicUrl)
+    const url = siweOrigin()
     const issuedAt = new Date()
     const expiresAt = new Date(issuedAt.getTime() + TTL_MS)
     const message = [

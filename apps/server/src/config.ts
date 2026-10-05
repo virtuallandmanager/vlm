@@ -21,6 +21,7 @@ export const config = {
   // ── Server ──────────────────────────────────────────────────────────────
   port: parseInt(env('PORT') || '3010'),
   publicUrl: env('PUBLIC_URL') || 'http://localhost:3010',
+  webAppUrl: env('WEB_APP_URL') || env('PUBLIC_URL') || 'http://localhost:3010',
   logLevel: env('LOG_LEVEL') || (env('NODE_ENV') === 'production' ? 'info' : 'debug'),
 
   // ── Database ────────────────────────────────────────────────────────────

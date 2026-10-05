@@ -8,7 +8,7 @@ import { reverifyClaims } from '../src/analytics/claims.js'
 import { resetDb } from './helpers/db.js'
 import { config } from '../src/config.js'
 import { testApp, createUser, tokenFor, createScene } from './helpers/factories.js'
-import { createAnalyticsScene, insertSession } from './helpers/analytics.js'
+import { createAnalyticsScene } from './helpers/analytics.js'
 import { FakeDclDirectory } from './helpers/fake-dcl.js'
 
 const rights = (o: Partial<{ owner: string; operator: string; updateOperator: string; updateManagers: string[]; approvedForAll: string[] }> = {}) => ({
@@ -95,6 +95,19 @@ describe('wallet sign-in', () => {
     expect(message).toContain('Chain ID: 1')
     expect(message).toContain(w.address)
     expect((await signIn(w)).statusCode).toBe(200)
+  })
+
+  it('a malformed WEB_APP_URL still produces a challenge', async () => {
+    const prev = config.webAppUrl
+    ;(config as any).webAppUrl = 'not a url'
+    try {
+      const w = Wallet.createRandom()
+      const ch = await app.inject({ method: 'POST', url: '/api/auth/wallet/challenge', payload: { address: w.address } })
+      expect(ch.statusCode).toBe(200)
+      expect(ch.json().message).toContain(new URL(config.publicUrl).host)
+    } finally {
+      ;(config as any).webAppUrl = prev
+    }
   })
 })
 
@@ -219,10 +232,9 @@ describe('claims', () => {
 
   it('eligible: skips a candidate whose check fails, flags truncated, returns the others', async () => {
     const u = await createUser({ wallet: W })
-    const a = await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'] })
-    const b = await createAnalyticsScene({ locationKey: 'gc:2,2', parcels: ['2,2'] })
-    await insertSession(a.id)
-    await insertSession(b.id)
+    const now = new Date()
+    await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'], lastActivityAt: new Date(now.getTime() - 1000) })
+    await createAnalyticsScene({ locationKey: 'gc:2,2', parcels: ['2,2'], lastActivityAt: now })
     dir.rights.set('1,1', rights({ owner: W }))
     const orig = dir.getParcelRights.bind(dir)
     dir.getParcelRights = async (p: string) => {
@@ -243,5 +255,30 @@ describe('claims', () => {
     dir.rights.set('1,1', rights({ owner: W, approvedForAll: [W2] }))
     const codes = (await Promise.all([claim(u1, 'gc:1,1'), claim(u2, 'gc:1,1')])).map((r) => r.statusCode).sort()
     expect(codes).toEqual([200, 409])
+  })
+
+  const eligible = (u: any) =>
+    app.inject({ method: 'GET', url: '/api/analytics/claims/eligible', headers: { authorization: `Bearer ${tokenFor(u)}` } })
+
+  it('eligible: other users\' active preview rows do not crowd out the caller\'s scene', async () => {
+    const u = await createUser({ wallet: W })
+    const other = '0x00000000000000000000000000000000000000d9'
+    const t = Date.now()
+    for (let i = 0; i < 60; i++) {
+      await createAnalyticsScene({ kind: 'preview', locationKey: `preview:${other}:${i}`, baseParcel: null, parcels: [], lastActivityAt: new Date(t - i) })
+    }
+    await createAnalyticsScene({ kind: 'preview', locationKey: `preview:${W}:mine`, baseParcel: null, parcels: [], lastActivityAt: new Date(t - 10_000) })
+    const res = await eligible(u)
+    expect(res.json().scenes.map((x: any) => x.locationKey)).toEqual([`preview:${W}:mine`])
+  })
+
+  it('eligible: three consecutive directory failures stop the checks and flag truncated', async () => {
+    const u = await createUser({ wallet: W })
+    const t = Date.now()
+    for (let i = 1; i <= 8; i++) await createAnalyticsScene({ locationKey: `gc:${i},${i}`, parcels: [`${i},${i}`], lastActivityAt: new Date(t - i) })
+    dir.down = true
+    const res = await eligible(u)
+    expect(res.json()).toEqual({ scenes: [], truncated: true })
+    expect(dir.calls).toBeLessThanOrEqual(3)
   })
 })

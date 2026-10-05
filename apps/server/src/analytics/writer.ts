@@ -1,7 +1,7 @@
 import { and, eq, ne, sql } from 'drizzle-orm'
 import type { IngestBatch } from 'vlm-shared'
 import { db } from '../db/connection.js'
-import { analyticsDirtyHours, analyticsEvents, analyticsPositions, analyticsSessions } from '../db/schema.js'
+import { analyticsDirtyHours, analyticsScenes, analyticsEvents, analyticsPositions, analyticsSessions } from '../db/schema.js'
 import type { AnalyticsSceneRow } from './registry.js'
 import { visitorHash } from './hash.js'
 
@@ -135,6 +135,10 @@ export async function writeBatch(input: {
     hourSet.add(hourOf(upserted[0].startedAt.getTime()).getTime())
     const hours = [...hourSet].map((h) => ({ sceneId: scene.id, hour: new Date(h) }))
     await tx.insert(analyticsDirtyHours).values(hours).onConflictDoNothing()
+    await tx
+      .update(analyticsScenes)
+      .set({ lastActivityAt: sql`greatest(coalesce(${analyticsScenes.lastActivityAt}, 'epoch'::timestamptz), ${lastSeenAt.toISOString()}::timestamptz)` })
+      .where(eq(analyticsScenes.id, scene.id))
     return { accepted }
   })
 }

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
-import { and, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, isNull, like, or, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { analyticsScenes, analyticsSessions } from '../db/schema.js'
+import { analyticsScenes } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { DirectoryUnavailableError, getDclDirectory, type DclDirectory } from '../analytics/dcl-directory.js'
@@ -53,19 +53,19 @@ export default async function analyticsClaimRoutes(app: FastifyInstance) {
     const wallets = await verifiedWalletsOf(userId)
     if (!wallets.length) return reply.send({ scenes: [], truncated: false })
     const since = new Date(Date.now() - 30 * 86400_000)
-    const activity = sql<Date>`max(${analyticsSessions.lastSeenAt})`
     const candidates = await db
-      .select({ id: analyticsScenes.id, activity })
+      .select()
       .from(analyticsScenes)
-      .innerJoin(analyticsSessions, eq(analyticsSessions.sceneId, analyticsScenes.id))
-      .where(and(or(isNull(analyticsScenes.claimStatus), eq(analyticsScenes.claimStatus, 'lapsed')), gte(analyticsSessions.lastSeenAt, since)))
-      .groupBy(analyticsScenes.id)
-      .orderBy(desc(activity))
+      .where(
+        and(
+          or(isNull(analyticsScenes.claimStatus), eq(analyticsScenes.claimStatus, 'lapsed')),
+          gte(analyticsScenes.lastActivityAt, since),
+          or(sql`${analyticsScenes.kind} <> 'preview'`, ...wallets.map((w) => like(analyticsScenes.locationKey, `preview:${w}:%`))),
+        ),
+      )
+      .orderBy(desc(analyticsScenes.lastActivityAt))
       .limit(50)
     if (!candidates.length) return reply.send({ scenes: [], truncated: false })
-    const byId = new Map(
-      (await db.select().from(analyticsScenes).where(inArray(analyticsScenes.id, candidates.map((c) => c.id)))).map((r) => [r.id, r]),
-    )
     // Count directory calls through a wrapper so one request can never fan out unboundedly.
     const real = getDclDirectory()
     let calls = 0
@@ -82,12 +82,12 @@ export default async function analyticsClaimRoutes(app: FastifyInstance) {
     }
     const out: Array<{ id: string; locationKey: string; title: string | null; kind: string }> = []
     let truncated = false
-    for (const c of candidates) {
-      const scene = byId.get(c.id)
-      if (!scene) continue
-      if (scene.kind === 'preview' && !wallets.some((w) => scene.locationKey.startsWith(`preview:${w}:`))) continue
+    let failures = 0
+    for (const scene of candidates) {
       try {
-        if (await controlsAny(scene, wallets, dir)) out.push({ id: scene.id, locationKey: scene.locationKey, title: scene.title, kind: scene.kind })
+        const ok = await controlsAny(scene, wallets, dir)
+        failures = 0
+        if (ok) out.push({ id: scene.id, locationKey: scene.locationKey, title: scene.title, kind: scene.kind })
       } catch (err) {
         if (err instanceof BudgetExhausted) {
           truncated = true
@@ -95,6 +95,7 @@ export default async function analyticsClaimRoutes(app: FastifyInstance) {
         }
         if (err instanceof DirectoryUnavailableError) {
           truncated = true
+          if (++failures >= 3) break // Decentraland is down; fail fast
           continue
         }
         throw err

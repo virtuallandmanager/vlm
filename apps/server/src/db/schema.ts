@@ -359,11 +359,13 @@ export const analyticsScenes = pgTable('analytics_scenes', {
   isPreview: boolean('is_preview').notNull().default(false),
   verifiedSessionShare: real('verified_session_share').notNull().default(0),
   lastEntityCheckAt: timestamp('last_entity_check_at', { withTimezone: true }),
+  lastActivityAt: timestamp('last_activity_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   vlmSceneIdx: index('analytics_scenes_vlm_scene_idx').on(t.vlmSceneId),
   claimerIdx: index('analytics_scenes_claimer_idx').on(t.claimedByUserId),
+  lastActivityIdx: index('analytics_scenes_last_activity_idx').on(t.lastActivityAt),
 }))
 
 export const analyticsSessions = pgTable('analytics_sessions', {

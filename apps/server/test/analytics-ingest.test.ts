@@ -76,6 +76,13 @@ describe('POST /api/ingest', () => {
     expect((await db.select().from(analyticsDirtyHours)).length).toBeGreaterThanOrEqual(1)
   })
 
+  it('ingest bumps the scene last_activity_at', async () => {
+    await post(batch())
+    const [scene] = await db.select().from(analyticsScenes)
+    expect(scene.lastActivityAt).not.toBeNull()
+    expect(Date.now() - scene.lastActivityAt!.getTime()).toBeLessThan(10_000)
+  })
+
   it('retrying the same batch does not double count', async () => {
     await post(batch())
     const again = await post(batch())
