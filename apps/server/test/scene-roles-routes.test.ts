@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { sceneRoles, scenes } from '../src/db/schema.js'
+import { sceneCollaborators, sceneRoles, scenes } from '../src/db/schema.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, createScene, tokenFor, randomWallet } from './helpers/factories.js'
 
@@ -87,5 +87,37 @@ describe('scene roles API', () => {
     expect(res.statusCode).toBe(409)
     expect(res.json()).toEqual({ error: 'host_has_no_wallet' })
     expect((await db.query.scenes.findFirst({ where: eq(scenes.id, scene.id) }))!.ownerId).toBe(host.id)
+  })
+  it('a co-host cannot delete the scene; the host can', async () => {
+    const host = await createUser({ wallet: randomWallet() })
+    const { scene } = await createScene(host)
+    const co = await createUser({ wallet: randomWallet() })
+    await db.insert(sceneRoles).values({ sceneId: scene.id, walletAddress: co.wallet!, userId: co.id, role: 'cohost' })
+    expect((await call('DELETE', `/api/scenes/${scene.id}`, tokenFor(co))).statusCode).toBe(403)
+    expect(await db.query.scenes.findFirst({ where: eq(scenes.id, scene.id) })).toBeDefined()
+    expect((await call('DELETE', `/api/scenes/${scene.id}`, tokenFor(host))).statusCode).toBe(204)
+    expect(await db.query.scenes.findFirst({ where: eq(scenes.id, scene.id) })).toBeUndefined()
+  })
+
+  it('collaborator emails are shown only to full-access roles', async () => {
+    const host = await createUser({ wallet: randomWallet() })
+    const { scene } = await createScene(host)
+    const collab = await createUser()
+    await db.insert(sceneCollaborators).values({ sceneId: scene.id, userId: collab.id, role: 'viewer' })
+    for (const role of ['viewer', 'editor'] as const) {
+      const u = await createUser({ wallet: randomWallet() })
+      await db.insert(sceneRoles).values({ sceneId: scene.id, walletAddress: u.wallet!, userId: u.id, role })
+      const res = await call('GET', `/api/scenes/${scene.id}/collaborators`, tokenFor(u))
+      expect(res.statusCode).toBe(200)
+      const list = res.json().collaborators
+      expect(list).toHaveLength(2)
+      for (const c of list) expect(c).not.toHaveProperty('email')
+    }
+    const co = await createUser({ wallet: randomWallet() })
+    await db.insert(sceneRoles).values({ sceneId: scene.id, walletAddress: co.wallet!, userId: co.id, role: 'cohost' })
+    for (const u of [host, co]) {
+      const list = (await call('GET', `/api/scenes/${scene.id}/collaborators`, tokenFor(u))).json().collaborators
+      expect(list.map((c: any) => c.email).sort()).toEqual([host.email, collab.email].sort())
+    }
   })
 })

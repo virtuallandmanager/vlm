@@ -14,7 +14,7 @@ import {
 import { authenticate } from '../middleware/auth.js'
 import type { AuthUser } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
-import { getSceneAccess, hasScope, canWriteElement, diffKeys } from '../auth/permissions.js'
+import { getSceneAccess, hasScope, isFullAccess, isHostAccess, canWriteElement, diffKeys } from '../auth/permissions.js'
 import { config } from '../config.js'
 import { getSubscription } from '../integrations/stripe.js'
 
@@ -253,7 +253,8 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
     const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
     if (!scene) return reply.status(404).send({ error: 'Scene not found' })
-    if (!hasScope(await accessFor(request, sceneId), 'scene.admin')) {
+    // Host-only: co-hosts hold scene.admin but may not delete the scene.
+    if (!isHostAccess(await accessFor(request, sceneId))) {
       return reply.status(403).send({ error: 'Forbidden' })
     }
 
@@ -486,7 +487,8 @@ export default async function sceneRoutes(app: FastifyInstance) {
       const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
       if (!scene) return reply.status(404).send({ error: 'Scene not found' })
 
-      const level = (await accessFor(request, sceneId)).level
+      const access = await accessFor(request, sceneId)
+      const level = access.level
       if (level === 'none' || level === 'grant') {
         return reply.status(403).send({ error: 'Forbidden' })
       }
@@ -512,6 +514,10 @@ export default async function sceneRoutes(app: FastifyInstance) {
         ...collabs,
       ]
 
+      // Emails only for people who manage the scene; editors/viewers see names and roles.
+      if (!isFullAccess(access)) {
+        return reply.send({ collaborators: collaborators.map(({ email: _email, ...rest }) => rest) })
+      }
       return reply.send({ collaborators })
     },
   )
