@@ -79,7 +79,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
             ),
           )
     const all = await db.select().from(analyticsScenes).where(candidate)
-    const readable = []
+    const readable: (typeof analyticsScenes.$inferSelect)[] = []
     for (const s of all) if ((await getAnalyticsAccess(actor, s.id)).canRead) readable.push(s)
     return reply.send({
       scenes: readable.map((s) => ({
