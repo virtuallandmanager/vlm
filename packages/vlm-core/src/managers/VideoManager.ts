@@ -54,7 +54,10 @@ export class VideoManager {
     }
   }
 
-  private createConfig(data: any): void {
+  /** Element fields that decide what a screen plays; an upsert that leaves them alone keeps live/playlist state. */
+  private static MEDIA_FIELDS = ['liveSrc', 'enableLiveStream', 'offType', 'offImageSrc', 'playlist'] as const
+
+  private createConfig(data: any, carry?: Pick<VideoConfig, 'isLive' | 'liveSrc' | 'playlistIndex'>): void {
     const config: VideoConfig = {
       sk: data.sk,
       name: data.name || '',
@@ -69,6 +72,7 @@ export class VideoManager {
       volume: (data.volume ?? 100) / 100, // Convert 0-100 to 0-1
       playlistIndex: 0,
       emission: data.emission ?? 0.6,
+      ...carry,
     }
     this.configs.set(config.sk, config)
 
@@ -186,6 +190,27 @@ export class VideoManager {
       if (inst.enabled !== false) {
         this.createInstanceEntity(elementData.sk, inst)
       }
+    }
+  }
+
+  /**
+   * Full replace from a server snapshot (SceneManager `upsert`). When the media fields are unchanged
+   * (e.g. a move, rename or volume change), the screen keeps its in-memory live status, live URL and
+   * playlist position instead of falling back to its offline state.
+   */
+  upsert(elementData: any): void {
+    const old = this.configs.get(elementData.sk)
+    let carry: Pick<VideoConfig, 'isLive' | 'liveSrc' | 'playlistIndex'> | undefined
+    if (old) {
+      const raw: any = this.storage.videos.configs[old.customId || old.sk] ?? {}
+      const same = VideoManager.MEDIA_FIELDS.every((f) => JSON.stringify(raw[f]) === JSON.stringify(elementData[f]))
+      if (same) carry = { isLive: old.isLive, liveSrc: old.liveSrc, playlistIndex: old.playlistIndex }
+    }
+    this.delete(elementData.sk)
+    if (elementData.enabled === false) return
+    this.createConfig(elementData, carry)
+    for (const inst of elementData.instances || []) {
+      if (inst.enabled !== false) this.createInstanceEntity(elementData.sk, inst)
     }
   }
 

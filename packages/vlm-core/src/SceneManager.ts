@@ -17,6 +17,8 @@ interface ElementManager {
   delete(elementId: string): void
   deleteInstance(instanceId: string): void
   clear(): void
+  /** Optional full replace that can keep in-memory state (see VideoManager.upsert). */
+  upsert?(elementData: any): void
 }
 
 export class SceneManager {
@@ -65,6 +67,10 @@ export class SceneManager {
         const manager = this.managers[message.element]
         const data = message.elementData
         if (!manager || !data?.sk) break
+        if (manager.upsert) {
+          manager.upsert(data)
+          break
+        }
         manager.delete(data.sk)
         if (data.enabled !== false) manager.create(data)
         break
