@@ -1,6 +1,6 @@
 {
   "name": "vlm-dcl",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Virtual Land Manager for Decentraland SDK7 \u2014 analytics, in-world HUD and live scene management. Use from code or as a Creator Hub script.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

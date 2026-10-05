@@ -33,6 +33,13 @@ export function main() {
 }
 ```
 
+## Setting up your scene
+
+Deploy, then walk into your scene with the wallet that owns, operates or deployed it. The VLM HUD
+(top right) shows **Set up VLM here**: one press makes you the scene's host — no account or email
+needed. Open **Roles** in the HUD (or the scene's Roles tab on vlm.gg) to make others co-hosts,
+editors or viewers by wallet address.
+
 ## Creator Hub
 
 1. In a terminal in your scene folder, run `npm install vlm-dcl`.
