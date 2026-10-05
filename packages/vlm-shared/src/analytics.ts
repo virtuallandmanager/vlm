@@ -124,17 +124,47 @@ function checkScene(s: unknown): AnalyticsSceneRef | string {
   }
 }
 
-function hasNul(v: unknown, depth = 0): boolean {
-  if (typeof v === 'string') return v.includes('\u0000')
-  if (depth > 20 || v === null || typeof v !== 'object') return false
-  if (Array.isArray(v)) return v.some((x) => hasNul(x, depth + 1))
-  return Object.entries(v).some(([k, x]) => k.includes('\u0000') || hasNul(x, depth + 1))
+const MAX_NESTING = 20 // levels of objects/arrays, counted from the batch root
+
+/** True when the string contains a UTF-16 high/low surrogate that is not part of a valid pair. */
+function hasLoneSurrogate(str: string): boolean {
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i)
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const n = str.charCodeAt(i + 1)
+      if (n >= 0xdc00 && n <= 0xdfff) i++
+      else return true
+    } else if (c >= 0xdc00 && c <= 0xdfff) return true
+  }
+  return false
+}
+
+/** Strings Postgres text/jsonb cannot store (NUL, lone surrogates) and over-deep nesting. */
+function scanInput(v: unknown, depth = 0): string | null {
+  if (typeof v === 'string') {
+    if (v.includes('\u0000')) return 'strings must not contain NUL characters'
+    if (hasLoneSurrogate(v)) return 'strings must not contain unpaired surrogates'
+    return null
+  }
+  if (v === null || typeof v !== 'object') return null
+  if (depth >= MAX_NESTING) return 'event data too deeply nested'
+  const entries: [string | null, unknown][] = Array.isArray(v) ? v.map((x) => [null, x]) : Object.entries(v)
+  for (const [k, x] of entries) {
+    if (k !== null) {
+      const ke = scanInput(k, depth + 1)
+      if (ke) return ke
+    }
+    const e = scanInput(x, depth + 1)
+    if (e) return e
+  }
+  return null
 }
 
 export function checkBatch(input: unknown, nowMs: number): BatchCheck {
   if (!isObj(input)) return { ok: false, error: 'batch must be an object' }
   if (input.v !== 1) return { ok: false, error: 'v must be 1' }
-  if (hasNul(input)) return { ok: false, error: 'strings must not contain NUL characters' }
+  const scanError = scanInput(input)
+  if (scanError) return { ok: false, error: scanError }
   if (typeof input.sessionId !== 'string' || !UUID_RE.test(input.sessionId)) return { ok: false, error: 'sessionId must be a UUID' }
   if (!str(input.visitorId, 100)) return { ok: false, error: 'visitorId is required' }
   if (typeof input.isGuest !== 'boolean' || typeof input.noticeShown !== 'boolean') {

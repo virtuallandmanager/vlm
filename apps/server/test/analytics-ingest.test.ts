@@ -151,6 +151,13 @@ describe('POST /api/ingest', () => {
     expect((await post(b)).statusCode).toBe(400)
   })
 
+  it('a deeply nested NUL returns 400, not 500', async () => {
+    let data: unknown = 'a\u0000b'
+    for (let i = 0; i < 18; i++) data = { k: data }
+    const r = await post(batch({ events: [{ t: Date.now(), type: 'custom', seq: 0, data }] }))
+    expect(r.statusCode).toBe(400)
+  })
+
   it('drops out-of-range positions and normalizes heading', async () => {
     const now = Date.now()
     const res = await post(batch({ events: [
@@ -180,6 +187,7 @@ describe('POST /api/ingest', () => {
     expect(r.statusCode).toBe(409)
     const [after] = await db.select().from(analyticsSessions)
     expect(after.visitorHash).toBe(before.visitorHash)
+    expect((await db.select().from(analyticsEvents)).some((e) => e.seq === 9)).toBe(false)
   })
 
   it('never stores the IP address', async () => {

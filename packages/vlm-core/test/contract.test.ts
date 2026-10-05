@@ -17,6 +17,25 @@ function batch(overrides: Partial<IngestBatch> = {}): any {
   }
 }
 
+describe('checkBatch string and depth hardening', () => {
+  const deep = (leaf: unknown, n: number) => Array.from({ length: n }).reduce<unknown>((acc) => ({ k: acc }), leaf)
+  const ev = (data: unknown) => batch({ events: [{ t: NOW, type: 'custom', seq: 0, data }] })
+  it('rejects a NUL nested 25 levels deep', () => {
+    expect(checkBatch(ev(deep('a\u0000b', 25)), NOW).ok).toBe(false)
+  })
+  it('rejects over-deep nesting', () => {
+    expect(checkBatch(ev(deep('x', 25)), NOW)).toEqual({ ok: false, error: 'event data too deeply nested' })
+  })
+  it('rejects lone surrogates in values and keys', () => {
+    expect(checkBatch(ev({ name: '\ud800' }), NOW).ok).toBe(false)
+    expect(checkBatch(ev({ '\udc00x': 1 }), NOW).ok).toBe(false)
+    expect(checkBatch(ev({ name: 'a\ud800b' }), NOW).ok).toBe(false)
+  })
+  it('accepts valid surrogate pairs (emoji)', () => {
+    expect(checkBatch(ev({ name: 'hi \u{1F600}' }), NOW).ok).toBe(true)
+  })
+})
+
 describe('checkBatch', () => {
   it.each([
     ['top-level string', batch({ displayName: 'a\u0000b' })],
@@ -57,10 +76,15 @@ describe('checkBatch', () => {
   })
 
   it('returns ok:false for unserializable events instead of throwing', () => {
-    const data: any = {}
-    data.self = data
+    const data: any = { n: 10n } // JSON.stringify throws on BigInt
     const r = checkBatch(batch({ events: [{ t: NOW, type: 'custom', seq: 0, data }] }), NOW)
     expect(r).toEqual({ ok: false, error: 'event is not serializable' })
+  })
+
+  it('rejects cyclic event data without throwing', () => {
+    const data: any = {}
+    data.self = data
+    expect(checkBatch(batch({ events: [{ t: NOW, type: 'custom', seq: 0, data }] }), NOW).ok).toBe(false)
   })
 
   it('bounds seq to int4', () => {
