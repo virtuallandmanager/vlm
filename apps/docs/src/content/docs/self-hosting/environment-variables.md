@@ -48,8 +48,8 @@ description: Complete reference for all VLM environment variables
 |----------|-------------|
 | `ENABLE_STREAMING` | `true` to enable streaming features |
 | `RTMP_INGEST_URL` | RTMP ingest base URL (default: `rtmp://localhost:1935/live`) |
-| `HLS_BASE_URL` | HLS playlist base URL (default: `http://localhost:8000/streams`) |
-| `STREAMING_WEBHOOK_KEY` | Shared secret for media server webhooks |
+| `HLS_BASE_URL` | Playback base URL, e.g. `https://live.vlm.gg/streams` (default: `http://localhost:8000/streams`) |
+| `STREAMING_WEBHOOK_KEY` | Shared secret with the media server (`VLM_WEBHOOK_KEY` there) for publish checks and live/offline webhooks. Required in cloud mode; when unset, self-hosted servers accept unauthenticated media-server calls |
 
 ## Hyperfy Provisioning
 
