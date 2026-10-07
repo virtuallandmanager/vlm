@@ -59,6 +59,13 @@ function formatDuration(seconds: number | null) {
   return `${s}s`
 }
 
+/** rtmpUrl is "<ingest>/<streamKey>"; OBS wants the server and the key separately (the key stays masked). */
+function obsServerUrl(server: { rtmpUrl?: string | null; streamKey?: string | null }): string | null {
+  const url = server.rtmpUrl || null
+  const key = server.streamKey
+  return url && key && url.endsWith(`/${key}`) ? url.slice(0, -(key.length + 1)) : url
+}
+
 function CopyButton({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false)
 
@@ -284,7 +291,7 @@ function ServerCard({ server, onClick }: { server: any; onClick: () => void }) {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-gray-500 text-xs w-14 shrink-0">RTMP</span>
-          <span className="text-gray-300 font-mono text-xs truncate">{server.rtmpUrl || '--'}</span>
+          <span className="text-gray-300 font-mono text-xs truncate">{obsServerUrl(server) || '--'}</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-gray-500 text-xs w-14 shrink-0">Key</span>
@@ -390,12 +397,12 @@ function ServerDetail({ serverId, onDeleted }: { serverId: string; onDeleted: ()
           </div>
 
           <div>
-            <p className="text-xs text-gray-400 mb-1">RTMP URL</p>
+            <p className="text-xs text-gray-400 mb-1">OBS Server</p>
             <div className="flex items-center gap-2">
               <code className="flex-1 rounded bg-gray-800 px-3 py-1.5 text-sm font-mono text-gray-300 truncate">
-                {server.rtmpUrl || '--'}
+                {obsServerUrl(server) || '--'}
               </code>
-              {server.rtmpUrl && <CopyButton text={server.rtmpUrl} />}
+              {obsServerUrl(server) && <CopyButton text={obsServerUrl(server)!} />}
             </div>
           </div>
 
@@ -405,7 +412,7 @@ function ServerDetail({ serverId, onDeleted }: { serverId: string; onDeleted: ()
 
           {server.hlsPlaylistUrl && (
             <div>
-              <p className="text-xs text-gray-400 mb-1">HLS Playlist URL</p>
+              <p className="text-xs text-gray-400 mb-1">Playback URL — paste into a video screen&apos;s Live URL</p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 rounded bg-gray-800 px-3 py-1.5 text-sm font-mono text-gray-300 truncate">
                   {server.hlsPlaylistUrl}
