@@ -10,7 +10,7 @@
  */
 
 import { FastifyInstance } from 'fastify'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { eq, desc } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
@@ -20,6 +20,24 @@ import {
 import { authenticate } from '../middleware/auth.js'
 import { requireFeature } from '../middleware/feature-gate.js'
 import { config } from '../config.js'
+
+function safeEqual(a: string, b: string): boolean {
+  const x = Buffer.from(a)
+  const y = Buffer.from(b)
+  return x.length === y.length && timingSafeEqual(x, y)
+}
+
+/**
+ * Media server → API auth (`X-Webhook-Key` = STREAMING_WEBHOOK_KEY). With no key configured the
+ * endpoints are open off-cloud (local dev) and refuse in cloud mode — never open in production.
+ */
+export function mediaServerAuth(headers: Record<string, unknown>): { ok: true } | { ok: false; status: 401 | 503; error: string } {
+  const key = process.env.STREAMING_WEBHOOK_KEY
+  if (!key) return config.mode === 'cloud' ? { ok: false, status: 503, error: 'webhook_not_configured' } : { ok: true }
+  const provided = headers['x-webhook-key']
+  if (typeof provided !== 'string' || !safeEqual(provided, key)) return { ok: false, status: 401, error: 'Invalid webhook key' }
+  return { ok: true }
+}
 
 export default async function streamingRoutes(app: FastifyInstance) {
   // ── Provision ─────────────────────────────────────────────────────────
@@ -102,7 +120,7 @@ export default async function streamingRoutes(app: FastifyInstance) {
         where: eq(streamingServers.id, id),
       })
 
-      if (!server) {
+      if (!server || (server.ownerId !== request.user.id && request.user.role !== 'admin')) {
         return reply.status(404).send({ error: 'Streaming server not found' })
       }
 
@@ -159,6 +177,11 @@ export default async function streamingRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params as { id: string }
 
+      const server = await db.query.streamingServers.findFirst({ where: eq(streamingServers.id, id) })
+      if (!server || (server.ownerId !== request.user.id && request.user.role !== 'admin')) {
+        return reply.status(404).send({ error: 'Streaming server not found' })
+      }
+
       const sessions = await db
         .select()
         .from(streamingSessions)
@@ -170,22 +193,41 @@ export default async function streamingRoutes(app: FastifyInstance) {
     },
   )
 
+  // ── Authorize a publish (from media server) ───────────────────────────
+  app.post('/api/streaming/authorize', async (request, reply) => {
+    const auth = mediaServerAuth(request.headers as Record<string, unknown>)
+    if (!auth.ok) return reply.status(auth.status).send({ error: auth.error })
+    const streamKey = (request.body as { streamKey?: unknown } | undefined)?.streamKey
+    if (typeof streamKey !== 'string' || !streamKey) return reply.status(400).send({ error: 'streamKey is required' })
+    const [row] = await db
+      .select({ id: streamingServers.id })
+      .from(streamingServers)
+      .where(eq(streamingServers.streamKey, streamKey))
+      .limit(1)
+    if (!row) return reply.status(403).send({ error: 'unknown_key' })
+    return reply.send({ ok: true })
+  })
+
+  // ── Keys the API thinks are live (media server startup sweep) ─────────
+  app.get('/api/streaming/live-keys', async (request, reply) => {
+    const auth = mediaServerAuth(request.headers as Record<string, unknown>)
+    if (!auth.ok) return reply.status(auth.status).send({ error: auth.error })
+    const rows = await db
+      .select({ streamKey: streamingServers.streamKey })
+      .from(streamingServers)
+      .where(eq(streamingServers.status, 'live'))
+    return reply.send({ streamKeys: rows.flatMap((r) => (r.streamKey ? [r.streamKey] : [])) })
+  })
+
   // ── Webhook (from media server) ───────────────────────────────────────
   // Not authenticated via JWT — uses shared webhook key instead
   app.post('/api/streaming/webhook', async (request, reply) => {
-    // Verify webhook key if configured
-    const webhookKey = process.env.STREAMING_WEBHOOK_KEY
-    if (webhookKey) {
-      const provided = (request.headers as any)['x-webhook-key']
-      if (provided !== webhookKey) {
-        return reply.status(401).send({ error: 'Invalid webhook key' })
-      }
-    }
+    const auth = mediaServerAuth(request.headers as Record<string, unknown>)
+    if (!auth.ok) return reply.status(auth.status).send({ error: auth.error })
 
     const body = request.body as {
       streamKey: string
       status: 'live' | 'offline'
-      hlsUrl?: string | null
       timestamp?: number
     }
 
@@ -208,10 +250,8 @@ export default async function streamingRoutes(app: FastifyInstance) {
       // Update server status
       await db
         .update(streamingServers)
-        .set({
-          status: 'live',
-          hlsPlaylistUrl: body.hlsUrl || server.hlsPlaylistUrl,
-        })
+        // The provisioned playback URL is the truth; the media server's reported URL is ignored
+        .set({ status: 'live' })
         .where(eq(streamingServers.id, server.id))
 
       // Create a new session record
@@ -226,7 +266,7 @@ export default async function streamingRoutes(app: FastifyInstance) {
         dispatchPlatformCallbacks(server.sceneId, {
           action: 'video_status',
           isLive: true,
-          url: body.hlsUrl || server.hlsPlaylistUrl,
+          url: server.hlsPlaylistUrl,
           streamKey: body.streamKey,
         }).catch(() => {})
       }
