@@ -5,16 +5,16 @@ import { createApiClient } from '../src/vlm-api.js'
 
 const res = (status: number, body: unknown) => new Response(JSON.stringify(body), { status })
 
-test('authorize is true only for 200 { ok: true }, sends the secret and the key', async () => {
+test('authorize returns the playback id only for 200 { ok: true, playbackId }, sends the secret and the key', async () => {
   const calls: [string, RequestInit][] = []
-  const fetch = async (url: any, init: any) => { calls.push([String(url), init]); return res(200, { ok: true }) }
+  const fetch = async (url: any, init: any) => { calls.push([String(url), init]); return res(200, { ok: true, playbackId: 'pb_1' }) }
   const api = createApiClient({ apiUrl: 'https://api.test/', webhookKey: 'sec', fetch })
-  assert.equal(await api.authorize('k1'), true)
+  assert.equal(await api.authorize('k1'), 'pb_1')
   assert.equal(calls[0][0], 'https://api.test/api/streaming/authorize')
   assert.equal((calls[0][1].headers as any)['X-Webhook-Key'], 'sec')
   assert.equal(calls[0][1].body, JSON.stringify({ streamKey: 'k1' }))
-  for (const r of [res(403, { error: 'unknown_key' }), res(401, {}), res(200, { ok: false }), new Response('oops', { status: 200 })]) {
-    assert.equal(await createApiClient({ apiUrl: 'https://api.test', webhookKey: 'sec', fetch: async () => r }).authorize('k1'), false)
+  for (const r of [res(403, { error: 'unknown_key' }), res(401, {}), res(200, { ok: false }), res(200, { ok: true }), res(200, { ok: true, playbackId: '../x' }), new Response('oops', { status: 200 })]) {
+    assert.equal(await createApiClient({ apiUrl: 'https://api.test', webhookKey: 'sec', fetch: async () => r }).authorize('k1'), null)
   }
 })
 

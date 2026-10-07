@@ -9,12 +9,14 @@ export function createApiClient(opts: { apiUrl: string; webhookKey: string; fetc
     fetchFn(`${base}${path}`, { ...init, headers, signal: AbortSignal.timeout(timeoutMs) })
 
   return {
-    /** True only for 200 { ok: true }. Throws on timeout/network errors (callers treat that as "no"). */
-    async authorize(streamKey: string): Promise<boolean> {
+    /** The playback id for 200 { ok: true, playbackId }, else null. Throws on timeout/network errors (callers treat that as "no"). */
+    async authorize(streamKey: string): Promise<string | null> {
       const res = await call('/api/streaming/authorize', { method: 'POST', body: JSON.stringify({ streamKey }) })
-      if (res.status !== 200) return false
-      const body = (await res.json().catch(() => null)) as { ok?: unknown } | null
-      return body?.ok === true
+      if (res.status !== 200) return null
+      const body = (await res.json().catch(() => null)) as { ok?: unknown; playbackId?: unknown } | null
+      const id = body?.playbackId
+      // Used as a folder name: accept only a plain id
+      return body?.ok === true && typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id) ? id : null
     },
     async notify(streamKey: string, status: 'live' | 'offline'): Promise<void> {
       try {

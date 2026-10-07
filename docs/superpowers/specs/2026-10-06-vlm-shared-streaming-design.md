@@ -32,6 +32,8 @@ Decided in conversation: shared ingest first (dedicated per-stream machines are 
 - **`POST /api/streaming/authorize`** (`X-Webhook-Key` required) `{ streamKey }` → `200 { ok: true }` for a key that exists in `streaming_servers`; `403 { error: 'unknown_key' }` otherwise; `401` for a missing/wrong secret.
 - Media server `prePublish`: calls authorize (5 s timeout). Node-Media-Server 2.7 emits `prePublish` synchronously, so the check is async: FFmpeg and the `live` webhook start **only after** authorize returns `200 ok`; anything else (403, 401, timeout, network error) → `nms.getSession(id).reject()`, no FFmpeg, no webhook. **Fail closed.** (A rejected publisher may push a few seconds of data into NMS before the drop; nothing is transcoded or served.)
 
+- **Playback id (added after the final review, 2026-10-06):** the playback URL is shown to every visitor, so it carries a separate random `playback_id`, never the stream key: `https://live.vlm.gg/streams/<playbackId>/playlist.m3u8`. Authorize returns `{ ok: true, playbackId }` and the media server writes HLS under it; streams provisioned without one get one on their next authorize. The media server's public HTTP (`/health`) reports only a count; `/status` (which listed keys) is removed. A publish is reported `live` only once its playlist exists (up to 20 s, else it is stopped and rejected).
+
 ### Webhook (`POST /api/streaming/webhook`)
 - Secret **required** whenever `STREAMING_WEBHOOK_KEY` is set, and in cloud mode a missing env is a 503 `webhook_not_configured` (never open). Self-hosted with no key keeps today's open behaviour (local dev).
 - Never writes `hls_playlist_url` from the webhook body (the provisioned URL is the truth). The `hlsUrl` field is ignored.

@@ -16,3 +16,14 @@ test('rejects traversal, encoded traversal, other prefixes and other extensions'
     assert.equal(resolveHlsPath(OUT, u), null, u)
   }
 })
+
+import fs from 'node:fs'
+import os from 'node:os'
+import { waitForFile } from '../src/hls.js'
+
+test('waitForFile resolves true once the file appears, false after the timeout', async () => {
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wf-')), 'playlist.m3u8')
+  setTimeout(() => fs.writeFileSync(f, '#EXTM3U'), 30)
+  assert.equal(await waitForFile(f, { timeoutMs: 1000, intervalMs: 10 }), true)
+  assert.equal(await waitForFile(f + '.nope', { timeoutMs: 40, intervalMs: 10 }), false)
+})

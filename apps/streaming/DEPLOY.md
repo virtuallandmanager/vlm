@@ -3,7 +3,7 @@
 One always-on Fly machine runs RTMP ingest + FFmpeg → HLS. Two fixed DNS names point at it:
 
 - `rtmp://ingest.vlm.gg/live` — OBS "Server" (raw TCP 1935)
-- `https://live.vlm.gg/streams/<key>/playlist.m3u8` — playback (HTTPS, Fly certificate)
+- `https://live.vlm.gg/streams/<playbackId>/playlist.m3u8` — playback (HTTPS, Fly certificate). The playback id is public and is never the stream key (anyone holding the key can publish)
 
 Run every command from the **repo root**.
 

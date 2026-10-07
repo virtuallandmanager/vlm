@@ -10,7 +10,7 @@
  * mounted volume that's served by a CDN.
  */
 
-import { spawn, ChildProcess } from 'node:child_process'
+import { spawn as nodeSpawn, ChildProcess } from 'node:child_process'
 import { mkdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -39,8 +39,11 @@ export class Transcoder {
   private active: Map<string, ActiveTranscode> = new Map()
   private ffmpegPath: string
 
-  constructor(ffmpegPath?: string) {
+  private spawn: typeof nodeSpawn
+
+  constructor(ffmpegPath?: string, spawnFn: typeof nodeSpawn = nodeSpawn) {
     this.ffmpegPath = ffmpegPath || 'ffmpeg'
+    this.spawn = spawnFn
   }
 
   /**
@@ -60,7 +63,7 @@ export class Transcoder {
     const args = this.buildFFmpegArgs(options)
     console.log(`[transcoder] Starting FFmpeg for ${options.streamKey}`)
 
-    const proc = spawn(this.ffmpegPath, args, {
+    const proc = this.spawn(this.ffmpegPath, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
@@ -73,7 +76,8 @@ export class Transcoder {
 
     proc.on('exit', (code) => {
       console.log(`[transcoder] FFmpeg exited for ${options.streamKey} (code: ${code})`)
-      this.active.delete(options.streamKey)
+      // A stopped process can exit after a re-publish started a new one for the same key
+      if (this.active.get(options.streamKey)?.process === proc) this.active.delete(options.streamKey)
     })
 
     this.active.set(options.streamKey, {
