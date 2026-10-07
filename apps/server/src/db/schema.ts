@@ -753,7 +753,8 @@ export const streamingServers = pgTable('streaming_servers', {
   type: streamingServerTypeEnum('type').notNull().default('shared'),
   status: streamingServerStatusEnum('status').notNull().default('provisioning'),
   rtmpUrl: text('rtmp_url'), // e.g. rtmp://ingest.vlm.gg/live
-  streamKey: text('stream_key'), // unique key for this stream
+  streamKey: text('stream_key'), // unique key for this stream — secret: only the owner and the media server see it
+  playbackId: text('playback_id'), // public id (128-bit random) in the playback URL and HLS folder — never the stream key
   hlsPlaylistUrl: text('hls_playlist_url'), // e.g. https://cdn.vlm.gg/streams/{id}/playlist.m3u8
   region: text('region').default('us-east-1'),
   infrastructureId: text('infrastructure_id'), // ECS task ARN, Fly machine ID, etc.

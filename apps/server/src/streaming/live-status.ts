@@ -15,7 +15,7 @@ async function liveUrls(): Promise<Set<string>> {
 
 const mark = <E extends Record<string, unknown>>(v: E, live: Set<string>): E => {
   const src = normalizeUrl(v.liveSrc)
-  return src && live.has(src) ? { ...v, isLive: true } : v
+  return src && live.has(src) ? { ...v, isLive: true, liveSrc: src } : v
 }
 
 /** Serialized preset with `isLive: true` on videos whose liveSrc is a live VLM stream (no query when no video has a liveSrc). */

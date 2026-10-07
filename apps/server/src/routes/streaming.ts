@@ -22,6 +22,10 @@ import { requireFeature } from '../middleware/feature-gate.js'
 import { config } from '../config.js'
 import { publishStreamStatus } from '../realtime/bus.js'
 
+const hlsBaseUrl = () => process.env.HLS_BASE_URL || 'http://localhost:8000/streams'
+/** Public playback URL for a playback id (the stream key never appears in it: it is shown to every visitor). */
+const playlistUrlFor = (playbackId: string) => `${hlsBaseUrl()}/${playbackId}/playlist.m3u8`
+
 function safeEqual(a: string, b: string): boolean {
   const x = Buffer.from(a)
   const y = Buffer.from(b)
@@ -62,8 +66,8 @@ export default async function streamingRoutes(app: FastifyInstance) {
       }
 
       const streamKey = randomBytes(16).toString('hex')
+      const playbackId = randomBytes(16).toString('hex')
       const ingestUrl = process.env.RTMP_INGEST_URL || 'rtmp://localhost:1935/live'
-      const hlsBaseUrl = process.env.HLS_BASE_URL || 'http://localhost:8000/streams'
 
       const [server] = await db
         .insert(streamingServers)
@@ -74,7 +78,8 @@ export default async function streamingRoutes(app: FastifyInstance) {
           status: 'ready',
           rtmpUrl: `${ingestUrl}/${streamKey}`,
           streamKey,
-          hlsPlaylistUrl: `${hlsBaseUrl}/${streamKey}/playlist.m3u8`,
+          playbackId,
+          hlsPlaylistUrl: playlistUrlFor(playbackId),
           region: body.region || 'us-east-1',
           sceneId: body.sceneId || null,
         })
@@ -201,12 +206,22 @@ export default async function streamingRoutes(app: FastifyInstance) {
     const streamKey = (request.body as { streamKey?: unknown } | undefined)?.streamKey
     if (typeof streamKey !== 'string' || !streamKey) return reply.status(400).send({ error: 'streamKey is required' })
     const [row] = await db
-      .select({ id: streamingServers.id })
+      .select({ id: streamingServers.id, playbackId: streamingServers.playbackId })
       .from(streamingServers)
       .where(eq(streamingServers.streamKey, streamKey))
       .limit(1)
     if (!row) return reply.status(403).send({ error: 'unknown_key' })
-    return reply.send({ ok: true })
+    let playbackId = row.playbackId
+    if (!playbackId) {
+      // Streams provisioned before playback ids used the key in their public URL: move them off it
+      playbackId = randomBytes(16).toString('hex')
+      await db
+        .update(streamingServers)
+        .set({ playbackId, hlsPlaylistUrl: playlistUrlFor(playbackId) })
+        .where(eq(streamingServers.id, row.id))
+    }
+    // The media server writes HLS under the playback id
+    return reply.send({ ok: true, playbackId })
   })
 
   // ── Keys the API thinks are live (media server startup sweep) ─────────

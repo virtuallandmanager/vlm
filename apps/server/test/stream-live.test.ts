@@ -66,12 +66,15 @@ describe('stream live status in scene rooms', () => {
     const { scene, preset } = await createScene(host)
     const a = await video(preset.id, URL_A)
     const b = await video(preset.id, URL_B, 'Other')
+    const padded = await video(preset.id, ` ${URL_A}\n`, 'Padded')
     await webhook('ka', 'live')
     const c = await joinScene(gs.url, scene.id)
     const init = await c.waitFor('scene_preset_update')
     const byId = Object.fromEntries(init.scenePreset.videos.map((v: any) => [v.sk, v]))
     expect(byId[a.id].isLive).toBe(true)
     expect(byId[b.id].isLive).toBeUndefined()
+    // the client plays liveSrc as-is, so a padded URL is handed over trimmed
+    expect(byId[padded.id]).toMatchObject({ isLive: true, liveSrc: URL_A })
   })
 
   it('an upsert during a stream keeps isLive', async () => {

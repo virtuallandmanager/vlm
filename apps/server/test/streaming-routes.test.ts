@@ -38,13 +38,48 @@ describe('streaming routes', () => {
   it('authorize: known key 200, unknown 403, missing/wrong secret 401, no key 400', async () => {
     const owner = await createUser()
     await stream(owner.id)
-    expect((await media('POST', '/api/streaming/authorize', { streamKey: 'k1' })).json()).toEqual({ ok: true })
+    expect((await media('POST', '/api/streaming/authorize', { streamKey: 'k1' })).json()).toMatchObject({ ok: true })
     const unknown = await media('POST', '/api/streaming/authorize', { streamKey: 'nope' })
     expect(unknown.statusCode).toBe(403)
     expect(unknown.json()).toEqual({ error: 'unknown_key' })
     expect((await media('POST', '/api/streaming/authorize', { streamKey: 'k1' }, null)).statusCode).toBe(401)
     expect((await media('POST', '/api/streaming/authorize', { streamKey: 'k1' }, 'wrong')).statusCode).toBe(401)
     expect((await media('POST', '/api/streaming/authorize', {})).statusCode).toBe(400)
+  })
+
+  it('provisioned playback URLs never contain the stream key', async () => {
+    const owner = await createUser()
+    const prev = config.streamingEnabled
+    ;(config as any).streamingEnabled = true
+    try {
+      const res = await app.inject({
+        method: 'POST', url: '/api/streaming/provision',
+        headers: { authorization: `Bearer ${tokenFor(owner)}` }, payload: { name: 'Main' },
+      })
+      expect(res.statusCode).toBe(201)
+      const { server } = res.json()
+      expect(server.playbackId).toMatch(/^[0-9a-f]{32}$/)
+      expect(server.playbackId).not.toBe(server.streamKey)
+      expect(server.hlsPlaylistUrl).toMatch(new RegExp(`/${server.playbackId}/playlist\\.m3u8$`))
+      expect(server.hlsPlaylistUrl).not.toContain(server.streamKey)
+      const auth = await media('POST', '/api/streaming/authorize', { streamKey: server.streamKey })
+      expect(auth.json()).toEqual({ ok: true, playbackId: server.playbackId })
+    } finally {
+      ;(config as any).streamingEnabled = prev
+    }
+  })
+
+  it('a legacy stream (key in its playback URL) gets a playback id on authorize', async () => {
+    const owner = await createUser()
+    const row = await stream(owner.id) // no playbackId; URL contains k1
+    const auth = (await media('POST', '/api/streaming/authorize', { streamKey: 'k1' })).json()
+    expect(auth.playbackId).toMatch(/^[0-9a-f]{32}$/)
+    const after = await db.query.streamingServers.findFirst({ where: eq(streamingServers.id, row.id) })
+    expect(after!.playbackId).toBe(auth.playbackId)
+    expect(after!.hlsPlaylistUrl).not.toContain('k1')
+    expect(after!.hlsPlaylistUrl).toMatch(new RegExp(`/${auth.playbackId}/playlist\\.m3u8$`))
+    // stable on the next publish
+    expect((await media('POST', '/api/streaming/authorize', { streamKey: 'k1' })).json().playbackId).toBe(auth.playbackId)
   })
 
   it('a deleted stream key is no longer authorized', async () => {
@@ -77,6 +112,7 @@ describe('streaming routes', () => {
     const after = await db.query.streamingServers.findFirst({ where: eq(streamingServers.id, row.id) })
     expect(after!.status).toBe('live')
     expect(after!.hlsPlaylistUrl).toBe(PLAYLIST)
+    expect(PLAYLIST).toContain('k1') // legacy fixture row: URL untouched by the webhook
   })
 
   it('live-keys lists only live rows and needs the secret', async () => {
