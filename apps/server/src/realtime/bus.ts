@@ -45,3 +45,20 @@ export async function publishElementChanged(e: Omit<Extract<VenueEvent, { type: 
     console.error('[bus] element_changed publish failed:', err)
   }
 }
+
+/** Global topic: a stream went live/offline. Any scene may show it, so every scene room listens. */
+export const STREAMS_TOPIC = 'streams'
+export interface StreamStatusEvent {
+  type: 'stream_status'
+  playlistUrl: string
+  live: boolean
+}
+
+export async function publishStreamStatus(e: Omit<StreamStatusEvent, 'type'>): Promise<void> {
+  if (!presence) return
+  try {
+    await presence.publish(STREAMS_TOPIC, { type: 'stream_status', ...e })
+  } catch (err) {
+    console.error('[bus] stream_status publish failed:', err)
+  }
+}

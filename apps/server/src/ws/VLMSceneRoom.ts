@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 const _require = createRequire(import.meta.url)
 const { Room } = _require('colyseus') as any
 type Client = any
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   scenes,
@@ -21,7 +21,8 @@ import { verifySessionToken } from '../auth/tokens.js'
 import { actorFromClaims, type Actor } from '../auth/actor.js'
 import { getSceneAccess, isFullAccess, toVenueAccessMessage, type SceneAccess } from '../auth/permissions.js'
 import { authorizeSceneMessage, propertiesOf, type GuardResult, type GuardTarget } from './scene-guard.js'
-import { venueTopic, type VenueEvent } from '../realtime/bus.js'
+import { venueTopic, STREAMS_TOPIC, type VenueEvent, type StreamStatusEvent } from '../realtime/bus.js'
+import { normalizeUrl, withLiveStatus, withLiveVideo } from '../streaming/live-status.js'
 import type { VenueAccessMessage } from 'vlm-shared'
 
 interface JoinOptions {
@@ -47,6 +48,7 @@ export class VLMSceneRoom extends Room {
   private accessCache: Map<string, { access: SceneAccess; at: number }> = new Map()
   private lastAccess: Map<string, VenueAccessMessage> = new Map()
   private onVenueEventBound = (e: VenueEvent) => this.onVenueEvent(e)
+  private onStreamEventBound = (e: StreamStatusEvent) => this.onStreamEvent(e)
   /** Bumped on every venue event; lookups that started under an older generation must not be cached. */
   private accessGeneration = 0
   private static ACCESS_TTL_MS = 10_000
@@ -66,6 +68,7 @@ export class VLMSceneRoom extends Room {
     this.sceneId = options.sceneId || ''
     console.log(`[VLMSceneRoom] Created for scene ${this.sceneId} (active rooms: ${VLMSceneRoom.activeRoomCount})`)
     if (this.sceneId) this.presence.subscribe(venueTopic(this.sceneId), this.onVenueEventBound)
+    if (this.sceneId) this.presence.subscribe(STREAMS_TOPIC, this.onStreamEventBound)
 
     // ── Scene Preset Updates (create/update/delete elements) ──────────────
     this.guarded('scene_preset_update', async (client, message, result) => {
@@ -110,7 +113,7 @@ export class VLMSceneRoom extends Room {
           })
 
           if (preset) {
-            const serialized = serializePreset(preset)
+            const serialized = await withLiveStatus(serializePreset(preset))
             this.broadcast('scene_change_preset', {
               scenePreset: serialized,
               user: this.getClientMeta(client),
@@ -251,6 +254,7 @@ export class VLMSceneRoom extends Room {
     VLMSceneRoom.activeRoomCount--
     console.log(`[VLMSceneRoom] Disposed (scene: ${this.sceneId}, active rooms: ${VLMSceneRoom.activeRoomCount})`)
     if (this.sceneId) this.presence.unsubscribe(venueTopic(this.sceneId), this.onVenueEventBound)
+    if (this.sceneId) this.presence.unsubscribe(STREAMS_TOPIC, this.onStreamEventBound)
     this.clientMeta.clear()
     this.accessCache.clear()
     this.lastAccess.clear()
@@ -314,7 +318,7 @@ export class VLMSceneRoom extends Room {
           where: eq(scenePresets.id, e.presetId),
           with: { elements: { with: { instances: true } } },
         })
-        if (preset) this.broadcast('scene_change_preset', { scenePreset: serializePreset(preset), user: null })
+        if (preset) this.broadcast('scene_change_preset', { scenePreset: await withLiveStatus(serializePreset(preset)), user: null })
         return
       }
       this.accessGeneration++
@@ -348,8 +352,28 @@ export class VLMSceneRoom extends Room {
     this.broadcast('scene_preset_update', {
       action: 'upsert',
       element: element.type,
-      elementData: serializeSingleElement(element),
+      elementData: element.type === 'video' ? await withLiveVideo(serializeSingleElement(element)) : serializeSingleElement(element),
     })
+  }
+
+  /** A VLM stream went live/offline: tell clients about each active-preset screen that plays it. */
+  private async onStreamEvent(e: StreamStatusEvent) {
+    try {
+      if (e?.type !== 'stream_status') return
+      const presetId = await this.getActivePresetId()
+      if (!presetId) return
+      const url = normalizeUrl(e.playlistUrl)
+      const videos = await db
+        .select()
+        .from(sceneElements)
+        .where(and(eq(sceneElements.presetId, presetId), eq(sceneElements.type, 'video')))
+      for (const v of videos) {
+        if (normalizeUrl(serializeSingleElement(v).liveSrc) !== url) continue
+        this.broadcast('scene_video_status', { elementId: v.id, status: e.live ? 'live' : 'offline', url: e.playlistUrl })
+      }
+    } catch (err) {
+      console.error('[VLMSceneRoom] stream event failed:', err)
+    }
   }
 
   private getClientMeta(client: Client): ClientMeta | undefined {
@@ -409,7 +433,7 @@ export class VLMSceneRoom extends Room {
         return
       }
 
-      const serialized = serializePreset(preset)
+      const serialized = await withLiveStatus(serializePreset(preset))
 
       client.send('scene_preset_update', {
         action: 'init',

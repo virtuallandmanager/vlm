@@ -20,6 +20,7 @@ import {
 import { authenticate } from '../middleware/auth.js'
 import { requireFeature } from '../middleware/feature-gate.js'
 import { config } from '../config.js'
+import { publishStreamStatus } from '../realtime/bus.js'
 
 function safeEqual(a: string, b: string): boolean {
   const x = Buffer.from(a)
@@ -270,6 +271,7 @@ export default async function streamingRoutes(app: FastifyInstance) {
           streamKey: body.streamKey,
         }).catch(() => {})
       }
+      if (server.hlsPlaylistUrl) await publishStreamStatus({ playlistUrl: server.hlsPlaylistUrl, live: true })
     } else {
       // Stream went offline
       await db
@@ -304,6 +306,7 @@ export default async function streamingRoutes(app: FastifyInstance) {
           streamKey: body.streamKey,
         }).catch(() => {})
       }
+      if (server.hlsPlaylistUrl) await publishStreamStatus({ playlistUrl: server.hlsPlaylistUrl, live: false })
     }
 
     return reply.send({ ok: true })
