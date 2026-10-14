@@ -39,13 +39,13 @@ New `apps/server/src/routes/remote.ts`:
 - **`GET /api/remote/overview`** (token) → `{ scenes: [{ sceneId, name, role, parcels: string[] | null, world: string | null, visitorsNow, todayVisitors, todayPeak, streamLive, activePreset: { id, name } | null, hudActive, lastPanel }] }`.
   - Scenes: where the wallet's user is host (`scenes.ownerId`) or has an active `scene_roles` row.
   - `parcels`/`world` from the scene's active `location_setups` → analytics location.
-  - `visitorsNow`: connected clients in that scene's room via Colyseus `matchMaker.query`, excluding `source: 'wearable'` clients.
+  - `visitorsNow`: the room's `visitors` metadata (0 when no room is open).
   - `todayVisitors`/`todayPeak`: existing analytics tables (UTC day), respecting the host's tenure rules from the in-world setup spec.
   - `streamLive`: any stream on the scene currently live.
-  - `hudActive`: a `source: 'scene'` host client for this wallet is in the scene's room right now.
+  - `hudActive`: the wallet is in the room's `hudWallets` metadata.
   - Viewers: same row; the wearable treats them as stats-only.
-- **`PUT /api/remote/last-panel`** (token) `{ sceneId, panel }` — remembers the last open panel per wallet per scene (small table or a JSON column on the wallet's user).
-- **Room change (`VLMSceneRoom`):** `JoinOptions.source?: 'scene' | 'wearable'` (default `'scene'`). Stored in `clientMeta`. The room exposes a per-wallet "scene HUD connected" fact readable from the overview (room metadata via `setMetadata`, or a query of the room's clients). Wearable clients don't count as visitors.
+- **`PUT /api/remote/last-panel`** (token) `{ sceneId, panel }` — remembers the last open panel per user per scene in a new table `remote_panel_prefs` (`user_id`, `scene_id`, `panel`, `updated_at`; primary key `user_id, scene_id`).
+- **Room change (`VLMSceneRoom`):** `JoinOptions.source?: 'scene' | 'wearable'` (default `'scene'`). Stored in `clientMeta`. On every join and leave the room calls `setMetadata({ sceneId, visitors, hudWallets })`: `visitors` = clients whose source isn't `'wearable'`; `hudWallets` = lowercased wallets of `source: 'scene'` host clients. The overview reads both through `matchMaker.query`.
 - **Security fix bundled in:** `GET /api/command-center/:eventId/status` requires event ownership (or admin), matching the broadcast route.
 
 ## 5. Client
