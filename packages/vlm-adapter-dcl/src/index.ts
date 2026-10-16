@@ -1,4 +1,4 @@
-import { VLM, resolveApiUrl, analyticsUrlFor, handoffUrlFor } from 'vlm-core'
+import { VLM, resolveApiUrl, analyticsUrlFor, handoffUrlFor, dashboardOriginFor } from 'vlm-core'
 import { VLMHttpClient } from 'vlm-client'
 import type { SetupStatus, MediaLibraryAsset } from 'vlm-client'
 import type { VLMConnectionState } from 'vlm-core'
@@ -140,13 +140,20 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
 
   // Stats tab: signs the browser in as this wallet via a single-use hand-off code, created only on the press and never logged.
   // Any failure to create it (guest, unverified, rate limit, network) opens the plain dashboard link instead.
+  // When the dashboard origin can't be derived from the API URL, no code is minted: it would go to the vlm.gg fallback.
   const openAnalytics = (sceneId: string): void => {
     const apiUrl = resolveApiUrl(config ?? {})
     const next = `/analytics/?scene=${encodeURIComponent(sceneId)}`
     const swallow = () => {}
+    const openPlain = () => { void Promise.resolve(adapter.openUrl(analyticsUrlFor(apiUrl, sceneId))).catch(swallow) }
+    if (!dashboardOriginFor(apiUrl)) return openPlain()
     vlm.httpClient.createHandoff().then(
-      ({ code }) => { void Promise.resolve(adapter.openUrl(handoffUrlFor(apiUrl, code, next))).catch(swallow) },
-      () => { void Promise.resolve(adapter.openUrl(analyticsUrlFor(apiUrl, sceneId))).catch(swallow) },
+      ({ code }) => {
+        const url = handoffUrlFor(apiUrl, code, next)
+        if (!url) return openPlain()
+        void Promise.resolve(adapter.openUrl(url)).catch(swallow)
+      },
+      openPlain,
     )
   }
 

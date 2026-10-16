@@ -8,13 +8,17 @@ export interface HandoffDeps {
   go: (url: string) => void                      // window.location.href = url (full load so AuthProvider reads the session)
 }
 
-/** Strips the code from the URL before anything else, exchanges it once, then goes to `next` (signed in) or to sign-in with `next`. */
+/**
+ * Reads the code and `next` from the URL fragment only (fragments never reach a server, a log or a Referer),
+ * strips the fragment and query from the address bar (keeping the path) before anything else, exchanges the code once,
+ * then goes to `next` (signed in) or to sign-in with `next`. A `?code=` in the query string is never exchanged.
+ */
 export async function runHandoff(d: HandoffDeps): Promise<'signed-in' | 'fallback'> {
   const u = new URL(d.href)
-  const code = u.searchParams.get('code')
-  const next = safeNextPath(u.searchParams.get('next')) ?? '/analytics/'
-  u.searchParams.delete('code')
-  d.replaceUrl(u.pathname + (u.searchParams.toString() ? `?${u.searchParams}` : ''))
+  const frag = new URLSearchParams(u.hash.replace(/^#/, ''))
+  const code = frag.get('code')
+  const next = safeNextPath(frag.get('next')) ?? '/analytics/'
+  d.replaceUrl(u.pathname)
   if (code) {
     try {
       const r = await d.exchange(code)
