@@ -23,13 +23,10 @@ if (!url) {
   console.error('DATABASE_URL is not set')
   process.exit(2)
 }
-let host = ''
-try {
-  host = new URL(url).hostname
-} catch {}
-if (host !== 'localhost' && host !== '127.0.0.1') {
-  console.error('Refusing: seed is for a local database')
-  process.exit(1)
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+if (!UUID_RE.test(sceneId)) {
+  console.error('--scene must be a scene id (uuid)')
+  process.exit(2)
 }
 
 const LOCATION_KEY = 'gc:-150,-150'
@@ -37,7 +34,18 @@ const PARCELS = ['-150,-150', '-149,-150', '-150,-149', '-149,-149']
 const HOUR = 3_600_000
 const DAY = 24 * HOUR
 
+const DEMO_TITLE = 'Demo location (-150,-150)'
+
+// Guard on the host(s) the postgres client will really connect to (its URL parser differs from
+// WHATWG URL: a comma after the first "@" makes a multihost list). Creating the client does not connect.
+const authority = url.slice(url.indexOf('://') + 3).split(/[?/]/)[0]
 const sql = postgres(url, { max: 1, onnotice: () => {} })
+const LOCAL = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+const hosts = [].concat(sql.options.host ?? [])
+if (authority.includes(',') || authority.split('@').length > 2 || !hosts.length || sql.options.path || !hosts.every((h) => LOCAL.has(String(h).toLowerCase()))) {
+  console.error('Refusing: seed is for a local database')
+  process.exit(1)
+}
 
 // Deterministic-ish pseudo random so repeated seeds look alike.
 let seed = 20261016
@@ -62,22 +70,20 @@ try {
 
   const now = new Date()
   const result = await sql.begin(async (tx) => {
-    let [loc] = await tx`select id, salt from analytics_scenes where location_key = ${LOCATION_KEY}`
-    if (loc && reset) {
-      await tx`delete from analytics_scenes where id = ${loc.id}` // cascades to every analytics_* row and the setups
-      loc = undefined
+    const [existing] = await tx`select id, title from analytics_scenes where location_key = ${LOCATION_KEY}`
+    if (existing && existing.title !== DEMO_TITLE) {
+      throw new Error(`${LOCATION_KEY} already exists and is not demo data (title ${JSON.stringify(existing.title)}); not touching it`)
     }
-    if (!loc) {
+    if (existing && !reset) throw new Error(`${LOCATION_KEY} is already seeded (location ${existing.id}); re-run with --reset to delete and recreate it`)
+    if (existing) await tx`delete from analytics_scenes where id = ${existing.id}` // cascades to every analytics_* row and the setups
+    let loc
+    {
       ;[loc] = await tx`
         insert into analytics_scenes (kind, location_key, realm, base_parcel, parcels, title, salt, wallet_visibility, last_activity_at)
-        values ('parcels', ${LOCATION_KEY}, 'main', '-150,-150', ${PARCELS}, 'Demo location (-150,-150)', ${randomBytes(32).toString('hex')}, true, ${now})
+        values ('parcels', ${LOCATION_KEY}, 'main', '-150,-150', ${PARCELS}, ${DEMO_TITLE}, ${randomBytes(32).toString('hex')}, true, ${now})
         returning id, salt`
-    } else {
-      await tx`update analytics_scenes set last_activity_at = ${now} where id = ${loc.id}`
     }
-    const [setup] = await tx`select id from location_setups where analytics_scene_id = ${loc.id} and ended_at is null`
-    if (setup) await tx`update location_setups set vlm_scene_id = ${sceneId}, host_user_id = ${scene.owner_id} where id = ${setup.id}`
-    else await tx`insert into location_setups (analytics_scene_id, vlm_scene_id, host_user_id, started_at) values (${loc.id}, ${sceneId}, ${scene.owner_id}, ${new Date(now.getTime() - 31 * DAY)})`
+    await tx`insert into location_setups (analytics_scene_id, vlm_scene_id, host_user_id, started_at) values (${loc.id}, ${sceneId}, ${scene.owner_id}, ${new Date(now.getTime() - 31 * DAY)})`
     await tx`update analytics_scenes set vlm_scene_id = ${sceneId} where id = ${loc.id}`
 
     const hashOf = (id) => createHash('sha256').update(loc.salt + id).digest('hex')
@@ -123,7 +129,6 @@ try {
       })
     }
 
-    await tx`delete from analytics_sessions where scene_id = ${loc.id}`
     for (let i = 0; i < sessions.length; i += 100) {
       const rows = sessions.slice(i, i + 100).map((s) => ({
         id: s.id, scene_id: loc.id, visitor_hash: s.visitorHash, wallet: s.wallet, display_name: s.displayName,
@@ -170,7 +175,6 @@ try {
         interactions, video: {}, emotes: emoteMap, countries: ctry, platforms: plat, camera_modes: cam,
       })
     }
-    await tx`delete from analytics_rollup_hourly where scene_id = ${loc.id}`
     for (let i = 0; i < hourRows.length; i += 200) await tx`insert into analytics_rollup_hourly ${tx(hourRows.slice(i, i + 200).map((r) => ({
       ...r, interactions: tx.json(r.interactions), video: tx.json(r.video), emotes: tx.json(r.emotes),
       countries: tx.json(r.countries), platforms: tx.json(r.platforms), camera_modes: tx.json(r.camera_modes),
@@ -195,11 +199,9 @@ try {
       }
       for (const c of cells.values()) heat.push({ scene_id: loc.id, day, cell_x: c.x, cell_z: c.z, dwell_sec: c.dwell, visits: c.visits })
     }
-    await tx`delete from analytics_heatmap_daily where scene_id = ${loc.id}`
     for (let i = 0; i < heat.length; i += 500) await tx`insert into analytics_heatmap_daily ${tx(heat.slice(i, i + 500))}`
 
     // Three live sessions, one position each.
-    await tx`delete from analytics_positions where scene_id = ${loc.id}`
     const livePos = [[8.5, 9.5], [10.5, 7.5], [24.5, 22.5]]
     for (let i = 0; i < 3; i++) {
       const sid = randomUUID()
@@ -214,6 +216,11 @@ try {
   console.log(`  host scene ${sceneId} (owner ${scene.owner_id}), sessions ${result.sessions} (3 live), hourly rollups ${result.hours}, heatmap cells ${result.heatCells}`)
   console.log(`  open: /analytics/?location=${result.locationId}`)
   console.log('  note: live sessions count as "here now" for 60 s after seeding; re-run (with --reset) to refresh them')
+} catch (err) {
+  if (String(err?.message).includes(LOCATION_KEY)) {
+    console.error(err.message)
+    process.exitCode = 1
+  } else throw err
 } finally {
   await sql.end()
 }
