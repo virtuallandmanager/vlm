@@ -4,7 +4,7 @@ app = "vlm-streaming"
 primary_region = "iad"
 
 [build]
-  dockerfile = "apps/streaming/Dockerfile"
+  dockerfile = "Dockerfile"  # relative to this file; build context is the repo root
 
 [env]
   RTMP_PORT = "1935"
