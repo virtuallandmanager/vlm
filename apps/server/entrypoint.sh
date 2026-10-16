@@ -47,6 +47,12 @@ if [ -n "$DATABASE_URL" ]; then
         console.log('[vlm-server] new tables ensured');
       } catch(e) { console.log('[vlm-server] new tables:', e.message); }
 
+      // Hand-off codes (HUD Stats tab sign-in); matches authHandoffCodes in src/db/schema.ts
+      try {
+        await sql\`CREATE TABLE IF NOT EXISTS auth_handoff_codes (code_hash TEXT PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, wallet TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        console.log('[vlm-server] auth_handoff_codes table ensured');
+      } catch(e) { console.log('[vlm-server] auth_handoff_codes:', e.message); }
+
       // model enum value
       try {
         await sql\`ALTER TYPE element_type ADD VALUE IF NOT EXISTS 'model'\`;
