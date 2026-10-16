@@ -11,4 +11,12 @@ describe('safeNextPath', () => {
       expect(safeNextPath(bad as any)).toBeNull()
     }
   })
+  it('rejects dot-segment tricks that normalise to a protocol-relative path', () => {
+    for (const bad of ['/.//evil.com', '/a/..//evil.com', '/./\\evil.com']) {
+      expect(safeNextPath(bad)).toBeNull()
+    }
+  })
+  it('normalises harmless dot segments', () => {
+    expect(safeNextPath('/analytics/./?scene=x')).toBe('/analytics/?scene=x')
+  })
 })

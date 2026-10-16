@@ -5,7 +5,10 @@ export function safeNextPath(raw: string | null | undefined): string | null {
   try {
     const u = new URL(raw, 'https://vlm.invalid')
     if (u.origin !== 'https://vlm.invalid') return null
-    return u.pathname + u.search + u.hash
+    const out = u.pathname + u.search + u.hash
+    // URL parsing collapses dot segments (`/.//evil.com` -> `//evil.com`), so re-check the result.
+    if (out[0] !== '/' || out[1] === '/' || out[1] === '\\') return null
+    return out
   } catch {
     return null
   }
