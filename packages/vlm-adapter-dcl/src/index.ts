@@ -138,6 +138,18 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
     await hudInit
   }
 
+  // Stats tab: signs the browser in as this wallet via a single-use hand-off code, created only on the press and never logged.
+  // Any failure to create it (guest, unverified, rate limit, network) opens the plain dashboard link instead.
+  const openAnalytics = (sceneId: string): void => {
+    const apiUrl = resolveApiUrl(config ?? {})
+    const next = `/analytics/?scene=${encodeURIComponent(sceneId)}`
+    const swallow = () => {}
+    vlm.httpClient.createHandoff().then(
+      ({ code }) => { void Promise.resolve(adapter.openUrl(handoffUrlFor(apiUrl, code, next))).catch(swallow) },
+      () => { void Promise.resolve(adapter.openUrl(analyticsUrlFor(apiUrl, sceneId))).catch(swallow) },
+    )
+  }
+
   // If sceneId is provided, do the full init in one shot
   if (config?.sceneId) {
     ensureRenderer()
@@ -147,6 +159,10 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       if (renderer) {
         renderer.setCurrentScene(config.sceneId, 'Scene')
         await ensureHUD()
+        // Only the Stats tab is wired on this path; other actions (roles, media, retry) were never available here
+        setSceneActionHandler((action: string) => {
+          if (action === 'open_analytics') openAnalytics(config.sceneId!)
+        })
       }
 
       console.log('[VLM] Connected to scene:', config.sceneId)
@@ -284,16 +300,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       }
 
       setSceneActionHandler(async (action: string, data?: any) => {
-        if (action === 'open_analytics') {
-          const apiUrl = resolveApiUrl(config ?? {})
-          const next = `/analytics/?scene=${encodeURIComponent(sceneId)}`
-          // Signs the browser in as this wallet; any failure (guest, unverified, rate limit, network) opens the plain link
-          vlm.httpClient
-            .createHandoff()
-            .then(({ code }) => adapter.openUrl(handoffUrlFor(apiUrl, code, next)))
-            .catch(() => adapter.openUrl(analyticsUrlFor(apiUrl, sceneId)))
-          return
-        }
+        if (action === 'open_analytics') return openAnalytics(sceneId)
 
         if (action === 'retry') return reconnect(sceneId)
 
