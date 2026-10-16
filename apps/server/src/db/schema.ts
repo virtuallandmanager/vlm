@@ -1076,3 +1076,13 @@ export const walletChallenges = pgTable('wallet_challenges', {
   message: text('message').notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 })
+
+/** Single-use in-world sign-in hand-off codes (60 s). Only sha256(code) is stored, never the code. */
+export const authHandoffCodes = pgTable('auth_handoff_codes', {
+  codeHash: text('code_hash').primaryKey(), // sha256(code) hex; the code itself is never stored
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  wallet: text('wallet').notNull(), // lowercased verified wallet from the HUD's token
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})

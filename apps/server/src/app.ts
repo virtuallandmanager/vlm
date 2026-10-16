@@ -8,6 +8,7 @@ import { config } from './config.js'
 import { registerJwt } from './middleware/auth.js'
 import authRoutes from './routes/auth.js'
 import walletAuthRoutes from './routes/wallet-auth.js'
+import authHandoffRoutes from './routes/auth-handoff.js'
 import setupRoutes from './routes/setup.js'
 import { analyticsClaimSignedRoutes } from './routes/analytics-claims.js'
 import analyticsReadRoutes from './routes/analytics-read.js'
@@ -108,6 +109,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     })
     await scope.register(authRoutes)
     await scope.register(walletAuthRoutes)
+    await scope.register(authHandoffRoutes)
   })
   await app.register(sceneRoutes)
   await app.register(sceneRoleRoutes)
@@ -204,6 +206,10 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     await app.register(fastifyStatic, {
       root: dashboardPath,
       prefix: '/',
+      // The hand-off page URL carries a single-use sign-in code: never leak it via Referer.
+      setHeaders: (res, path) => {
+        if (path.includes('/auth/handoff')) res.setHeader('Referrer-Policy', 'no-referrer')
+      },
     })
 
     // ── Serve uploaded media files ─────────────────────────────────────────

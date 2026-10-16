@@ -9,6 +9,7 @@ import { actorFromClaims } from '../auth/actor.js'
 import { authenticate } from '../middleware/auth.js'
 import { linkWalletGrants } from '../auth/permissions.js'
 import { linkVerifiedWallet, resolveVerifiedWalletUser } from '../auth/wallet-users.js'
+import { issueWalletSession } from '../auth/sessions.js'
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
 const TTL_MS = 5 * 60_000
@@ -84,12 +85,7 @@ export default async function walletAuthRoutes(app: FastifyInstance) {
 
     const user = await resolveVerifiedWalletUser(recovered, `${recovered.slice(0, 6)}…${recovered.slice(-4)}`)
     await linkWalletGrants(user.id, recovered)
-    const claims = { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null, wallet: recovered, verified: true }
-    return reply.send({
-      user: { id: user.id, displayName: user.displayName, email: user.email, role: user.role },
-      accessToken: app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry }),
-      refreshToken: app.jwt.sign({ ...claims, refresh: true }, { expiresIn: config.jwtRefreshExpiry }),
-    })
+    return reply.send(issueWalletSession(app, user, recovered))
   })
 
   /** Verified wallets linked to the signed-in user (legacy unverified records are not shown). */
