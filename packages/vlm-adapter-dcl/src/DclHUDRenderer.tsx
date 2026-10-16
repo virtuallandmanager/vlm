@@ -601,8 +601,11 @@ function ConnectedBanner() {
 // Nav Bar (connected state)
 // ---------------------------------------------------------------------------
 
+// Action tab: opens the scene's analytics dashboard in the browser instead of switching panel
+const ACTION_STATS = '__stats'
+
 function NavBar() {
-  const panels: Array<{ type: HUDPanelType; label: string }> = [
+  const panels: Array<{ type: HUDPanelType | typeof ACTION_STATS; label: string }> = [
     { type: HUDPanelType.SCENE_LAYOUT, label: 'Layout' },
     { type: HUDPanelType.ASSET_BROWSER, label: 'Assets' },
     { type: HUDPanelType.EVENT_CONTROL, label: 'Events' },
@@ -612,7 +615,12 @@ function NavBar() {
   ]
   // Host and co-hosts manage who else can work on this setup
   const hasRoles = state.sceneRole === 'host' || state.sceneRole === 'cohost'
-  const tabs = hasRoles ? [...panels, { type: HUDPanelType.ROLES, label: 'Roles' }] : panels
+  const tabs: Array<{ type: HUDPanelType | typeof ACTION_STATS; label: string }> = [
+    ...panels,
+    ...(hasRoles ? [{ type: HUDPanelType.ROLES, label: 'Roles' }] : []),
+    // The HUD only renders the NavBar for connected role holders, so every role gets Stats
+    { type: ACTION_STATS, label: 'Stats' },
+  ]
 
   return (
     <UiEntity
@@ -631,6 +639,10 @@ function NavBar() {
           uiTransform={{ width: `${100 / tabs.length}%`, height: 36, justifyContent: 'center', alignItems: 'center' }}
           uiBackground={{ color: state.activePanel === p.type ? C.accent : C.transparent }}
           onMouseDown={() => {
+            if (p.type === ACTION_STATS) {
+              onSceneAction?.('open_analytics')
+              return
+            }
             state.activePanel = state.activePanel === p.type ? null : p.type
             const opened = state.activePanel === p.type
             state.confirmDelete = null
@@ -647,7 +659,7 @@ function NavBar() {
             }
           }}
         >
-          <Label value={p.label} fontSize={hasRoles ? 10 : 11} textWrap="nowrap" color={state.activePanel === p.type ? C.text : C.textDim}
+          <Label value={p.label} fontSize={tabs.length > 7 ? 10 : 11} textWrap="nowrap" color={state.activePanel === p.type ? C.text : C.textDim}
             uiTransform={{ width: '100%', height: 36 }} />
         </UiEntity>
       ))}

@@ -1,4 +1,4 @@
-import { VLM, resolveApiUrl } from 'vlm-core'
+import { VLM, resolveApiUrl, analyticsUrlFor, handoffUrlFor } from 'vlm-core'
 import { VLMHttpClient } from 'vlm-client'
 import type { SetupStatus, MediaLibraryAsset } from 'vlm-client'
 import type { VLMConnectionState } from 'vlm-core'
@@ -284,6 +284,17 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       }
 
       setSceneActionHandler(async (action: string, data?: any) => {
+        if (action === 'open_analytics') {
+          const apiUrl = resolveApiUrl(config ?? {})
+          const next = `/analytics/?scene=${encodeURIComponent(sceneId)}`
+          // Signs the browser in as this wallet; any failure (guest, unverified, rate limit, network) opens the plain link
+          vlm.httpClient
+            .createHandoff()
+            .then(({ code }) => adapter.openUrl(handoffUrlFor(apiUrl, code, next)))
+            .catch(() => adapter.openUrl(analyticsUrlFor(apiUrl, sceneId)))
+          return
+        }
+
         if (action === 'retry') return reconnect(sceneId)
 
         if (action.startsWith('roles_')) {

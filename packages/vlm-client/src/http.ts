@@ -208,6 +208,10 @@ export class VLMHttpClient {
     return this._fetch(`/api/scenes/${sceneId}/transfer-host`, { method: 'POST', body: JSON.stringify({ wallet }) })
   }
 
+  async createHandoff(): Promise<{ code: string; expiresAt: string }> {
+    return this._fetch('/api/auth/handoff', { method: 'POST', body: '{}' })
+  }
+
   async getScenes(): Promise<{ scenes: Scene[] }> {
     return this._fetch('/api/scenes')
   }
