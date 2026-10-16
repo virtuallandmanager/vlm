@@ -34,6 +34,13 @@ Hosts and anyone with an analytics role see their scene's analytics on vlm.gg, a
 - **Server changes (small):** `GET /api/analytics/locations` rows add `vlmSceneId`, `baseParcel`, `parcels`, `canManage` (true when the actor may PATCH). Nothing else in the read API changes.
 - **Sign-in return:** `/?next=<path>` — after sign-in go to `next` when it is a same-origin path starting with `/` (not `//`), else `/scenes`. Dashboard pages send signed-out users there with their URL.
 - **HUD:** an **Analytics** button for any role with `analytics.view` (host, co-host, editor, viewer) that opens `https://vlm.gg/analytics?scene=<sceneId>` (web base derived from the configured server: `api.vlm.gg` → `vlm.gg`; custom/self-hosted servers → the server's own origin + `/analytics?scene=`). Lives in the HUD toolbar next to the existing tabs.
+- **In-world sign-in hand-off (approved 2026-10-16):** the HUD's Analytics button signs the browser in as the same wallet, no browser login.
+  - `POST /api/auth/handoff` (HUD's verified-wallet bearer token from `POST /api/auth/platform`; unverified/guest → `401`) → `{ code, expiresAt }`. Code: 32 random bytes, base64url; stored hashed (SHA-256) in a new table `auth_handoff_codes` (`code_hash` pk, `user_id`, `wallet`, `expires_at` = now + 60 s, `used_at`). Rate-limited per user.
+  - The HUD opens `<web>/auth/handoff?code=<code>&next=<path>` (`next` = `/analytics?scene=<sceneId>`).
+  - The page immediately removes the code from the URL (`history.replaceState`), then `POST /api/auth/handoff/exchange { code }` → the same `{ accessToken, refreshToken, user }` a wallet sign-in returns, marked as a verified-wallet session. The exchange is atomic single use (`update … set used_at = now() where code_hash = $1 and used_at is null and expires_at > now() returning …`); used, expired or unknown → `410`, and the page falls back to normal sign-in with the same `next`.
+  - The page sends `Referrer-Policy: no-referrer` and never exchanges on server render (only the client POST), so link previewers can't consume it. Expired rows are purged by the existing analytics jobs' sweep or on insert.
+  - The session grants exactly what wallet sign-in grants — nothing more.
+  - If the hand-off call fails in the HUD, it opens the plain `/analytics?scene=` link instead.
 - **Old page:** the legacy-endpoint analytics page and its `api.ts` methods are removed; legacy server endpoints stay (old SDK clients).
 - **Time display:** charts and tables in the browser's local time; day buckets are UTC days and labelled as such.
 
@@ -49,6 +56,8 @@ Hosts and anyone with an analytics role see their scene's analytics on vlm.gg, a
 
 - Server (vitest, real Postgres): locations rows include `vlmSceneId`, `baseParcel`, `parcels`, `canManage` (host true, viewer false).
 - Web (vitest added to `apps/web`, pure functions only): range → `from`/`to`/`bucket`; `next` sanitising (accepts `/analytics/x`, rejects `//evil.com`, `https://…`, empty); parcel-map geometry (parcel list → bounds, cell → SVG rect, positions → dots, World with no parcels fits data); chart scales and tick choice; breakdown top-8 + Other; session visitor label.
+- Server: hand-off — verified token gets a code; unverified/guest 401; exchange returns a session for the same user; second exchange 410; expired 410; unknown 410; codes stored hashed.
+- Web: hand-off page strips the code before exchanging; 410 falls back to sign-in with `next`.
 - HUD: web URL derivation (`api.vlm.gg` → `vlm.gg`, localhost/custom → same origin).
 - Manual: run the web app against the local server with seeded analytics data; check every section, dark mode, phone width; press the HUD button in the test scene.
 
