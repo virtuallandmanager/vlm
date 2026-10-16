@@ -80,10 +80,11 @@ export function TimeSeriesChart({ points, series, bucket, from, to }: {
         role="img"
         aria-label={`${label} per ${bucket}${bucket === 'day' ? ' (UTC days)' : ''}, ${data.length} buckets, peak ${full(peak)}. Use arrow keys to read values.`}
         tabIndex={0}
-        className="block touch-none select-none outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+        className="block touch-pan-y select-none outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
         onPointerMove={pick}
         onPointerDown={pick}
         onPointerLeave={() => setHover(null)}
+        onPointerCancel={() => setHover(null)}
         onFocus={() => setHover((v) => v ?? (data.length ? data.length - 1 : null))}
         onBlur={() => setHover(null)}
         onKeyDown={key}
