@@ -161,17 +161,6 @@ export function useApi() {
     setAnalyticsWalletVisibility: (id: string, on: boolean) =>
       apiFetch<{ scene: { id: string; walletVisibility: boolean } }>(`/api/analytics/locations/${id}`, { method: 'PATCH', body: JSON.stringify({ walletVisibility: on }) }),
 
-    // Analytics (legacy, removed with the old page)
-    getSceneAnalyticsRecent: (sceneId: string) =>
-      apiFetch<{ visitors: number; actions: number; activeSessions: number; recentSessions: any[] }>(`/api/analytics/scenes/${sceneId}/recent`),
-    getSceneAnalyticsSessions: (sceneId: string, params?: { limit?: number; offset?: number }) => {
-      const query = new URLSearchParams()
-      if (params?.limit) query.set('limit', String(params.limit))
-      if (params?.offset) query.set('offset', String(params.offset))
-      const qs = query.toString()
-      return apiFetch<{ sessions: any[] }>(`/api/analytics/scenes/${sceneId}/sessions${qs ? `?${qs}` : ''}`)
-    },
-
     // Giveaways
     getGiveaways: () => apiFetch<{ giveaways: any[] }>('/api/giveaways'),
     getGiveaway: (id: string) => apiFetch<{ giveaway: any }>(`/api/giveaways/${id}`),
