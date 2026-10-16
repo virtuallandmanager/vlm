@@ -31,7 +31,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [user?.role])
 
   useEffect(() => {
-    if (!loading && !user) router.push('/')
+    if (!loading && !user) {
+      const here = window.location.pathname + window.location.search
+      router.push(`/?next=${encodeURIComponent(here)}`)
+    }
   }, [user, loading, router])
 
   if (loading) return <div className="flex h-screen items-center justify-center"><p>Loading...</p></div>

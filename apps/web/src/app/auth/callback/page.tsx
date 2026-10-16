@@ -1,5 +1,6 @@
 'use client'
 import { useSearchParams } from 'next/navigation'
+import { safeNextPath } from '@/lib/next-path'
 import { useEffect, useState, Suspense } from 'react'
 
 function CallbackHandler() {
@@ -29,7 +30,12 @@ function CallbackHandler() {
         JSON.stringify({ token, refresh, user }),
       )
 
-      window.location.href = '/scenes'
+      let dest = '/scenes'
+      try {
+        dest = safeNextPath(sessionStorage.getItem('vlm_next')) ?? '/scenes'
+        sessionStorage.removeItem('vlm_next')
+      } catch {}
+      window.location.href = dest
     } catch {
       setError('Invalid authentication token. Please try signing in again.')
     }

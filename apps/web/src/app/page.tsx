@@ -1,12 +1,18 @@
 'use client'
 import { getBrowserWallet, useAuth } from '@/lib/auth'
 import { API_URL } from '@/lib/config'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { safeNextPath } from '@/lib/next-path'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
 
-export default function Home() {
+function Home() {
   const { user, loading, login, register, loginWithWallet } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const dest = safeNextPath(searchParams.get('next')) ?? '/scenes'
+  const rememberNext = () => {
+    try { if (dest !== '/scenes') sessionStorage.setItem('vlm_next', dest) } catch {}
+  }
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -17,7 +23,7 @@ export default function Home() {
   const [providers, setProviders] = useState<{ google: boolean; discord: boolean }>({ google: false, discord: false })
 
   useEffect(() => {
-    if (!loading && user) router.push('/scenes')
+    if (!loading && user) router.push(dest)
   }, [user, loading, router])
 
   useEffect(() => {
@@ -38,7 +44,7 @@ export default function Home() {
       } else {
         await register(email, password, displayName)
       }
-      router.push('/scenes')
+      router.push(dest)
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -51,7 +57,7 @@ export default function Home() {
     setSubmitting(true)
     try {
       await loginWithWallet()
-      router.push('/scenes')
+      router.push(dest)
     } catch (err: any) {
       // 4001 = the user closed or rejected the wallet prompt
       setError(err?.code === 4001 ? 'Wallet sign-in cancelled' : err.message)
@@ -108,13 +114,13 @@ export default function Home() {
                 </button>
               )}
               {providers.google && (
-                <a href={`${API_URL}/api/auth/google`}
+                <a href={`${API_URL}/api/auth/google`} onClick={rememberNext}
                   className="block w-full rounded-lg bg-white py-2 text-center font-medium text-gray-900 hover:bg-gray-100">
                   Continue with Google
                 </a>
               )}
               {providers.discord && (
-                <a href={`${API_URL}/api/auth/discord`}
+                <a href={`${API_URL}/api/auth/discord`} onClick={rememberNext}
                   className="block w-full rounded-lg bg-[#5865F2] py-2 text-center font-medium text-white hover:bg-[#4752C4]">
                   Continue with Discord
                 </a>
@@ -132,5 +138,13 @@ export default function Home() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center"><p>Loading...</p></div>}>
+      <Home />
+    </Suspense>
   )
 }
