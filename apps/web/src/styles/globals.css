@@ -1,1 +1,26 @@
 @import "tailwindcss";
+
+/*
+ * Analytics chart tokens. The site is dark-only today, so these dark values live on :root;
+ * a light theme overrides the same names later. Validated with the dataviz palette checker
+ * against the card surface (bg-gray-900, #101828).
+ */
+:root {
+  --chart-surface: #101828;   /* bg-gray-900 card */
+  --chart-1: #3987e5;         /* series / bars (blue, dark step) */
+  --chart-2: #d95926;         /* live positions (orange, dark step) */
+  --chart-area-opacity: 0.12;
+  --chart-grid: #1e2939;      /* hairline gridlines (gray-800) */
+  --chart-axis: #364153;      /* baseline (gray-700) */
+  --chart-tile: #1e2939;      /* parcel tile outline */
+  --chart-text: #f3f4f6;      /* primary ink (gray-100) */
+  --chart-text-muted: #99a1af; /* axis labels (gray-400) */
+  --chart-crosshair: #6a7282; /* hover hairline (gray-500) */
+  /* 6-step sequential heat ramp, low -> high (blue 600 -> 100); low end clears 2:1 on the surface */
+  --heat-0: #184f95;
+  --heat-1: #256abf;
+  --heat-2: #3987e5;
+  --heat-3: #6da7ec;
+  --heat-4: #9ec5f4;
+  --heat-5: #cde2fb;
+}
