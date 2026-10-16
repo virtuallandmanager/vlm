@@ -16,6 +16,8 @@ export interface AnalyticsAccess {
   since?: Date
   /** Only data before this instant (an ended tenure). */
   until?: Date
+  /** The VLM scene of the tenure that granted read access. */
+  vlmSceneId?: string
 }
 
 const NONE = (scene: AnalyticsAccess['scene']): AnalyticsAccess => ({ canRead: false, canManage: false, canDelete: false, scene })
@@ -24,7 +26,7 @@ const NONE = (scene: AnalyticsAccess['scene']): AnalyticsAccess => ({ canRead: f
 export async function getAnalyticsAccess(actor: Actor, analyticsSceneId: string, now = new Date()): Promise<AnalyticsAccess> {
   const scene = (await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.id, analyticsSceneId) })) ?? null
   if (!scene || !actor.userId || !actor.verified) return NONE(scene)
-  if (actor.role === 'admin') return { canRead: true, canManage: true, canDelete: true, scene }
+  if (actor.role === 'admin') return { canRead: true, canManage: true, canDelete: true, scene, vlmSceneId: scene.vlmSceneId ?? undefined }
 
   let active = (await db.query.locationSetups.findFirst({ where: and(eq(locationSetups.analyticsSceneId, scene.id), isNull(locationSetups.endedAt)) })) ?? null
   // Ingest recorded a different live deployment than the setup's: check for a foreign redeploy here too,
@@ -40,7 +42,7 @@ export async function getAnalyticsAccess(actor: Actor, analyticsSceneId: string,
   if (active) {
     const access = await getSceneAccess(actor, active.vlmSceneId, now)
     if (hasScope(access, 'analytics.view')) {
-      return { canRead: true, canManage: isFullAccess(access), canDelete: isHostAccess(access), scene, since: active.startedAt }
+      return { canRead: true, canManage: isFullAccess(access), canDelete: isHostAccess(access), scene, since: active.startedAt, vlmSceneId: active.vlmSceneId }
     }
   }
   const ended = await db.query.locationSetups.findMany({
@@ -49,7 +51,7 @@ export async function getAnalyticsAccess(actor: Actor, analyticsSceneId: string,
   })
   for (const s of ended) {
     const access = await getSceneAccess(actor, s.vlmSceneId, now)
-    if (hasScope(access, 'analytics.view')) return { canRead: true, canManage: false, canDelete: false, scene, since: s.startedAt, until: s.endedAt! }
+    if (hasScope(access, 'analytics.view')) return { canRead: true, canManage: false, canDelete: false, scene, since: s.startedAt, until: s.endedAt!, vlmSceneId: s.vlmSceneId }
   }
   return NONE(scene)
 }

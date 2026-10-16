@@ -119,13 +119,13 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
       candidate = inArray(analyticsScenes.id, db.select({ id: locationSetups.analyticsSceneId }).from(locationSetups).where(inArray(locationSetups.vlmSceneId, reachable)))
     }
     const all = await db.select().from(analyticsScenes).where(candidate)
-    const readable: Array<{ s: typeof analyticsScenes.$inferSelect; since?: Date; until?: Date }> = []
+    const readable: Array<{ s: typeof analyticsScenes.$inferSelect; since?: Date; until?: Date; vlmSceneId?: string; canManage: boolean }> = []
     for (const s of all) {
       const access = await getAnalyticsAccess(actor, s.id)
-      if (access.canRead) readable.push({ s, since: access.since, until: access.until })
+      if (access.canRead) readable.push({ s, since: access.since, until: access.until, vlmSceneId: access.vlmSceneId, canManage: access.canManage })
     }
     return reply.send({
-      scenes: readable.map(({ s, since, until }) => ({
+      scenes: readable.map(({ s, since, until, vlmSceneId, canManage }) => ({
         id: s.id,
         locationKey: s.locationKey,
         kind: s.kind,
@@ -134,6 +134,10 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
         verifiedSessionShare: s.verifiedSessionShare,
         since: since ?? null,
         until: until ?? null,
+        vlmSceneId: vlmSceneId ?? null,
+        baseParcel: s.baseParcel,
+        parcels: s.parcels,
+        canManage,
       })),
     })
   })

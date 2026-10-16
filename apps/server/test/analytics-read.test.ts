@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { analyticsEvents, analyticsHeatmapDaily, analyticsPositions, analyticsRollupHourly, analyticsScenes, analyticsSessions, analyticsCopresenceDaily } from '../src/db/schema.js'
+import { analyticsEvents, analyticsHeatmapDaily, analyticsPositions, analyticsRollupHourly, analyticsScenes, analyticsSessions, analyticsCopresenceDaily, sceneRoles } from '../src/db/schema.js'
 import { visitorHash } from '../src/analytics/hash.js'
 import { setDeleteMyDataLimiter } from '../src/routes/analytics-read.js'
 import { TokenBucketLimiter } from '../src/analytics/limiter.js'
 import { resetDb } from './helpers/db.js'
-import { testApp, createUser, createScene, tokenFor } from './helpers/factories.js'
+import { testApp, createUser, randomWallet, createScene, tokenFor } from './helpers/factories.js'
 import { createAnalyticsScene, insertSession } from './helpers/analytics.js'
 import { createSetup } from './helpers/setups.js'
 
@@ -151,6 +151,27 @@ describe('analytics read API', () => {
     }
   })
 
+  it('locations rows carry the tenure scene id, parcels and whether the reader may manage', async () => {
+    const owner = await createUser()
+    const { scene } = await createScene(owner)
+    const s = await createAnalyticsScene({ baseParcel: '10,20', parcels: ['10,20', '11,20'] })
+    await createSetup(s.id, scene.id)
+    const [row] = (await get(owner, '/api/analytics/locations')).json().scenes
+    expect(row).toMatchObject({ id: s.id, vlmSceneId: scene.id, baseParcel: '10,20', parcels: ['10,20', '11,20'], canManage: true })
+  })
+
+  it('a viewer role reads the location but may not manage it', async () => {
+    const owner = await createUser()
+    const { scene } = await createScene(owner)
+    const s = await createAnalyticsScene()
+    await createSetup(s.id, scene.id)
+    const wallet = randomWallet()
+    const viewer = await createUser({ wallet })
+    await db.insert(sceneRoles).values({ sceneId: scene.id, walletAddress: wallet, userId: viewer.id, role: 'viewer', grantedByUserId: owner.id })
+    const [row] = (await get(viewer, '/api/analytics/locations')).json().scenes
+    expect(row).toMatchObject({ id: s.id, vlmSceneId: scene.id, canManage: false })
+  })
+
   it("an ended tenure's host only sees data from inside that tenure, and live is empty", async () => {
     const owner = await createUser()
     const lapsedAt = new Date(Date.now() - 2 * 86400_000)
@@ -188,6 +209,8 @@ describe('analytics read API', () => {
     const sessions = (await get(owner, `/api/analytics/locations/${s.id}/sessions`)).json().sessions
     expect(sessions).toHaveLength(1)
     expect(new Date(sessions[0].startedAt).getTime()).toBe(before.getTime())
+    const [row] = (await get(owner, '/api/analytics/locations')).json().scenes
+    expect(row).toMatchObject({ id: s.id, vlmSceneId: scene.id, canManage: false })
   })
 
   it('delete-my-data removes the visitor everywhere using each scene salt', async () => {
