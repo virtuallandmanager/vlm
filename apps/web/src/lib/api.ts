@@ -2,6 +2,7 @@
 import { useCallback } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
+import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
 /** Read a File as base64 (no `data:…;base64,` prefix) for JSON upload bodies. */
 export function fileToBase64(file: File): Promise<string> {
@@ -51,7 +52,7 @@ export function useApi() {
     if (!res.ok) {
       // Non-JSON error bodies (proxy pages, e.g. a 413 from the edge) become `HTTP <status>`.
       const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
-      throw new Error(err.error || `API error ${res.status}`)
+      throw Object.assign(new Error(err.error || `API error ${res.status}`), { status: res.status })
     }
     if (res.status === 204) return undefined as T
     return res.json()
@@ -143,7 +144,24 @@ export function useApi() {
     createApiKey: (name: string, scopes?: string[]) => apiFetch<{ key: string; apiKey: any }>('/api/keys', { method: 'POST', body: JSON.stringify({ name, scopes }) }),
     deleteApiKey: (keyId: string) => apiFetch(`/api/keys/${keyId}`, { method: 'DELETE' }),
 
-    // Analytics
+    // Analytics (locations)
+    getAnalyticsLocations: () => apiFetch<{ scenes: AnalyticsLocation[] }>('/api/analytics/locations'),
+    getAnalyticsSummary: (id: string, q: AnalyticsRangeQuery) =>
+      apiFetch<AnalyticsSummary>(`/api/analytics/locations/${id}/summary?${new URLSearchParams({ ...q })}`),
+    getAnalyticsTimeseries: (id: string, q: AnalyticsRangeQuery & { bucket: 'hour' | 'day' }) =>
+      apiFetch<{ points: TimeseriesPoint[] }>(`/api/analytics/locations/${id}/timeseries?${new URLSearchParams({ ...q })}`),
+    getAnalyticsLive: (id: string) => apiFetch<LiveData>(`/api/analytics/locations/${id}/live`),
+    getAnalyticsHeatmap: (id: string, q: AnalyticsRangeQuery) =>
+      apiFetch<{ cells: HeatCell[] }>(`/api/analytics/locations/${id}/heatmap?${new URLSearchParams({ ...q })}`),
+    getAnalyticsSessions: (id: string, cursor?: string) => {
+      const query = new URLSearchParams({ limit: '50' })
+      if (cursor) query.set('cursor', cursor)
+      return apiFetch<{ sessions: AnalyticsSession[]; nextCursor: string | null }>(`/api/analytics/locations/${id}/sessions?${query}`)
+    },
+    setAnalyticsWalletVisibility: (id: string, on: boolean) =>
+      apiFetch<{ scene: { id: string; walletVisibility: boolean } }>(`/api/analytics/locations/${id}`, { method: 'PATCH', body: JSON.stringify({ walletVisibility: on }) }),
+
+    // Analytics (legacy, removed with the old page)
     getSceneAnalyticsRecent: (sceneId: string) =>
       apiFetch<{ visitors: number; actions: number; activeSessions: number; recentSessions: any[] }>(`/api/analytics/scenes/${sceneId}/recent`),
     getSceneAnalyticsSessions: (sceneId: string, params?: { limit?: number; offset?: number }) => {
