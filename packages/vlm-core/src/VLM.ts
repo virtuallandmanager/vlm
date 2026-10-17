@@ -117,6 +117,8 @@ export class VLM {
     const apiUrl = resolveApiUrl(config)
     this.wssUrl = config.wssUrl || WSS_URLS[env] || WSS_URLS.prod
     this.http = new VLMHttpClient(apiUrl)
+    // A previous sign-in's binding must never outlive a new attempt (failed or not).
+    this._binding = null
 
     this.setState('authenticating')
 
