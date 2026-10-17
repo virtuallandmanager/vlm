@@ -30,4 +30,4 @@ Charts and counts update hourly; **Here now** refreshes every 15 seconds. Times 
 The host, co-hosts, editors and viewers of a scene can all open its dashboard and see every section. Only the host and co-hosts can change wallet visibility; turning it off also clears the stored wallets and names. Anyone else sees a notice that they don't have access.
 
 ### Signing in from the HUD
-**Stats** signs your browser in with a scene pass, so only that scene's analytics opens. A banner reads "Signed in from your scene's name — sign in for full access". Any other page asks for a full sign-in. See [Scene pass and scene library](/security/scene-pass/).
+**Stats** signs your browser in with a scene pass, so only that scene's analytics opens. A banner reads "Signed in from <scene name> — sign in for full access". Any other page asks for a full sign-in. See [Scene pass and scene library](/security/scene-pass/).
