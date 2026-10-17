@@ -27,6 +27,16 @@ export interface MediaLibraryAsset {
   sizeBytes: number
 }
 
+/** One file in a scene's library (`GET /api/scenes/:sceneId/library`). */
+export type SceneLibraryItem = {
+  id: string
+  kind: 'media' | 'model'
+  name: string
+  contentType: string | null
+  url: string
+  sizeBytes: number
+}
+
 export class VLMHttpClient {
   private baseUrl: string
   public auth: VLMAuth
@@ -230,6 +240,29 @@ export class VLMHttpClient {
   // Media library
   async getMedia(): Promise<{ assets: MediaLibraryAsset[] }> {
     return this._fetch('/api/media')
+  }
+
+  // Scene library (works with an in-world scene pass, unlike /api/media)
+  async getSceneLibrary(sceneId: string): Promise<{ items: SceneLibraryItem[] }> {
+    return this._fetch(`/api/scenes/${encodeURIComponent(sceneId)}/library`)
+  }
+
+  async uploadToSceneLibrary(
+    sceneId: string,
+    file: { filename: string; contentType: string; data: string },
+  ): Promise<{ item: SceneLibraryItem }> {
+    return this._fetch(`/api/scenes/${encodeURIComponent(sceneId)}/library/upload`, {
+      method: 'POST',
+      body: JSON.stringify(file),
+    })
+  }
+
+  /** Companion upload token; the server requires `sceneId` (and scene.edit) for scene passes. */
+  async createUploadToken(sceneId: string, opts: { maxUploads?: number; expiresInMinutes?: number } = {}): Promise<{ token: any }> {
+    return this._fetch('/api/upload-tokens', {
+      method: 'POST',
+      body: JSON.stringify({ sceneId, maxUploads: 10, expiresInMinutes: 30, ...opts }),
+    })
   }
 
   // Elements

@@ -1,6 +1,6 @@
 import { VLM, resolveApiUrl, analyticsUrlFor, handoffUrlFor, dashboardOriginFor } from 'vlm-core'
 import { VLMHttpClient } from 'vlm-client'
-import type { SetupStatus, MediaLibraryAsset } from 'vlm-client'
+import type { SetupStatus, SceneLibraryItem } from 'vlm-client'
 import type { VLMConnectionState } from 'vlm-core'
 import { engine, Transform } from '@dcl/sdk/ecs'
 import { DclAdapter } from './DclAdapter'
@@ -47,10 +47,11 @@ const PLACEABLE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 
 const LAYOUT_TYPES = new Set(['image', 'video', 'model', 'sound'])
 
 /** Images (rendered live) and GLBs (rendered after `npx vlm-dcl sync` + redeploy) can be placed from the HUD. */
-function mediaKind(a: MediaLibraryAsset): 'image' | 'model' | null {
-  if (!a.publicUrl) return null
-  if (PLACEABLE_IMAGE_TYPES.has(a.contentType)) return 'image'
-  if (a.contentType === 'model/gltf-binary' || /\.glb$/i.test(a.filename)) return 'model'
+function mediaKind(a: SceneLibraryItem): 'image' | 'model' | null {
+  if (!a.url) return null
+  if (a.kind === 'model') return 'model'
+  if (a.contentType && PLACEABLE_IMAGE_TYPES.has(a.contentType)) return 'image'
+  if (a.contentType === 'model/gltf-binary' || /\.glb$/i.test(a.name)) return 'model'
   return null
 }
 
@@ -231,12 +232,14 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
     // Scene actions once connected: 'retry' for everyone; roles management for host and co-hosts;
     // placing media and showing / hiding / deleting elements for host, co-hosts and editors
     // (the server enforces the same; the scene room's upsert/delete broadcast renders the result)
-    const installConnectedHandler = (sceneId: string, role: SceneRole) => {
+    const installConnectedHandler = (configuredSceneId: string, role: SceneRole) => {
+      // A scene pass is only valid for the scene the server bound it to; prefer that over the configured id
+      const sceneId = vlm.binding?.sceneId ?? configuredSceneId
       let currentRole: SceneRole = role
       const managesRoles = () => currentRole === 'host' || currentRole === 'cohost'
       const edits = () => currentRole !== 'viewer'
       let busy = false
-      let media: MediaLibraryAsset[] = []
+      let media: SceneLibraryItem[] = []
       let layout: HUDLayoutItem[] = []
 
       const refresh = async () => {
@@ -249,12 +252,12 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         }
       }
       const refreshMedia = async () => {
-        const { assets } = await vlm.httpClient.getMedia()
-        media = assets
+        const { items } = await vlm.httpClient.getSceneLibrary(sceneId)
+        media = items
         renderer?.setMedia(
-          assets.flatMap((a): HUDMediaItem[] => {
+          items.flatMap((a): HUDMediaItem[] => {
             const kind = mediaKind(a)
-            return kind ? [{ id: a.id, name: a.filename, kind }] : []
+            return kind ? [{ id: a.id, name: a.name, kind }] : []
           }),
         )
       }
@@ -275,7 +278,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         }
         const kind = asset ? mediaKind(asset) : null
         if (!asset || !kind) {
-          renderer?.setEditMessage('That file is no longer in your media library', true)
+          renderer?.setEditMessage('That file is no longer in the scene library', true)
           return
         }
         const scene = (await vlm.httpClient.getScene(sceneId)).scene
@@ -286,9 +289,9 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         const where = placementInFrontOfPlayer(kind)
         const { element } = await vlm.httpClient.createElement(scene.activePresetId, {
           type: kind,
-          name: asset.filename,
+          name: asset.name,
           enabled: true,
-          properties: kind === 'image' ? { textureSrc: asset.publicUrl } : { modelSrc: asset.publicUrl },
+          properties: kind === 'image' ? { textureSrc: asset.url } : { modelSrc: asset.url },
         })
         try {
           await vlm.httpClient.createInstance(element.id, { ...where, enabled: true })
@@ -301,8 +304,8 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         renderer?.setLayout(layout)
         renderer?.setEditMessage(
           kind === 'image'
-            ? `Placed ${asset.filename}`
-            : `Placed ${asset.filename} — run npx vlm-dcl sync and redeploy to see it`,
+            ? `Placed ${asset.name}`
+            : `Placed ${asset.name} — run npx vlm-dcl sync and redeploy to see it`,
         )
       }
 

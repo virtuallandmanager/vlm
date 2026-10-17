@@ -17,6 +17,47 @@ describe('VLMHttpClient media + element calls', () => {
     expect(call(fetchMock)[1].method ?? 'GET').toBe('GET')
   })
 
+  it('getSceneLibrary GETs the scene library with the bearer header and returns items', async () => {
+    const items = [{ id: 'l1', kind: 'media', name: 'cat.png', contentType: 'image/png', url: 'https://cdn.vlm.gg/s1/cat.png', sizeBytes: 5 }]
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ items }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new VLMHttpClient('https://api.example')
+    client.auth.setTokens('tok123', 'ref')
+    const res = await client.getSceneLibrary('s1')
+    expect(res.items).toEqual(items)
+    expect(call(fetchMock)[0]).toBe('https://api.example/api/scenes/s1/library')
+    expect((call(fetchMock)[1].headers as Record<string, string>).Authorization).toBe('Bearer tok123')
+  })
+
+  it('uploadToSceneLibrary POSTs filename, contentType and base64 data', async () => {
+    const item = { id: 'l2', kind: 'media', name: 'a.png', contentType: 'image/png', url: 'u', sizeBytes: 3 }
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ item }), { status: 201 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new VLMHttpClient('https://api.example')
+    const res = await client.uploadToSceneLibrary('s1', { filename: 'a.png', contentType: 'image/png', data: 'AAEC' })
+    expect(res.item).toEqual(item)
+    expect(call(fetchMock)[0]).toBe('https://api.example/api/scenes/s1/library/upload')
+    expect(call(fetchMock)[1].method).toBe('POST')
+    expect(JSON.parse(call(fetchMock)[1].body as string)).toEqual({ filename: 'a.png', contentType: 'image/png', data: 'AAEC' })
+  })
+
+  it('createUploadToken sends the sceneId', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ token: { code: 'c' } }), { status: 201 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new VLMHttpClient('https://api.example')
+    await client.createUploadToken('s1')
+    expect(call(fetchMock)[0]).toBe('https://api.example/api/upload-tokens')
+    expect(JSON.parse(call(fetchMock)[1].body as string).sceneId).toBe('s1')
+  })
+
+  it('authenticateWithPlatform returns the scene binding from the response', async () => {
+    const body = { accessToken: 'a', refreshToken: 'r', user: { id: 'u', role: 'user' }, scene: { sceneId: 's1', locationId: 'l1' } }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })))
+    const client = new VLMHttpClient('https://api.example')
+    const res = await client.authenticateWithPlatform({} as any, {})
+    expect(res.scene).toEqual({ sceneId: 's1', locationId: 'l1' })
+  })
+
   it('createElement POSTs type, name and properties to the preset', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ element: { id: 'e1' } }), { status: 201 }))
     vi.stubGlobal('fetch', fetchMock)

@@ -78,20 +78,14 @@ export class AssetBrowserPanel {
    * Returns a short URL and code that can be displayed as a QR code or short link.
    * The operator scans the QR on their phone to upload assets without leaving the world.
    */
-  async requestUploadToken(sceneId?: string): Promise<{
+  async requestUploadToken(sceneId: string): Promise<{
     code: string
     uploadUrl: string
     expiresAt: string
   } | null> {
     try {
-      const result = await (this.http as any)._fetch('/api/upload-tokens', {
-        method: 'POST',
-        body: JSON.stringify({
-          sceneId,
-          maxUploads: 10,
-          expiresInMinutes: 30,
-        }),
-      }) as any
+      // sceneId is required by the server (a scene pass is refused without it)
+      const result = await this.http.createUploadToken(sceneId) as any
       return result?.token || null
     } catch {
       return null

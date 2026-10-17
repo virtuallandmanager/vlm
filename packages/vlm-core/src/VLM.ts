@@ -61,6 +61,7 @@ export class VLM {
     this.sceneManager = new SceneManager(adapter, this.storage, this.events)
   }
 
+  private _binding: { sceneId: string | null; locationId: string | null } | null = null
   private analytics: import('./analytics/collector.js').Collector | null = null
 
   get connectionState(): VLMConnectionState { return this._connectionState }
@@ -68,6 +69,8 @@ export class VLM {
   get user(): typeof this._user { return this._user }
   get scenes(): Scene[] { return this._scenes }
   get httpClient(): VLMHttpClient { return this.http }
+  /** The scene the server bound this sign-in to (in-world scene pass), or null when unbound / not signed in. */
+  get binding(): { sceneId: string | null; locationId: string | null } | null { return this._binding }
 
   onStateChange(listener: VLMStateListener): () => void {
     this.stateListeners.add(listener)
@@ -134,6 +137,7 @@ export class VLM {
       }, this.adapter)
 
       this._user = authResponse.user as any
+      this._binding = authResponse.scene ?? null
       this.setState('authenticated', { user: this._user as any })
     } catch (err) {
       this.setState('error', { error: String(err) })
