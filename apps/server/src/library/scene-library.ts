@@ -1,6 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { assetLibraryItems, bookings, mediaAssets, sceneLibrary, systemFlags } from '../db/schema.js'
+import { assetLibraryItems, bookings, mediaAssets, sceneLibrary, scenes, systemFlags } from '../db/schema.js'
+import type { Actor } from '../auth/actor.js'
+import { getSceneAccess, hasScope } from '../auth/permissions.js'
 
 export interface LibraryItem {
   id: string
@@ -103,4 +105,24 @@ export async function runStartupBackfill(): Promise<number | null> {
     await db.delete(systemFlags).where(eq(systemFlags.key, BACKFILL_FLAG))
     throw err
   }
+}
+
+/**
+ * Where an actor's upload to a scene's library is stored. null = not allowed.
+ * - Active booking grant (getSceneAccess only returns level 'grant' while the booking is confirmed/live and
+ *   inside its window) holding a media-feeding scope (screens, playlist or audio, the scopes that govern
+ *   the rented image/video/sound elements): the renter's own account, linked to the booking.
+ * - Otherwise scene.edit (owner, org, co-host, editor, admin): the scene owner's account, no booking.
+ */
+const MEDIA_SCOPES = ['screens', 'playlist', 'audio'] as const
+
+export async function uploadDestination(actor: Actor, sceneId: string): Promise<{ ownerId: string; bookingId: string | null } | null> {
+  const access = await getSceneAccess(actor, sceneId)
+  if (access.level === 'grant') {
+    if (access.booking && MEDIA_SCOPES.some((s) => hasScope(access, s))) return { ownerId: actor.userId!, bookingId: access.booking.bookingId }
+    return null
+  }
+  if (!hasScope(access, 'scene.edit')) return null
+  const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId), columns: { ownerId: true } })
+  return scene ? { ownerId: scene.ownerId, bookingId: null } : null
 }

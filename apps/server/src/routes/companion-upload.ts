@@ -18,6 +18,7 @@ import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess, hasScope } from '../auth/permissions.js'
 import { fromBody } from '../auth/scene-from.js'
+import { linkToScene, uploadDestination } from '../library/scene-library.js'
 import { createStorage } from '../storage/index.js'
 
 /** Generate a short alphanumeric code (6 chars, easy to type on mobile). */
@@ -155,6 +156,12 @@ export default async function companionUploadRoutes(app: FastifyInstance) {
         uploadedBy: token.userId,
       })
       .returning()
+
+    // Link to the token's scene when its user may upload there (the code is the auth, so re-check the user's access)
+    if (token.sceneId) {
+      const dest = await uploadDestination(actorFromClaims({ id: token.userId, role: 'user', verified: true, kind: 'account' } as any), token.sceneId)
+      if (dest) await linkToScene(token.sceneId, { assetItemId: asset.id }, token.userId, dest.bookingId)
+    }
 
     // Increment upload count
     await db

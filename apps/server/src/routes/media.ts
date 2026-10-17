@@ -1,13 +1,10 @@
 import type { FastifyInstance } from 'fastify'
-import { eq, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { mediaAssets } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
-import { config } from '../config.js'
-import { getSubscription } from '../integrations/stripe.js'
 import { createStorage } from '../storage/index.js'
-import { randomUUID } from 'crypto'
-import { classifyUpload, extensionFor } from '../storage/upload-policy.js'
+import { storeMedia, StoreMediaError } from '../media/store.js'
 
 const storage = createStorage()
 
@@ -25,49 +22,13 @@ export default async function mediaRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: 'filename, contentType, and data (base64) are required' })
       }
 
-      const buffer = Buffer.from(data, 'base64')
-
-      const verdict = classifyUpload(filename, contentType, buffer.length)
-      if (!verdict.ok) return reply.status(verdict.status).send({ error: verdict.error })
-      const storedType = verdict.contentType
-
-      // Enforce storage quota based on subscription tier (skip in self-hosted mode)
-      if (!config.allFeaturesUnlocked) {
-        const sub = await getSubscription(request.user.id)
-        const storageLimit = sub.limits.storageBytes
-
-        const [{ usedBytes }] = await db
-          .select({ usedBytes: sql<number>`coalesce(sum(${mediaAssets.sizeBytes}), 0)::int` })
-          .from(mediaAssets)
-          .where(eq(mediaAssets.ownerId, request.user.id))
-
-        if (usedBytes + buffer.length > storageLimit) {
-          return reply.status(403).send({
-            error: 'storage_limit_reached',
-            message: `Your ${sub.tier} plan allows up to ${Math.round(storageLimit / 1024 / 1024)} MB of storage. This upload would exceed your quota.`,
-            currentUsageBytes: usedBytes,
-            uploadSizeBytes: buffer.length,
-            limitBytes: storageLimit,
-            tier: sub.tier,
-          })
-        }
+      try {
+        const asset = await storeMedia(request.user.id, { filename, contentType, data: Buffer.from(data, 'base64') })
+        return reply.status(201).send({ asset })
+      } catch (e) {
+        if (e instanceof StoreMediaError) return reply.status(e.status).send(e.body)
+        throw e
       }
-
-      const ext = extensionFor(storedType)
-      const key = `${request.user.id}/${randomUUID()}.${ext}`
-
-      const publicUrl = await storage.upload(key, buffer, storedType)
-
-      const [asset] = await db.insert(mediaAssets).values({
-        ownerId: request.user.id,
-        filename,
-        contentType: storedType,
-        sizeBytes: buffer.length,
-        storageKey: key,
-        publicUrl,
-      }).returning()
-
-      return reply.status(201).send({ asset })
     },
   )
 

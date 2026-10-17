@@ -6,7 +6,8 @@ import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess } from '../auth/permissions.js'
 import { fromParam } from '../auth/scene-from.js'
-import { linkToScene, listSceneLibrary } from '../library/scene-library.js'
+import { linkToScene, listSceneLibrary, uploadDestination } from '../library/scene-library.js'
+import { storeMedia, StoreMediaError } from '../media/store.js'
 
 export default async function sceneLibraryRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)
@@ -40,4 +41,25 @@ export default async function sceneLibraryRoutes(app: FastifyInstance) {
     await db.delete(sceneLibrary).where(eq(sceneLibrary.id, id))
     return reply.status(204).send()
   })
+
+  app.post<{ Params: { sceneId: string }; Body: { filename?: string; contentType?: string; data?: string } }>(
+    '/api/scenes/:sceneId/library/upload',
+    { config: { scenePass: { sceneFrom: fromParam('sceneId') } } },
+    async (request, reply) => {
+      const { sceneId } = request.params
+      const { filename, contentType, data } = request.body ?? {}
+      if (!filename || !contentType || !data) return reply.status(400).send({ error: 'filename, contentType and data are required' })
+      const dest = await uploadDestination(actorFromClaims(request.user), sceneId)
+      if (!dest) return reply.status(403).send({ error: 'forbidden' })
+      try {
+        const m = await storeMedia(dest.ownerId, { filename, contentType, data: Buffer.from(data, 'base64') }, { quotaStatus: 413, quotaMessage: dest.bookingId ? undefined : "The scene owner's storage is full" })
+        await linkToScene(sceneId, { mediaAssetId: m.id }, request.user.id, dest.bookingId)
+        const item = (await listSceneLibrary(sceneId)).find((i) => i.url === m.publicUrl)
+        return reply.status(201).send({ item })
+      } catch (e) {
+        if (e instanceof StoreMediaError) return reply.status(e.status).send(e.body)
+        throw e
+      }
+    },
+  )
 }
