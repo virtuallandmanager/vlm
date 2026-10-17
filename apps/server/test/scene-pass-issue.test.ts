@@ -27,10 +27,10 @@ vi.mock('../src/auth/scene-binding.js', async (orig) => {
 
 describe('platform sign-in → scene pass', () => {
   let app: Awaited<ReturnType<typeof testApp>>
-  // Never reach the real catalyst list from tests. The official directory shows bafyA live at 10,20.
+  // Never reach the real catalyst list from tests. The official directory shows bafyA live at 10,20, deployed by W.
   beforeEach(async () => {
     h.calls.length = 0; h.bindFails = false
-    const dir = new FakeDclDirectory(); dir.addScene({ entityId: 'bafyA', base: '10,20', parcels: ['10,20'] }); setDclDirectory(dir)
+    const dir = new FakeDclDirectory(); dir.addScene({ entityId: 'bafyA', base: '10,20', parcels: ['10,20'] }, W); setDclDirectory(dir)
     await resetDb(); app = await testApp()
   })
   afterEach(async () => { setDclDirectory(null); await app.close() })

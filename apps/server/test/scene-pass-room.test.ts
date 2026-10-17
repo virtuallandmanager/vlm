@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { Client } from 'colyseus.js'
 import { resetDb } from './helpers/db.js'
-import { createUser, createScene, tokenFor } from './helpers/factories.js'
+import { createUser, createScene, createElement, tokenFor } from './helpers/factories.js'
 import { startGameServer, joinScene, serverRoom } from './helpers/game-server.js'
 
 const actorsIn = (roomId: string) => serverRoom(roomId).clients.map((c: any) => c.auth)
@@ -40,5 +40,59 @@ describe('scene pass in rooms', () => {
     const room = await new Client(gs.url).joinById(first.room.roomId, { sceneId: a.scene.id, sessionToken: token, clientType: 'analytics' })
     expect(actorsIn(first.room.roomId).at(-1).userId).toBeNull()
     room.leave(); first.room.leave()
+  })
+
+  describe('pass expiry', () => {
+    const update = (id: string) => ({ action: 'update', element: 'video', elementData: { sk: id, liveSrc: 'https://x/live.m3u8' } })
+    async function joined() {
+      const owner = await createUser()
+      const { scene, preset } = await createScene(owner, 'A')
+      const screen = await createElement(preset.id)
+      const pass = () => tokenFor(owner, { kind: 'scene', sceneId: scene.id, orgId: null })
+      const c = await joinScene(gs.url, scene.id, pass())
+      await c.waitFor('scene_preset_update') // init
+      const srv = serverRoom(c.room.roomId)
+      const sessionId = c.room.sessionId
+      const expire = () => { srv.passExpiry.set(sessionId, Date.now() - 1); srv.accessCache.clear() }
+      return { owner, scene, screen, c, pass, expire }
+    }
+
+    it('after the pass expires the connection acts as an anonymous visitor', async () => {
+      const { screen, c, expire } = await joined()
+      c.room.send('scene_preset_update', update(screen.id))
+      await c.waitFor('scene_preset_update_ack')
+      expire()
+      c.room.send('scene_preset_update', update(screen.id))
+      expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+      c.room.leave()
+    })
+
+    it('auth_renew with a fresh pass for the same user and scene restores access', async () => {
+      const { screen, c, pass, expire } = await joined()
+      expire()
+      c.room.send('auth_renew', { sessionToken: pass() })
+      await c.waitFor('auth_renew_ack')
+      c.room.send('scene_preset_update', update(screen.id))
+      await c.waitFor('scene_preset_update_ack')
+      c.room.leave()
+    })
+
+    it('auth_renew refuses another user, another scene, a visitor pass or an account token', async () => {
+      const { owner, scene, c, expire } = await joined()
+      expire()
+      const other = await createUser()
+      const b = await createScene(owner, 'B')
+      for (const sessionToken of [
+        tokenFor(other, { kind: 'scene', sceneId: scene.id, orgId: null }),
+        tokenFor(owner, { kind: 'scene', sceneId: b.scene.id, orgId: null }),
+        tokenFor(owner, { kind: 'scene', sceneId: null, orgId: null }),
+        tokenFor(owner),
+        'garbage',
+      ]) {
+        c.room.send('auth_renew', { sessionToken })
+        expect((await c.waitFor('vlm_error')).code).toBe('auth_renew_refused')
+      }
+      c.room.leave()
+    })
   })
 })

@@ -146,6 +146,29 @@ describe('in-world sign-in hand-off', () => {
     expect(ex.json().scene).toEqual({ sceneId: scene.id, locationId: null })
   })
 
+  it('hand-off never renews a pass: chained exchanges keep the first pass\'s expiry', async () => {
+    const u = await createUser({ wallet: '0x00000000000000000000000000000000000000c3' })
+    const { scene } = await createScene(u)
+    let token = app.jwt.sign({ id: u.id, email: null, role: u.role, orgId: null, wallet: u.wallet, verified: true, kind: 'scene', sceneId: scene.id, locationId: null }, { expiresIn: '2m' })
+    const firstExp = (app.jwt.decode(token) as { exp: number }).exp
+    for (let i = 0; i < 3; i++) {
+      const { code } = (await app.inject({ method: 'POST', url: '/api/auth/handoff', headers: { authorization: `Bearer ${token}` } })).json()
+      const ex = await app.inject({ method: 'POST', url: '/api/auth/handoff/exchange', payload: { code } })
+      expect(ex.statusCode).toBe(200)
+      token = ex.json().accessToken
+      expect((app.jwt.decode(token) as { exp: number }).exp).toBeLessThanOrEqual(firstExp)
+    }
+  })
+
+  it('a scene code whose pass has expired is refused at exchange', async () => {
+    const u = await createUser({ wallet: '0x00000000000000000000000000000000000000c4' })
+    const { scene } = await createScene(u)
+    const t = tokenFor(u, { kind: 'scene', sceneId: scene.id, locationId: null, orgId: null })
+    const { code } = (await app.inject({ method: 'POST', url: '/api/auth/handoff', headers: { authorization: `Bearer ${t}` } })).json()
+    await db.update(authHandoffCodes).set({ passExpiresAt: new Date(Date.now() - 1000) })
+    expect((await app.inject({ method: 'POST', url: '/api/auth/handoff/exchange', payload: { code } })).statusCode).toBe(410)
+  })
+
   it('a visitor pass cannot mint a hand-off code', async () => {
     const u = await createUser({ wallet: '0x00000000000000000000000000000000000000c2' })
     const t = tokenFor(u, { kind: 'scene', sceneId: null, orgId: null })

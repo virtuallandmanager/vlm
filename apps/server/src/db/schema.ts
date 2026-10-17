@@ -1087,6 +1087,7 @@ export const authHandoffCodes = pgTable('auth_handoff_codes', {
   kind: text('kind').notNull().default('account'), // 'account' | 'scene' — what the exchange issues
   sceneId: uuid('scene_id').references(() => scenes.id, { onDelete: 'cascade' }),
   locationId: uuid('location_id').references(() => analyticsScenes.id, { onDelete: 'cascade' }),
+  passExpiresAt: timestamp('pass_expires_at', { withTimezone: true }), // scene codes: the minting pass's expiry, kept by the exchanged pass
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

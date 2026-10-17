@@ -17,10 +17,10 @@ const ctx = (o: Partial<{ sceneId: string; parcel: string; serverName: string; h
   isGuest: false,
 })
 
-/** The official directory shows this scene deployed (no setup has recorded it). */
-function live(scene: { entityId: string; base: string; parcels: string[] }) {
+/** The official directory shows this scene deployed by `deployer` (no setup has recorded it). */
+function live(scene: { entityId: string; base: string; parcels: string[] }, deployer: string) {
   const dir = new FakeDclDirectory()
-  dir.addScene(scene)
+  dir.addScene(scene, deployer)
   setDclDirectory(dir)
 }
 
@@ -38,26 +38,27 @@ describe('scene binding', () => {
     const { scene } = await createScene(owner)
     const loc = await createAnalyticsScene({ locationKey: 'gc:10,20', baseParcel: '10,20', parcels: ['10,20', '10,21'], activeEntityId: 'bafyA' } as any)
     await createSetup(loc.id, scene.id)
-    live({ entityId: 'bafyA', base: '10,20', parcels: ['10,20', '10,21'] })
+    live({ entityId: 'bafyA', base: '10,20', parcels: ['10,20', '10,21'] }, owner.wallet!)
     expect(await bindSceneRequest(ctx(), owner.wallet!)).toEqual({ locationId: loc.id, sceneId: scene.id })
   })
 
   it('finds the location by any of its parcels when the base key misses', async () => {
-    const owner = await createUser()
+    const owner = await createUser({ wallet: '0x00000000000000000000000000000000000000a2' })
     const { scene } = await createScene(owner)
     const loc = await createAnalyticsScene({ locationKey: 'gc:10,19', baseParcel: '10,19', parcels: ['10,19', '10,20'] } as any)
     await createSetup(loc.id, scene.id)
-    live({ entityId: 'bafyA', base: '10,19', parcels: ['10,19', '10,20'] })
+    live({ entityId: 'bafyA', base: '10,19', parcels: ['10,19', '10,20'] }, owner.wallet!)
     expect((await bindSceneRequest(ctx(), '0xa')).sceneId).toBe(scene.id)
   })
 
   it('binds a World by name', async () => {
-    const owner = await createUser()
+    const owner = await createUser({ wallet: '0x00000000000000000000000000000000000000a3' })
     const { scene } = await createScene(owner)
     const loc = await createAnalyticsScene({ kind: 'world', locationKey: 'world:myworld.dcl.eth', worldName: 'myworld.dcl.eth', baseParcel: '0,0', parcels: ['0,0'] } as any)
     await createSetup(loc.id, scene.id)
     const dir = new FakeDclDirectory()
     dir.worlds.set('myworld.dcl.eth', { sceneUrns: ['urn:decentraland:entity:bafyA'] })
+    dir.worldOwners.set('myworld.dcl.eth', owner.wallet!)
     setDclDirectory(dir)
     expect((await bindSceneRequest(ctx({ serverName: 'myworld.dcl.eth', parcel: '0,0', hostname: 'worlds-content-server.decentraland.org/world/myworld.dcl.eth' }), '0xa')).sceneId).toBe(scene.id)
   })
@@ -80,7 +81,7 @@ describe('scene binding', () => {
 
   describe('official realms only (an attacker-run realm must not claim a victim location)', () => {
     async function victimGc() {
-      const owner = await createUser()
+      const owner = await createUser({ wallet: '0x00000000000000000000000000000000000000b1' })
       const { scene } = await createScene(owner)
       const loc = await createAnalyticsScene({ locationKey: 'gc:10,20', baseParcel: '10,20', parcels: ['10,20'], activeEntityId: 'bafyVictim' } as any)
       const setup = await createSetup(loc.id, scene.id)
@@ -179,11 +180,27 @@ describe('scene binding', () => {
         expect(await bindSceneRequest(ctx({ hostname: 'realm-provider.decentraland.org', sceneId: 'bafyVictim' }), '0xa')).toEqual({ locationId: loc.id, sceneId: null })
       })
 
-      it('signed entity is the live deployment → bound, and nothing is recorded', async () => {
+      it('signed entity is the live deployment by the team → bound, and the deployment is recorded', async () => {
         const { scene, loc } = await unrecordedGc()
         expect(await bindSceneRequest(ctx({ hostname: 'realm-provider.decentraland.org', sceneId: 'bafyVictim' }), '0xa')).toEqual({ locationId: loc.id, sceneId: scene.id })
         const row = await db.query.locationSetups.findFirst({ where: eq(locationSetups.analyticsSceneId, loc.id) })
-        expect(row?.deploymentEntityId).toBeNull()
+        expect(row?.deploymentEntityId).toBe('bafyVictim')
+      })
+
+      it('live deployment by an outsider → visitor, and the setup is released', async () => {
+        const { loc, dir } = await unrecordedGc()
+        dir.addScene({ entityId: 'bafyOutsider', base: '10,20', parcels: ['10,20'] }, '0x00000000000000000000000000000000000000ee')
+        expect(await bindSceneRequest(ctx({ hostname: 'realm-provider.decentraland.org', sceneId: 'bafyOutsider' }), '0xa')).toEqual({ locationId: loc.id, sceneId: null })
+        const row = await db.query.locationSetups.findFirst({ where: eq(locationSetups.analyticsSceneId, loc.id) })
+        expect(row?.endedAt).not.toBeNull()
+      })
+
+      it('live deployer unknown → visitor, setup kept unrecorded', async () => {
+        const { loc, dir } = await unrecordedGc()
+        dir.deployers.clear()
+        expect(await bindSceneRequest(ctx({ hostname: 'realm-provider.decentraland.org', sceneId: 'bafyVictim' }), '0xa')).toEqual({ locationId: loc.id, sceneId: null })
+        const row = await db.query.locationSetups.findFirst({ where: eq(locationSetups.analyticsSceneId, loc.id) })
+        expect(row).toMatchObject({ endedAt: null, deploymentEntityId: null })
       })
     })
 

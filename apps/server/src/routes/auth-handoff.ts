@@ -52,6 +52,8 @@ export default async function authHandoffRoutes(app: FastifyInstance) {
         kind: isScenePass(request.user) ? 'scene' : 'account',
         sceneId: request.user.sceneId ?? null,
         locationId: request.user.locationId ?? null,
+        // A code must not renew a pass: the exchanged pass expires when this one does.
+        passExpiresAt: isScenePass(request.user) ? new Date(((request.user as { exp?: number }).exp ?? 0) * 1000) : null,
       })
     })
     return reply.send({ code, expiresAt: expiresAt.toISOString() })
@@ -69,14 +71,15 @@ export default async function authHandoffRoutes(app: FastifyInstance) {
       .update(authHandoffCodes)
       .set({ usedAt: sql`now()` })
       .where(and(eq(authHandoffCodes.codeHash, hashCode(code)), isNull(authHandoffCodes.usedAt), gt(authHandoffCodes.expiresAt, sql`now()`)))
-      .returning({ userId: authHandoffCodes.userId, wallet: authHandoffCodes.wallet, kind: authHandoffCodes.kind, sceneId: authHandoffCodes.sceneId, locationId: authHandoffCodes.locationId })
+      .returning({ userId: authHandoffCodes.userId, wallet: authHandoffCodes.wallet, kind: authHandoffCodes.kind, sceneId: authHandoffCodes.sceneId, locationId: authHandoffCodes.locationId, passExpiresAt: authHandoffCodes.passExpiresAt })
     if (!claimed) return reply.status(410).send(EXPIRED)
 
     const user = await db.query.users.findFirst({ where: eq(users.id, claimed.userId) })
     if (!user) return reply.status(410).send(EXPIRED)
     // A pass-minted code carries the same pass (same scene, same location) — never an account session.
     if (claimed.kind === 'scene') {
-      return reply.send(issueScenePass(app, user, claimed.wallet, { sceneId: claimed.sceneId, locationId: claimed.locationId }))
+      if (!claimed.passExpiresAt || claimed.passExpiresAt.getTime() <= Date.now()) return reply.status(410).send(EXPIRED)
+      return reply.send(issueScenePass(app, user, claimed.wallet, { sceneId: claimed.sceneId, locationId: claimed.locationId }, claimed.passExpiresAt))
     }
     await linkWalletGrants(user.id, claimed.wallet)
     return reply.send(issueWalletSession(app, user, claimed.wallet))

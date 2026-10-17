@@ -52,6 +52,8 @@ export class VLMSceneRoom extends Room {
   /** Bumped on every venue event; lookups that started under an older generation must not be cached. */
   private accessGeneration = 0
   private static ACCESS_TTL_MS = 10_000
+  /** Scene passes only: when the client's pass expires (ms). After that it acts as an anonymous visitor until renewed. */
+  private passExpiry: Map<string, number> = new Map()
 
   async onAuth(_client: Client, options: JoinOptions): Promise<Actor> {
     const claims = verifySessionToken(options?.sessionToken)
@@ -59,6 +61,7 @@ export class VLMSceneRoom extends Room {
     // Compare against the room's own scene (set in onCreate from the creating client's options, which
     // runs before the first onAuth) — never a joining client's options.sceneId, which joinById can fake.
     if (claims?.kind === 'scene' && (!claims.sceneId || claims.sceneId !== this.sceneId)) return ANONYMOUS
+    if (claims?.kind === 'scene') this.passExpiry.set(_client.sessionId, ((claims as { exp?: number }).exp ?? 0) * 1000)
     return actorFromClaims(claims)
   }
 
@@ -74,6 +77,21 @@ export class VLMSceneRoom extends Room {
     console.log(`[VLMSceneRoom] Created for scene ${this.sceneId} (active rooms: ${VLMSceneRoom.activeRoomCount})`)
     if (this.sceneId) this.presence.subscribe(venueTopic(this.sceneId), this.onVenueEventBound)
     if (this.sceneId) this.presence.subscribe(STREAMS_TOPIC, this.onStreamEventBound)
+
+    // ── Scene pass renewal: a fresh pass for the same user and this scene extends the session ──
+    this.onMessage('auth_renew', (client: Client, message: any) => {
+      const claims = verifySessionToken(message?.sessionToken)
+      const actor = client.auth as Actor
+      const ok =
+        claims?.kind === 'scene' && claims.sceneId === this.sceneId && !!actor?.userId && claims.id === actor.userId && this.passExpiry.has(client.sessionId)
+      if (!ok) {
+        client.send('vlm_error', { code: 'auth_renew_refused', messageType: 'auth_renew' })
+        return
+      }
+      this.passExpiry.set(client.sessionId, ((claims as { exp?: number }).exp ?? 0) * 1000)
+      this.accessCache.delete(client.sessionId)
+      client.send('auth_renew_ack', {})
+    })
 
     // ── Scene Preset Updates (create/update/delete elements) ──────────────
     this.guarded('scene_preset_update', async (client, message, result) => {
@@ -251,6 +269,7 @@ export class VLMSceneRoom extends Room {
     }
 
     this.clientMeta.delete(client.sessionId)
+    this.passExpiry.delete(client.sessionId)
     this.accessCache.delete(client.sessionId)
     this.lastAccess.delete(client.sessionId)
   }
@@ -268,6 +287,8 @@ export class VLMSceneRoom extends Room {
   // ── Internal Helpers ──────────────────────────────────────────────────
 
   private async getAccess(client: Client): Promise<SceneAccess> {
+    const passExp = this.passExpiry.get(client.sessionId)
+    if (passExp !== undefined && Date.now() >= passExp) return this.lookupAccess(ANONYMOUS)
     const cached = this.accessCache.get(client.sessionId)
     if (cached && Date.now() - cached.at < VLMSceneRoom.ACCESS_TTL_MS) return cached.access
     const generation = this.accessGeneration
