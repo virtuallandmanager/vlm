@@ -21,6 +21,7 @@ export default function HandoffPage() {
         }).then(async (r) => ({ status: r.status, body: r.ok ? await r.json() : undefined })),
       saveSession: (s) => localStorage.setItem('vlm_auth', JSON.stringify(s)),
       go: (u) => { window.location.href = u },
+      storedSession: () => localStorage.getItem('vlm_auth'),
     })
   }, [])
 
