@@ -108,8 +108,9 @@ export class VLM {
     return this.connectToScene(this._sceneId)
   }
 
-  /** Renew the 15 min scene pass a little before it expires, while this sign-in is current. */
+  /** Renew the 15 min scene pass a little before it expires, while this sign-in is current; retry soon after a failure. */
   private static RENEW_MS = 10 * 60_000
+  private static RENEW_RETRY_MS = 30_000
   /** Frame system checking the clock (platforms have no timers here); null when nothing is scheduled. */
   private renewSystem: ((dt: number) => void) | null = null
 
@@ -127,11 +128,10 @@ export class VLM {
       world: this.adapter.capabilities.platformName,
       location: sceneInfo as unknown as Record<string, unknown>,
       environment: environment as unknown as Record<string, unknown>,
-    }, this.adapter, { signedOnly: renew })
+    }, this.adapter, renew ? { signedOnly: true, keepSceneId: this._binding?.sceneId ?? undefined } : {})
 
     // A sign-in on a replaced client (authenticate() ran again) must not overwrite the newer one.
     if (http !== this.http) return
-    const before = this._binding?.sceneId ?? null
     this._user = authResponse.user as any
     this._binding = authResponse.scene ?? null
     if (!renew) return
@@ -139,10 +139,9 @@ export class VLM {
     try {
       if (this.colyseus.getRoom()) this.colyseus.send('auth_renew', { sessionToken: http.auth.token })
     } catch {}
-    if ((this._binding?.sceneId ?? null) !== before) this.events.emit('binding_changed', this._binding)
   }
 
-  /** Re-sign the pass (signed request only). Shared with the HTTP client's 401 retry. */
+  /** Re-sign the pass: signed request only, and only a pass for the same scene replaces it (see the HTTP client's keepSceneId). */
   private renewPass(http: VLMHttpClient, config: VLMInitConfig): Promise<void> {
     return this.signInWithPlatform(http, config, true)
   }
@@ -155,10 +154,11 @@ export class VLM {
       if (busy || Date.now() < due) return
       if (http !== this.http || !this.binding?.sceneId) return this.stopRenewal()
       busy = true
-      // A failure keeps the current pass; the next try (or a 401) signs again.
-      void this.renewPass(http, config)
-        .catch(() => {})
-        .finally(() => { busy = false; due = Date.now() + VLM.RENEW_MS })
+      // Shared with the 401 retry. A failure keeps the current pass and tries again shortly.
+      void http.renewSession().then(
+        () => { due = Date.now() + VLM.RENEW_MS },
+        () => { due = Date.now() + VLM.RENEW_RETRY_MS },
+      ).finally(() => { busy = false })
     }
     this.renewSystem = system
     this.adapter.registerSystem(system)
@@ -254,8 +254,9 @@ export class VLM {
 
         const platformUser = await this.adapter.getPlatformUser()
 
+        const joinToken = this.http.auth.token
         await this.colyseus.joinSceneRoom(sceneId, {
-          sessionToken: this.http.auth.token,
+          sessionToken: joinToken,
           clientType: 'analytics',
           user: {
             id: this._user?.id || '',
@@ -263,7 +264,10 @@ export class VLM {
             connectedWallet: platformUser.walletAddress,
           },
         })
-
+        // A renewal that finished mid-join couldn't reach the room yet: hand it the newer pass now.
+        if (this.http.auth.token && this.http.auth.token !== joinToken) {
+          try { this.colyseus.send('auth_renew', { sessionToken: this.http.auth.token }) } catch {}
+        }
       } catch (err) {
         this.setState('error', { error: String(err) })
         reject(err)

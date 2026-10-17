@@ -76,12 +76,18 @@ export class VLMHttpClient {
     return res.json() as Promise<T>
   }
 
+  /** Run the re-auth hook, shared by every caller while one is in flight (the 401 retry and timed renewals). */
+  renewSession(): Promise<void> {
+    if (!this.reauthenticate) return Promise.reject(new Error('No re-auth hook'))
+    this.reauthInFlight ??= this.reauthenticate().finally(() => { this.reauthInFlight = null })
+    return this.reauthInFlight
+  }
+
   /** True when there is a new token to retry with. A token already replaced by another request counts. */
   private async signInAgain(sentToken: string | null): Promise<boolean> {
     if (this.auth.token !== sentToken) return true
-    this.reauthInFlight ??= this.reauthenticate!().finally(() => { this.reauthInFlight = null })
     try {
-      await this.reauthInFlight
+      await this.renewSession()
     } catch {
       return false
     }
@@ -130,8 +136,11 @@ export class VLMHttpClient {
     proof: AuthProof,
     platformData: Record<string, unknown>,
     adapter?: VLMPlatformAdapter,
-    /** Re-signing an existing pass: signed request only, and a guest answer never replaces the current tokens. */
-    opts: { signedOnly?: boolean } = {},
+    /**
+     * Re-signing an existing pass: signed request only, and an answer that isn't a pass for `keepSceneId`
+     * (guest, visitor, another scene) never replaces the current tokens.
+     */
+    opts: { signedOnly?: boolean; keepSceneId?: string } = {},
   ): Promise<AuthResponse> {
     const path = '/api/auth/platform'
     const body = JSON.stringify({ ...platformData })
@@ -151,6 +160,7 @@ export class VLMHttpClient {
 
         const data = JSON.parse(response.body) as AuthResponse
         if (opts.signedOnly && (data as { guest?: boolean }).guest) throw new Error('Re-sign returned a guest session')
+        if (opts.keepSceneId && data.scene?.sceneId !== opts.keepSceneId) throw new Error('Re-sign did not bind the same scene')
         this.auth.setTokens(data.accessToken, data.refreshToken)
         return data
       } catch (err) {
