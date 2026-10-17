@@ -19,6 +19,7 @@
     "@colyseus/redis-driver": "^0.17.6",
     "@colyseus/redis-presence": "^0.15.6",
     "@colyseus/ws-transport": "^0.15.0",
+    "@dcl/crypto-middleware": "6.3.0",
     "@fastify/cors": "^10.0.0",
     "@fastify/jwt": "^9.0.0",
     "@fastify/rate-limit": "^10.3.0",
@@ -42,6 +43,7 @@
     "vlm-shared": "workspace:*"
   },
   "devDependencies": {
+    "@dcl/crypto": "3.7.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^7.0.11",
