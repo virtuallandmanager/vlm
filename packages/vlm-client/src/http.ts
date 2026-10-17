@@ -47,6 +47,9 @@ export class VLMHttpClient {
   }
 
   /**
+   * Retrying after a 401 is safe only because every 401 the server sends comes before the route writes
+   * anything (auth preHandler or an early check). Keep it that way.
+   *
    * Signs in again when a request gets a 401 (an in-world scene pass lasts 15 min and has no refresh token).
    * Set by VLM after platform sign-in; called at most once per request, shared by concurrent requests.
    */
@@ -127,6 +130,8 @@ export class VLMHttpClient {
     proof: AuthProof,
     platformData: Record<string, unknown>,
     adapter?: VLMPlatformAdapter,
+    /** Re-signing an existing pass: signed request only, and a guest answer never replaces the current tokens. */
+    opts: { signedOnly?: boolean } = {},
   ): Promise<AuthResponse> {
     const path = '/api/auth/platform'
     const body = JSON.stringify({ ...platformData })
@@ -145,14 +150,17 @@ export class VLMHttpClient {
         }
 
         const data = JSON.parse(response.body) as AuthResponse
+        if (opts.signedOnly && (data as { guest?: boolean }).guest) throw new Error('Re-sign returned a guest session')
         this.auth.setTokens(data.accessToken, data.refreshToken)
         return data
       } catch (err) {
+        if (opts.signedOnly) throw err
         // If signedRequest fails, fall through to regular fetch
         console.warn('[VLMHttpClient] signedRequest failed, falling back to regular fetch:', err)
       }
     }
 
+    if (opts.signedOnly) throw new Error('Re-sign needs a signed request')
     // Fallback: regular fetch with proof in body (unverified)
     const data = await this._fetch<AuthResponse>(path, {
       method: 'POST',

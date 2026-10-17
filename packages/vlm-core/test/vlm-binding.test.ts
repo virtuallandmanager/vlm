@@ -7,6 +7,8 @@ const adapter = {
   getSceneInfo: async () => ({ sceneId: null }),
   getEnvironment: async () => ({}),
   getAuthProof: async () => ({}),
+  registerSystem: () => {},
+  unregisterSystem: () => {},
 } as any
 
 describe('VLM.authenticate binding', () => {

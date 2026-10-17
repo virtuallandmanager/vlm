@@ -108,7 +108,12 @@ export class VLM {
     return this.connectToScene(this._sceneId)
   }
 
-  private async signInWithPlatform(http: VLMHttpClient, config: VLMInitConfig): Promise<void> {
+  /** Renew the 15 min scene pass a little before it expires, while this sign-in is current. */
+  private static RENEW_MS = 10 * 60_000
+  /** Frame system checking the clock (platforms have no timers here); null when nothing is scheduled. */
+  private renewSystem: ((dt: number) => void) | null = null
+
+  private async signInWithPlatform(http: VLMHttpClient, config: VLMInitConfig, renew = false): Promise<void> {
     const [platformUser, sceneInfo, environment] = await Promise.all([
       this.adapter.getPlatformUser(),
       this.adapter.getSceneInfo(),
@@ -122,12 +127,46 @@ export class VLM {
       world: this.adapter.capabilities.platformName,
       location: sceneInfo as unknown as Record<string, unknown>,
       environment: environment as unknown as Record<string, unknown>,
-    }, this.adapter)
+    }, this.adapter, { signedOnly: renew })
 
     // A sign-in on a replaced client (authenticate() ran again) must not overwrite the newer one.
     if (http !== this.http) return
+    const before = this._binding?.sceneId ?? null
     this._user = authResponse.user as any
     this._binding = authResponse.scene ?? null
+    if (!renew) return
+    // The room checks the pass's expiry too: hand it the new one.
+    try {
+      if (this.colyseus.getRoom()) this.colyseus.send('auth_renew', { sessionToken: http.auth.token })
+    } catch {}
+    if ((this._binding?.sceneId ?? null) !== before) this.events.emit('binding_changed', this._binding)
+  }
+
+  /** Re-sign the pass (signed request only). Shared with the HTTP client's 401 retry. */
+  private renewPass(http: VLMHttpClient, config: VLMInitConfig): Promise<void> {
+    return this.signInWithPlatform(http, config, true)
+  }
+
+  private scheduleRenewal(http: VLMHttpClient, config: VLMInitConfig): void {
+    this.stopRenewal()
+    let due = Date.now() + VLM.RENEW_MS
+    let busy = false
+    const system = (_dt: number) => {
+      if (busy || Date.now() < due) return
+      if (http !== this.http || !this.binding?.sceneId) return this.stopRenewal()
+      busy = true
+      // A failure keeps the current pass; the next try (or a 401) signs again.
+      void this.renewPass(http, config)
+        .catch(() => {})
+        .finally(() => { busy = false; due = Date.now() + VLM.RENEW_MS })
+    }
+    this.renewSystem = system
+    this.adapter.registerSystem(system)
+  }
+
+  private stopRenewal(): void {
+    if (this.renewSystem) this.adapter.unregisterSystem(this.renewSystem)
+    this.renewSystem = null
   }
 
   /**
@@ -147,8 +186,9 @@ export class VLM {
     try {
       const http = this.http
       await this.signInWithPlatform(http, config)
-      // The pass lasts 15 min with no refresh token: a 401 later signs a fresh platform request.
-      http.reauthenticate = () => this.signInWithPlatform(http, config)
+      // The pass lasts 15 min with no refresh token: renew it every 10 min, and on a 401 sign a fresh request.
+      http.reauthenticate = () => this.renewPass(http, config)
+      if (this.binding?.sceneId) this.scheduleRenewal(http, config)
       this.setState('authenticated', { user: this._user as any })
     } catch (err) {
       this.setState('error', { error: String(err) })
@@ -291,6 +331,8 @@ export class VLM {
     // The collector is shared per scene runtime (other VLM instances may use it): detach only.
     // Stop it explicitly with the adapter's stopVLMAnalytics().
     this.analytics = null
+    this.stopRenewal()
+    this.http.reauthenticate = null
     this.colyseus.leaveRoom()
     this.setState('idle')
   }
