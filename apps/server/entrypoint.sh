@@ -50,6 +50,9 @@ if [ -n "$DATABASE_URL" ]; then
       // Hand-off codes (HUD Stats tab sign-in); matches authHandoffCodes in src/db/schema.ts
       try {
         await sql\`CREATE TABLE IF NOT EXISTS auth_handoff_codes (code_hash TEXT PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, wallet TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        await sql\`ALTER TABLE auth_handoff_codes ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'account'\`;
+        await sql\`ALTER TABLE auth_handoff_codes ADD COLUMN IF NOT EXISTS scene_id UUID REFERENCES scenes(id) ON DELETE CASCADE\`;
+        await sql\`ALTER TABLE auth_handoff_codes ADD COLUMN IF NOT EXISTS location_id UUID REFERENCES analytics_scenes(id) ON DELETE CASCADE\`;
         console.log('[vlm-server] auth_handoff_codes table ensured');
       } catch(e) { console.log('[vlm-server] auth_handoff_codes:', e.message); }
 

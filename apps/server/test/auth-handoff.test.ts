@@ -5,7 +5,8 @@ import { db } from '../src/db/connection.js'
 import { authHandoffCodes } from '../src/db/schema.js'
 import { runDailyJobs } from '../src/analytics/jobs.js'
 import { resetDb } from './helpers/db.js'
-import { testApp, createUser, tokenFor } from './helpers/factories.js'
+import { testApp, createUser, tokenFor, createScene } from './helpers/factories.js'
+import { verifySessionToken } from '../src/auth/tokens.js'
 
 const WALLET = '0x00000000000000000000000000000000000000aa'
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
@@ -48,6 +49,7 @@ describe('in-world sign-in hand-off', () => {
     expect(body.user).toMatchObject({ id: user.id, role: user.role })
     const claims = app.jwt.verify<Record<string, unknown>>(body.accessToken)
     expect(claims).toMatchObject({ id: user.id, wallet: WALLET, verified: true })
+    expect(claims.kind).toBe('account')
     expect(claims.refresh).toBeUndefined()
     const refresh = app.jwt.verify<Record<string, unknown>>(body.refreshToken)
     expect(refresh).toMatchObject({ id: user.id, wallet: WALLET, verified: true, refresh: true })
@@ -130,5 +132,23 @@ describe('in-world sign-in hand-off', () => {
     expect(left).not.toContain(sha256('ancient'))
     expect(left).toContain(sha256('theirs-expired'))
     expect(left).toHaveLength(2)
+  })
+
+  it('a code minted with a scene pass exchanges for the same scene pass, never an account session', async () => {
+    const u = await createUser({ wallet: '0x00000000000000000000000000000000000000c1' })
+    const { scene } = await createScene(u)
+    const t = tokenFor(u, { kind: 'scene', sceneId: scene.id, locationId: null, orgId: null })
+    const { code } = (await app.inject({ method: 'POST', url: '/api/auth/handoff', headers: { authorization: `Bearer ${t}` } })).json()
+    const ex = await app.inject({ method: 'POST', url: '/api/auth/handoff/exchange', payload: { code } })
+    expect(ex.statusCode).toBe(200)
+    expect(verifySessionToken(ex.json().accessToken)).toMatchObject({ kind: 'scene', sceneId: scene.id })
+    expect(ex.json().scene).toEqual({ sceneId: scene.id, locationId: null })
+  })
+
+  it('a visitor pass cannot mint a hand-off code', async () => {
+    const u = await createUser({ wallet: '0x00000000000000000000000000000000000000c2' })
+    const t = tokenFor(u, { kind: 'scene', sceneId: null, orgId: null })
+    const res = await app.inject({ method: 'POST', url: '/api/auth/handoff', headers: { authorization: `Bearer ${t}` } })
+    expect(res.statusCode).toBe(403)
   })
 })

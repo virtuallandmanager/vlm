@@ -26,7 +26,7 @@ A Decentraland scene can only ever act as a visiting player inside itself. A str
 - **Scene:** the location's active `location_setups` row → `vlmSceneId`. The body's `sceneId` is a hint only: if it disagrees with the setup, the setup wins; with no setup, the pass has no scene and the HUD offers "Set up here" (existing flow).
 - **Scene pass token:** access token claims `{ id, wallet, verified: true, kind: 'scene', sceneId: string | null, locationId: string | null, role, orgId: null }`, 15 min. Refresh token `{ …same, refresh: true }`, 7 d; `POST /api/auth/refresh` on a scene refresh token returns a scene pass with identical `kind/sceneId/locationId`. A pass with `sceneId: null` is a **visitor pass**: room join as visitor and analytics only.
 - **Website tokens:** every token minted by website sign-in (email, Google, wallet) and refresh carries `kind: 'account'`. Tokens without `kind` are refused (`401`) on HTTP and in rooms — one forced sign-in for existing website sessions; the HUD re-signs automatically.
-- **Rooms:** `VLMSceneRoom.onAuth` refuses a scene pass whose `sceneId` isn't the room's scene (a visitor pass may join any room as visitor). Existing per-role message guards stay.
+- **Rooms:** `VLMSceneRoom.onAuth` treats a scene pass whose `sceneId` isn't the room's scene, or a visitor pass, as an anonymous visitor (content only). `VLMCommandCenterRoom` treats every scene pass as anonymous. Existing per-role message guards stay.
 
 ### 3.2 What a scene pass can reach
 

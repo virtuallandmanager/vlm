@@ -1084,5 +1084,8 @@ export const authHandoffCodes = pgTable('auth_handoff_codes', {
   wallet: text('wallet').notNull(), // lowercased verified wallet from the HUD's token
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),
+  kind: text('kind').notNull().default('account'), // 'account' | 'scene' — what the exchange issues
+  sceneId: uuid('scene_id').references(() => scenes.id, { onDelete: 'cascade' }),
+  locationId: uuid('location_id').references(() => analyticsScenes.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })

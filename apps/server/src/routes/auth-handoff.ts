@@ -5,9 +5,10 @@ import { db } from '../db/connection.js'
 import { authHandoffCodes, users } from '../db/schema.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { authenticate } from '../middleware/auth.js'
-import { boundScene } from '../auth/scene-from.js'
+import { boundScene, isScenePass } from '../auth/scene-from.js'
 import { linkWalletGrants } from '../auth/permissions.js'
 import { issueWalletSession } from '../auth/sessions.js'
+import { issueScenePass } from '../auth/scene-pass.js'
 import { TokenBucketLimiter } from '../analytics/limiter.js'
 
 const CODE_TTL_MS = 60_000
@@ -46,7 +47,12 @@ export default async function authHandoffRoutes(app: FastifyInstance) {
     const expiresAt = new Date(Date.now() + CODE_TTL_MS)
     await db.transaction(async (tx) => {
       await tx.delete(authHandoffCodes).where(and(eq(authHandoffCodes.userId, actor.userId!), lt(authHandoffCodes.expiresAt, sql`now()`)))
-      await tx.insert(authHandoffCodes).values({ codeHash: hashCode(code), userId: actor.userId!, wallet: actor.wallet!, expiresAt })
+      await tx.insert(authHandoffCodes).values({ codeHash: hashCode(code), userId: actor.userId!, wallet: actor.wallet!,
+        expiresAt,
+        kind: isScenePass(request.user) ? 'scene' : 'account',
+        sceneId: request.user.sceneId ?? null,
+        locationId: request.user.locationId ?? null,
+      })
     })
     return reply.send({ code, expiresAt: expiresAt.toISOString() })
   })
@@ -63,11 +69,15 @@ export default async function authHandoffRoutes(app: FastifyInstance) {
       .update(authHandoffCodes)
       .set({ usedAt: sql`now()` })
       .where(and(eq(authHandoffCodes.codeHash, hashCode(code)), isNull(authHandoffCodes.usedAt), gt(authHandoffCodes.expiresAt, sql`now()`)))
-      .returning({ userId: authHandoffCodes.userId, wallet: authHandoffCodes.wallet })
+      .returning({ userId: authHandoffCodes.userId, wallet: authHandoffCodes.wallet, kind: authHandoffCodes.kind, sceneId: authHandoffCodes.sceneId, locationId: authHandoffCodes.locationId })
     if (!claimed) return reply.status(410).send(EXPIRED)
 
     const user = await db.query.users.findFirst({ where: eq(users.id, claimed.userId) })
     if (!user) return reply.status(410).send(EXPIRED)
+    // A pass-minted code carries the same pass (same scene, same location) — never an account session.
+    if (claimed.kind === 'scene') {
+      return reply.send(issueScenePass(app, user, claimed.wallet, { sceneId: claimed.sceneId, locationId: claimed.locationId }))
+    }
     await linkWalletGrants(user.id, claimed.wallet)
     return reply.send(issueWalletSession(app, user, claimed.wallet))
   })
