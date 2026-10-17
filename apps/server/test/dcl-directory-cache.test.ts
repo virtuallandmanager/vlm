@@ -51,6 +51,48 @@ describe('HttpDclDirectory caching', () => {
   })
 })
 
+describe('HttpDclDirectory catalyst list and active scenes', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
+
+  it('parses the DAO catalyst list (https hosts only, no ports), caches it, and remembers a failure for a minute', async () => {
+    let fail = false
+    const fetchMock = vi.fn(async (url: string) => {
+      if (!url.endsWith('/lambdas/contracts/servers')) return json(null, 404)
+      if (fail) return json({}, 503)
+      return json([{ baseUrl: 'https://Peer-EC1.decentraland.org' }, { baseUrl: 'https://peer.melonwave.com/' }, { baseUrl: 'http://plain.example' }, { baseUrl: 'https://port.example:8443' }, { baseUrl: 'not a url' }, {}])
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const dir = new HttpDclDirectory('https://cat', 'https://worlds')
+    expect(await dir.getCatalystHosts()).toEqual(['peer-ec1.decentraland.org', 'peer.melonwave.com'])
+    expect(await dir.getCatalystHosts()).toEqual(['peer-ec1.decentraland.org', 'peer.melonwave.com'])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    vi.useFakeTimers({ toFake: ['Date'] })
+    fail = true
+    const down = new HttpDclDirectory('https://cat', 'https://worlds')
+    await expect(down.getCatalystHosts()).rejects.toBeInstanceOf(DirectoryUnavailableError)
+    await expect(down.getCatalystHosts()).rejects.toBeInstanceOf(DirectoryUnavailableError)
+    expect(fetchMock).toHaveBeenCalledTimes(2) // the second refusal didn't fetch
+    vi.setSystemTime(Date.now() + 61_000)
+    fail = false
+    expect(await down.getCatalystHosts()).toHaveLength(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('caches active scene and World lookups briefly', async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      url.includes('/entities/active') ? json([{ id: 'bafyA', metadata: { scene: { base: '1,1', parcels: ['1,1'] } } }]) : json({ configurations: { scenesUrn: ['urn:decentraland:entity:bafyW'] } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const dir = new HttpDclDirectory('https://cat', 'https://worlds')
+    for (let i = 0; i < 3; i++) {
+      expect((await dir.getActiveSceneAt('1,1'))?.entityId).toBe('bafyA')
+      expect((await dir.getWorldScene(i % 2 ? 'W.dcl.eth' : 'w.dcl.eth'))?.sceneUrns).toHaveLength(1)
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('TtlCache', () => {
   it('expires entries after the TTL and stays bounded', () => {
     let now = 0

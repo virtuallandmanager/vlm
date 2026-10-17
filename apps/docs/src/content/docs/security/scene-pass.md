@@ -8,7 +8,8 @@ When you sign in from inside Decentraland, VLM gives you a scene pass. It lets y
 
 - **The scene set up at your location:** you have your usual role in that scene, such as editing from the HUD.
 - **A parcel or World with no setup:** you're a visitor only. You can see content, but you can't edit and you can't open Stats.
-- **Any scene trying to act for you elsewhere:** it can't. Other scenes see you only as an anonymous visitor in their own content.
+- **Any scene trying to act for you elsewhere:** it can't. Your pass works only in the scene set up where you're standing; any other scene's content sees you as an anonymous visitor.
+- **Realms that aren't Decentraland's:** you're a visitor only. Only Decentraland's own Genesis City realms, the DAO catalysts and the Worlds server can give you your role in a scene, and only while that scene's current deployment is running.
 
 ## Signing in on the website
 A scene pass opens only that scene's analytics on the website. Anything else asks you to sign in with full access. See [Analytics](/dashboard/analytics/#signing-in-from-the-hud) for how the Stats button works.

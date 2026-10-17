@@ -23,6 +23,8 @@ export interface DclDirectory {
   getParcelRights(parcel: string): Promise<ParcelRights | null>
   getWorldOwner(name: string): Promise<string | null>
   getWorldDeployers(name: string): Promise<string[]>
+  /** Lowercased hostnames of the DAO catalyst list. Throws DirectoryUnavailableError when it can't be fetched. */
+  getCatalystHosts(): Promise<string[]>
 }
 
 export class DirectoryUnavailableError extends Error {}
@@ -46,6 +48,9 @@ async function getJson(url: string, init?: RequestInit): Promise<unknown | null>
 
 const CACHE_TTL_MS = 60_000
 const CACHE_MAX = 10_000
+const ACTIVE_TTL_MS = 30_000
+const CATALYSTS_TTL_MS = 60 * 60_000
+const CATALYSTS_RETRY_MS = 60_000
 
 /** Small TTL cache (insertion-ordered, bounded) for upstream answers. Errors are never cached. */
 export class TtlCache<V> {
@@ -88,10 +93,19 @@ export class HttpDclDirectory implements DclDirectory {
   private rights = new TtlCache<ParcelRights | null>()
   private deployers = new TtlCache<{ entityId: string | null; deployer: string | null }>()
   private permissions = new TtlCache<WorldPermissions>()
+  // Scene sign-in checks the live deployment on every mismatched entity; keep that bounded per location.
+  private activeScenes = new TtlCache<ActiveScene | null>(ACTIVE_TTL_MS)
+  private worldScenes = new TtlCache<{ sceneUrns: string[]; title?: string } | null>(ACTIVE_TTL_MS)
+  private catalysts = new TtlCache<string[]>(CATALYSTS_TTL_MS)
+  private catalystsFailedAt = -Infinity
 
   constructor(private catalyst = config.catalystUrl, private worlds = config.worldsUrl) {}
 
   async getActiveSceneAt(parcel: string): Promise<ActiveScene | null> {
+    return this.activeScenes.getOrLoad(parcel, () => this.fetchActiveSceneAt(parcel))
+  }
+
+  private async fetchActiveSceneAt(parcel: string): Promise<ActiveScene | null> {
     const body = (await getJson(`${this.catalyst}/content/entities/active`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -117,11 +131,40 @@ export class HttpDclDirectory implements DclDirectory {
   }
 
   async getWorldScene(name: string) {
-    const body = (await getJson(`${this.worlds}/world/${encodeURIComponent(name.toLowerCase())}/about`)) as {
-      configurations?: { scenesUrn?: string[] }
-    } | null
-    const urns = body?.configurations?.scenesUrn ?? []
-    return urns.length ? { sceneUrns: urns } : null
+    const n = name.toLowerCase()
+    return this.worldScenes.getOrLoad(n, async () => {
+      const body = (await getJson(`${this.worlds}/world/${encodeURIComponent(n)}/about`)) as {
+        configurations?: { scenesUrn?: string[] }
+      } | null
+      const urns = body?.configurations?.scenesUrn ?? []
+      return urns.length ? { sceneUrns: urns } : null
+    })
+  }
+
+  /** DAO catalyst list (`/lambdas/contracts/servers`), cached for an hour; a failure is remembered for a minute. */
+  async getCatalystHosts(): Promise<string[]> {
+    const hit = this.catalysts.get('dao')
+    if (hit) return hit.value
+    if (Date.now() - this.catalystsFailedAt < CATALYSTS_RETRY_MS) throw new DirectoryUnavailableError('catalyst list recently unavailable')
+    try {
+      const body = await getJson(`${this.catalyst}/lambdas/contracts/servers`)
+      if (!Array.isArray(body)) throw new DirectoryUnavailableError('catalyst list: unexpected body')
+      const hosts = body.flatMap((s: { baseUrl?: unknown }) => {
+        if (typeof s?.baseUrl !== 'string') return []
+        try {
+          const u = new URL(s.baseUrl)
+          return u.protocol === 'https:' && !u.port ? [u.hostname.toLowerCase()] : []
+        } catch {
+          return []
+        }
+      })
+      if (!hosts.length) throw new DirectoryUnavailableError('catalyst list empty')
+      this.catalysts.set('dao', hosts)
+      return hosts
+    } catch (err) {
+      this.catalystsFailedAt = Date.now()
+      throw err
+    }
   }
 
   async getParcelRights(parcel: string): Promise<ParcelRights | null> {

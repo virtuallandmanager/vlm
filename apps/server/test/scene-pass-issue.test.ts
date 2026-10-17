@@ -5,6 +5,8 @@ import { config } from '../src/config.js'
 import { testApp, createUser, createScene } from './helpers/factories.js'
 import { createAnalyticsScene } from './helpers/analytics.js'
 import { createSetup } from './helpers/setups.js'
+import { FakeDclDirectory } from './helpers/fake-dcl.js'
+import { setDclDirectory } from '../src/analytics/dcl-directory.js'
 
 const h = vi.hoisted(() => ({ calls: [] as any[][], bindFails: false }))
 const W = '0x00000000000000000000000000000000000000a1'
@@ -15,7 +17,7 @@ vi.mock('../src/middleware/dcl-auth.js', () => ({
     h.calls.push(args)
     const hd = args[2] as Record<string, string>
     if (hd['x-identity-auth-chain-0'] !== 'valid') throw new Error('bad')
-    return { wallet: W, scene: { sceneId: hd['x-test-entity'] ?? 'bafyA', parcel: hd['x-test-parcel'] ?? '10,20', realm: { hostname: 'peer.decentraland.org', serverName: 'main' }, isGuest: hd['x-test-guest'] === '1' } }
+    return { wallet: W, scene: { sceneId: hd['x-test-entity'] ?? 'bafyA', parcel: hd['x-test-parcel'] ?? '10,20', realm: { hostname: hd['x-test-hostname'] ?? 'peer.decentraland.org', serverName: hd['x-test-server'] ?? 'main' }, isGuest: hd['x-test-guest'] === '1' } }
   },
 }))
 vi.mock('../src/auth/scene-binding.js', async (orig) => {
@@ -25,8 +27,9 @@ vi.mock('../src/auth/scene-binding.js', async (orig) => {
 
 describe('platform sign-in → scene pass', () => {
   let app: Awaited<ReturnType<typeof testApp>>
-  beforeEach(async () => { h.calls.length = 0; h.bindFails = false; await resetDb(); app = await testApp() })
-  afterEach(async () => { await app.close() })
+  // Never reach the real catalyst list from tests.
+  beforeEach(async () => { h.calls.length = 0; h.bindFails = false; setDclDirectory(new FakeDclDirectory()); await resetDb(); app = await testApp() })
+  afterEach(async () => { setDclDirectory(null); await app.close() })
 
   const signIn = (headers: Record<string, string> = {}, payload: unknown = { user: { displayName: 'A' } }) =>
     app.inject({ method: 'POST', url: '/api/auth/platform', headers: { 'x-identity-auth-chain-0': 'valid', ...headers }, payload: payload as any })
@@ -42,6 +45,25 @@ describe('platform sign-in → scene pass', () => {
     expect(body.scene).toEqual({ sceneId: scene.id, locationId: loc.id })
     const c = verifySessionToken(body.accessToken)!
     expect(c).toMatchObject({ kind: 'scene', sceneId: scene.id, locationId: loc.id, wallet: W, verified: true, orgId: null })
+  })
+
+  it('a realm that is not an official Decentraland realm gets a visitor pass, even at a set-up location', async () => {
+    const owner = await createUser({ wallet: W })
+    const { scene } = await createScene(owner)
+    const loc = await createAnalyticsScene({ locationKey: 'gc:10,20', baseParcel: '10,20', parcels: ['10,20'] } as any)
+    await createSetup(loc.id, scene.id)
+    const res = await signIn({ 'x-test-hostname': 'peer.decentraland.org.evil.example' })
+    expect(res.json().scene).toEqual({ sceneId: null, locationId: null })
+    expect(verifySessionToken(res.json().accessToken)).toMatchObject({ kind: 'scene', sceneId: null, locationId: null })
+  })
+
+  it('local preview (localhost realm, not cloud) still binds the preview location', async () => {
+    const owner = await createUser({ wallet: W })
+    const { scene } = await createScene(owner)
+    const loc = await createAnalyticsScene({ locationKey: `preview:${W}:10,20`, baseParcel: '10,20', parcels: ['10,20'] } as any)
+    await createSetup(loc.id, scene.id)
+    const res = await signIn({ 'x-test-hostname': 'localhost:8000', 'x-test-server': 'LocalPreview' })
+    expect(res.json().scene).toEqual({ sceneId: scene.id, locationId: loc.id })
   })
 
   it('ignores a body sceneId that disagrees with the setup', async () => {

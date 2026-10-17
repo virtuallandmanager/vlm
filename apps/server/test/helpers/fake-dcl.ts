@@ -7,7 +7,9 @@ export class FakeDclDirectory implements DclDirectory {
   rights = new Map<string, ParcelRights>()
   worldOwners = new Map<string, string>()
   worldDeployers = new Map<string, string[]>()
+  catalystHosts: string[] = []
   down = false
+  catalystsDown = false
   calls = 0
 
   private hit() {
@@ -29,4 +31,9 @@ export class FakeDclDirectory implements DclDirectory {
   async getParcelRights(parcel: string) { this.hit(); return this.rights.get(parcel) ?? null }
   async getWorldOwner(name: string) { this.hit(); return this.worldOwners.get(name.toLowerCase()) ?? null }
   async getWorldDeployers(name: string) { this.hit(); return this.worldDeployers.get(name.toLowerCase()) ?? [] }
+  async getCatalystHosts() {
+    this.calls++
+    if (this.catalystsDown) throw new DirectoryUnavailableError('fake catalyst list down')
+    return this.catalystHosts.map((h) => h.toLowerCase())
+  }
 }

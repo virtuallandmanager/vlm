@@ -47,7 +47,7 @@ describe('scene binding', () => {
     const { scene } = await createScene(owner)
     const loc = await createAnalyticsScene({ kind: 'world', locationKey: 'world:myworld.dcl.eth', worldName: 'myworld.dcl.eth', baseParcel: '0,0', parcels: ['0,0'] } as any)
     await createSetup(loc.id, scene.id)
-    expect((await bindSceneRequest(ctx({ serverName: 'myworld.dcl.eth', parcel: '0,0' }), '0xa')).sceneId).toBe(scene.id)
+    expect((await bindSceneRequest(ctx({ serverName: 'myworld.dcl.eth', parcel: '0,0', hostname: 'worlds-content-server.decentraland.org/world/myworld.dcl.eth' }), '0xa')).sceneId).toBe(scene.id)
   })
 
   it('no location, or a location with no active setup → visitor binding', async () => {
@@ -64,5 +64,103 @@ describe('scene binding', () => {
     await db.update(locationSetups).set({ deploymentEntityId: 'bafyOld' }).where(eq(locationSetups.id, setup.id))
     const dir = new FakeDclDirectory(); dir.down = true; setDclDirectory(dir)
     expect(await bindSceneRequest(ctx({ sceneId: 'bafyNew' }), '0xa')).toEqual({ locationId: loc.id, sceneId: null })
+  })
+
+  describe('official realms only (an attacker-run realm must not claim a victim location)', () => {
+    async function victimGc() {
+      const owner = await createUser()
+      const { scene } = await createScene(owner)
+      const loc = await createAnalyticsScene({ locationKey: 'gc:10,20', baseParcel: '10,20', parcels: ['10,20'], activeEntityId: 'bafyVictim' } as any)
+      const setup = await createSetup(loc.id, scene.id)
+      await db.update(locationSetups).set({ deploymentEntityId: 'bafyVictim' }).where(eq(locationSetups.id, setup.id))
+      const dir = new FakeDclDirectory()
+      dir.addScene({ entityId: 'bafyVictim', base: '10,20', parcels: ['10,20'] }, owner.wallet ?? '0xv')
+      setDclDirectory(dir)
+      return { scene, loc, dir }
+    }
+    async function victimWorld() {
+      const owner = await createUser()
+      const { scene } = await createScene(owner)
+      const loc = await createAnalyticsScene({ kind: 'world', locationKey: 'world:victim.dcl.eth', worldName: 'victim.dcl.eth', baseParcel: '0,0', parcels: ['0,0'], activeEntityId: 'bafyVictim' } as any)
+      const setup = await createSetup(loc.id, scene.id)
+      await db.update(locationSetups).set({ deploymentEntityId: 'bafyVictim' }).where(eq(locationSetups.id, setup.id))
+      const dir = new FakeDclDirectory()
+      dir.worlds.set('victim.dcl.eth', { sceneUrns: ['urn:decentraland:entity:bafyVictim?=&baseUrl=https://worlds-content-server.decentraland.org/contents/'] })
+      setDclDirectory(dir)
+      return { scene, loc, dir }
+    }
+    const WORLDS = 'worlds-content-server.decentraland.org'
+
+    it('foreign hostname on a Genesis City parcel → visitor (reviewer attack)', async () => {
+      await victimGc()
+      expect(await bindSceneRequest(ctx({ hostname: 'evil.example', sceneId: 'bafyAttackerCopy' }), '0xa')).toEqual({ locationId: null, sceneId: null })
+      // Even serving the victim's own entity id from a foreign realm is not enough.
+      expect(await bindSceneRequest(ctx({ hostname: 'evil.example', sceneId: 'bafyVictim' }), '0xa')).toEqual({ locationId: null, sceneId: null })
+    })
+
+    it('foreign hostname announcing a World name → visitor', async () => {
+      await victimWorld()
+      for (const hostname of ['evil.example', 'evil.example/world/victim.dcl.eth'])
+        expect(await bindSceneRequest(ctx({ hostname, serverName: 'victim.dcl.eth', parcel: '0,0', sceneId: 'bafyAttackerCopy' }), '0xa')).toEqual({ locationId: null, sceneId: null })
+    })
+
+    it('lookalike hostnames → visitor', async () => {
+      await victimGc()
+      for (const hostname of ['peer.decentraland.org.evil.com', 'evil-decentraland.org', 'evil.decentraland.org', 'peer.decentraland.org:443', 'peer.decentraland.org.', ' peer.decentraland.org', 'peer.decentraland.org/x', 'https://peer.decentraland.org', ''])
+        expect(await bindSceneRequest(ctx({ hostname, sceneId: 'bafyVictim' }), '0xa'), hostname).toEqual({ locationId: null, sceneId: null })
+    })
+
+    it('Worlds bind only from the Worlds host, Genesis City only from Genesis City hosts', async () => {
+      const { scene, loc } = await victimWorld()
+      const w = (hostname: string, serverName = 'victim.dcl.eth') => bindSceneRequest(ctx({ hostname, serverName, parcel: '0,0', sceneId: 'bafyVictim' }), '0xa')
+      expect(await w(WORLDS)).toEqual({ locationId: loc.id, sceneId: scene.id })
+      expect(await w(`${WORLDS}/world/victim.dcl.eth`)).toEqual({ locationId: loc.id, sceneId: scene.id })
+      expect(await w(`WORLDS-CONTENT-SERVER.decentraland.org/world/Victim.dcl.eth`)).toEqual({ locationId: loc.id, sceneId: scene.id })
+      expect(await w(`${WORLDS}/world/other.dcl.eth`)).toEqual({ locationId: null, sceneId: null })
+      expect(await w(`${WORLDS}.evil.com/world/victim.dcl.eth`)).toEqual({ locationId: null, sceneId: null })
+      expect(await w('peer.decentraland.org')).toEqual({ locationId: null, sceneId: null })
+      expect(await w('realm-provider.decentraland.org')).toEqual({ locationId: null, sceneId: null })
+      // A Genesis City realm name on the Worlds host is not a Genesis City realm.
+      await victimGc()
+      expect(await bindSceneRequest(ctx({ hostname: WORLDS, sceneId: 'bafyVictim' }), '0xa')).toEqual({ locationId: null, sceneId: null })
+    })
+
+    it('official hostname with a mismatched entity → visitor pass at the location', async () => {
+      const { loc } = await victimGc()
+      expect(await bindSceneRequest(ctx({ hostname: 'peer.decentraland.org', sceneId: 'bafyAttackerCopy' }), '0xa')).toEqual({ locationId: loc.id, sceneId: null })
+      const w = await victimWorld()
+      expect(await bindSceneRequest(ctx({ hostname: WORLDS, serverName: 'victim.dcl.eth', parcel: '0,0', sceneId: 'bafyAttackerCopy' }), '0xa')).toEqual({ locationId: w.loc.id, sceneId: null })
+    })
+
+    it('official hostname + matching entity → bound, for Decentraland hosts and DAO catalysts', async () => {
+      const { scene, loc, dir } = await victimGc()
+      dir.catalystHosts = ['peer.melonwave.com', 'peer-ec1.decentraland.org']
+      for (const hostname of ['realm-provider.decentraland.org', 'peer.decentraland.org', 'PEER-EC1.decentraland.org', 'peer.melonwave.com'])
+        expect(await bindSceneRequest(ctx({ hostname, sceneId: 'bafyVictim' }), '0xa'), hostname).toEqual({ locationId: loc.id, sceneId: scene.id })
+    })
+
+    it('catalyst list fetch failure → the fallback set is used', async () => {
+      const { scene, loc, dir } = await victimGc()
+      dir.catalystHosts = ['peer.melonwave.com']
+      dir.catalystsDown = true
+      expect(await bindSceneRequest(ctx({ hostname: 'peer-eu1.decentraland.org', sceneId: 'bafyVictim' }), '0xa')).toEqual({ locationId: loc.id, sceneId: scene.id })
+      expect(await bindSceneRequest(ctx({ hostname: 'peer.melonwave.com', sceneId: 'bafyVictim' }), '0xa')).toEqual({ locationId: null, sceneId: null })
+    })
+
+    it('a foreign realm never reaches the database or the directory', async () => {
+      const { dir } = await victimGc()
+      dir.calls = 0
+      dir.catalystHosts = []
+      await bindSceneRequest(ctx({ hostname: 'evil.example', sceneId: 'bafyX' }), '0xa')
+      expect(dir.calls).toBeLessThanOrEqual(1) // at most the (cached) catalyst list
+    })
+
+    it('local preview binding is unaffected', async () => {
+      const owner = await createUser()
+      const { scene } = await createScene(owner)
+      const loc = await createAnalyticsScene({ locationKey: 'preview:0xa:10,20', baseParcel: '10,20', parcels: ['10,20'] } as any)
+      await createSetup(loc.id, scene.id)
+      expect(await bindSceneRequest(ctx({ hostname: 'localhost:8000' }), '0xa', { preview: true })).toEqual({ locationId: loc.id, sceneId: scene.id })
+    })
   })
 })
