@@ -1089,3 +1089,31 @@ export const authHandoffCodes = pgTable('auth_handoff_codes', {
   locationId: uuid('location_id').references(() => analyticsScenes.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+// ── Scene Library ────────────────────────────────────────────────────────────
+// One shared media library per scene. Items stay in the owner's account (media_assets / asset_library_items) and are linked here.
+
+export const sceneLibrary = pgTable(
+  'scene_library',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sceneId: uuid('scene_id').notNull().references(() => scenes.id, { onDelete: 'cascade' }),
+    mediaAssetId: uuid('media_asset_id').references(() => mediaAssets.id, { onDelete: 'cascade' }),
+    assetItemId: uuid('asset_item_id').references(() => assetLibraryItems.id, { onDelete: 'cascade' }),
+    addedBy: uuid('added_by').references(() => users.id, { onDelete: 'set null' }),
+    bookingId: uuid('booking_id').references(() => bookings.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    oneItem: check('scene_library_one_item', sql`(${t.mediaAssetId} IS NULL) <> (${t.assetItemId} IS NULL)`),
+    mediaUq: uniqueIndex('scene_library_media_uq').on(t.sceneId, t.mediaAssetId).where(sql`${t.mediaAssetId} IS NOT NULL`),
+    assetUq: uniqueIndex('scene_library_asset_uq').on(t.sceneId, t.assetItemId).where(sql`${t.assetItemId} IS NOT NULL`),
+    byScene: index('scene_library_scene_idx').on(t.sceneId),
+  }),
+)
+
+export const sceneLibraryRelations = relations(sceneLibrary, ({ one }) => ({
+  scene: one(scenes, { fields: [sceneLibrary.sceneId], references: [scenes.id] }),
+  mediaAsset: one(mediaAssets, { fields: [sceneLibrary.mediaAssetId], references: [mediaAssets.id] }),
+  assetItem: one(assetLibraryItems, { fields: [sceneLibrary.assetItemId], references: [assetLibraryItems.id] }),
+}))

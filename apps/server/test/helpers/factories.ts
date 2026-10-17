@@ -102,7 +102,7 @@ export async function createInstance(elementId: string) {
 }
 
 export async function testApp() {
-  const app = await buildApp({ rateLimit: false, logger: false })
+  const app = await buildApp({ rateLimit: false, logger: false, backfill: false })
   await app.ready()
   return app
 }

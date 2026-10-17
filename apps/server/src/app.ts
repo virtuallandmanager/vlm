@@ -14,6 +14,8 @@ import { analyticsClaimSignedRoutes } from './routes/analytics-claims.js'
 import analyticsReadRoutes from './routes/analytics-read.js'
 import sceneRoutes from './routes/scenes.js'
 import sceneRoleRoutes from './routes/scene-roles.js'
+import sceneLibraryRoutes from './routes/scene-library.js'
+import { backfillSceneLibrary } from './library/scene-library.js'
 import analyticsRoutes from './routes/analytics.js'
 import eventRoutes from './routes/events.js'
 import giveawayRoutes from './routes/giveaways.js'
@@ -38,6 +40,8 @@ import { register, httpRequestsTotal, httpRequestDurationSeconds } from './metri
 
 export interface BuildAppOptions {
   rateLimit?: boolean
+  /** Set false to skip the one-time scene library backfill at startup (tests). */
+  backfill?: boolean
   logger?: boolean
   /** Test hook: capture log output. */
   logStream?: { write(msg: string): void }
@@ -128,6 +132,10 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   })
   await app.register(sceneRoutes)
   await app.register(sceneRoleRoutes)
+  await app.register(sceneLibraryRoutes)
+  if (opts.backfill !== false && process.env.NODE_ENV !== 'test') {
+    backfillSceneLibrary().catch((err) => app.log.warn({ err }, 'scene library backfill failed'))
+  }
   await app.register(analyticsRoutes)
   await app.register(analyticsClaimSignedRoutes)
   await app.register(setupRoutes)
