@@ -31,6 +31,9 @@ const PUBLIC_EXACT = [
   'GET /api/streaming/live-keys', // media server callback, shared secret
   'POST /api/streaming/webhook', // media server callback, shared secret
   'POST /api/billing/webhook', // Stripe signature
+  'GET /api/assets', // public browse list (never reads a bearer)
+  'GET /api/assets/:id', // public asset detail
+  'GET /api/assets/categories', // public category list
   'GET /api/health', // health check
   'GET /metrics', // Prometheus scrape
   'GET /', // static dashboard
@@ -46,7 +49,6 @@ const PUBLIC_PREFIX = [
   'POST /hook/', // platform hooks: per-hook secret in the URL
   'GET /api/docs', // Swagger UI and its static files
   'GET /uploads/', // static uploaded media
-  'GET /api/assets', // public browse: /api/assets, /api/assets/:id, /api/assets/categories
 ]
 // Read an optional bearer but treat a scene pass as no bearer (so the walk cannot see a 403).
 // Each entry has its own test below.
@@ -202,6 +204,41 @@ describe('scene pass guard', () => {
     expect(ok.statusCode).toBe(201)
     const noScene = await app.inject({ method: 'POST', url: '/api/upload-tokens', headers: { authorization: `Bearer ${pass(owner, a.scene.id)}` }, payload: {} })
     expect(noScene.statusCode).toBe(403)
+  })
+
+  it('PUT /api/scenes/:sceneId refuses an activePresetId from another scene (account token and pass)', async () => {
+    const owner = await createUser()
+    const a = await createScene(owner, 'A')
+    const b = await createScene(owner, 'B')
+    for (const t of [tokenFor(owner), pass(owner, a.scene.id)]) {
+      const h = { authorization: `Bearer ${t}` }
+      const cross = await app.inject({ method: 'PUT', url: `/api/scenes/${a.scene.id}`, headers: h, payload: { activePresetId: b.preset.id } })
+      expect(cross.statusCode).toBe(400)
+      const junk = await app.inject({ method: 'PUT', url: `/api/scenes/${a.scene.id}`, headers: h, payload: { activePresetId: 'not-a-uuid' } })
+      expect(junk.statusCode).toBe(400)
+      const own = await app.inject({ method: 'PUT', url: `/api/scenes/${a.scene.id}`, headers: h, payload: { activePresetId: a.preset.id } })
+      expect(own.statusCode).toBe(200)
+    }
+    const after = await app.inject({ method: 'GET', url: `/api/scenes/${a.scene.id}`, headers: { authorization: `Bearer ${tokenFor(owner)}` } })
+    expect(after.json().scene.activePresetId).toBe(a.preset.id)
+  })
+
+  it('a pass reads analytics only through its own scene tenure, not a past tenure of another scene', async () => {
+    const pastHost = await createUser()
+    const newHost = await createUser()
+    const a = await createScene(newHost, 'A')
+    const b = await createScene(pastHost, 'B')
+    const l = await createAnalyticsScene({ locationKey: 'gc:3,3', baseParcel: '3,3', parcels: ['3,3'] } as any)
+    await createSetup(l.id, b.scene.id, { startedAt: new Date(Date.now() - 60 * 86400_000), endedAt: new Date(Date.now() - 30 * 86400_000) })
+    await createSetup(l.id, a.scene.id)
+    const t = pass(pastHost, a.scene.id, l.id)
+    const res = await app.inject({ method: 'GET', url: `/api/analytics/locations/${l.id}/summary`, headers: { authorization: `Bearer ${t}` } })
+    expect(res.statusCode).toBe(403)
+    const list = await app.inject({ method: 'GET', url: '/api/analytics/locations', headers: { authorization: `Bearer ${t}` } })
+    expect(list.json().scenes).toEqual([])
+    // Account behaviour is unchanged: the past host still reads their ended tenure.
+    const acct = await app.inject({ method: 'GET', url: `/api/analytics/locations/${l.id}/summary`, headers: { authorization: `Bearer ${tokenFor(pastHost)}` } })
+    expect(acct.statusCode).toBe(200)
   })
 
   it('analytics locations list is filtered to the pass location', async () => {

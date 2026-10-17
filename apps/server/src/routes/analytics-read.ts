@@ -80,7 +80,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
   }
 
   async function guard(request: { user: any }, reply: FastifyReply, id: string, manage = false) {
-    const access = await getAnalyticsAccess(actorFromClaims(request.user), id)
+    const access = await getAnalyticsAccess(actorFromClaims(request.user), id, undefined, isScenePass(request.user) ? request.user.sceneId ?? null : undefined)
     if (!access.scene) {
       reply.status(404).send({ error: 'Not found' })
       return null
@@ -125,7 +125,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     const all = await db.select().from(analyticsScenes).where(candidate)
     const readable: Array<{ s: typeof analyticsScenes.$inferSelect; since?: Date; until?: Date; vlmSceneId?: string; canManage: boolean }> = []
     for (const s of all) {
-      const access = await getAnalyticsAccess(actor, s.id)
+      const access = await getAnalyticsAccess(actor, s.id, undefined, isScenePass(request.user) ? request.user.sceneId ?? null : undefined)
       if (access.canRead) readable.push({ s, since: access.since, until: access.until, vlmSceneId: access.vlmSceneId, canManage: access.canManage })
     }
     return reply.send({

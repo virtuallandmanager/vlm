@@ -94,6 +94,8 @@ interface UpdateInstanceBody {
   properties?: unknown
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export default async function sceneRoutes(app: FastifyInstance) {
   // All scene routes require authentication
   app.addHook('preHandler', authenticate)
@@ -275,7 +277,17 @@ export default async function sceneRoutes(app: FastifyInstance) {
       const updates: Record<string, unknown> = { updatedAt: new Date() }
       if (name !== undefined) updates.name = name
       if (description !== undefined) updates.description = description
-      if (activePresetId !== undefined) updates.activePresetId = activePresetId
+      if (activePresetId !== undefined) {
+        // The live preset must be one of this scene's own (rooms and setup load it by id).
+        if (activePresetId !== null) {
+          const ok =
+            typeof activePresetId === 'string' &&
+            UUID_RE.test(activePresetId) &&
+            (await db.query.scenePresets.findFirst({ where: and(eq(scenePresets.id, activePresetId), eq(scenePresets.sceneId, sceneId)), columns: { id: true } }))
+          if (!ok) return reply.status(400).send({ error: 'Preset does not belong to this scene' })
+        }
+        updates.activePresetId = activePresetId
+      }
 
       const [updated] = await db.update(scenes).set(updates).where(eq(scenes.id, sceneId)).returning()
       return reply.send({ scene: updated })
