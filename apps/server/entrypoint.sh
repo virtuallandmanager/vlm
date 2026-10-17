@@ -65,6 +65,12 @@ if [ -n "$DATABASE_URL" ]; then
         console.log('[vlm-server] scene_library table ensured');
       } catch(e) { console.log('[vlm-server] scene_library:', e.message); }
 
+      // One-time startup job markers; matches systemFlags in src/db/schema.ts
+      try {
+        await sql\`CREATE TABLE IF NOT EXISTS system_flags (key TEXT PRIMARY KEY, set_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        console.log('[vlm-server] system_flags table ensured');
+      } catch(e) { console.log('[vlm-server] system_flags:', e.message); }
+
       // model enum value
       try {
         await sql\`ALTER TYPE element_type ADD VALUE IF NOT EXISTS 'model'\`;

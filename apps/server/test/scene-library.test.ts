@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import { mediaAssets, sceneLibrary, sceneRoles, assetLibraryItems } from '../src/db/schema.js'
-import { backfillSceneLibrary, listSceneLibrary, linkToScene } from '../src/library/scene-library.js'
+import { backfillSceneLibrary, runStartupBackfill, listSceneLibrary, linkToScene } from '../src/library/scene-library.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, createScene, createElement, tokenFor } from './helpers/factories.js'
 
@@ -72,5 +72,29 @@ describe('scene library', () => {
     expect(await backfillSceneLibrary()).toBe(0)
     const rows = await db.select().from(sceneLibrary).where(eq(sceneLibrary.sceneId, a.scene.id))
     expect(rows.map((r) => r.mediaAssetId ?? r.assetItemId).sort()).toEqual([m.id, model.id].sort())
+  })
+
+  it('startup backfill runs once: an unlinked item is not re-created', async () => {
+    const owner = await createUser(); const a = await createScene(owner)
+    const m = await media(owner.id, 'https://cdn/once.png')
+    await createElement(a.preset.id, { type: 'image', properties: { textureSrc: 'https://cdn/once.png' } })
+    expect(await runStartupBackfill()).toBe(1)
+    const [row] = await db.select().from(sceneLibrary).where(eq(sceneLibrary.mediaAssetId, m.id))
+    await db.delete(sceneLibrary).where(eq(sceneLibrary.id, row.id))
+    expect(await runStartupBackfill()).toBeNull()
+    expect(await db.select().from(sceneLibrary)).toHaveLength(0)
+  })
+
+  it("backfill skips another user's media and private models placed in the scene", async () => {
+    const owner = await createUser(); const other = await createUser(); const a = await createScene(owner)
+    await media(other.id, 'https://cdn/theirs.png')
+    await db.insert(assetLibraryItems).values({ name: 'Priv', storageKey: 'p', cdnUrl: 'https://cdn/priv.glb', uploadedBy: other.id, isPublic: false } as any)
+    const [pub] = await db.insert(assetLibraryItems).values({ name: 'Pub', storageKey: 'q', cdnUrl: 'https://cdn/pub.glb', uploadedBy: other.id, isPublic: true } as any).returning()
+    await createElement(a.preset.id, { type: 'image', properties: { textureSrc: 'https://cdn/theirs.png' } })
+    await createElement(a.preset.id, { type: 'model', properties: { modelSrc: 'https://cdn/priv.glb' } })
+    await createElement(a.preset.id, { type: 'model', properties: { modelSrc: 'https://cdn/pub.glb' } })
+    expect(await backfillSceneLibrary()).toBe(1)
+    const rows = await db.select().from(sceneLibrary)
+    expect(rows.map((r) => r.assetItemId)).toEqual([pub.id])
   })
 })

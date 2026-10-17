@@ -17,7 +17,7 @@ export default async function sceneLibraryRoutes(app: FastifyInstance) {
     return reply.send({ items: await listSceneLibrary(request.params.sceneId) })
   })
 
-  // Account tokens only (no scenePass config): a pass can't pull files out of the owner's account.
+  // Account tokens only: no scenePass config, so authenticate refuses passes by default deny (a pass can't pull files out of the owner's account).
   app.post<{ Params: { sceneId: string }; Body: { mediaAssetId?: string; assetItemId?: string } }>('/api/scenes/:sceneId/library', async (request, reply) => {
     const { sceneId } = request.params
     const { mediaAssetId, assetItemId } = request.body ?? {}

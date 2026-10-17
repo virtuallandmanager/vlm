@@ -1117,3 +1117,11 @@ export const sceneLibraryRelations = relations(sceneLibrary, ({ one }) => ({
   mediaAsset: one(mediaAssets, { fields: [sceneLibrary.mediaAssetId], references: [mediaAssets.id] }),
   assetItem: one(assetLibraryItems, { fields: [sceneLibrary.assetItemId], references: [assetLibraryItems.id] }),
 }))
+
+// ── System Flags ─────────────────────────────────────────────────────────────
+// Marker rows for one-time startup jobs (claimed atomically so replicas don't both run them).
+
+export const systemFlags = pgTable('system_flags', {
+  key: text('key').primaryKey(),
+  setAt: timestamp('set_at', { withTimezone: true }).notNull().defaultNow(),
+})

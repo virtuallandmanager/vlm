@@ -18,7 +18,7 @@ describe('POST /api/ingest errors', () => {
 
   it('returns 500 and never logs the client IP', async () => {
     const lines: string[] = []
-    app = await buildApp({ rateLimit: false, logStream: { write: (m) => void lines.push(m) } })
+    app = await buildApp({ rateLimit: false, backfill: false, logStream: { write: (m) => void lines.push(m) } })
     await app.ready()
     const now = Date.now()
     const res = await app.inject({

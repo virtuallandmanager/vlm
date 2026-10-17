@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { assetLibraryItems, bookings, mediaAssets, sceneLibrary } from '../db/schema.js'
+import { assetLibraryItems, bookings, mediaAssets, sceneLibrary, systemFlags } from '../db/schema.js'
 
 export interface LibraryItem {
   id: string
@@ -56,7 +56,8 @@ export async function linkToScene(
 /**
  * Link every media file / model already placed in a scene (URL in element or instance properties).
  * Keys are the media-bearing ones in vlm-shared element types; `playlist` is an array of video URLs.
- * Idempotent; returns rows added.
+ * Only the scene owner's own media, and models the owner uploaded or public catalog models, are linked.
+ * Idempotent; returns rows added. Startup goes through runStartupBackfill so it happens once.
  */
 const PLACED = sql.raw(`
   SELECT DISTINCT sp.scene_id, u.url FROM (
@@ -78,12 +79,28 @@ export async function backfillSceneLibrary(): Promise<number> {
   const media = await db.execute(sql`
     INSERT INTO scene_library (scene_id, media_asset_id, added_by)
     SELECT pl.scene_id, m.id, s.owner_id FROM (${PLACED}) pl
-      JOIN media_assets m ON m.public_url = pl.url JOIN scenes s ON s.id = pl.scene_id
+      JOIN scenes s ON s.id = pl.scene_id
+      JOIN media_assets m ON m.public_url = pl.url AND m.owner_id = s.owner_id
     ON CONFLICT DO NOTHING RETURNING id`)
   const models = await db.execute(sql`
     INSERT INTO scene_library (scene_id, asset_item_id, added_by)
     SELECT pl.scene_id, a.id, s.owner_id FROM (${PLACED}) pl
-      JOIN asset_library_items a ON a.cdn_url = pl.url JOIN scenes s ON s.id = pl.scene_id
+      JOIN scenes s ON s.id = pl.scene_id
+      JOIN asset_library_items a ON a.cdn_url = pl.url AND (a.uploaded_by = s.owner_id OR a.is_public)
     ON CONFLICT DO NOTHING RETURNING id`)
   return rowCount(media) + rowCount(models)
+}
+
+const BACKFILL_FLAG = 'scene_library_backfill_v1'
+
+/** Run the backfill once per database. The marker is claimed atomically first; a failure releases it so the next boot retries. */
+export async function runStartupBackfill(): Promise<number | null> {
+  const [claimed] = await db.insert(systemFlags).values({ key: BACKFILL_FLAG }).onConflictDoNothing().returning({ key: systemFlags.key })
+  if (!claimed) return null
+  try {
+    return await backfillSceneLibrary()
+  } catch (err) {
+    await db.delete(systemFlags).where(eq(systemFlags.key, BACKFILL_FLAG))
+    throw err
+  }
 }
