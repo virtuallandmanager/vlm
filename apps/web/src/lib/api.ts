@@ -40,7 +40,7 @@ export function isGlbAsset(asset: { contentType?: string; filename?: string }): 
 }
 
 export function useApi() {
-  const { token } = useAuth()
+  const { token, logout } = useAuth()
 
   const apiFetch = useCallback(async <T = any>(path: string, options: RequestInit = {}): Promise<T> => {
     const headers: Record<string, string> = {
@@ -52,11 +52,14 @@ export function useApi() {
     if (!res.ok) {
       // Non-JSON error bodies (proxy pages, e.g. a 413 from the edge) become `HTTP <status>`.
       const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+      // A kind-less (pre-scene-pass) session, or a scene pass used outside its scope: drop it so the
+      // dashboard layout sends the user to sign-in once (with `next`), instead of showing an error.
+      if ((res.status === 401 && err.message === 'Session expired — sign in again') || (res.status === 403 && err.error === 'scene_pass_not_allowed')) logout()
       throw Object.assign(new Error(err.error || `API error ${res.status}`), { status: res.status })
     }
     if (res.status === 204) return undefined as T
     return res.json()
-  }, [token])
+  }, [token, logout])
 
   return {
     // Linked wallets

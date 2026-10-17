@@ -1,7 +1,9 @@
 'use client'
 import { useAuth } from '@/lib/auth'
 import { useRouter, usePathname } from 'next/navigation'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useApi } from '@/lib/api'
+import { scenePassAllows } from '@/lib/session'
 import Link from 'next/link'
 
 const baseNavItems = [
@@ -18,17 +20,20 @@ const baseNavItems = [
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, logout } = useAuth()
+  const { user, loading, logout, scenePass } = useAuth()
+  const apiNow = useApi()
+  const [sceneTitle, setSceneTitle] = useState('this scene')
   const router = useRouter()
   const pathname = usePathname()
 
   const navItems = useMemo(() => {
+    if (scenePass) return []
     const items = [...baseNavItems]
     if (user?.role === 'admin') {
       items.push({ href: '/admin', label: 'Admin' })
     }
     return items
-  }, [user?.role])
+  }, [user?.role, scenePass])
 
   useEffect(() => {
     if (!loading && !user) {
@@ -37,8 +42,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [user, loading, router])
 
+  // A scene pass may only open its own scene's analytics; anything else goes to sign-in.
+  useEffect(() => {
+    if (!loading && user && scenePass && !scenePassAllows(window.location.pathname, window.location.search, scenePass)) {
+      router.push('/?next=' + encodeURIComponent(window.location.pathname + window.location.search))
+    }
+  }, [user, loading, scenePass, pathname, router])
+
+  // The pass's only scene is the one it was minted for; its name goes in the banner.
+  const passSceneId = scenePass?.sceneId
+  useEffect(() => {
+    if (!passSceneId) return
+    let cancelled = false
+    apiNow.getScenes()
+      .then((r) => { if (!cancelled) setSceneTitle(r.scenes?.[0]?.name ?? 'this scene') })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [passSceneId])
+
   if (loading) return <div className="flex h-screen items-center justify-center"><p>Loading...</p></div>
   if (!user) return null
+
+  const here = typeof window === 'undefined' ? pathname : window.location.pathname + window.location.search
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -57,7 +83,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <button onClick={logout} className="shrink-0 md:mt-2 text-xs text-gray-500 hover:text-white">Sign Out</button>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 p-4 md:p-6">{children}</main>
+      <main className="min-w-0 flex-1 p-4 md:p-6">
+        {scenePass && (
+          <div className="mb-4 rounded-lg border border-gray-800 bg-gray-900 px-4 py-2 text-sm text-gray-300">
+            Signed in from {sceneTitle} — <Link className="underline" href={`/?next=${encodeURIComponent(here)}`} onClick={logout}>sign in for full access</Link>
+          </div>
+        )}
+        {children}
+      </main>
     </div>
   )
 }

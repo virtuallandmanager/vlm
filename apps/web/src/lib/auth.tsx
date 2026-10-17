@@ -1,6 +1,7 @@
 'use client'
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { API_URL } from './config'
+import { readSession, type ScenePass } from './session'
 
 interface User {
   id: string
@@ -13,6 +14,7 @@ interface AuthState {
   user: User | null
   token: string | null
   loading: boolean
+  scenePass: ScenePass | null
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, displayName: string) => Promise<void>
   loginWithWallet: () => Promise<void>
@@ -71,6 +73,7 @@ export async function signWalletChallenge(): Promise<{ address: string; nonce: s
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [token, setToken] = useState<string | null>(null)
+  const [scenePass, setScenePass] = useState<ScenePass | null>(null)
   const [loading, setLoading] = useState(true)
 
   // Load from localStorage on mount
@@ -79,11 +82,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (stored) {
       try {
         const data = JSON.parse(stored)
-        // Check token expiry
-        const payload = JSON.parse(atob(data.token.split('.')[1]))
-        if (payload.exp * 1000 > Date.now()) {
+        // Drop expired, kind-less (pre-scene-pass) and visitor sessions: the user signs in again once.
+        const session = readSession(data.token, Date.now())
+        if (session.ok) {
           setToken(data.token)
           setUser(data.user)
+          setScenePass(session.scenePass)
         } else {
           localStorage.removeItem('vlm_auth')
         }
@@ -105,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await res.json()
     setToken(data.accessToken)
     setUser(data.user)
+    setScenePass(null)
     localStorage.setItem('vlm_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
   }, [])
 
@@ -121,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await res.json()
     setToken(data.accessToken)
     setUser(data.user)
+    setScenePass(null)
     localStorage.setItem('vlm_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
   }, [])
 
@@ -135,12 +141,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await res.json()
     setToken(data.accessToken)
     setUser(data.user)
+    setScenePass(null)
     localStorage.setItem('vlm_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
   }, [])
 
   const logout = useCallback(() => {
     setToken(null)
     setUser(null)
+    setScenePass(null)
     localStorage.removeItem('vlm_auth')
   }, [])
 
@@ -162,7 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, loginWithWallet, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, token, loading, scenePass, login, register, loginWithWallet, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   )

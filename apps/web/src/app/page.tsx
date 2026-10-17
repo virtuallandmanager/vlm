@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useState } from 'react'
 
 function Home() {
-  const { user, loading, login, register, loginWithWallet } = useAuth()
+  const { user, loading, scenePass, login, register, loginWithWallet } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
   const dest = safeNextPath(searchParams.get('next')) ?? '/scenes'
@@ -23,8 +23,8 @@ function Home() {
   const [providers, setProviders] = useState<{ google: boolean; discord: boolean }>({ google: false, discord: false })
 
   useEffect(() => {
-    if (!loading && user) router.push(dest)
-  }, [user, loading, router])
+    if (!loading && user && !scenePass) router.push(dest)
+  }, [user, loading, scenePass, router])
 
   useEffect(() => {
     setHasWallet(getBrowserWallet() !== null)
@@ -67,7 +67,7 @@ function Home() {
   }
 
   if (loading) return <div className="flex h-screen items-center justify-center"><p>Loading...</p></div>
-  if (user) return null
+  if (user && !scenePass) return null
 
   return (
     <div className="flex min-h-screen items-center justify-center">
