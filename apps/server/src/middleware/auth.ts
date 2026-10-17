@@ -12,6 +12,9 @@ export interface AuthUser {
   wallet?: string | null
   verified?: boolean
   guest?: boolean
+  kind?: 'account' | 'scene'
+  sceneId?: string | null
+  locationId?: string | null
 }
 
 declare module 'fastify' {
@@ -22,7 +25,7 @@ declare module 'fastify' {
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    payload: { id: string; email: string | null; role: string; orgId?: string | null; wallet?: string | null; verified?: boolean; guest?: boolean; refresh?: boolean }
+    payload: { id: string; email: string | null; role: string; orgId?: string | null; wallet?: string | null; verified?: boolean; guest?: boolean; refresh?: boolean; kind?: 'account' | 'scene'; sceneId?: string | null; locationId?: string | null }
     user: AuthUser
   }
 }
@@ -93,6 +96,9 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     }
     if (decoded.guest) {
       return reply.status(401).send({ error: 'Unauthorized', message: 'Guest tokens cannot access the API' })
+    }
+    if (decoded.kind !== 'account' && decoded.kind !== 'scene') {
+      return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired — sign in again' })
     }
     request.user = decoded
   } catch (err) {

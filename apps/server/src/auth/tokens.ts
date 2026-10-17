@@ -1,6 +1,7 @@
 import { createVerifier } from 'fast-jwt'
 import { config } from '../config.js'
 
+export type TokenKind = 'account' | 'scene'
 export interface SessionClaims {
   id: string
   email: string | null
@@ -10,16 +11,20 @@ export interface SessionClaims {
   verified?: boolean
   guest?: boolean
   refresh?: boolean
+  kind?: TokenKind
+  sceneId?: string | null
+  locationId?: string | null
 }
 
 const verifier = createVerifier({ key: config.jwtSecret })
 
-/** Verify an access token outside Fastify (e.g. Colyseus onAuth). Refresh tokens are rejected. */
+/** Verify an access token outside Fastify (e.g. Colyseus onAuth). Refresh and kind-less (pre-scene-pass) tokens are rejected; guest tokens pass (they carry guest: true). */
 export function verifySessionToken(token: string | undefined | null): SessionClaims | null {
   if (!token) return null
   try {
     const claims = verifier(token) as SessionClaims
     if (claims.refresh) return null
+    if (!claims.guest && claims.kind !== 'account' && claims.kind !== 'scene') return null
     return claims
   } catch {
     return null

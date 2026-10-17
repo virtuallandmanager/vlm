@@ -68,15 +68,17 @@ export default async function walletAuthRoutes(app: FastifyInstance) {
     if (recovered !== challenge.address) return reply.status(401).send({ error: 'Invalid signature' })
 
     const auth = request.headers.authorization
-    if (auth?.startsWith('Bearer ')) {
-      let bearer: { id: string; refresh?: boolean; guest?: boolean; verified?: boolean } | null = null
+    // Only an account session may link a wallet; a scene pass is ignored as if absent (it must never link one).
+    const bearerKind = auth?.startsWith('Bearer ') ? (app.jwt.decode<{ kind?: string }>(auth.slice(7)) as { kind?: string } | null)?.kind : undefined
+    if (auth?.startsWith('Bearer ') && bearerKind !== 'scene') {
+      let bearer: { id: string; refresh?: boolean; guest?: boolean; verified?: boolean; kind?: 'account' | 'scene' } | null = null
       try {
-        bearer = app.jwt.verify<{ id: string; refresh?: boolean; guest?: boolean; verified?: boolean }>(auth.slice(7))
+        bearer = app.jwt.verify<{ id: string; refresh?: boolean; guest?: boolean; verified?: boolean; kind?: 'account' | 'scene' }>(auth.slice(7))
       } catch {
         return reply.status(401).send({ error: 'Invalid token' })
       }
       const actor = actorFromClaims(bearer)
-      if (bearer!.refresh || !actor.userId || !actor.verified) return reply.status(401).send({ error: 'Invalid token' })
+      if (bearer!.kind !== 'account' || bearer!.refresh || !actor.userId || !actor.verified) return reply.status(401).send({ error: 'Invalid token' })
       const result = await linkVerifiedWallet(actor.userId, recovered)
       if (result === 'conflict') return reply.status(409).send({ error: 'That wallet is linked to another account' })
       await linkWalletGrants(actor.userId, recovered)

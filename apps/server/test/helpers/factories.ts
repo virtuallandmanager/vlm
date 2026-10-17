@@ -53,6 +53,7 @@ export function tokenFor(user: TestUser, extra: Record<string, unknown> = {}) {
     orgId: null,
     wallet: user.wallet,
     verified: true,
+    kind: 'account',
     ...extra,
   })
 }
@@ -64,6 +65,7 @@ export function expiredTokenFor(user: TestUser) {
     role: user.role,
     wallet: user.wallet,
     verified: true,
+    kind: 'account',
     exp: Math.floor(Date.now() / 1000) - 60,
   })
 }

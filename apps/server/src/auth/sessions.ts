@@ -11,7 +11,7 @@ export interface SessionUser {
 
 /** Issue the access + refresh tokens of a verified-wallet session (wallet sign-in and in-world hand-off). */
 export function issueWalletSession(app: FastifyInstance, user: SessionUser, wallet: string) {
-  const claims = { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null, wallet, verified: true }
+  const claims = { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null, wallet, verified: true, kind: 'account' as const }
   return {
     user: { id: user.id, displayName: user.displayName, email: user.email, role: user.role },
     accessToken: app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry }),

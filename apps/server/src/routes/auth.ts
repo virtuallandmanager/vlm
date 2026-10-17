@@ -74,11 +74,11 @@ export default async function authRoutes(app: FastifyInstance) {
     })
 
     const accessToken = app.jwt.sign(
-      { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null },
+      { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null, kind: 'account' as const },
       { expiresIn: config.jwtAccessExpiry },
     )
     const refreshToken = app.jwt.sign(
-      { id: user.id, email: user.email, role: user.role, refresh: true },
+      { id: user.id, email: user.email, role: user.role, refresh: true, kind: 'account' as const },
       { expiresIn: config.jwtRefreshExpiry },
     )
 
@@ -130,11 +130,11 @@ export default async function authRoutes(app: FastifyInstance) {
     }
 
     const accessToken = app.jwt.sign(
-      { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null },
+      { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null, kind: 'account' as const },
       { expiresIn: config.jwtAccessExpiry },
     )
     const refreshToken = app.jwt.sign(
-      { id: user.id, email: user.email, role: user.role, refresh: true },
+      { id: user.id, email: user.email, role: user.role, refresh: true, kind: 'account' as const },
       { expiresIn: config.jwtRefreshExpiry },
     )
 
@@ -156,10 +156,13 @@ export default async function authRoutes(app: FastifyInstance) {
     const token = authHeader.slice(7)
 
     try {
-      const decoded = app.jwt.verify<{ id: string; email: string | null; role: string; wallet?: string | null; verified?: boolean; refresh?: boolean }>(token)
+      const decoded = app.jwt.verify<{ id: string; email: string | null; role: string; wallet?: string | null; verified?: boolean; refresh?: boolean; kind?: 'account' | 'scene'; sceneId?: string | null; locationId?: string | null }>(token)
 
       if (!decoded.refresh) {
         return reply.status(401).send({ error: 'Not a refresh token' })
+      }
+      if (decoded.kind !== 'account' && decoded.kind !== 'scene') {
+        return reply.status(401).send({ error: 'Invalid or expired refresh token' })
       }
 
       // Verify user still exists
@@ -179,6 +182,9 @@ export default async function authRoutes(app: FastifyInstance) {
           orgId: user.activeOrgId || null,
           wallet: decoded.wallet ?? null,
           ...(decoded.verified === false ? { verified: false } : {}),
+          ...(decoded.kind === 'scene'
+            ? { kind: 'scene' as const, sceneId: decoded.sceneId ?? null, locationId: decoded.locationId ?? null }
+            : { kind: 'account' as const }),
         },
         { expiresIn: config.jwtAccessExpiry },
       )
@@ -270,6 +276,7 @@ export default async function authRoutes(app: FastifyInstance) {
         orgId: dbUser.activeOrgId || null,
         wallet: verifiedWallet,
         verified: !!verifiedWallet,
+        kind: 'account' as const,
       }
       const accessToken = app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry })
       const refreshToken = app.jwt.sign({ ...claims, refresh: true }, { expiresIn: config.jwtRefreshExpiry })
@@ -395,11 +402,11 @@ export default async function authRoutes(app: FastifyInstance) {
         }
 
         const accessToken = app.jwt.sign(
-          { id: dbUser.id, email: dbUser.email, role: dbUser.role, orgId: dbUser.activeOrgId || null },
+          { id: dbUser.id, email: dbUser.email, role: dbUser.role, orgId: dbUser.activeOrgId || null, kind: 'account' as const },
           { expiresIn: config.jwtAccessExpiry },
         )
         const refreshToken = app.jwt.sign(
-          { id: dbUser.id, email: dbUser.email, role: dbUser.role, refresh: true },
+          { id: dbUser.id, email: dbUser.email, role: dbUser.role, refresh: true, kind: 'account' as const },
           { expiresIn: config.jwtRefreshExpiry },
         )
 
@@ -548,11 +555,11 @@ export default async function authRoutes(app: FastifyInstance) {
         }
 
         const accessToken = app.jwt.sign(
-          { id: dbUser.id, email: dbUser.email, role: dbUser.role, orgId: dbUser.activeOrgId || null },
+          { id: dbUser.id, email: dbUser.email, role: dbUser.role, orgId: dbUser.activeOrgId || null, kind: 'account' as const },
           { expiresIn: config.jwtAccessExpiry },
         )
         const refreshToken = app.jwt.sign(
-          { id: dbUser.id, email: dbUser.email, role: dbUser.role, refresh: true },
+          { id: dbUser.id, email: dbUser.email, role: dbUser.role, refresh: true, kind: 'account' as const },
           { expiresIn: config.jwtRefreshExpiry },
         )
 
