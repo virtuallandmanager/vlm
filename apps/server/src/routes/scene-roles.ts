@@ -6,6 +6,7 @@ import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess, isFullAccess, isHostAccess } from '../auth/permissions.js'
 import { verifiedWalletsOf } from '../analytics/claims.js'
+import { fromParam } from '../auth/scene-from.js'
 
 const WALLET_RE = /^0x[0-9a-f]{40}$/
 const ROLES = new Set(['cohost', 'editor', 'viewer'])
@@ -30,7 +31,7 @@ export default async function sceneRoleRoutes(app: FastifyInstance) {
   const activeRow = (sceneId: string, wallet: string) =>
     db.query.sceneRoles.findFirst({ where: and(eq(sceneRoles.sceneId, sceneId), eq(sceneRoles.walletAddress, wallet), isNull(sceneRoles.revokedAt)) })
 
-  app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId/roles', async (request, reply) => {
+  app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId/roles', { config: { scenePass: { sceneFrom: fromParam('sceneId') } } }, async (request, reply) => {
     const scene = await guard(request, reply)
     if (!scene) return
     const owner = await db.query.users.findFirst({ where: eq(users.id, scene.ownerId) })
@@ -46,7 +47,7 @@ export default async function sceneRoleRoutes(app: FastifyInstance) {
     })
   })
 
-  app.post<{ Params: { sceneId: string }; Body: { wallet?: string; role?: string } }>('/api/scenes/:sceneId/roles', async (request, reply) => {
+  app.post<{ Params: { sceneId: string }; Body: { wallet?: string; role?: string } }>('/api/scenes/:sceneId/roles', { config: { scenePass: { sceneFrom: fromParam('sceneId') } } }, async (request, reply) => {
     const scene = await guard(request, reply)
     if (!scene) return
     const wallet = typeof request.body?.wallet === 'string' ? request.body.wallet.toLowerCase() : ''
@@ -62,7 +63,7 @@ export default async function sceneRoleRoutes(app: FastifyInstance) {
     return reply.status(201).send({ role: { wallet: row.walletAddress, role: row.role, userId: row.userId } })
   })
 
-  app.delete<{ Params: { sceneId: string; wallet: string } }>('/api/scenes/:sceneId/roles/:wallet', async (request, reply) => {
+  app.delete<{ Params: { sceneId: string; wallet: string } }>('/api/scenes/:sceneId/roles/:wallet', { config: { scenePass: { sceneFrom: fromParam('sceneId') } } }, async (request, reply) => {
     const scene = await guard(request, reply)
     if (!scene) return
     const wallet = request.params.wallet.toLowerCase()
@@ -71,7 +72,7 @@ export default async function sceneRoleRoutes(app: FastifyInstance) {
     return reply.status(204).send()
   })
 
-  app.post<{ Params: { sceneId: string }; Body: { wallet?: string } }>('/api/scenes/:sceneId/transfer-host', async (request, reply) => {
+  app.post<{ Params: { sceneId: string }; Body: { wallet?: string } }>('/api/scenes/:sceneId/transfer-host', { config: { scenePass: { sceneFrom: fromParam('sceneId') } } }, async (request, reply) => {
     const scene = await guard(request, reply, true)
     if (!scene) return
     const wallet = typeof request.body?.wallet === 'string' ? request.body.wallet.toLowerCase() : ''

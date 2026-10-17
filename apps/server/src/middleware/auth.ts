@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { apiKeys, users } from '../db/schema.js'
+import '../auth/scene-from.js' // FastifyContextConfig.scenePass
 
 export interface AuthUser {
   id: string
@@ -101,6 +102,22 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired — sign in again' })
     }
     request.user = decoded
+    if (decoded.kind === 'scene') {
+      // Default deny: a scene pass works only on routes that declare how to find their scene,
+      // and only when that scene is the pass's own. A resolver error refuses too (never 401/pass-through).
+      const sceneFrom = request.routeOptions.config?.scenePass?.sceneFrom
+      let target: string | null = null
+      if (sceneFrom && decoded.sceneId) {
+        try {
+          target = await sceneFrom(request)
+        } catch {
+          target = null
+        }
+      }
+      if (!decoded.sceneId || !target || target !== decoded.sceneId) {
+        return reply.status(403).send({ error: 'scene_pass_not_allowed' })
+      }
+    }
   } catch (err) {
     reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or missing token' })
   }

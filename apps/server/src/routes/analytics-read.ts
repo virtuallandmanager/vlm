@@ -20,6 +20,7 @@ import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getAnalyticsAccess } from '../analytics/access.js'
 import { verifiedWalletsOf } from '../analytics/claims.js'
+import { boundScene, fromAnalyticsLocation, isScenePass } from '../auth/scene-from.js'
 import { visitorHash } from '../analytics/hash.js'
 import { TokenBucketLimiter } from '../analytics/limiter.js'
 
@@ -91,11 +92,14 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     return { ...access.scene, until: access.until, since: access.since, canDelete: access.canDelete }
   }
 
-  app.get('/api/analytics/locations', async (request, reply) => {
+  app.get('/api/analytics/locations', { config: { scenePass: { sceneFrom: boundScene } } }, async (request, reply) => {
     const actor = actorFromClaims(request.user)
     if (!actor.userId || !actor.verified) return reply.send({ scenes: [] })
     let candidate
-    if (actor.role !== 'admin') {
+    if (isScenePass(request.user)) {
+      // A scene pass lists only its own location.
+      candidate = eq(analyticsScenes.id, request.user.locationId ?? '00000000-0000-0000-0000-000000000000')
+    } else if (actor.role !== 'admin') {
       const wallets = new Set(await verifiedWalletsOf(actor.userId))
       if (actor.wallet) wallets.add(actor.wallet)
       const reachable = db
@@ -142,7 +146,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     })
   })
 
-  app.get<{ Params: { id: string }; Querystring: { from?: string; to?: string } }>('/api/analytics/locations/:id/summary', async (request, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { from?: string; to?: string } }>('/api/analytics/locations/:id/summary', { config: { scenePass: { sceneFrom: fromAnalyticsLocation } } }, async (request, reply) => {
     const r = range(request.query)
     if (!r) return reply.status(400).send({ error: 'from/to must be ISO dates with from <= to and a range of at most 400 days' })
     const scene = await guard(request, reply, request.params.id)
@@ -181,6 +185,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { id: string }; Querystring: { from?: string; to?: string; bucket?: string } }>(
     '/api/analytics/locations/:id/timeseries',
+    { config: { scenePass: { sceneFrom: fromAnalyticsLocation } } },
     async (request, reply) => {
       const r = range(request.query)
       const bucket = request.query.bucket === 'day' ? 'day' : 'hour'
@@ -220,7 +225,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     },
   )
 
-  app.get<{ Params: { id: string } }>('/api/analytics/locations/:id/live', async (request, reply) => {
+  app.get<{ Params: { id: string } }>('/api/analytics/locations/:id/live', { config: { scenePass: { sceneFrom: fromAnalyticsLocation } } }, async (request, reply) => {
     const scene = await guard(request, reply, request.params.id)
     if (!scene) return
     // Live data is always after an ended tenure, so a reader limited by `until` sees nothing here.
@@ -242,7 +247,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     return reply.send({ count: ids.length, positions: positions.map((p) => ({ x: Number(p.x), z: Number(p.z) })) })
   })
 
-  app.get<{ Params: { id: string }; Querystring: { from?: string; to?: string } }>('/api/analytics/locations/:id/heatmap', async (request, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { from?: string; to?: string } }>('/api/analytics/locations/:id/heatmap', { config: { scenePass: { sceneFrom: fromAnalyticsLocation } } }, async (request, reply) => {
     const r = range(request.query)
     if (!r) return reply.status(400).send({ error: 'from/to must be ISO dates with from <= to and a range of at most 400 days' })
     const scene = await guard(request, reply, request.params.id)
@@ -258,7 +263,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     return reply.send({ cells: cells.map((c) => ({ x: Number(c.x), z: Number(c.z), dwellSec: Number(c.dwell), visits: Number(c.visits) })) })
   })
 
-  app.get<{ Params: { id: string }; Querystring: { cursor?: string; limit?: string } }>('/api/analytics/locations/:id/sessions', async (request, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { cursor?: string; limit?: string } }>('/api/analytics/locations/:id/sessions', { config: { scenePass: { sceneFrom: fromAnalyticsLocation } } }, async (request, reply) => {
     const scene = await guard(request, reply, request.params.id)
     if (!scene) return
     const limit = Math.min(Math.max(parseInt(request.query.limit || '50', 10) || 50, 1), 200)
@@ -287,7 +292,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
     })
   })
 
-  app.patch<{ Params: { id: string }; Body: { walletVisibility?: unknown } }>('/api/analytics/locations/:id', async (request, reply) => {
+  app.patch<{ Params: { id: string }; Body: { walletVisibility?: unknown } }>('/api/analytics/locations/:id', { config: { scenePass: { sceneFrom: fromAnalyticsLocation } } }, async (request, reply) => {
     if (typeof request.body?.walletVisibility !== 'boolean') return reply.status(400).send({ error: 'walletVisibility must be a boolean' })
     const scene = await guard(request, reply, request.params.id, true)
     if (!scene) return

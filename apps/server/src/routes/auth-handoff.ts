@@ -5,6 +5,7 @@ import { db } from '../db/connection.js'
 import { authHandoffCodes, users } from '../db/schema.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { authenticate } from '../middleware/auth.js'
+import { boundScene } from '../auth/scene-from.js'
 import { linkWalletGrants } from '../auth/permissions.js'
 import { issueWalletSession } from '../auth/sessions.js'
 import { TokenBucketLimiter } from '../analytics/limiter.js'
@@ -33,7 +34,7 @@ export async function purgeAuthHandoffCodes(now = new Date()): Promise<number> {
 export default async function authHandoffRoutes(app: FastifyInstance) {
   const limiter = new TokenBucketLimiter()
 
-  app.post('/api/auth/handoff', { preHandler: authenticate }, async (request, reply) => {
+  app.post('/api/auth/handoff', { preHandler: authenticate, config: { scenePass: { sceneFrom: boundScene } } }, async (request, reply) => {
     const actor = actorFromClaims(request.user)
     if (!actor.userId || !actor.verified || !actor.wallet) {
       return reply.status(401).send({ error: 'Sign-in hand-off needs a verified wallet' })

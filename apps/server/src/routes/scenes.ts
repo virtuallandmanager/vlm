@@ -20,6 +20,7 @@ import { publishElementChanged } from '../realtime/bus.js'
 import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 import { serializeSingleElement } from '../services/scene-serializer.js'
 import { getSubscription } from '../integrations/stripe.js'
+import { boundScene, fromElement, fromInstance, fromParam, fromPreset, isScenePass } from '../auth/scene-from.js'
 
 type ElementChange = Parameters<typeof publishElementChanged>[0]
 
@@ -102,7 +103,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   // ── GET /api/scenes — list user's scenes ─────────────────────────────────
 
-  app.get('/api/scenes', async (request, reply) => {
+  app.get('/api/scenes', { config: { scenePass: { sceneFrom: boundScene } } }, async (request, reply) => {
     const actor = actorFromClaims(request.user)
     if (!actor.userId || !actor.verified) return reply.send({ scenes: [] })
     const owned = await db.query.scenes.findMany({
@@ -148,12 +149,12 @@ export default async function sceneRoutes(app: FastifyInstance) {
           orderBy: (scenes, { desc }) => [desc(scenes.updatedAt)],
         })
       : []
-    return reply.send({
-      scenes: [
-        ...owned.map((s) => ({ ...s, relationship: 'owner' as const })),
-        ...[...shared, ...extra].map((s) => ({ ...s, relationship: best.get(s.id)! })),
-      ],
-    })
+    const list = [
+      ...owned.map((s) => ({ ...s, relationship: 'owner' as const })),
+      ...[...shared, ...extra].map((s) => ({ ...s, relationship: best.get(s.id)! })),
+    ]
+    // A scene pass sees only its own scene (the guard already required a bound sceneId).
+    return reply.send({ scenes: isScenePass(request.user) ? list.filter((s) => s.id === request.user.sceneId) : list })
   })
 
   // ── POST /api/scenes — create scene ──────────────────────────────────────
@@ -218,7 +219,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   // ── GET /api/scenes/:sceneId — get scene with full nested data ───────────
 
-  app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId', async (request, reply) => {
+  app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId', { config: { scenePass: { sceneFrom: fromParam('sceneId') } } }, async (request, reply) => {
     const { sceneId } = request.params
 
     const scene = await db.query.scenes.findFirst({
@@ -260,6 +261,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.put<{ Params: { sceneId: string }; Body: Partial<CreateSceneBody> & { activePresetId?: string } }>(
     '/api/scenes/:sceneId',
+    { config: { scenePass: { sceneFrom: fromParam('sceneId') } } },
     async (request, reply) => {
       const { sceneId } = request.params
       const { name, description, activePresetId } = request.body
@@ -323,6 +325,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { presetId: string }; Body: CreateElementBody }>(
     '/api/presets/:presetId/elements',
+    { config: { scenePass: { sceneFrom: fromPreset } } },
     async (request, reply) => {
       const { presetId } = request.params
       const { type, name, enabled, customId, customRendering, clickEvent, properties } = request.body
@@ -370,6 +373,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.put<{ Params: { elementId: string }; Body: Partial<CreateElementBody> }>(
     '/api/elements/:elementId',
+    { config: { scenePass: { sceneFrom: fromElement } } },
     async (request, reply) => {
       const { elementId } = request.params
 
@@ -416,6 +420,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.delete<{ Params: { elementId: string } }>(
     '/api/elements/:elementId',
+    { config: { scenePass: { sceneFrom: fromElement } } },
     async (request, reply) => {
       const { elementId } = request.params
 
@@ -445,6 +450,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { elementId: string }; Body: CreateInstanceBody }>(
     '/api/elements/:elementId/instances',
+    { config: { scenePass: { sceneFrom: fromElement } } },
     async (request, reply) => {
       const { elementId } = request.params
 
@@ -502,6 +508,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.put<{ Params: { instanceId: string }; Body: UpdateInstanceBody }>(
     '/api/instances/:instanceId',
+    { config: { scenePass: { sceneFrom: fromInstance } } },
     async (request, reply) => {
       const { instanceId } = request.params
 
@@ -551,6 +558,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.delete<{ Params: { instanceId: string } }>(
     '/api/instances/:instanceId',
+    { config: { scenePass: { sceneFrom: fromInstance } } },
     async (request, reply) => {
       const { instanceId } = request.params
 

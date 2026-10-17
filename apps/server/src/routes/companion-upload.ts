@@ -15,6 +15,9 @@ import { eq, and, gt } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { uploadTokens, assetLibraryItems } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
+import { actorFromClaims } from '../auth/actor.js'
+import { getSceneAccess, hasScope } from '../auth/permissions.js'
+import { fromBody } from '../auth/scene-from.js'
 import { createStorage } from '../storage/index.js'
 
 /** Generate a short alphanumeric code (6 chars, easy to type on mobile). */
@@ -33,12 +36,16 @@ export default async function companionUploadRoutes(app: FastifyInstance) {
   // ── Create Upload Token (authenticated) ───────────────────────────────
   app.post(
     '/api/upload-tokens',
-    { preHandler: [authenticate] },
+    { preHandler: [authenticate], config: { scenePass: { sceneFrom: fromBody('sceneId') } } },
     async (request, reply) => {
-      const body = request.body as {
+      const body = (request.body ?? {}) as {
         sceneId?: string
         maxUploads?: number
         expiresInMinutes?: number
+      }
+      if (body.sceneId) {
+        const access = await getSceneAccess(actorFromClaims(request.user), body.sceneId).catch(() => null)
+        if (!access || !hasScope(access, 'scene.edit')) return reply.status(403).send({ error: 'forbidden' })
       }
 
       const code = generateCode()
