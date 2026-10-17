@@ -23,7 +23,7 @@ import {
 } from '../db/schema.js'
 import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 import { verifySessionToken } from '../auth/tokens.js'
-import { actorFromClaims, type Actor } from '../auth/actor.js'
+import { ANONYMOUS, actorFromClaims, type Actor } from '../auth/actor.js'
 
 interface JoinOptions {
   sessionToken: string
@@ -47,7 +47,9 @@ export class VLMCommandCenterRoom extends Room {
   private statusInterval: ReturnType<typeof setInterval> | null = null
 
   async onAuth(_client: Client, options: JoinOptions): Promise<Actor> {
-    return actorFromClaims(verifySessionToken(options?.sessionToken))
+    const claims = verifySessionToken(options?.sessionToken)
+    if (claims?.kind === 'scene') return ANONYMOUS
+    return actorFromClaims(claims)
   }
 
   onCreate(options: JoinOptions) {

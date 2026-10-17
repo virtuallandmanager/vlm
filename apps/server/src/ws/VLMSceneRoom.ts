@@ -18,7 +18,7 @@ import {
 import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 import { config } from '../config.js'
 import { verifySessionToken } from '../auth/tokens.js'
-import { actorFromClaims, type Actor } from '../auth/actor.js'
+import { ANONYMOUS, actorFromClaims, type Actor } from '../auth/actor.js'
 import { getSceneAccess, isFullAccess, toVenueAccessMessage, type SceneAccess } from '../auth/permissions.js'
 import { authorizeSceneMessage, propertiesOf, type GuardResult, type GuardTarget } from './scene-guard.js'
 import { venueTopic, STREAMS_TOPIC, type VenueEvent, type StreamStatusEvent } from '../realtime/bus.js'
@@ -54,7 +54,12 @@ export class VLMSceneRoom extends Room {
   private static ACCESS_TTL_MS = 10_000
 
   async onAuth(_client: Client, options: JoinOptions): Promise<Actor> {
-    return actorFromClaims(verifySessionToken(options?.sessionToken))
+    const claims = verifySessionToken(options?.sessionToken)
+    // A scene pass acts as its user only in its own scene; anywhere else it's an anonymous visitor.
+    // Compare against the room's own scene (set in onCreate from the creating client's options, which
+    // runs before the first onAuth) — never a joining client's options.sceneId, which joinById can fake.
+    if (claims?.kind === 'scene' && (!claims.sceneId || claims.sceneId !== this.sceneId)) return ANONYMOUS
+    return actorFromClaims(claims)
   }
 
   onCreate(options: JoinOptions) {
