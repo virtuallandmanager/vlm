@@ -20,7 +20,7 @@ export function readSession(token: string, now: number): { ok: false } | { ok: t
 
 /** Pages a scene pass may open: that scene's analytics. Extend here when HUD links to more scene pages. */
 export function scenePassAllows(pathname: string, search: string, pass: ScenePass): boolean {
-  if (!pathname.startsWith('/analytics')) return false
+  if (pathname !== '/analytics' && !pathname.startsWith('/analytics/')) return false
   const q = new URLSearchParams(search)
   return q.get('scene') === pass.sceneId || (!!pass.locationId && q.get('location') === pass.locationId)
 }
