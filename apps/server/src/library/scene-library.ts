@@ -11,7 +11,6 @@ export interface LibraryItem {
   contentType: string | null
   url: string
   sizeBytes: number
-  addedBy: string | null
   bookingId: string | null
   createdAt: string
 }
@@ -29,7 +28,8 @@ export async function listSceneLibrary(sceneId: string): Promise<LibraryItem[]> 
     .where(and(eq(sceneLibrary.sceneId, sceneId), ACTIVE_BOOKING))
     .orderBy(sql`${sceneLibrary.createdAt} desc`)
   return rows.flatMap(({ l, m, a }): LibraryItem[] => {
-    const base = { id: l.id, addedBy: l.addedBy, bookingId: l.bookingId, createdAt: l.createdAt.toISOString() }
+    // Who added an item stays server-side (the delete route checks it); viewers never see user ids.
+    const base = { id: l.id, bookingId: l.bookingId, createdAt: l.createdAt.toISOString() }
     if (m) return [{ ...base, kind: 'media', name: m.filename, contentType: m.contentType, url: m.publicUrl ?? '', sizeBytes: m.sizeBytes }]
     if (a) return [{ ...base, kind: 'model', name: a.name, contentType: 'model/gltf-binary', url: a.cdnUrl ?? '', sizeBytes: a.fileSizeBytes }]
     return []

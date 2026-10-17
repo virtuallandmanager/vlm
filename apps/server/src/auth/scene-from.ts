@@ -15,6 +15,7 @@ declare module 'fastify' {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+export const isUuid = (v: unknown): v is string => typeof v === 'string' && UUID.test(v)
 const uuidOrNull = (v: unknown) => (typeof v === 'string' && UUID.test(v) ? v : null)
 const param = (r: FastifyRequest, n: string) => uuidOrNull((r.params as Record<string, unknown> | undefined)?.[n])
 

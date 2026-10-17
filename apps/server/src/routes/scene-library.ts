@@ -5,12 +5,17 @@ import { assetLibraryItems, mediaAssets, sceneLibrary } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess } from '../auth/permissions.js'
-import { fromParam } from '../auth/scene-from.js'
+import { fromParam, isUuid } from '../auth/scene-from.js'
 import { linkToScene, listSceneLibrary, uploadDestination } from '../library/scene-library.js'
 import { storeMedia, StoreMediaError } from '../media/store.js'
 
 export default async function sceneLibraryRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)
+  // Malformed ids would reach Postgres as invalid uuids (500); they name nothing, so 404.
+  app.addHook('preHandler', async (request, reply) => {
+    const p = (request.params ?? {}) as Record<string, unknown>
+    for (const k of ['sceneId', 'id']) if (k in p && !isUuid(p[k])) return reply.status(404).send({ error: 'Not found' })
+  })
   const access = (request: any, sceneId: string) => getSceneAccess(actorFromClaims(request.user), sceneId)
 
   app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId/library', { config: { scenePass: { sceneFrom: fromParam('sceneId') } } }, async (request, reply) => {
@@ -23,6 +28,7 @@ export default async function sceneLibraryRoutes(app: FastifyInstance) {
     const { sceneId } = request.params
     const { mediaAssetId, assetItemId } = request.body ?? {}
     if (!!mediaAssetId === !!assetItemId) return reply.status(400).send({ error: 'Give exactly one of mediaAssetId or assetItemId' })
+    if (!isUuid(mediaAssetId ?? assetItemId)) return reply.status(400).send({ error: 'Invalid id' })
     if (!hasScope(await access(request, sceneId), 'scene.edit')) return reply.status(403).send({ error: 'forbidden' })
     const owns = mediaAssetId
       ? await db.query.mediaAssets.findFirst({ where: and(eq(mediaAssets.id, mediaAssetId), eq(mediaAssets.ownerId, request.user.id)) })

@@ -97,4 +97,26 @@ describe('scene library', () => {
     const rows = await db.select().from(sceneLibrary)
     expect(rows.map((r) => r.assetItemId)).toEqual([pub.id])
   })
+
+  it('malformed ids are 404 (or 400 in the body), never a 500', async () => {
+    const owner = await createUser(); const a = await createScene(owner)
+    const acct = { authorization: `Bearer ${tokenFor(owner, { kind: 'account' })}` }
+    const pass = { authorization: `Bearer ${tokenFor(owner, { kind: 'scene', sceneId: a.scene.id, orgId: null })}` }
+    const del = await app.inject({ method: 'DELETE', url: `/api/scenes/${a.scene.id}/library/not-a-uuid`, headers: pass })
+    expect(del.statusCode).toBe(404)
+    for (const [method, url] of [['GET', '/api/scenes/nope/library'], ['DELETE', `/api/scenes/nope/library/${a.scene.id}`], ['POST', '/api/scenes/nope/library/upload']] as const) {
+      const r = await app.inject({ method, url, headers: acct, payload: method === 'POST' ? { filename: 'a.png', contentType: 'image/png', data: 'AA==' } : undefined })
+      expect(r.statusCode, `${method} ${url}`).toBe(404)
+    }
+    const add = await app.inject({ method: 'POST', url: `/api/scenes/${a.scene.id}/library`, headers: acct, payload: { mediaAssetId: 'x' } })
+    expect(add.statusCode).toBe(400)
+  })
+
+  it('list items do not expose who added them', async () => {
+    const owner = await createUser(); const a = await createScene(owner)
+    const m = await media(owner.id)
+    await linkToScene(a.scene.id, { mediaAssetId: m.id }, owner.id)
+    const res = await app.inject({ method: 'GET', url: `/api/scenes/${a.scene.id}/library`, headers: { authorization: `Bearer ${tokenFor(owner, { kind: 'scene', sceneId: a.scene.id, orgId: null })}` } })
+    expect(res.json().items[0]).not.toHaveProperty('addedBy')
+  })
 })
