@@ -142,6 +142,7 @@ describe('in-world sign-in hand-off', () => {
     const ex = await app.inject({ method: 'POST', url: '/api/auth/handoff/exchange', payload: { code } })
     expect(ex.statusCode).toBe(200)
     expect(verifySessionToken(ex.json().accessToken)).toMatchObject({ kind: 'scene', sceneId: scene.id })
+    expect(ex.json().refreshToken).toBeNull()
     expect(ex.json().scene).toEqual({ sceneId: scene.id, locationId: null })
   })
 

@@ -2,7 +2,7 @@ export class VLMAuth {
   token: string | null = null
   refreshToken: string | null = null
 
-  setTokens(access: string, refresh: string): void {
+  setTokens(access: string, refresh: string | null): void {
     this.token = access
     this.refreshToken = refresh
   }

@@ -108,6 +108,28 @@ export class VLM {
     return this.connectToScene(this._sceneId)
   }
 
+  private async signInWithPlatform(http: VLMHttpClient, config: VLMInitConfig): Promise<void> {
+    const [platformUser, sceneInfo, environment] = await Promise.all([
+      this.adapter.getPlatformUser(),
+      this.adapter.getSceneInfo(),
+      this.adapter.getEnvironment(),
+    ])
+
+    const authProof = await this.adapter.getAuthProof()
+    const authResponse = await http.authenticateWithPlatform(authProof, {
+      sceneId: config.sceneId || sceneInfo.sceneId || undefined,
+      user: platformUser as unknown as Record<string, unknown>,
+      world: this.adapter.capabilities.platformName,
+      location: sceneInfo as unknown as Record<string, unknown>,
+      environment: environment as unknown as Record<string, unknown>,
+    }, this.adapter)
+
+    // A sign-in on a replaced client (authenticate() ran again) must not overwrite the newer one.
+    if (http !== this.http) return
+    this._user = authResponse.user as any
+    this._binding = authResponse.scene ?? null
+  }
+
   /**
    * Phase 1: Authenticate with the VLM server using platform credentials.
    * Can be called standalone before scene discovery.
@@ -123,23 +145,10 @@ export class VLM {
     this.setState('authenticating')
 
     try {
-      const [platformUser, sceneInfo, environment] = await Promise.all([
-        this.adapter.getPlatformUser(),
-        this.adapter.getSceneInfo(),
-        this.adapter.getEnvironment(),
-      ])
-
-      const authProof = await this.adapter.getAuthProof()
-      const authResponse = await this.http.authenticateWithPlatform(authProof, {
-        sceneId: config.sceneId || sceneInfo.sceneId || undefined,
-        user: platformUser as unknown as Record<string, unknown>,
-        world: this.adapter.capabilities.platformName,
-        location: sceneInfo as unknown as Record<string, unknown>,
-        environment: environment as unknown as Record<string, unknown>,
-      }, this.adapter)
-
-      this._user = authResponse.user as any
-      this._binding = authResponse.scene ?? null
+      const http = this.http
+      await this.signInWithPlatform(http, config)
+      // The pass lasts 15 min with no refresh token: a 401 later signs a fresh platform request.
+      http.reauthenticate = () => this.signInWithPlatform(http, config)
       this.setState('authenticated', { user: this._user as any })
     } catch (err) {
       this.setState('error', { error: String(err) })

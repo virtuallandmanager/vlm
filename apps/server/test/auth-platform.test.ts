@@ -126,23 +126,19 @@ describe('POST /api/auth/platform', () => {
     expect(verifySessionToken(refreshed.json().accessToken)!.verified).toBe(false)
   })
 
-  it('refresh tokens are rejected as bearer access tokens but still refresh', async () => {
+  it('a verified pass has no refresh token; a scene refresh token is neither a bearer nor refreshable', async () => {
     const login = await app.inject({
       method: 'POST',
       url: '/api/auth/platform',
       headers: { 'x-identity-auth-chain-0': `valid:${WALLET}` },
       payload: {},
     })
-    const { refreshToken } = login.json()
+    expect(login.json().refreshToken).toBeNull()
+    const refreshToken = app.jwt.sign({ ...verifySessionToken(login.json().accessToken)!, refresh: true })
     const scenesRes = await app.inject({ method: 'GET', url: '/api/scenes', headers: { authorization: `Bearer ${refreshToken}` } })
     expect(scenesRes.statusCode).toBe(401)
     const refreshed = await app.inject({ method: 'POST', url: '/api/auth/refresh', headers: { authorization: `Bearer ${refreshToken}` } })
-    expect(refreshed.statusCode).toBe(200)
-    // The refreshed token is a valid (visitor) scene pass: it authenticates, then the default-deny guard refuses it.
-    expect(verifySessionToken(refreshed.json().accessToken)).toMatchObject({ kind: 'scene', sceneId: null })
-    const ok = await app.inject({ method: 'GET', url: '/api/scenes', headers: { authorization: `Bearer ${refreshed.json().accessToken}` } })
-    expect(ok.statusCode).toBe(403)
-    expect(ok.json().error).toBe('scene_pass_not_allowed')
+    expect(refreshed.statusCode).toBe(401)
   })
 
   it('verifySessionToken rejects refresh tokens and garbage', async () => {

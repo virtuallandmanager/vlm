@@ -4,8 +4,8 @@ import { readSession } from './session'
 export interface HandoffDeps {
   href: string                                   // window.location.href at load
   replaceUrl: (url: string) => void              // history.replaceState(null, '', url)
-  exchange: (code: string) => Promise<{ status: number; body?: { accessToken: string; refreshToken: string; user: unknown } }>
-  saveSession: (s: { token: string; refresh: string; user: unknown }) => void // localStorage 'vlm_auth', same shape as auth/callback
+  exchange: (code: string) => Promise<{ status: number; body?: { accessToken: string; refreshToken: string | null; user: unknown } }>
+  saveSession: (s: { token: string; refresh: string | null; user: unknown }) => void // localStorage 'vlm_auth', same shape as auth/callback
   go: (url: string) => void                      // window.location.href = url (full load so AuthProvider reads the session)
   storedSession?: () => string | null            // localStorage.getItem('vlm_auth')
   now?: () => number

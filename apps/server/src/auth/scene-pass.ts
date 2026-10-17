@@ -8,13 +8,16 @@ export function sceneClaims(user: { id: string; role: string }, wallet: string, 
   return { id: user.id, email: null, role: user.role, orgId: null, wallet, verified: true, kind: 'scene', sceneId: b.sceneId, locationId: b.locationId }
 }
 
-/** A scene pass: acts as the wallet's user only inside the bound scene (sceneId null = visitor). */
+/**
+ * A scene pass: acts as the wallet's user only inside the bound scene (sceneId null = visitor).
+ * No refresh token: a pass lives 15 min past the last signed request, so one taken by a hostile realm dies soon after the player leaves.
+ */
 export function issueScenePass(app: FastifyInstance, user: SessionUser, wallet: string, b: SceneBinding) {
   const claims = sceneClaims(user, wallet, b)
   return {
     user: { id: user.id, displayName: user.displayName, email: null, role: user.role },
     accessToken: app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry }),
-    refreshToken: app.jwt.sign({ ...claims, refresh: true }, { expiresIn: config.jwtRefreshExpiry }),
+    refreshToken: null,
     scene: b,
   }
 }

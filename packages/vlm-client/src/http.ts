@@ -46,7 +46,15 @@ export class VLMHttpClient {
     this.auth = new VLMAuth()
   }
 
-  private async _fetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  /**
+   * Signs in again when a request gets a 401 (an in-world scene pass lasts 15 min and has no refresh token).
+   * Set by VLM after platform sign-in; called at most once per request, shared by concurrent requests.
+   */
+  reauthenticate: (() => Promise<void>) | null = null
+  private reauthInFlight: Promise<void> | null = null
+
+  private async _fetch<T>(path: string, options: RequestInit = {}, retried = false): Promise<T> {
+    const sentToken = this.auth.token
     const url = `${this.baseUrl}${path}`
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -54,12 +62,27 @@ export class VLMHttpClient {
       ...(options.headers as Record<string, string> || {}),
     }
     const res = await fetch(url, { ...options, headers })
+    if (res.status === 401 && !retried && this.reauthenticate && path !== '/api/auth/platform') {
+      if (await this.signInAgain(sentToken)) return this._fetch<T>(path, options, true)
+    }
     if (!res.ok) {
       const body = await res.text()
       throw new Error(`HTTP ${res.status}: ${body}`)
     }
     if (res.status === 204) return undefined as T
     return res.json() as Promise<T>
+  }
+
+  /** True when there is a new token to retry with. A token already replaced by another request counts. */
+  private async signInAgain(sentToken: string | null): Promise<boolean> {
+    if (this.auth.token !== sentToken) return true
+    this.reauthInFlight ??= this.reauthenticate!().finally(() => { this.reauthInFlight = null })
+    try {
+      await this.reauthInFlight
+    } catch {
+      return false
+    }
+    return this.auth.token !== sentToken
   }
 
   // Auth

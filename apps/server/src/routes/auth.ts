@@ -167,6 +167,10 @@ export default async function authRoutes(app: FastifyInstance) {
       if (decoded.kind !== 'account' && decoded.kind !== 'scene') {
         return reply.status(401).send({ error: 'Invalid or expired refresh token' })
       }
+      // Verified scene passes are never refreshed (none are issued); only local-preview passes are.
+      if (decoded.kind === 'scene' && decoded.verified !== false) {
+        return reply.status(401).send({ error: 'Invalid or expired refresh token' })
+      }
 
       // Verify user still exists
       const user = await db.query.users.findFirst({
