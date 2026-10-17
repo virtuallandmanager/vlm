@@ -31,6 +31,10 @@ export default defineConfig({
           autogenerate: { directory: 'api' },
         },
         {
+          label: 'Security',
+          autogenerate: { directory: 'security' },
+        },
+        {
           label: 'Self-Hosting',
           autogenerate: { directory: 'self-hosting' },
         },

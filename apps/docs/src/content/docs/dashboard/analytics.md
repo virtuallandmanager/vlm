@@ -14,7 +14,7 @@ VLM analytics start collecting as soon as a scene calls `startVLMAnalytics()` or
 - **Wallet visibility:** optionally store wallet addresses and display names. Visitors see a notice when this is on. See [Privacy](/privacy/).
 
 ## The dashboard
-Open it from vlm.gg (**Analytics** in the sidebar) or press **Stats** in the in-world HUD, which signs you in with your wallet and opens your scene's page. Pick a location to see:
+Open it from vlm.gg (**Analytics** in the sidebar) or press **Stats** in the in-world HUD, which opens your scene's page. Pick a location to see:
 
 - **Summary cards:** visitors, new vs returning, sessions, peak at once and average time in the scene.
 - **Visitors over time:** a chart you can switch between visitors, sessions and peak at once, over 24 hours, 7 days, 30 days or a custom range. Day buckets are UTC days.
@@ -28,3 +28,6 @@ Charts and counts update hourly; **Here now** refreshes every 15 seconds. Times 
 
 ### Who sees what
 The host, co-hosts, editors and viewers of a scene can all open its dashboard and see every section. Only the host and co-hosts can change wallet visibility; turning it off also clears the stored wallets and names. Anyone else sees a notice that they don't have access.
+
+### Signing in from the HUD
+**Stats** signs your browser in with a scene pass, so only that scene's analytics opens. A banner reads "Signed in from your scene's name — sign in for full access". Any other page asks for a full sign-in. See [Scene pass and scene library](/security/scene-pass/).
