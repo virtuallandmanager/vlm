@@ -14,6 +14,12 @@ vi.mock('../src/middleware/dcl-auth.js', () => ({
     if (typeof v === 'string' && v.startsWith('valid:')) return { walletAddress: v.slice(6), metadata: {} }
     throw new Error('bad signature')
   },
+  verifyDclSceneRequest: async (_m: string, _p: string, h: Record<string, string>) => {
+    const v = h['x-identity-auth-chain-0']
+    if (typeof v === 'string' && v.startsWith('valid:'))
+      return { wallet: v.slice(6), scene: { sceneId: 'bafyX', parcel: '0,0', realm: { hostname: 'peer.decentraland.org', serverName: 'main' }, isGuest: false } }
+    throw new Error('bad signature')
+  },
 }))
 
 const WALLET = '0x00000000000000000000000000000000000000aa'
@@ -41,6 +47,7 @@ describe('POST /api/auth/platform', () => {
     const claims = verifySessionToken(res.json().accessToken)!
     expect(claims.wallet).toBe(WALLET)
     expect(claims.verified).toBe(true)
+    expect(claims.kind).toBe('scene')
     const method = await db.query.userAuthMethods.findFirst({ where: eq(userAuthMethods.identifier, WALLET) })
     expect(method).toBeTruthy()
   })

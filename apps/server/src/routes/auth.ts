@@ -11,7 +11,10 @@ import { sendPasswordResetEmail } from '../services/email.js'
 import { initialRoleForNewUser } from '../auth/roles.js'
 import { linkWalletGrants } from '../auth/permissions.js'
 import { resolveVerifiedWalletUser } from '../auth/wallet-users.js'
-import { verifyDclSignedFetch, hasDclAuthHeaders } from '../middleware/dcl-auth.js'
+import { verifyDclSceneRequest, hasDclAuthHeaders } from '../middleware/dcl-auth.js'
+import { bindSceneRequest, type SceneBinding } from '../auth/scene-binding.js'
+import { issueScenePass, sceneClaims } from '../auth/scene-pass.js'
+import { scenes } from '../db/schema.js'
 
 interface RegisterBody {
   email: string
@@ -174,20 +177,26 @@ export default async function authRoutes(app: FastifyInstance) {
         return reply.status(401).send({ error: 'User not found' })
       }
 
-      const accessToken = app.jwt.sign(
-        {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          orgId: user.activeOrgId || null,
-          wallet: decoded.wallet ?? null,
-          ...(decoded.verified === false ? { verified: false } : {}),
-          ...(decoded.kind === 'scene'
-            ? { kind: 'scene' as const, sceneId: decoded.sceneId ?? null, locationId: decoded.locationId ?? null }
-            : { kind: 'account' as const }),
-        },
-        { expiresIn: config.jwtAccessExpiry },
-      )
+      const claims =
+        decoded.kind === 'scene'
+          ? {
+              ...sceneClaims({ id: user.id, role: user.role }, decoded.wallet ?? '', {
+                sceneId: decoded.sceneId ?? null,
+                locationId: decoded.locationId ?? null,
+              }),
+              // Unverified local-preview passes stay unverified and walletless.
+              ...(decoded.verified === false ? { verified: false, wallet: decoded.wallet ?? null } : {}),
+            }
+          : {
+              id: user.id,
+              email: user.email,
+              role: user.role,
+              orgId: user.activeOrgId || null,
+              wallet: decoded.wallet ?? null,
+              ...(decoded.verified === false ? { verified: false } : {}),
+              kind: 'account' as const,
+            }
+      const accessToken = app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry })
 
       return reply.send({ accessToken })
     } catch {
@@ -201,29 +210,43 @@ export default async function authRoutes(app: FastifyInstance) {
   app.post<{ Body: { sceneId?: string; user?: any; world?: string; [key: string]: any } }>(
     '/api/auth/platform',
     async (request, reply) => {
-      const { sceneId, user: platformUser, world } = request.body
+      const { sceneId, user: platformUser, world } = request.body ?? {}
 
       let verifiedWallet: string | null = null
+      let binding: SceneBinding | null = null
       let displayName = platformUser?.displayName || platformUser?.name || 'Guest'
 
       // ── Try to verify DCL signed fetch headers ────────────────────────────
       if (hasDclAuthHeaders(request.headers as Record<string, string | string[] | undefined>)) {
         try {
-          const dclAuth = await verifyDclSignedFetch(
+          const raw = ((request as any).rawBody as string | undefined) ?? null
+          const signed = await verifyDclSceneRequest(
             request.method,
-            request.url,
+            request.url.split('?')[0],
             request.headers as Record<string, string | string[] | undefined>,
+            raw,
           )
-          verifiedWallet = dclAuth.walletAddress.toLowerCase()
-          request.log.info({ wallet: verifiedWallet }, 'DCL signed fetch verified')
+          if (!signed.scene.isGuest) {
+            verifiedWallet = signed.wallet.toLowerCase()
+            request.log.info({ wallet: verifiedWallet }, 'DCL signed fetch verified')
+            const localPreview =
+              config.mode !== 'cloud' && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(signed.scene.realm.hostname)
+            try {
+              binding = await bindSceneRequest(signed.scene, verifiedWallet, { preview: localPreview })
+            } catch (err) {
+              // Binding trouble degrades to a visitor pass, never a 500 or an account token.
+              request.log.warn({ err: (err as Error).message }, 'scene binding failed; issuing visitor pass')
+              binding = null
+            }
+          }
         } catch (err) {
-          request.log.warn({ err }, 'DCL signed fetch verification failed')
-          // Don't reject — fall through to unverified path for preview mode
+          request.log.warn({ err: (err as Error).message }, 'DCL scene signed fetch refused')
+          // Don't reject — fall through to the guest / preview path
         }
       }
 
       // ── No verified wallet: guest (or preview identity in local dev) ──────
-      if (!verifiedWallet && !config.allowUnverifiedPlatformAuth) {
+      if (!verifiedWallet && !(config.allowUnverifiedPlatformAuth && config.mode !== 'cloud')) {
         const guestId = `guest:${crypto.randomUUID()}`
         const accessToken = app.jwt.sign(
           { id: guestId, email: null, role: 'viewer', orgId: null, wallet: null, verified: false, guest: true },
@@ -269,14 +292,29 @@ export default async function authRoutes(app: FastifyInstance) {
 
       if (verifiedWallet) await linkWalletGrants(dbUser.id, verifiedWallet)
 
+      if (verifiedWallet) {
+        return reply.send({
+          ...issueScenePass(app, dbUser, verifiedWallet, binding ?? { sceneId: null, locationId: null }),
+          verified: true,
+        })
+      }
+
+      // Local-preview identity (self-declared by design): bind to an existing scene named in the body.
+      let previewSceneId: string | null = null
+      if (typeof sceneId === 'string' && /^[0-9a-f-]{36}$/i.test(sceneId)) {
+        const row = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
+        previewSceneId = row ? row.id : null
+      }
       const claims = {
         id: dbUser.id,
         email: dbUser.email,
         role: dbUser.role,
         orgId: dbUser.activeOrgId || null,
-        wallet: verifiedWallet,
-        verified: !!verifiedWallet,
-        kind: 'account' as const,
+        wallet: null,
+        verified: false,
+        kind: 'scene' as const,
+        sceneId: previewSceneId,
+        locationId: null,
       }
       const accessToken = app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry })
       const refreshToken = app.jwt.sign({ ...claims, refresh: true }, { expiresIn: config.jwtRefreshExpiry })
@@ -285,7 +323,7 @@ export default async function authRoutes(app: FastifyInstance) {
         user: { id: dbUser.id, displayName: dbUser.displayName, email: dbUser.email, role: dbUser.role },
         accessToken,
         refreshToken,
-        verified: !!verifiedWallet,
+        verified: false,
       })
     },
   )
