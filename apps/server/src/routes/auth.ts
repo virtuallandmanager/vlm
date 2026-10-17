@@ -4,7 +4,7 @@ import crypto from 'node:crypto'
 import { OAuth2Client } from 'google-auth-library'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { users, userAuthMethods, passwordResetTokens } from '../db/schema.js'
+import { users, userAuthMethods, passwordResetTokens, scenes } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { config } from '../config.js'
 import { sendPasswordResetEmail } from '../services/email.js'
@@ -13,8 +13,8 @@ import { linkWalletGrants } from '../auth/permissions.js'
 import { resolveVerifiedWalletUser } from '../auth/wallet-users.js'
 import { verifyDclSceneRequest, hasDclAuthHeaders } from '../middleware/dcl-auth.js'
 import { bindSceneRequest, type SceneBinding } from '../auth/scene-binding.js'
+import type { SessionClaims } from '../auth/tokens.js'
 import { issueScenePass, sceneClaims } from '../auth/scene-pass.js'
-import { scenes } from '../db/schema.js'
 
 interface RegisterBody {
   email: string
@@ -306,16 +306,10 @@ export default async function authRoutes(app: FastifyInstance) {
         previewSceneId = row ? row.id : null
       }
       const claims = {
-        id: dbUser.id,
-        email: dbUser.email,
-        role: dbUser.role,
-        orgId: dbUser.activeOrgId || null,
+        ...sceneClaims(dbUser, '', { sceneId: previewSceneId, locationId: null }),
         wallet: null,
         verified: false,
-        kind: 'scene' as const,
-        sceneId: previewSceneId,
-        locationId: null,
-      }
+      } as unknown as SessionClaims
       const accessToken = app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry })
       const refreshToken = app.jwt.sign({ ...claims, refresh: true }, { expiresIn: config.jwtRefreshExpiry })
 

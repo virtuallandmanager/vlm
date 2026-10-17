@@ -107,23 +107,12 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
         rateLimit: { max: 20, timeWindow: '1 minute' },
       }
     })
-    // Keep the raw JSON string so /api/auth/platform can check the signed body hash.
-    // Errors mirror Fastify's default JSON parser (400 for empty or invalid bodies).
+    // Keep the raw JSON string so /api/auth/platform can check the signed body hash,
+    // then delegate to Fastify's own parser (400s, prototype-poisoning protection).
+    const parseJson = scope.getDefaultJsonParser('error', 'error')
     scope.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
       ;(req as any).rawBody = body
-      const text = body as string
-      if (text === '') {
-        const e: any = new Error("Body cannot be empty when content-type is set to 'application/json'")
-        e.statusCode = 400
-        e.code = 'FST_ERR_CTP_EMPTY_JSON_BODY'
-        return done(e, undefined)
-      }
-      try {
-        done(null, JSON.parse(text))
-      } catch (err) {
-        ;(err as any).statusCode = 400
-        done(err as Error, undefined)
-      }
+      parseJson(req, body as string, done)
     })
     await scope.register(authRoutes)
     await scope.register(walletAuthRoutes)
