@@ -2,7 +2,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { analyticsScenes } from '../db/schema.js'
 import type { SceneRequestContext } from '../middleware/dcl-auth.js'
-import { getActiveSetup, releaseIfRedeployed } from '../setup/setups.js'
+import { currentDeployment, getActiveSetup, releaseIfRedeployed } from '../setup/setups.js'
 import { DirectoryUnavailableError } from '../analytics/dcl-directory.js'
 import { isOfficialRealm, isWorldRealm } from './official-realms.js'
 
@@ -21,7 +21,7 @@ export function locationKeyForContext(ctx: SceneRequestContext, wallet: string, 
 /**
  * The VLM scene a signed scene request may act on: the active setup at its location. Anything uncertain → visitor.
  * Outside local preview, only official Decentraland realms bind (the realm controls serverName, parcel and code),
- * and the signed scene entity must be the deployment the setup recorded.
+ * and the signed scene entity must be the deployment the setup recorded (or, when it recorded none, the live one).
  */
 export async function bindSceneRequest(ctx: SceneRequestContext, wallet: string, opts: { preview?: boolean } = {}): Promise<SceneBinding> {
   if (!opts.preview && !(await isOfficialRealm(ctx))) return VISITOR
@@ -35,7 +35,18 @@ export async function bindSceneRequest(ctx: SceneRequestContext, wallet: string,
   if (!loc) return VISITOR
   let setup = await getActiveSetup(loc.id)
   if (!setup) return { locationId: loc.id, sceneId: null }
-  if (!opts.preview && setup.deploymentEntityId && setup.deploymentEntityId !== ctx.sceneId) {
+  if (!opts.preview && !setup.deploymentEntityId) {
+    // Nothing recorded: the official directory's live deployment must be the signed entity. Not recorded here,
+    // so a redeploy by someone outside the team still releases the setup through releaseIfRedeployed.
+    let live: string | null
+    try {
+      live = (await currentDeployment(loc)).entityId
+    } catch (err) {
+      if (err instanceof DirectoryUnavailableError) return { locationId: loc.id, sceneId: null }
+      throw err
+    }
+    if (!live || live !== ctx.sceneId) return { locationId: loc.id, sceneId: null }
+  } else if (!opts.preview && setup.deploymentEntityId !== ctx.sceneId) {
     try {
       setup = await releaseIfRedeployed(setup, loc)
     } catch (err) {

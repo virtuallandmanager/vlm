@@ -27,8 +27,12 @@ vi.mock('../src/auth/scene-binding.js', async (orig) => {
 
 describe('platform sign-in → scene pass', () => {
   let app: Awaited<ReturnType<typeof testApp>>
-  // Never reach the real catalyst list from tests.
-  beforeEach(async () => { h.calls.length = 0; h.bindFails = false; setDclDirectory(new FakeDclDirectory()); await resetDb(); app = await testApp() })
+  // Never reach the real catalyst list from tests. The official directory shows bafyA live at 10,20.
+  beforeEach(async () => {
+    h.calls.length = 0; h.bindFails = false
+    const dir = new FakeDclDirectory(); dir.addScene({ entityId: 'bafyA', base: '10,20', parcels: ['10,20'] }); setDclDirectory(dir)
+    await resetDb(); app = await testApp()
+  })
   afterEach(async () => { setDclDirectory(null); await app.close() })
 
   const signIn = (headers: Record<string, string> = {}, payload: unknown = { user: { displayName: 'A' } }) =>
@@ -92,14 +96,17 @@ describe('platform sign-in → scene pass', () => {
     expect(res.statusCode).toBe(400)
   })
 
-  it('refresh keeps the pass bound and never upgrades it', async () => {
+  it('a verified pass comes without a refresh token, and a scene refresh token is refused', async () => {
     const owner = await createUser({ wallet: W })
     const { scene } = await createScene(owner)
     const loc = await createAnalyticsScene({ locationKey: 'gc:10,20', baseParcel: '10,20', parcels: ['10,20'] } as any)
     await createSetup(loc.id, scene.id)
-    const { refreshToken } = (await signIn()).json()
-    const r = await app.inject({ method: 'POST', url: '/api/auth/refresh', headers: { authorization: `Bearer ${refreshToken}` } })
-    expect(verifySessionToken(r.json().accessToken)).toMatchObject({ kind: 'scene', sceneId: scene.id, locationId: loc.id, orgId: null })
+    const body = (await signIn()).json()
+    expect(body.scene.sceneId).toBe(scene.id)
+    expect(body.refreshToken).toBeNull()
+    const forged = app.jwt.sign({ ...verifySessionToken(body.accessToken)!, refresh: true })
+    const r = await app.inject({ method: 'POST', url: '/api/auth/refresh', headers: { authorization: `Bearer ${forged}` } })
+    expect(r.statusCode).toBe(401)
   })
 
   it('passes the exact raw body and the query-less path to verification', async () => {
