@@ -174,6 +174,17 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       }
 
       console.log('[VLM] Connected to scene:', config.sceneId)
+      // Edit rights come from the setup at this location, not from config.sceneId: say so instead of failing silently.
+      if (vlm.binding?.sceneId !== config.sceneId) {
+        console.warn(`[VLM] Scene ${config.sceneId} is not set up at this location, so it shows content only. Set up VLM at this location to edit it in-world.`)
+        renderer?.showNotification({
+          id: `vlm-binding-${Date.now()}`,
+          type: 'warning',
+          title: 'Set up VLM at this location to edit',
+          message: 'This scene is not set up here, so in-world editing is off.',
+          timestamp: Date.now(),
+        })
+      }
       return vlm
     } catch (err) {
       if (renderer) {

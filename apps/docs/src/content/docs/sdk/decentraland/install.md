@@ -42,6 +42,8 @@ const vlm = await createVLM({
 })
 ```
 
+Editing in-world needs VLM set up at the scene's location. A `sceneId` set here, or in `scene.json`, still shows that scene's content anywhere, but you can edit it from the HUD only where it's the scene set up at that parcel or World. Anywhere else the HUD shows "Set up VLM at this location to edit".
+
 ### Scene Metadata
 
 Add your VLM scene ID to `scene.json`:
