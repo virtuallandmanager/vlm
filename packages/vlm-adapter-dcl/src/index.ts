@@ -254,6 +254,11 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       const managesRoles = () => currentRole === 'host' || currentRole === 'cohost'
       const edits = () => currentRole !== 'viewer'
       if (edits() && !editMode) editMode = new DclEditMode(vlm, adapter)
+      if (editMode) {
+        const em = editMode
+        em.onChange = () => renderer?.setEditMode(em.state)
+        em.pointerOverHud = () => renderer?.overEditBar() ?? false
+      }
       let busy = false
       let media: SceneLibraryItem[] = []
       let layout: HUDLayoutItem[] = []
@@ -329,6 +334,17 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         if (action === 'open_analytics') return openAnalytics(sceneId)
 
         if (action === 'retry') return reconnect(sceneId)
+
+        if (action.startsWith('edit_')) {
+          if (!edits() || !editMode) return
+          if (action === 'edit_enter') editMode.enter()
+          if (action === 'edit_exit') editMode.exit() // dirty: shows the Save / Revert prompt instead
+          if (action === 'edit_mode' && ['move', 'rotate', 'resize'].includes(data?.mode)) editMode.setMode(data.mode)
+          // Answering the Done prompt completes, then leaves edit mode (DclEditMode.exitAfterPrompt)
+          if (action === 'edit_save') editMode.save()
+          if (action === 'edit_revert') editMode.revert()
+          return
+        }
 
         if (action.startsWith('roles_')) {
           if (!managesRoles() || busy) return

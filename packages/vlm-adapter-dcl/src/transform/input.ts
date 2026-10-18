@@ -52,6 +52,8 @@ export interface EditHost {
   /** Pointer released after beginDrag. */
   release(): void
   shiftTapped(): void
+  /** The pointer is over HUD (the edit bar): a press there must not select or drag anything. */
+  pressBlocked(): boolean
   setSnap(on: boolean): void
   /** Runs first every frame (helpers follow their items, gizmo follows the draft). */
   sync(dt: number): void
@@ -160,7 +162,7 @@ export class EditInput {
         // beginDrag may refuse (held by someone else) and cancel; only drag if still dragging
         if (this.dragging) this.host.drag(ray, surfaceHit)
       }
-    } else if (pressed) {
+    } else if (pressed && !this.host.pressBlocked()) {
       const handle = this.host.press(this.pick(hits))
       if (handle && !released) this.armed = { handle, direction: ray.direction }
     }

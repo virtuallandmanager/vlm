@@ -118,7 +118,8 @@ export class Picks {
       p.how = 'marker'
       const m = engine.addEntity()
       Transform.create(m, {
-        position: entityPosition(entity) ?? Vector3.Zero(),
+        // Hidden below the floor until followItems gives it the sound's position
+        position: entityPosition(entity) ?? Vector3.create(0, -100, 0),
         scale: Vector3.create(MARKER_SIZE, MARKER_SIZE, MARKER_SIZE),
       })
       MeshRenderer.setSphere(m)

@@ -34,6 +34,8 @@ const keyOf = (t: TransformData) => JSON.stringify(t)
 export class DclEditMode implements EditHost {
   /** Called after any change the HUD shows (see `state`). */
   onChange: () => void = () => {}
+  /** Set by the HUD: true while the pointer is over the edit bar, so clicking it doesn't press an item behind it. */
+  pointerOverHud: () => boolean = () => false
   readonly session: TransformSession
 
   private readonly gizmo = new Gizmo()
@@ -51,6 +53,8 @@ export class DclEditMode implements EditHost {
   private pending: string | null = null
   private message: string | null = null
   private prompt = false
+  /** Done was pressed while dirty: leave edit mode once the prompt is answered. */
+  private exitAfterPrompt = false
   private lastSaveAt = -Infinity
   private lastDirty = false
   private appliedKey = ''
@@ -100,6 +104,8 @@ export class DclEditMode implements EditHost {
     if (!this._active) return
     if (this.session.dirty) {
       this.prompt = true
+      this.pending = null
+      this.exitAfterPrompt = true
       this.changed()
       return
     }
@@ -214,6 +220,10 @@ export class DclEditMode implements EditHost {
     this.session.endDrag()
   }
 
+  pressBlocked(): boolean {
+    return this.pointerOverHud()
+  }
+
   shiftTapped(): void {
     this.session.cycleLock()
     this.changed()
@@ -266,6 +276,7 @@ export class DclEditMode implements EditHost {
     if (this.session.dirty) {
       this.prompt = true
       this.pending = sk
+      this.exitAfterPrompt = false
       this.changed()
       return false
     }
@@ -292,9 +303,12 @@ export class DclEditMode implements EditHost {
   private answerPrompt(): void {
     this.prompt = false
     const next = this.pending
+    const leave = this.exitAfterPrompt
     this.pending = null
+    this.exitAfterPrompt = false
     if (next) this.selectSk(next)
     this.changed()
+    if (leave && !next) this.exit()
   }
 
   /** Applies the draft to the item locally (every frame while dragging; drafts on the wire are throttled). */
@@ -422,6 +436,7 @@ export class DclEditMode implements EditHost {
       this.selectedEntity = null
       this.prompt = false
       this.pending = null
+      this.exitAfterPrompt = false
       this.changed()
     }
   }

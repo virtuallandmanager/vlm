@@ -23,6 +23,7 @@ import { HUDPanelType } from 'vlm-shared'
 import type { EntityHandle, WorldStatus } from 'vlm-shared'
 import type { VLMConnectionState } from 'vlm-core'
 import { nearbyPlayers } from './players.js'
+import { EditModeBar, NO_EDIT_MODE, pointerOverEditBar, type EditModeHUDState } from './hud/EditModeBar.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -74,6 +75,9 @@ interface HUDState {
   editMessage: { text: string; error: boolean } | null
   confirmDelete: string | null
   missingModels: number
+
+  // In-world transform editing (editors); mirrored from DclEditMode.state
+  editMode: EditModeHUDState
 }
 
 type SceneRole = 'host' | 'cohost' | 'editor' | 'viewer'
@@ -122,6 +126,7 @@ const state: HUDState = {
   editMessage: null,
   confirmDelete: null,
   missingModels: 0,
+  editMode: NO_EDIT_MODE,
 }
 
 // Callbacks
@@ -692,6 +697,10 @@ function SceneLayoutPanel() {
       />
       <UiEntity uiTransform={{ width: '100%', padding: 8, flexDirection: 'column' }}>
         <EditMessage />
+        {editable && (
+          <Button label="Edit layout" color={C.accent} height={30} fontSize={11}
+            onPress={() => { state.activePanel = null; onSceneAction?.('edit_enter') }} />
+        )}
         {elements.length === 0 ? (
           <UiEntity uiTransform={{ width: '100%', padding: 16, flexDirection: 'column', alignItems: 'center' }}>
             <Label value={state.layoutFailed ? "Couldn't load the layout" : state.layoutLoaded ? 'No elements yet' : 'Loading…'} fontSize={12} color={C.textDim} />
@@ -1182,6 +1191,9 @@ function VLMHUD() {
       })()}
 
       {state.hudVisible && state.connectionState === 'connected' && !state.isNewScene && <NotificationToast />}
+      {state.hudVisible && state.connectionState === 'connected' && state.editMode.active && canEdit() && (
+        <EditModeBar s={state.editMode} act={(a, d) => onSceneAction?.(a, d)} />
+      )}
       <UpgradePrompt />
     </UiEntity>
   )
@@ -1293,6 +1305,16 @@ export class DclHUDRenderer implements HUDRenderer {
       state.layoutLoaded = true
       state.layoutFailed = true
     }
+  }
+
+  /** Mirrors DclEditMode.state (the bar shows while active). */
+  setEditMode(s: EditModeHUDState): void {
+    state.editMode = s
+  }
+
+  /** True while the pointer is over the edit bar (edit mode ignores presses there). */
+  overEditBar(): boolean {
+    return pointerOverEditBar(state.editMode)
   }
 
   setMissingModels(n: number): void {
