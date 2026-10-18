@@ -22,6 +22,13 @@ import { StoreMediaError } from '../media/store.js'
 import { verifySessionToken } from '../auth/tokens.js'
 import { generateThumbnail } from '../services/thumbnails.js'
 
+/** Optional bearer: scene-pass, API-key and bad tokens count as anonymous (null). */
+function optionalAccount(authorization: string | undefined) {
+  const bearer = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null
+  const claims = bearer && !bearer.startsWith('vlm_') ? verifySessionToken(bearer) : null
+  return claims?.kind === 'account' ? claims : null
+}
+
 export default async function assetRoutes(app: FastifyInstance) {
   const storage = createStorage()
 
@@ -39,8 +46,13 @@ export default async function assetRoutes(app: FastifyInstance) {
 
     const conditions: any[] = []
 
-    // Only show public assets (or user's own if authenticated)
-    conditions.push(eq(assetLibraryItems.isPublic, true))
+    // Public assets, plus the caller's own uploads when authenticated
+    const caller = optionalAccount(request.headers.authorization)
+    conditions.push(
+      caller
+        ? or(eq(assetLibraryItems.isPublic, true), eq(assetLibraryItems.uploadedBy, caller.id))
+        : eq(assetLibraryItems.isPublic, true),
+    )
 
     if (query.q) {
       conditions.push(
@@ -103,10 +115,8 @@ export default async function assetRoutes(app: FastifyInstance) {
       where: eq(assetLibraryItems.id, id),
     })
 
-    // Optional bearer: private assets are visible to their uploader and admins only; scene-pass and bad tokens count as anonymous
-    const bearer = request.headers.authorization?.startsWith('Bearer ') ? request.headers.authorization.slice(7) : null
-    const claims = bearer && !bearer.startsWith('vlm_') ? verifySessionToken(bearer) : null
-    const caller = claims?.kind === 'account' ? claims : null
+    // Private assets are visible to their uploader and admins only
+    const caller = optionalAccount(request.headers.authorization)
     const visible = asset && (asset.isPublic || (caller && (asset.uploadedBy === caller.id || caller.role === 'admin')))
     if (!asset || !visible) {
       return reply.status(404).send({ error: 'Asset not found' })

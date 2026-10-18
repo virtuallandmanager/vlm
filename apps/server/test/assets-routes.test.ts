@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { assetLibraryItems } from '../src/db/schema.js'
+import { assetLibraryItems, mediaAssets } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { resetDb } from './helpers/db.js'
+import { assertStorageQuota } from '../src/media/quota.js'
 import { testApp, createUser, tokenFor } from './helpers/factories.js'
 
 describe('asset library routes', () => {
@@ -55,5 +56,40 @@ describe('asset library routes', () => {
     expect((await get(priv.id, admin)).statusCode).toBe(200)
     expect((await get(pub.id)).statusCode).toBe(200)
     void eq
+  })
+
+  it('GET /api/assets lists public assets plus the caller\'s own private ones', async () => {
+    const owner = await createUser(); const other = await createUser(); const admin = await createUser({ role: 'admin' })
+    await db.insert(assetLibraryItems).values({ name: 'Priv', storageKey: 'p', uploadedBy: owner.id, isPublic: false })
+    await db.insert(assetLibraryItems).values({ name: 'Pub', storageKey: 'q', uploadedBy: owner.id, isPublic: true })
+    const names = async (user?: Awaited<ReturnType<typeof createUser>>) => {
+      const res = await app.inject({ method: 'GET', url: '/api/assets', headers: user ? { authorization: `Bearer ${tokenFor(user)}` } : {} })
+      expect(res.statusCode).toBe(200)
+      const body = res.json()
+      expect(body.total).toBe(body.assets.length)
+      return body.assets.map((a: any) => a.name).sort()
+    }
+    expect(await names()).toEqual(['Pub'])
+    expect(await names(owner)).toEqual(['Priv', 'Pub'])
+    expect(await names(other)).toEqual(['Pub'])
+    expect(await names(admin)).toEqual(['Pub'])
+  })
+
+  it('sums media and library bytes past 2^31 as numbers', async () => {
+    config.allFeaturesUnlocked = false
+    const u = await createUser()
+    for (const k of ['a1', 'a2']) await db.insert(mediaAssets).values({ ownerId: u.id, filename: k, contentType: 'image/png', sizeBytes: 1_500_000_000, storageKey: k, publicUrl: `https://cdn/${k}` })
+    await db.insert(assetLibraryItems).values({ name: 'B', storageKey: 'qb', fileSizeBytes: 1_500_000_000, uploadedBy: u.id, isPublic: false })
+    await expect(assertStorageQuota(u.id, 1)).rejects.toMatchObject({ body: { error: 'storage_limit_reached', currentUsageBytes: 4_500_000_000 } })
+  })
+
+  it('refuses when a media asset and a library asset together cross the limit', async () => {
+    config.allFeaturesUnlocked = false
+    const u = await createUser()
+    await db.insert(mediaAssets).values({ ownerId: u.id, filename: 'a', contentType: 'image/png', sizeBytes: 300 * 1024 * 1024, storageKey: 'qa', publicUrl: 'https://cdn/a' })
+    await db.insert(assetLibraryItems).values({ name: 'B', storageKey: 'qb', fileSizeBytes: 300 * 1024 * 1024, uploadedBy: u.id, isPublic: false })
+    const res = await post(u, {})
+    expect(res.statusCode).toBe(403)
+    expect(res.json().error).toBe('storage_limit_reached')
   })
 })

@@ -16,11 +16,11 @@ export async function assertStorageQuota(
   const storageLimit = sub.limits.storageBytes
 
   const [{ usedBytes: mediaBytes }] = await db
-    .select({ usedBytes: sql<number>`coalesce(sum(${mediaAssets.sizeBytes}), 0)::int` })
+    .select({ usedBytes: sql<number>`coalesce(sum(${mediaAssets.sizeBytes}), 0)::bigint`.mapWith(Number) })
     .from(mediaAssets)
     .where(eq(mediaAssets.ownerId, ownerId))
   const [{ usedBytes: libraryBytes }] = await db
-    .select({ usedBytes: sql<number>`coalesce(sum(${assetLibraryItems.fileSizeBytes}), 0)::int` })
+    .select({ usedBytes: sql<number>`coalesce(sum(${assetLibraryItems.fileSizeBytes}), 0)::bigint`.mapWith(Number) })
     .from(assetLibraryItems)
     .where(eq(assetLibraryItems.uploadedBy, ownerId))
   const usedBytes = mediaBytes + libraryBytes

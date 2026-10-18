@@ -122,7 +122,6 @@ function StreamingContent() {
 
   // provision form
   const [newName, setNewName] = useState('')
-  const [newType, setNewType] = useState<'shared' | 'dedicated'>('shared')
   const [newRegion, setNewRegion] = useState('us-east-1')
   const [provisioning, setProvisioning] = useState(false)
   const [provisionError, setProvisionError] = useState('')
@@ -146,12 +145,11 @@ function StreamingContent() {
     try {
       const { server } = await api.provisionStreamingServer({
         name: newName.trim(),
-        type: newType,
+        type: 'shared',
         region: newRegion.trim() || undefined,
       })
       setServers((prev) => [server, ...prev])
       setNewName('')
-      setNewType('shared')
       setNewRegion('us-east-1')
       setShowProvision(false)
     } catch (err: any) {
@@ -207,17 +205,6 @@ function StreamingContent() {
             className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
           />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Type</label>
-              <select
-                value={newType}
-                onChange={(e) => setNewType(e.target.value as 'shared' | 'dedicated')}
-                className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="shared">Shared</option>
-                <option value="dedicated">Dedicated</option>
-              </select>
-            </div>
             <div>
               <label className="block text-xs text-gray-400 mb-1">Region</label>
               <input

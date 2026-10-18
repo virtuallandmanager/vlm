@@ -96,6 +96,14 @@ describe('deploy routes authorization', () => {
     expect((await db.query.sceneDeployments.findFirst({ where: eq(sceneDeployments.id, bDcl) }))!.status).toBe('pending')
   })
 
+  it('redeploy never returns the hyperfy adminCode', async () => {
+    await db.update(sceneDeployments).set({ target: { ...PUBLIC_TARGET, adminCode: 'secret-code' } }).where(eq(sceneDeployments.id, bDcl))
+    const res = await call(b, 'POST', `/api/deploy/${bDcl}/redeploy`)
+    expect(res.statusCode).toBe(201)
+    expect(JSON.stringify(res.json())).not.toContain('secret-code')
+    expect(res.json().deployment.target.adminCode).toBeUndefined()
+  })
+
   it('owner and cohost can read and cancel', async () => {
     for (const user of [b, cohost]) {
       expect((await call(user, 'GET', `/api/deploy/${bDcl}`)).statusCode).toBe(200)

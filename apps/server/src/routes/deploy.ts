@@ -256,7 +256,7 @@ export default async function deployRoutes(app: FastifyInstance) {
         })
       }
 
-      return reply.status(201).send({ deployment })
+      return reply.status(201).send({ deployment: publicDeployment(deployment) })
     },
   )
 

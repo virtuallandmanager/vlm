@@ -60,7 +60,7 @@ function UploadForm({ onUploaded }: { onUploaded: (asset: any) => void }) {
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean)
-      const contentType = file.name.endsWith('.gltf') ? 'model/gltf+json' : 'model/gltf-binary'
+      const contentType = 'model/gltf-binary'
       const { asset } = await api.uploadAsset({
         name,
         description: description || undefined,
@@ -95,11 +95,11 @@ function UploadForm({ onUploaded }: { onUploaded: (asset: any) => void }) {
         <form onSubmit={handleSubmit} className="mt-4 rounded-xl border border-gray-800 bg-gray-900 p-5 space-y-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-xs text-gray-400 mb-1">File (.glb, .gltf) *</label>
+              <label className="block text-xs text-gray-400 mb-1">File (.glb) *</label>
               <input
                 ref={fileRef}
                 type="file"
-                accept=".glb,.gltf"
+                accept=".glb"
                 onChange={(e) => {
                   const f = e.target.files?.[0] || null
                   setFile(f)

@@ -159,6 +159,7 @@ export default async function billingRoutes(app: FastifyInstance) {
         },
       )
       if (!verified.ok) {
+        request.log.warn({ status: verified.status }, verified.error)
         return reply.status(verified.status).send({ error: verified.error })
       }
       const event = verified.event as any
