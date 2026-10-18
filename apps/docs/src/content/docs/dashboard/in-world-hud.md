@@ -28,3 +28,24 @@ Changes are drafts until you press **Save**. Save stores them to the live preset
 While you hold an item, other editors see "being moved by" and your name on it and can't grab it until you save or revert. Visitors only ever see saved changes.
 
 vlm-dcl 2.4.0 needs Decentraland SDK 7.23 or newer (Shift was added in 7.23).
+
+## Uploading from in-world
+
+Editors can add images and GLB models to the scene's Media Library while standing in it.
+
+Open the Media Library panel and press **Upload**. The panel shows:
+
+- **Open on this computer:** opens the upload page in your browser. Decentraland asks you to confirm opening the link.
+- **A QR code:** scan it with your phone to upload a photo from your camera roll.
+- **The link and a 6-character code**, in case you'd rather type it in.
+
+Each link lasts 30 minutes and allows 10 uploads. Press **New link** for a fresh one. Only you can see the code; it's drawn in your own HUD, never in the scene. The link can only upload files to this scene's library. It doesn't sign anyone in.
+
+Uploads appear in the Media Library straight away, newest first, with a status:
+
+- **• Uploading / • Processing:** the file is on its way.
+- **✓ Available:** ready to **Place**.
+- **⟳ Needs sync:** a model you've placed that won't show until you run `npx vlm-dcl sync` and redeploy the scene. Models only render once they're deployed with the scene.
+- **✕ Failed:** the reason is shown, for example when a file is too big. Press **Dismiss** to clear it.
+
+Images can be up to 10 MB and models up to 50 MB. An editor's uploads count against the scene owner's storage. iPhone HEIC photos are usually converted to JPEG automatically; if one isn't, choose a JPEG or PNG instead.
