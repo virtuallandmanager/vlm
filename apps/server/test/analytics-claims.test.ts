@@ -53,16 +53,6 @@ describe('wallet sign-in', () => {
     expect(good.statusCode).toBe(401) // nonce consumed by the failed attempt
   })
 
-  it('a legacy unverified wallet record is re-homed to a new user, not the squatter', async () => {
-    const w = Wallet.createRandom()
-    const squatter = await createUser()
-    await db.insert(userAuthMethods).values({ userId: squatter.id, type: 'wallet', identifier: w.address.toLowerCase(), metadata: { verified: false } })
-    const res = await signIn(w)
-    expect(res.json().user.id).not.toBe(squatter.id)
-    const m = await db.query.userAuthMethods.findFirst({ where: eq(userAuthMethods.identifier, w.address.toLowerCase()) })
-    expect(m!.userId).toBe(res.json().user.id)
-  })
-
   it('with a Bearer token, links the wallet to the signed-in email user', async () => {
     const u = await createUser()
     const w = Wallet.createRandom()

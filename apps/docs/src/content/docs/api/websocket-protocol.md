@@ -17,12 +17,7 @@ Join with: `{ sessionToken, sceneId, clientType, user }`
 | `scene_change_preset` | `{ presetId }` | Switch active preset |
 | `scene_setting_update` | `{ setting, value }` | Update scene setting |
 | `scene_video_update` | `{ sk, isLive, url }` | Change video live/offline status |
-| `session_start` | `{ sessionToken, sceneId }` | Start analytics session |
-| `session_action` | `{ action, metadata }` | Log user action |
-| `session_end` | `{}` | End session |
 | `user_message` | `{ messageId, data }` | Custom message to other clients |
-| `set_user_state` | `{ key, value }` | Store persistent state |
-| `get_user_state` | `{ key }` | Retrieve state |
 
 ### Server → Client Messages
 
@@ -32,7 +27,6 @@ Join with: `{ sessionToken, sceneId, clientType, user }`
 | `scene_preset_update` | `{ action, elementData, ... }` | Element change broadcast |
 | `scene_change_preset` | `{ scenePreset }` | New preset data |
 | `scene_video_status` | `{ sk, isLive, url }` | Video status change |
-| `session_started` | `{ session, user }` | Session acknowledged |
 | `user_message` | `{ messageId, data, type: 'inbound' }` | Custom message from other client |
 | `host_joined` / `host_left` | `{ displayName }` | Host client joined/left |
 

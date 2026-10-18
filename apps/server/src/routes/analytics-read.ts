@@ -11,7 +11,6 @@ import {
   analyticsSessions,
   accessGrants,
   locationSetups,
-  orgMembers,
   sceneCollaborators,
   sceneRoles,
   scenes,
@@ -109,7 +108,6 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
           or(
             eq(scenes.ownerId, actor.userId),
             inArray(scenes.id, db.select({ id: sceneCollaborators.sceneId }).from(sceneCollaborators).where(eq(sceneCollaborators.userId, actor.userId))),
-            inArray(scenes.orgId, db.select({ id: orgMembers.orgId }).from(orgMembers).where(eq(orgMembers.userId, actor.userId))),
             inArray(
               scenes.id,
               db

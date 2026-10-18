@@ -179,40 +179,10 @@ export class VLMSceneRoom extends Room {
       this.broadcast('scene_sound_locator', message, { except: client })
     })
 
-    // ── Legacy analytics (retired; analytics now go to POST /api/ingest) ──
-    for (const type of ['session_start', 'session_action', 'session_end']) {
-      this.onMessage(type, () => this.deprecatedAnalytics(type))
-    }
-
     // ── User Messaging ────────────────────────────────────────────────────
     this.onMessage('user_message', (client, message) => {
       this.broadcast('user_message', { ...message, type: 'inbound' }, { except: client })
     })
-
-    // ── User/Player State ─────────────────────────────────────────────────
-    this.onMessage('get_user_state', async (client, message) => {
-      // TODO: look up from scene_state table
-      client.send('get_user_state', { key: message.id, value: undefined })
-    })
-
-    this.onMessage('set_user_state', async (client, message) => {
-      // TODO: persist to scene_state table
-      client.send('set_user_state', { key: message.id, success: true })
-    })
-
-    // ── Giveaway Claims ───────────────────────────────────────────────────
-    this.onMessage('giveaway_claim', (client, message) => {
-      // TODO: process claim against giveaway system
-      client.send('giveaway_claim_response', {
-        responseType: 'error',
-        reason: 'Giveaways not yet implemented in V2',
-        giveawayId: message.giveawayId,
-      })
-    })
-
-    for (const type of ['request_player_position', 'send_player_position', 'path_segments_add']) {
-      this.onMessage(type, () => this.deprecatedAnalytics(type))
-    }
 
     // ── Moderator Actions ─────────────────────────────────────────────────
     this.guarded('scene_moderator_message', (client, message) => {
@@ -404,13 +374,6 @@ export class VLMSceneRoom extends Room {
 
   private getClientMeta(client: Client): ClientMeta | undefined {
     return this.clientMeta.get(client.sessionId)
-  }
-
-  private warnedDeprecated = new Set<string>()
-  private deprecatedAnalytics(type: string) {
-    if (this.warnedDeprecated.has(type)) return
-    this.warnedDeprecated.add(type)
-    console.warn(`[VLMSceneRoom] '${type}' is deprecated — analytics now go to POST /api/ingest (scene ${this.sceneId})`)
   }
 
   private async sendInitData(client: Client) {

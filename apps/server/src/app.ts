@@ -17,7 +17,6 @@ import sceneRoutes from './routes/scenes.js'
 import sceneRoleRoutes from './routes/scene-roles.js'
 import sceneLibraryRoutes from './routes/scene-library.js'
 import { runStartupBackfill } from './library/scene-library.js'
-import analyticsRoutes from './routes/analytics.js'
 import eventRoutes from './routes/events.js'
 import giveawayRoutes from './routes/giveaways.js'
 import mediaRoutes from './routes/media.js'
@@ -132,7 +131,6 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   if (opts.backfill !== false) {
     runStartupBackfill().catch((err) => app.log.warn({ err }, 'scene library backfill failed'))
   }
-  await app.register(analyticsRoutes)
   await app.register(analyticsClaimSignedRoutes)
   await app.register(setupRoutes)
   await app.register(analyticsReadRoutes)

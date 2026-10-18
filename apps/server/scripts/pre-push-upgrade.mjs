@@ -23,9 +23,11 @@ try {
       DROP TABLE analytics_sessions CASCADE;
     END IF;
   END $$`
+  // Key-value scene state was removed; drizzle push alone is unreliable at dropping it
+  await sql`DROP TABLE IF EXISTS scene_state`
   // Add streaming_servers.playback_id ahead of push (plain nullable column; push then has nothing to ask)
   await sql`ALTER TABLE IF EXISTS streaming_servers ADD COLUMN IF NOT EXISTS playback_id text`
-  console.log('[vlm-server] pre-push upgrade: legacy analytics tables cleared, playback_id ensured')
+  console.log('[vlm-server] pre-push upgrade: legacy analytics tables cleared, scene_state dropped, playback_id ensured')
 } finally {
   await sql.end()
 }

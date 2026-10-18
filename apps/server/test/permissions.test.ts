@@ -89,7 +89,7 @@ describe('getSceneAccess', () => {
     expect(ownerAccess.scopes.has('scene.admin')).toBe(true)
   })
 
-  it('org owner/admin get full access; org member does not', async () => {
+  it('org membership grants no scene access, whatever the org role', async () => {
     const s = await seed()
     const [org] = await db.insert(organizations).values({ name: 'VLM', slug: `vlm-${crypto.randomUUID()}` }).returning()
     await db.update(scenes).set({ orgId: org.id }).where(eq(scenes.id, s.scene.id))
@@ -99,7 +99,7 @@ describe('getSceneAccess', () => {
       { orgId: org.id, userId: orgAdmin.id, role: 'admin' },
       { orgId: org.id, userId: member.id, role: 'member' },
     ])
-    expect((await getSceneAccess(actor(orgAdmin), s.scene.id)).level).toBe('org')
+    expect((await getSceneAccess(actor(orgAdmin), s.scene.id)).level).toBe('none')
     expect((await getSceneAccess(actor(member), s.scene.id)).level).toBe('none')
   })
 

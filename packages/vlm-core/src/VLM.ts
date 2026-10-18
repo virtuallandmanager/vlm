@@ -312,17 +312,11 @@ export class VLM {
       this.sceneManager.handleVideoStatus(message as any)
     })
 
-    this.colyseus.onMessage('session_started', (_message: unknown) => {})
-
     this.colyseus.onMessage('user_message', (message: unknown) => {
       const msg = message as any
       if (msg?.messageId && this.userMessageHandlers.has(msg.messageId)) {
         this.userMessageHandlers.get(msg.messageId)!(msg.data)
       }
-    })
-
-    this.colyseus.onMessage('get_user_state', (message: unknown) => {
-      this.events.emit('state_response', message)
     })
   }
 
@@ -394,24 +388,6 @@ export class VLM {
 
   onMessage(id: string, callback: (data: unknown) => void): void {
     this.userMessageHandlers.set(id, callback)
-  }
-
-  setUserState(id: string, value: unknown): void {
-    this.colyseus.send('set_user_state', { key: id, value })
-  }
-
-  getUserState(id: string): Promise<unknown> {
-    return new Promise((resolve) => {
-      const handler = (msg: unknown) => {
-        const m = msg as any
-        if (m.key === id) {
-          this.events.off('state_response', handler)
-          resolve(m.value)
-        }
-      }
-      this.events.on('state_response', handler)
-      this.colyseus.send('get_user_state', { key: id })
-    })
   }
 
   /** @deprecated use track() */

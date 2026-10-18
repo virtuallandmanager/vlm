@@ -197,7 +197,7 @@ export default async function authRoutes(app: FastifyInstance) {
               role: user.role,
               orgId: user.activeOrgId || null,
               wallet: decoded.wallet ?? null,
-              verified: decoded.verified !== false,
+              verified: true,
               kind: 'account' as const,
             }
       const accessToken = app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry })

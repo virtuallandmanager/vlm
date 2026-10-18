@@ -103,7 +103,6 @@ export async function createVenue(input: CreateVenueInput) {
       .insert(venues)
       .values({
         sceneId: scene.id,
-        orgId: scene.orgId,
         name: input.name,
         slug: input.slug,
         description: input.description ?? null,

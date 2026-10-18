@@ -81,10 +81,6 @@ The default export provides a backward-compatible `init()` that returns `vlm.sto
 vlm.sendMessage('game-event', { score: 100 })
 vlm.onMessage('game-event', (data) => console.log(data))
 
-// Persistent state
-vlm.setUserState('high-score', 9999)
-const score = await vlm.getUserState('high-score')
-
 // Analytics
 vlm.track('level-complete', { level: 3 })
 

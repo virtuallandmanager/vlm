@@ -5,8 +5,8 @@ import { analyticsEvents, sceneCollaborators } from '../src/db/schema.js'
 import { getAnalyticsAccess } from '../src/analytics/access.js'
 import { actorFromClaims } from '../src/auth/actor.js'
 import { resetDb } from './helpers/db.js'
-import { createUser, createScene, tokenFor, testApp, type TestUser } from './helpers/factories.js'
-import { createAnalyticsScene, insertSession } from './helpers/analytics.js'
+import { createUser, createScene, type TestUser } from './helpers/factories.js'
+import { createAnalyticsScene } from './helpers/analytics.js'
 import { createSetup } from './helpers/setups.js'
 
 const actor = (u: TestUser, extra = {}) => actorFromClaims({ id: u.id, role: u.role, wallet: u.wallet, verified: true, ...extra })
@@ -74,72 +74,5 @@ describe('analytics schema and access', () => {
     expect(adm).toMatchObject({ canRead: true, canManage: true, canDelete: true })
     expect(adm.until).toBeUndefined()
     expect(adm.since).toBeUndefined()
-  })
-})
-
-describe('compat endpoints keep the dashboard shape', () => {
-  let app: Awaited<ReturnType<typeof testApp>>
-  beforeEach(async () => {
-    await resetDb()
-    app = await testApp()
-  })
-  afterEach(() => app.close())
-
-  it('GET /api/analytics/scenes/:vlmSceneId/recent reads the new tables', async () => {
-    const owner = await createUser()
-    const { scene } = await createScene(owner)
-    const s = await createAnalyticsScene()
-    await createSetup(s.id, scene.id)
-    await insertSession(s.id, { lastSeenAt: new Date() })
-    await insertSession(s.id, { lastSeenAt: new Date(Date.now() - 5 * 60_000), endedAt: new Date(Date.now() - 5 * 60_000) })
-    const res = await app.inject({ method: 'GET', url: `/api/analytics/scenes/${scene.id}/recent`, headers: { authorization: `Bearer ${tokenFor(owner)}` } })
-    expect(res.statusCode).toBe(200)
-    expect(res.json()).toMatchObject({ visitors: 2, activeSessions: 1 })
-    expect(res.json().recentSessions).toHaveLength(2)
-  })
-
-  it('returns zeros for a VLM scene with no analytics yet, and 403 for strangers', async () => {
-    const owner = await createUser()
-    const stranger = await createUser()
-    const { scene } = await createScene(owner)
-    const ok = await app.inject({ method: 'GET', url: `/api/analytics/scenes/${scene.id}/recent`, headers: { authorization: `Bearer ${tokenFor(owner)}` } })
-    expect(ok.json()).toEqual({ visitors: 0, actions: 0, activeSessions: 0, recentSessions: [] })
-    const no = await app.inject({ method: 'GET', url: `/api/analytics/scenes/${scene.id}/sessions`, headers: { authorization: `Bearer ${tokenFor(stranger)}` } })
-    expect(no.statusCode).toBe(403)
-  })
-
-  it("compat endpoints return 403 once the scene's setup has ended (admins still read)", async () => {
-    const owner = await createUser()
-    const admin = await createUser({ role: 'admin' })
-    const { scene } = await createScene(owner)
-    const s = await createAnalyticsScene({ vlmSceneId: scene.id })
-    await createSetup(s.id, scene.id, { endedAt: new Date(Date.now() - 86400_000) })
-    await insertSession(s.id)
-    for (const path of ['recent', 'sessions']) {
-      const res = await app.inject({ method: 'GET', url: `/api/analytics/scenes/${scene.id}/${path}`, headers: { authorization: `Bearer ${tokenFor(owner)}` } })
-      expect(res.statusCode).toBe(403)
-      const adm = await app.inject({ method: 'GET', url: `/api/analytics/scenes/${scene.id}/${path}`, headers: { authorization: `Bearer ${tokenFor(admin)}` } })
-      expect(adm.statusCode).toBe(200)
-    }
-  })
-
-  it('sessions endpoint never leaks visitorHash and exposes a stable 16-hex userId', async () => {
-    const owner = await createUser()
-    const { scene } = await createScene(owner)
-    const s = await createAnalyticsScene()
-    await createSetup(s.id, scene.id)
-    const hash = 'abcdef0123456789abcdef0123456789'
-    await insertSession(s.id, { visitorHash: hash })
-    await insertSession(s.id, { visitorHash: hash, wallet: '0xabc' })
-    const res = await app.inject({ method: 'GET', url: `/api/analytics/scenes/${scene.id}/sessions`, headers: { authorization: `Bearer ${tokenFor(owner)}` } })
-    const { sessions } = res.json()
-    expect(sessions).toHaveLength(2)
-    for (const r of sessions) {
-      expect(r).not.toHaveProperty('visitorHash')
-      expect(r.userId).toMatch(/^[0-9a-f]{16}$/)
-    }
-    expect(sessions[0].userId).toBe(sessions[1].userId)
-    expect(sessions.map((r: any) => r.walletAddress).sort()).toEqual(['0xabc', null])
-    expect(res.body).not.toContain(hash)
   })
 })

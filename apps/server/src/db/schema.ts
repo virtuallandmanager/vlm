@@ -192,7 +192,6 @@ export const scenesRelations = relations(scenes, ({ one, many }) => ({
   }),
   presets: many(scenePresets),
   collaborators: many(sceneCollaborators),
-  state: many(sceneState),
 }))
 
 // ── Scene Presets ────────────────────────────────────────────────────────────
@@ -300,36 +299,6 @@ export const sceneCollaboratorsRelations = relations(sceneCollaborators, ({ one 
   }),
   user: one(users, {
     fields: [sceneCollaborators.userId],
-    references: [users.id],
-  }),
-}))
-
-// ── Scene State (key-value per user per scene) ───────────────────────────────
-
-export const sceneState = pgTable(
-  'scene_state',
-  {
-    sceneId: uuid('scene_id')
-      .notNull()
-      .references(() => scenes.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    key: text('key').notNull(),
-    value: jsonb('value'),
-  },
-  (table) => ({
-    pk: primaryKey({ columns: [table.sceneId, table.userId, table.key] }),
-  }),
-)
-
-export const sceneStateRelations = relations(sceneState, ({ one }) => ({
-  scene: one(scenes, {
-    fields: [sceneState.sceneId],
-    references: [scenes.id],
-  }),
-  user: one(users, {
-    fields: [sceneState.userId],
     references: [users.id],
   }),
 }))

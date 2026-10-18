@@ -12,7 +12,7 @@ const PLAYLIST = 'https://live.vlm.gg/streams/k1/playlist.m3u8'
 
 async function stream(ownerId: string, streamKey = 'k1', status: 'ready' | 'live' | 'offline' = 'ready') {
   const [row] = await db.insert(streamingServers).values({
-    ownerId, name: 'Main', status, streamKey,
+    ownerId, name: 'Main', status, streamKey, playbackId: `pb-${streamKey}`,
     rtmpUrl: `rtmp://ingest.vlm.gg/live/${streamKey}`,
     hlsPlaylistUrl: `https://live.vlm.gg/streams/${streamKey}/playlist.m3u8`,
   }).returning()
@@ -67,19 +67,6 @@ describe('streaming routes', () => {
     } finally {
       ;(config as any).streamingEnabled = prev
     }
-  })
-
-  it('a legacy stream (key in its playback URL) gets a playback id on authorize', async () => {
-    const owner = await createUser()
-    const row = await stream(owner.id) // no playbackId; URL contains k1
-    const auth = (await media('POST', '/api/streaming/authorize', { streamKey: 'k1' })).json()
-    expect(auth.playbackId).toMatch(/^[0-9a-f]{32}$/)
-    const after = await db.query.streamingServers.findFirst({ where: eq(streamingServers.id, row.id) })
-    expect(after!.playbackId).toBe(auth.playbackId)
-    expect(after!.hlsPlaylistUrl).not.toContain('k1')
-    expect(after!.hlsPlaylistUrl).toMatch(new RegExp(`/${auth.playbackId}/playlist\\.m3u8$`))
-    // stable on the next publish
-    expect((await media('POST', '/api/streaming/authorize', { streamKey: 'k1' })).json().playbackId).toBe(auth.playbackId)
   })
 
   it('a deleted stream key is no longer authorized', async () => {

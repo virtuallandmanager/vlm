@@ -215,17 +215,9 @@ export default async function streamingRoutes(app: FastifyInstance) {
       .where(eq(streamingServers.streamKey, streamKey))
       .limit(1)
     if (!row) return reply.status(403).send({ error: 'unknown_key' })
-    let playbackId = row.playbackId
-    if (!playbackId) {
-      // Streams provisioned before playback ids used the key in their public URL: move them off it
-      playbackId = randomBytes(16).toString('hex')
-      await db
-        .update(streamingServers)
-        .set({ playbackId, hlsPlaylistUrl: playlistUrlFor(playbackId) })
-        .where(eq(streamingServers.id, row.id))
-    }
+    if (!row.playbackId) return reply.status(403).send({ error: 'unknown_key' })
     // The media server writes HLS under the playback id
-    return reply.send({ ok: true, playbackId })
+    return reply.send({ ok: true, playbackId: row.playbackId })
   })
 
   // ── Keys the API thinks are live (media server startup sweep) ─────────

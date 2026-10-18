@@ -8,12 +8,12 @@ import {
   type VenueScope,
 } from 'vlm-shared'
 import { db } from '../db/connection.js'
-import { accessGrants, bookings, orgMembers, sceneCollaborators, sceneRoles, scenes, venues } from '../db/schema.js'
+import { accessGrants, bookings, sceneCollaborators, sceneRoles, scenes, venues } from '../db/schema.js'
 import type { Actor } from './actor.js'
 import { sceneRoleFor } from './scene-roles.js'
 
 export type SceneScope = VenueScope | 'scene.edit' | 'scene.admin' | 'analytics.view' | 'roles.manage'
-export type AccessLevel = 'admin' | 'owner' | 'org' | 'cohost' | 'editor' | 'viewer' | 'grant' | 'none'
+export type AccessLevel = 'admin' | 'owner' | 'cohost' | 'editor' | 'viewer' | 'grant' | 'none'
 
 export interface BookingAccess {
   bookingId: string
@@ -35,11 +35,11 @@ const ALL_SCOPES: SceneScope[] = [...VENUE_SCOPES, 'scene.edit', 'scene.admin', 
 const EDITOR_SCOPES: SceneScope[] = [...VENUE_SCOPES.filter((s) => s !== 'crew'), 'scene.edit', 'analytics.view']
 const NONE: SceneAccess = { level: 'none', scopes: new Set(), booking: null }
 
-const full = (level: 'admin' | 'owner' | 'org' | 'cohost'): SceneAccess => ({ level, scopes: new Set(ALL_SCOPES), booking: null })
+const full = (level: 'admin' | 'owner' | 'cohost'): SceneAccess => ({ level, scopes: new Set(ALL_SCOPES), booking: null })
 
 /** Everything a scene allows, including role management. Co-hosts included; see isHostAccess for host-only actions. */
 export function isFullAccess(access: SceneAccess) {
-  return access.level === 'admin' || access.level === 'owner' || access.level === 'org' || access.level === 'cohost'
+  return access.level === 'admin' || access.level === 'owner' || access.level === 'cohost'
 }
 
 /** Host-only actions: transfer host, delete the scene, delete analytics data. */
@@ -74,13 +74,6 @@ export async function getSceneAccess(actor: Actor, sceneId: string, at = new Dat
   const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
   if (!scene) return NONE
   if (scene.ownerId === actor.userId) return full('owner')
-
-  if (scene.orgId) {
-    const member = await db.query.orgMembers.findFirst({
-      where: and(eq(orgMembers.orgId, scene.orgId), eq(orgMembers.userId, actor.userId)),
-    })
-    if (member && (member.role === 'owner' || member.role === 'admin')) return full('org')
-  }
 
   const collab = await db.query.sceneCollaborators.findFirst({
     where: and(eq(sceneCollaborators.sceneId, sceneId), eq(sceneCollaborators.userId, actor.userId)),
