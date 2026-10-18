@@ -4,6 +4,7 @@
 // `user_id`. Pushing the new schema over them makes drizzle-kit ask interactively whether
 // tables/columns were "created or renamed", which `yes` cannot answer, so boot hangs. Those
 // legacy tables never held data, so drop them first and let push create the new ones.
+import { randomBytes } from 'node:crypto'
 import postgres from 'postgres'
 
 const url = process.env.DATABASE_URL
@@ -27,6 +28,17 @@ try {
   await sql`DROP TABLE IF EXISTS scene_state`
   // Add streaming_servers.playback_id ahead of push (plain nullable column; push then has nothing to ask)
   await sql`ALTER TABLE IF EXISTS streaming_servers ADD COLUMN IF NOT EXISTS playback_id text`
+  // Streams provisioned before playback ids exposed the stream key in their public URL: give them an id and move the URL off the key
+  const [{ present }] = await sql`SELECT to_regclass('streaming_servers') IS NOT NULL AS present`
+  if (present) {
+    const hlsBase = process.env.HLS_BASE_URL || 'http://localhost:8000/streams'
+    const legacy = await sql`SELECT id FROM streaming_servers WHERE playback_id IS NULL`
+    for (const { id } of legacy) {
+      const playbackId = randomBytes(16).toString('hex')
+      await sql`UPDATE streaming_servers SET playback_id = ${playbackId}, hls_playlist_url = ${`${hlsBase}/${playbackId}/playlist.m3u8`} WHERE id = ${id} AND playback_id IS NULL`
+    }
+    if (legacy.length) console.log(`[vlm-server] pre-push upgrade: backfilled playback_id on ${legacy.length} stream(s)`)
+  }
   console.log('[vlm-server] pre-push upgrade: legacy analytics tables cleared, scene_state dropped, playback_id ensured')
 } finally {
   await sql.end()

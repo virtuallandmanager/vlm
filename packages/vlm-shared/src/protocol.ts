@@ -16,9 +16,7 @@ export type ClientMessage =
   | { type: 'scene_delete_preset'; data: { presetId: string } }
   | { type: 'scene_video_update'; data: VideoUpdateData }
   | { type: 'scene_sound_locator'; data: { enabled: boolean } }
-  | { type: 'user_message'; data: UserMessageData }
-  | { type: 'path_start'; data: PathStartData }
-  | { type: 'path_end'; data: Record<string, never> };
+  | { type: 'user_message'; data: UserMessageData };
 
 // ============================================================================
 // Server -> Client messages
@@ -137,11 +135,6 @@ export type PathPoint = [
   number, // camera rotation x
   number, // camera rotation y
 ];
-
-export interface PathStartData {
-  segmentType: string;
-  startPoint: PathPoint;
-}
 
 // ============================================================================
 // Preset change
