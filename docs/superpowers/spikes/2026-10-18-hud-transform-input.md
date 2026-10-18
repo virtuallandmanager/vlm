@@ -18,7 +18,7 @@ Date: 2026-10-18. Probe: a throwaway SDK7 scene (on-screen readout, a box on `CL
 
 `PrimaryPointerInfo.getOrNull(engine.RootEntity).worldRayDirection` was present (non-zero) in both cursor modes, so the camera-forward fallback was never used. The owner saw only small changes when aiming across one cube's corners, which is expected (a 1 m cube at about 6 m spans roughly 10°).
 
-**Not confirmed:** whether, with a free cursor and a still camera, the ray follows the mouse cursor. This goes on the Task 8 in-world checklist.
+**Confirmed later the same day:** with a free cursor the ray follows the mouse (the owner: "the ray definitely changes as i move the pointer around either way"), and with the cursor locked it follows the crosshair.
 
 ## Raycast hits
 
