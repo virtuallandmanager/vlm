@@ -42,13 +42,14 @@ export default async function sceneLibraryRoutes(app: FastifyInstance) {
     const { sceneId, id } = request.params
     const row = await db.query.sceneLibrary.findFirst({ where: and(eq(sceneLibrary.id, id), eq(sceneLibrary.sceneId, sceneId)) })
     if (!row) return reply.status(404).send({ error: 'Not found' })
-    const a = await access(request, sceneId)
-    const allowed = isFullAccess(a) || (hasScope(a, 'scene.edit') && row.addedBy === request.user.id)
-    if (!allowed) return reply.status(403).send({ error: 'forbidden' })
-    // Dismissing a failed or abandoned upload removes the file record too (the cascade drops the link)
     const media = row.mediaAssetId
       ? await db.query.mediaAssets.findFirst({ where: eq(mediaAssets.id, row.mediaAssetId), columns: { status: true } })
       : null
+    const a = await access(request, sceneId)
+    // Any editor may dismiss a failed upload (the HUD shows Dismiss on every failed row)
+    const allowed = isFullAccess(a) || (hasScope(a, 'scene.edit') && (row.addedBy === request.user.id || media?.status === 'failed'))
+    if (!allowed) return reply.status(403).send({ error: 'forbidden' })
+    // Dismissing a failed or abandoned upload removes the file record too (the cascade drops the link)
     if (media && (media.status === 'failed' || media.status === 'uploading')) {
       await db.delete(mediaAssets).where(eq(mediaAssets.id, row.mediaAssetId!))
     } else {

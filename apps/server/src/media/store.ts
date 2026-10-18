@@ -51,6 +51,8 @@ export async function fillMedia(assetId: string, buffer: Buffer): Promise<MediaR
   try {
     const verdict = classifyUpload(asset.filename, asset.contentType, buffer.length)
     if (!verdict.ok) throw new StoreMediaError(verdict.status, { error: verdict.error })
+    // Quota was checked against the declared size: never store more than that
+    if (buffer.length > asset.sizeBytes) throw new StoreMediaError(413, { error: 'too_large' })
     const key = `${asset.ownerId}/${randomUUID()}.${extensionFor(verdict.contentType)}`
     const publicUrl = await storage.upload(key, buffer, verdict.contentType)
     const [stored] = await db.update(mediaAssets)

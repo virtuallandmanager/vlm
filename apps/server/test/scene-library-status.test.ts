@@ -38,6 +38,13 @@ describe('scene library status', () => {
     expect(items.find((i) => i.id === fresh.linkId)).toMatchObject({ status: 'uploading' })
   })
 
+  it('also fails uploads stuck in processing (a crash mid-store)', async () => {
+    const { scene, add } = await setup()
+    const stuck = await add({ status: 'processing', storageKey: null, publicUrl: null, createdAt: new Date(Date.now() - 16 * 60_000) })
+    const items = await listSceneLibrary(scene.id)
+    expect(items.find((i) => i.id === stuck.linkId)).toMatchObject({ status: 'failed', error: "Upload didn't finish" })
+  })
+
   it('defaults existing-style inserts to ready', async () => {
     const { add } = await setup()
     const { m } = await add({})

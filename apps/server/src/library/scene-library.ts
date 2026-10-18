@@ -1,4 +1,4 @@
-import { and, eq, lt, sql } from 'drizzle-orm'
+import { and, eq, inArray, lt, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { assetLibraryItems, bookings, mediaAssets, sceneLibrary, scenes, systemFlags } from '../db/schema.js'
 import type { Actor } from '../auth/actor.js'
@@ -25,13 +25,22 @@ const ACTIVE_BOOKING = sql`(${sceneLibrary.bookingId} IS NULL OR EXISTS (SELECT 
 /** An upload still 'uploading' this long after it started is treated as abandoned. */
 export const STALE_UPLOAD_MS = 15 * 60_000
 
-/** Mark abandoned in-flight uploads failed; returns how many. Runs before every library read and daily. */
+/**
+ * Mark abandoned in-flight uploads (still 'uploading', or 'processing' after a crash mid-store) failed, and tell
+ * the scenes they're linked to; returns how many. Runs before every library read and daily.
+ */
 export async function expireStaleUploads(now: Date = new Date()): Promise<number> {
   const rows = await db
     .update(mediaAssets)
     .set({ status: 'failed', error: "Upload didn't finish" })
-    .where(and(eq(mediaAssets.status, 'uploading'), lt(mediaAssets.createdAt, new Date(now.getTime() - STALE_UPLOAD_MS))))
+    .where(and(inArray(mediaAssets.status, ['uploading', 'processing']), lt(mediaAssets.createdAt, new Date(now.getTime() - STALE_UPLOAD_MS))))
     .returning({ id: mediaAssets.id })
+  if (rows.length === 0) return 0
+  const links = await db
+    .select({ id: sceneLibrary.id, sceneId: sceneLibrary.sceneId })
+    .from(sceneLibrary)
+    .where(inArray(sceneLibrary.mediaAssetId, rows.map((r) => r.id)))
+  for (const l of links) await publishLibraryChanged(l.sceneId, l.id)
   return rows.length
 }
 

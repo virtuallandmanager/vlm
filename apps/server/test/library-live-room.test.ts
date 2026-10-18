@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { db } from '../src/db/connection.js'
 import { mediaAssets, sceneCollaborators } from '../src/db/schema.js'
-import { linkToScene } from '../src/library/scene-library.js'
+import { expireStaleUploads, linkToScene } from '../src/library/scene-library.js'
 import { publishLibraryChanged } from '../src/realtime/bus.js'
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene, tokenFor } from './helpers/factories.js'
@@ -54,6 +54,17 @@ describe('scene library live changes', () => {
     const s = await setup()
     await publishLibraryChanged(s.scene.id, 'gone-id', true)
     expect(await s.editor.waitFor('scene_library_changed')).toEqual({ action: 'remove', id: 'gone-id' })
+  })
+
+  it('an expired upload is announced as failed', async () => {
+    const s = await setup()
+    const [m] = await db.insert(mediaAssets).values({
+      ownerId: s.ownerU.id, filename: 'a.png', contentType: 'image/png', sizeBytes: 10, status: 'uploading', createdAt: new Date(Date.now() - 16 * 60_000),
+    }).returning()
+    const linkId = await linkToScene(s.scene.id, { mediaAssetId: m.id }, s.ownerU.id)
+    await s.editor.waitFor('scene_library_changed') // the link itself
+    await expireStaleUploads()
+    expect(await s.editor.waitFor('scene_library_changed')).toMatchObject({ action: 'upsert', item: { id: linkId, status: 'failed' } })
   })
 
   it('linkToScene publishes', async () => {

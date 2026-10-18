@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { mediaAssets } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
@@ -35,7 +35,8 @@ export default async function mediaRoutes(app: FastifyInstance) {
   // GET /api/media — List user's media assets
   app.get('/api/media', async (request, reply) => {
     const assets = await db.query.mediaAssets.findMany({
-      where: eq(mediaAssets.ownerId, request.user.id),
+      // Unfinished (in-flight or failed) companion uploads have no file to pick yet
+      where: and(eq(mediaAssets.ownerId, request.user.id), eq(mediaAssets.status, 'ready')),
       orderBy: (mediaAssets, { desc }) => [desc(mediaAssets.createdAt)],
     })
     return reply.send({ assets })

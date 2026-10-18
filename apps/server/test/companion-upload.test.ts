@@ -129,6 +129,36 @@ describe('companion uploads', () => {
     expect(a.error).toBeTruthy()
   })
 
+  it('bytes larger than the declared size are refused (quota is checked on the declared size)', async () => {
+    const s = await setup()
+    const t = await mint(s.editor, s.scene.id)
+    const { assetId } = (await start(t.code, { sizeBytes: 10 })).json()
+    expect((await send(t.code, assetId)).statusCode).toBe(413)
+    expect((await asset(assetId)).status).toBe('failed')
+  })
+
+  it('the dashboard media list leaves out unfinished uploads', async () => {
+    const s = await setup()
+    const t = await mint(s.owner, s.scene.id)
+    await start(t.code)
+    const ready = (await start(t.code, { filename: 'b.png' })).json().assetId
+    await send(t.code, ready)
+    const res = await app.inject({ method: 'GET', url: '/api/media', headers: { authorization: `Bearer ${tokenFor(s.owner)}` } })
+    expect(res.json().assets.map((a: { id: string }) => a.id)).toEqual([ready])
+  })
+
+  it('any editor can dismiss a failed upload', async () => {
+    const s = await setup()
+    const other = await createUser({ wallet: '0x00000000000000000000000000000000000000e3' })
+    await db.insert(sceneRoles).values({ sceneId: s.scene.id, userId: other.id, walletAddress: other.wallet!, role: 'editor' } as any)
+    const t = await mint(s.editor, s.scene.id)
+    const failed = (await start(t.code)).json().assetId
+    await db.update(mediaAssets).set({ status: 'failed', error: 'x' }).where(eq(mediaAssets.id, failed))
+    const [link] = await db.select().from(sceneLibrary).where(eq(sceneLibrary.mediaAssetId, failed))
+    const res = await app.inject({ method: 'DELETE', url: `/api/scenes/${s.scene.id}/library/${link.id}`, headers: { authorization: `Bearer ${tokenFor(other)}` } })
+    expect(res.statusCode).toBe(204)
+  })
+
   it('serves a QR png for a live code and 404 otherwise', async () => {
     const s = await setup()
     const t = await mint(s.editor, s.scene.id)
