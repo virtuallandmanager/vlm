@@ -6,9 +6,9 @@ Status: draft, awaiting approval (2026-10-18)
 
 An editor standing in their scene wants to get a file into it without leaving the world to hunt through the dashboard. The file is usually either a photo on their phone or an image or GLB model on their computer. Today they have to go to the dashboard's Media page, upload there, then come back. Even after that, the file doesn't show up in the in-world Media Library: dashboard uploads never join the scene's library.
 
-What they want: an **Upload** button in the HUD Media Library. It opens an upload page on the computer, and the same panel shows a QR code to open that page on a phone. Whatever they upload then **waits in the HUD Media Library**, not placed automatically. Each item carries a status that updates live (Uploading → Processing → Ready, plus the model-specific state described below) until it's ready to Place with the existing Place button.
+What they want: an **Upload** button in the HUD Media Library. It opens an upload page on the computer, and the same panel shows a QR code to open that page on a phone. Whatever they upload then **waits in the HUD Media Library**, not placed automatically. Each item carries a status that updates live (Uploading → Processing → Available, plus a sync marker for models) until it's ready to Place with the existing Place button.
 
-Success: the editor clicks Upload, scans the QR, picks a photo on the phone, and watches it appear in the HUD list within seconds, going from Uploading through Processing to Ready. Then they click Place. No refresh and no leaving the world.
+Success: the editor clicks Upload, scans the QR, picks a photo on the phone, and watches it appear in the HUD list within seconds, going from Uploading through Processing to Available. Then they click Place. No refresh and no leaving the world.
 
 ## Goals
 
@@ -93,17 +93,19 @@ Statuses as the HUD shows them:
 |---|---|---|
 | **Uploading** | The page told the server a file is coming; bytes not yet received | The page |
 | **Processing** | Bytes received; the server is validating and storing them | The server |
-| **Ready** | An image that can be placed | — |
-| **Needs sync** | A GLB stored and placeable, but it won't render until the creator runs `npx vlm-dcl sync` and redeploys | — |
+| **Available** ✓ | Stored and placeable (image or GLB) | — |
+| **Needs sync** ⟳ | A GLB that is **placed** in this scene but isn't deployed with it yet, so it won't render until `npx vlm-dcl sync` + redeploy | — |
 | **Failed** | Too big, wrong type, over quota, or abandoned. The reason is shown | — |
 
-The user said "Syncing". "Needs sync" is my wording, since nothing is syncing on its own; see open question 1 below.
+The user asked for an "Available" status and suggested a check / sync / x marker; they don't mind dropping "Syncing". Each badge is a coloured marker plus a word: green ✓ Available, amber ⟳ Needs sync, red ✕ Failed, muted dot for Uploading/Processing. If the DCL UI font lacks those glyphs, the builder uses a coloured dot or a short ASCII stand-in, and keeps the word.
+
+Needs sync applies only to placed GLBs. `vlm-dcl sync` only downloads models placed in the active preset (`GET /api/setup/models`), so an unplaced GLB shows Available — that's honest, since placing it is the next step, and after placing the row flips to Needs sync (and the existing SyncNotice appears). Changing `vlm-dcl sync` to pull every library GLB is out of scope (my call).
 
 **Data model**
 - Add `status` to `media_assets`: `'uploading' | 'processing' | 'ready' | 'failed'`, defaulting to `'ready'` so existing rows and dashboard uploads are unaffected.
 - Add `error` (text, nullable).
 - `storage_key` and `public_url` become nullable until the file is stored.
-- "Needs sync" is not stored. The HUD works it out for GLBs that are `ready` in the library but aren't deployed with this scene. It uses the same `adapter.resolveModelSrc` check that drives `missingModels()`, so the badge clears once a redeploy includes the file.
+- "Needs sync" is not stored. The HUD works it out for GLBs that are `ready`, placed in the current layout (some model element's `modelSrc` matches the item's url), and not deployed with this scene. It uses the same `adapter.resolveModelSrc` check that drives `missingModels()`, so the badge clears once a redeploy includes the file.
 - The token gets `kinds text[]`, nullable, meaning anything. In-world codes use `['image','model']`.
 
 **Upload flow on the page**
@@ -136,9 +138,9 @@ The page shows its own per-file progress bar (XHR upload progress). The HUD show
 ### HUD changes
 
 - `HUDMediaItem` gains:
-  - `status`: `'uploading' | 'processing' | 'ready' | 'needs_sync' | 'failed'`
+  - `status`: `'uploading' | 'processing' | 'available' | 'needs_sync' | 'failed'`
   - `error?: string`
-- Each row gets a coloured status badge beside the kind label. Place is shown only for Ready and Needs sync; Failed shows Dismiss instead.
+- Each row gets a coloured status badge beside the kind label. Place is shown only for Available and Needs sync; Failed shows Dismiss instead.
 - Placing a Needs sync model works as it does today, with today's message.
 - `mediaKind()`'s filter (images and GLB) is unchanged. Items with a non-ready status pass through it on content type.
 - The empty-state text "Upload them on the dashboard's Media page" becomes an Upload button.
@@ -171,11 +173,7 @@ Out of scope, but noted: uploads from the dashboard Media page still don't join 
 3. **The QR code is a server PNG** used as a UI texture, rather than built from hundreds of UI boxes.
 4. **Uploads go into the scene owner's library** (and quota) when an editor uploads, matching the existing in-world upload route.
 5. **In-world uploads are images and GLB only.** Video stays on the dashboard.
-6. **"Needs sync"** is the label for GLBs waiting on `vlm-dcl sync` and a redeploy.
+6. **"Needs sync" only for placed GLBs** that aren't deployed yet; unplaced GLBs show Available. `vlm-dcl sync` isn't changed.
 7. **No upload percentage in-world.** The page has it.
 8. **Abandoned uploads fail after 15 minutes.** Failed rows can be dismissed.
 9. **Renters can't upload from in-world** (editors only, as the HUD panel is today).
-
-## Open questions for the user
-
-1. **What should happen to a GLB after upload?** DCL can't load a model from a URL, so a GLB only shows up in-world after `npx vlm-dcl sync` on the computer plus a redeploy. Also, `vlm-dcl sync` today only downloads models that are already *placed* in the active preset (`GET /api/setup/models`), not ones merely sitting in the library. Options: (a) honest badge only — "Place, then sync + redeploy"; (b) also make `vlm-dcl sync` pull every GLB in the scene's library, so the editor can sync before placing (CLI change, republish vlm-dcl); (c) something else they had in mind by "Syncing".
