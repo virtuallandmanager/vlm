@@ -328,6 +328,8 @@ export class VLM {
       this.events.emit('transform_held', message)
     })
 
+    this.colyseus.onMessage('vlm_error', (message: unknown) => this.events.emit('vlm_error', message))
+
     this.colyseus.onMessage('scene_change_preset', (message: unknown) => {
       this.sceneManager.handlePresetChange(message as any)
     })

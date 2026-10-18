@@ -1,0 +1,176 @@
+// Edit-mode frame system: the pointer's world ray, one continuous camera raycast, and pointer / Shift edges.
+// Uses only IA_POINTER and SHIFT_ACTION (never E, F or 1-4).
+import {
+  engine,
+  Entity,
+  Transform,
+  Raycast,
+  RaycastResult,
+  RaycastQueryType,
+  ColliderLayer,
+  InputAction,
+  PointerEventType,
+  inputSystem,
+} from '@dcl/sdk/ecs'
+import type { LastWriteWinElementSetComponentDefinition } from '@dcl/sdk/ecs'
+import { Vector3 } from '@dcl/sdk/math'
+import type { Handle, Ray, TransformMode } from 'vlm-core'
+import type { Vec3 } from 'vlm-shared'
+
+/**
+ * IA_MODIFIER: Shift on desktop, present from @dcl/ecs / @dcl/sdk 7.23 (the workspace's typings predate it).
+ * See docs/superpowers/spikes/2026-10-18-hud-transform-input.md.
+ */
+export const SHIFT_ACTION = 14 as InputAction
+
+const RAY_DISTANCE = 50
+
+/** What the frame system needs from edit mode. Entities are raycast hit ids. */
+export interface EditHost {
+  readonly mode: TransformMode
+  /** A gizmo handle of the selected item. */
+  handleAt(entity: Entity): Handle | null
+  /** The sk of the editable item this entity belongs to (item entity or its pointer helper). */
+  itemAt(entity: Entity): string | null
+  /** True for the selected item, its helper, and every editor-only helper. Never a surface. */
+  excludedFromSurface(entity: Entity): boolean
+  /** Pointer went down; true when a drag began. */
+  press(target: { handle: Handle } | { sk: string } | null, ray: Ray, surfaceHit: Vec3 | null): boolean
+  drag(ray: Ray, surfaceHit: Vec3 | null): void
+  release(): void
+  shiftTapped(): void
+  setSnap(on: boolean): void
+  /** Runs first every frame (helpers follow their items, gizmo follows the draft). */
+  sync(dt: number): void
+}
+
+type Hit = { entity: Entity | null; position: Vec3; length: number }
+
+/** Pointer ray direction: PrimaryPointerInfo (SDK >= 7.20, looked up by name for older typings), else camera forward. */
+function rayDirection(cameraRotation: { x: number; y: number; z: number; w: number }): Vec3 {
+  const info = engine.getComponentOrNull('core::PrimaryPointerInfo') as LastWriteWinElementSetComponentDefinition<{
+    worldRayDirection?: Vec3
+  }> | null
+  const d = info?.getOrNull(engine.RootEntity)?.worldRayDirection
+  const len = d ? Math.hypot(d.x, d.y, d.z) : 0
+  if (d && len > 1e-6) return { x: d.x / len, y: d.y / len, z: d.z / len }
+  return Vector3.rotate(Vector3.Forward(), cameraRotation)
+}
+
+export class EditInput {
+  private rayEntity: Entity | null = null
+  private pointerWasDown = false
+  private shiftWasDown = false
+  private dragging = false
+  private readonly system = (dt: number) => this.frame(dt)
+
+  constructor(
+    private readonly host: EditHost,
+    private readonly registerSystem: (fn: (dt: number) => void) => void,
+    private readonly unregisterSystem: (fn: (dt: number) => void) => void,
+  ) {}
+
+  get isDragging(): boolean {
+    return this.dragging
+  }
+
+  start(): void {
+    if (this.rayEntity !== null) return
+    const e = engine.addEntity()
+    Transform.create(e, {})
+    Raycast.create(e, {
+      direction: { $case: 'globalDirection', globalDirection: Vector3.Forward() },
+      maxDistance: RAY_DISTANCE,
+      queryType: RaycastQueryType.RQT_QUERY_ALL,
+      continuous: true,
+      collisionMask: ColliderLayer.CL_PHYSICS | ColliderLayer.CL_POINTER,
+    })
+    this.rayEntity = e
+    // Swallow a press already in progress (e.g. the click that turned edit mode on)
+    this.pointerWasDown = inputSystem.isPressed(InputAction.IA_POINTER)
+    this.shiftWasDown = inputSystem.isPressed(SHIFT_ACTION)
+    this.dragging = false
+    this.registerSystem(this.system)
+  }
+
+  stop(): void {
+    if (this.rayEntity === null) return
+    this.unregisterSystem(this.system)
+    engine.removeEntity(this.rayEntity)
+    this.rayEntity = null
+    this.dragging = false
+  }
+
+  /** Ends a drag in progress without waiting for the pointer to come up (mode switch, held, save). */
+  cancelDrag(): void {
+    this.dragging = false
+  }
+
+  private frame(dt: number): void {
+    const rayEntity = this.rayEntity
+    if (rayEntity === null) return
+    this.host.sync(dt)
+
+    const cam = Transform.getOrNull(engine.CameraEntity)
+    if (!cam) return
+    const ray: Ray = { origin: { x: cam.position.x, y: cam.position.y, z: cam.position.z }, direction: rayDirection(cam.rotation) }
+    // The renderer casts this every tick; the result read below is from the previous frame's ray.
+    Transform.getMutable(rayEntity).position = Vector3.create(ray.origin.x, ray.origin.y, ray.origin.z)
+    Raycast.getMutable(rayEntity).direction = { $case: 'globalDirection', globalDirection: Vector3.create(ray.direction.x, ray.direction.y, ray.direction.z) }
+
+    const hits = this.readHits(rayEntity)
+    const surfaceHit = hits.find((h) => h.entity === null || !this.host.excludedFromSurface(h.entity))?.position ?? null
+
+    const pointerDown = inputSystem.isPressed(InputAction.IA_POINTER)
+    const pressed =
+      !this.pointerWasDown && (pointerDown || inputSystem.isTriggered(InputAction.IA_POINTER, PointerEventType.PET_DOWN))
+    const released = !pointerDown || inputSystem.isTriggered(InputAction.IA_POINTER, PointerEventType.PET_UP)
+    this.pointerWasDown = pointerDown
+
+    if (this.dragging) {
+      if (released) {
+        this.dragging = false
+        this.host.release()
+      } else {
+        this.host.drag(ray, surfaceHit)
+      }
+    } else if (pressed) {
+      this.dragging = this.host.press(this.pick(hits), ray, surfaceHit)
+    }
+
+    const shiftDown = inputSystem.isPressed(SHIFT_ACTION)
+    if (this.host.mode === 'move') {
+      if (shiftDown && !this.shiftWasDown) this.host.shiftTapped()
+    } else {
+      // Held Shift snaps; set every frame so a mode switch with Shift already down still snaps
+      this.host.setSnap(shiftDown)
+    }
+    this.shiftWasDown = shiftDown
+  }
+
+  /** A handle wins over an item; otherwise the nearest editable item. */
+  private pick(hits: Hit[]): { handle: Handle } | { sk: string } | null {
+    for (const h of hits) {
+      const handle = h.entity !== null ? this.host.handleAt(h.entity) : null
+      if (handle) return { handle }
+    }
+    for (const h of hits) {
+      const sk = h.entity !== null ? this.host.itemAt(h.entity) : null
+      if (sk) return { sk }
+    }
+    return null
+  }
+
+  private readHits(rayEntity: Entity): Hit[] {
+    const result = RaycastResult.getOrNull(rayEntity)
+    if (!result) return []
+    const out: Hit[] = []
+    for (const h of result.hits) {
+      if (!h.position) continue
+      // The player's own avatar is never a surface (third-person camera rays pass through it)
+      if (h.entityId === engine.PlayerEntity) continue
+      out.push({ entity: h.entityId === undefined ? null : (h.entityId as Entity), position: h.position, length: h.length })
+    }
+    return out.sort((a, b) => a.length - b.length)
+  }
+}
