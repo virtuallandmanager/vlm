@@ -66,6 +66,17 @@ if [ -n "$DATABASE_URL" ]; then
         console.log('[vlm-server] scene_library table ensured');
       } catch(e) { console.log('[vlm-server] scene_library:', e.message); }
 
+      // Upload status (two-step companion uploads); matches mediaAssets / uploadTokens in src/db/schema.ts
+      try {
+        await sql\`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ready'\`;
+        await sql\`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS error TEXT\`;
+        await sql\`ALTER TABLE media_assets ALTER COLUMN storage_key DROP NOT NULL\`;
+        await sql\`ALTER TABLE upload_tokens ADD COLUMN IF NOT EXISTS kinds TEXT[]\`;
+        await sql\`ALTER TABLE upload_tokens ADD COLUMN IF NOT EXISTS minter_wallet TEXT\`;
+        await sql\`ALTER TABLE upload_tokens ADD COLUMN IF NOT EXISTS minter_verified BOOLEAN NOT NULL DEFAULT false\`;
+        console.log('[vlm-server] media status columns ensured');
+      } catch(e) { console.log('[vlm-server] media status columns:', e.message); }
+
       // One-time startup job markers; matches systemFlags in src/db/schema.ts
       try {
         await sql\`CREATE TABLE IF NOT EXISTS system_flags (key TEXT PRIMARY KEY, set_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;

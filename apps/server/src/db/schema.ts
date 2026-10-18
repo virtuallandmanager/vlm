@@ -598,10 +598,13 @@ export const mediaAssets = pgTable('media_assets', {
   filename: text('filename').notNull(),
   contentType: text('content_type').notNull(),
   sizeBytes: integer('size_bytes').notNull(),
-  storageKey: text('storage_key').notNull(), // path in storage provider
+  storageKey: text('storage_key'), // path in storage provider; null until an in-flight upload is stored
   publicUrl: text('public_url'),
   folder: text('folder').default('/'),
   metadata: jsonb('metadata'), // dimensions, duration, etc.
+  // 'uploading' | 'processing' | 'ready' | 'failed' (two-step companion uploads; everything else is stored ready)
+  status: text('status').notNull().default('ready'),
+  error: text('error'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -866,6 +869,10 @@ export const uploadTokens = pgTable('upload_tokens', {
   sceneId: uuid('scene_id').references(() => scenes.id, { onDelete: 'cascade' }),
   maxUploads: integer('max_uploads').notNull().default(10),
   uploadCount: integer('upload_count').notNull().default(0),
+  kinds: text('kinds').array(), // allowed upload kinds ('image' | 'model' | 'video'); null = any
+  // The minter's identity at mint time, so uploads re-check their scene access as them
+  minterWallet: text('minter_wallet'),
+  minterVerified: boolean('minter_verified').notNull().default(false),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })

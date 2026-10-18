@@ -18,6 +18,7 @@ import { getSubscription } from '../integrations/stripe.js'
 import type { AnalyticsSceneRow } from './registry.js'
 import { purgeWalletChallenges } from './claims.js'
 import { purgeAuthHandoffCodes } from '../routes/auth-handoff.js'
+import { expireStaleUploads } from '../library/scene-library.js'
 
 const HOUR = 3_600_000
 const DAY = 86_400_000
@@ -270,6 +271,7 @@ export function registerDailyJob(name: string, fn: (now: Date) => Promise<unknow
 
 registerDailyJob('wallet-challenge-purge', (now) => purgeWalletChallenges(now))
 registerDailyJob('auth-handoff-purge', (now) => purgeAuthHandoffCodes(now))
+registerDailyJob('stale-upload-expire', (now) => expireStaleUploads(now))
 
 export function startAnalyticsJobs(): () => void {
   if (!config.analyticsJobsEnabled) return () => {}

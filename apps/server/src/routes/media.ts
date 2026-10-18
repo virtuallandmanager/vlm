@@ -54,7 +54,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
-      await storage.delete(asset.storageKey)
+      if (asset.storageKey) await storage.delete(asset.storageKey)
       await db.delete(mediaAssets).where(eq(mediaAssets.id, assetId))
       return reply.status(204).send()
     },

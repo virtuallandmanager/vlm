@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, lt, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { assetLibraryItems, bookings, mediaAssets, sceneLibrary, scenes, systemFlags } from '../db/schema.js'
 import type { Actor } from '../auth/actor.js'
@@ -13,27 +13,74 @@ export interface LibraryItem {
   sizeBytes: number
   bookingId: string | null
   createdAt: string
+  status: 'uploading' | 'processing' | 'ready' | 'failed'
+  error: string | null
 }
 
 // Booking-linked items show only while the booking is confirmed or live (the venue lifecycle job flips
 // bookings to 'ended' after endsAt + grace, so status alone is the codebase's definition of active).
 const ACTIVE_BOOKING = sql`(${sceneLibrary.bookingId} IS NULL OR EXISTS (SELECT 1 FROM ${bookings} b WHERE b.id = ${sceneLibrary.bookingId} AND b.status IN ('confirmed','live')))`
 
-export async function listSceneLibrary(sceneId: string): Promise<LibraryItem[]> {
+/** An upload still 'uploading' this long after it started is treated as abandoned. */
+export const STALE_UPLOAD_MS = 15 * 60_000
+
+/** Mark abandoned in-flight uploads failed; returns how many. Runs before every library read and daily. */
+export async function expireStaleUploads(now: Date = new Date()): Promise<number> {
   const rows = await db
+    .update(mediaAssets)
+    .set({ status: 'failed', error: "Upload didn't finish" })
+    .where(and(eq(mediaAssets.status, 'uploading'), lt(mediaAssets.createdAt, new Date(now.getTime() - STALE_UPLOAD_MS))))
+    .returning({ id: mediaAssets.id })
+  return rows.length
+}
+
+type LibraryRow = {
+  l: typeof sceneLibrary.$inferSelect
+  m: typeof mediaAssets.$inferSelect | null
+  a: typeof assetLibraryItems.$inferSelect | null
+}
+
+function toLibraryItem({ l, m, a }: LibraryRow): LibraryItem | null {
+  // Who added an item stays server-side (the delete route checks it); viewers never see user ids.
+  const base = { id: l.id, bookingId: l.bookingId, createdAt: l.createdAt.toISOString() }
+  if (m) {
+    return {
+      ...base, kind: 'media', name: m.filename, contentType: m.contentType, url: m.publicUrl ?? '', sizeBytes: m.sizeBytes,
+      status: m.status as LibraryItem['status'], error: m.error,
+    }
+  }
+  if (a) {
+    return {
+      ...base, kind: 'model', name: a.name, contentType: 'model/gltf-binary', url: a.cdnUrl ?? '', sizeBytes: a.fileSizeBytes,
+      status: 'ready', error: null,
+    }
+  }
+  return null
+}
+
+function libraryQuery() {
+  return db
     .select({ l: sceneLibrary, m: mediaAssets, a: assetLibraryItems })
     .from(sceneLibrary)
     .leftJoin(mediaAssets, eq(mediaAssets.id, sceneLibrary.mediaAssetId))
     .leftJoin(assetLibraryItems, eq(assetLibraryItems.id, sceneLibrary.assetItemId))
+}
+
+export async function listSceneLibrary(sceneId: string): Promise<LibraryItem[]> {
+  await expireStaleUploads()
+  const rows = await libraryQuery()
     .where(and(eq(sceneLibrary.sceneId, sceneId), ACTIVE_BOOKING))
     .orderBy(sql`${sceneLibrary.createdAt} desc`)
-  return rows.flatMap(({ l, m, a }): LibraryItem[] => {
-    // Who added an item stays server-side (the delete route checks it); viewers never see user ids.
-    const base = { id: l.id, bookingId: l.bookingId, createdAt: l.createdAt.toISOString() }
-    if (m) return [{ ...base, kind: 'media', name: m.filename, contentType: m.contentType, url: m.publicUrl ?? '', sizeBytes: m.sizeBytes }]
-    if (a) return [{ ...base, kind: 'model', name: a.name, contentType: 'model/gltf-binary', url: a.cdnUrl ?? '', sizeBytes: a.fileSizeBytes }]
-    return []
-  })
+  return rows.flatMap((r) => toLibraryItem(r) ?? [])
+}
+
+/** One library entry (same shape and visibility as listSceneLibrary), or null. */
+export async function getSceneLibraryItem(sceneId: string, linkId: string): Promise<LibraryItem | null> {
+  await expireStaleUploads()
+  const [row] = await libraryQuery()
+    .where(and(eq(sceneLibrary.sceneId, sceneId), eq(sceneLibrary.id, linkId), ACTIVE_BOOKING))
+    .limit(1)
+  return row ? toLibraryItem(row) : null
 }
 
 export async function linkToScene(
