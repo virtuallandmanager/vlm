@@ -36,7 +36,7 @@ Requires `JWT_SECRET`, `POSTGRES_PASSWORD`, and a Redis instance.
 
 ## Cloud Providers
 
-- **Railway** — `railway.toml` included, one-click deploy
+- **Railway** — `Dockerfile` builds automatically; `.railway/railway.ts` sets the start command and health check (`railway config apply`)
 - **Render** — `render.yaml` included, auto-generates JWT_SECRET
 - **Fly.io** — `fly.toml` included, `fly launch` from repo root
 - **Any VPS** — `docker build .` + set environment variables

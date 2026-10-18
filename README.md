@@ -90,7 +90,7 @@ VLM supports three deployment modes via `VLM_MODE`:
 
 ### Railway (Cloud)
 
-The project includes a `Dockerfile` and `railway.toml` for one-click Railway deployment. Set these env vars on Railway:
+The project includes a `Dockerfile` (Railway builds it automatically) and `.railway/railway.ts`, which sets the start command and health check. Apply it with `railway config apply` (needs Node 22.6+ and the `railway` npm package), and add every variable you set to its `env` list or the next apply deletes it. Set these env vars on Railway:
 
 - `DATABASE_URL` — Railway Postgres connection string
 - `JWT_SECRET` — random 64-char string
