@@ -1,4 +1,4 @@
-import type { TransformData, TransformDraftData, VLMPlatformAdapter, VLMInitConfig, VLMStorage as VLMStorageType, HUDRenderer, BudgetLimits, Scene } from 'vlm-shared'
+import type { SceneLibraryChangeData, TransformData, TransformDraftData, VLMPlatformAdapter, VLMInitConfig, VLMStorage as VLMStorageType, HUDRenderer, BudgetLimits, Scene } from 'vlm-shared'
 import { VLMHttpClient, ColyseusManager } from 'vlm-client'
 import { SceneManager } from './SceneManager.js'
 import { VLMStorageImpl } from './storage.js'
@@ -329,6 +329,10 @@ export class VLM {
       this.events.emit('transform_draft_end', d)
     })
 
+    this.colyseus.onMessage('scene_library_changed', (message: unknown) => {
+      this.events.emit('library_changed', message)
+    })
+
     this.colyseus.onMessage('transform_held', (message: unknown) => {
       this.events.emit('transform_held', message)
     })
@@ -490,6 +494,20 @@ export class VLM {
   /** Model elements whose files this platform can't load (see adapter.resolveModelSrc). */
   missingModels(): number {
     return this.storage.models.missing.size
+  }
+
+  /** The modelSrc of each placed model this platform can't load yet (needs `vlm-dcl sync` + redeploy). */
+  missingModelSrcs(): string[] {
+    return this.sceneManager.missingModelSrcs()
+  }
+
+  /** Called with each scene library change (editors only); returns an unsubscribe. */
+  onLibraryChanged(listener: (change: SceneLibraryChangeData) => void): () => void {
+    const handler = (change: SceneLibraryChangeData) => {
+      try { listener(change) } catch { /* swallow */ }
+    }
+    this.events.on('library_changed', handler)
+    return () => this.events.off('library_changed', handler)
   }
 
   /** Called with the current missingModels() count whenever it changes; returns an unsubscribe. */

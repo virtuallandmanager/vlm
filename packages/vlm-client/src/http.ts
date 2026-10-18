@@ -1,4 +1,4 @@
-import type { Scene, AuthProof, VLMPlatformAdapter, AnalyticsSceneRef } from 'vlm-shared'
+import type { Scene, AuthProof, VLMPlatformAdapter, AnalyticsSceneRef, SceneLibraryItemData } from 'vlm-shared'
 import type { AuthResponse, MediaAsset } from './types.js'
 import { VLMAuth } from './auth.js'
 
@@ -28,14 +28,10 @@ export interface MediaLibraryAsset {
 }
 
 /** One file in a scene's library (`GET /api/scenes/:sceneId/library`). */
-export type SceneLibraryItem = {
-  id: string
-  kind: 'media' | 'model'
-  name: string
-  contentType: string | null
-  url: string
-  sizeBytes: number
-}
+export type SceneLibraryItem = SceneLibraryItemData
+
+/** A companion upload code: the page link (for this computer or a phone) and a QR image of it. */
+export type UploadToken = { code: string; uploadUrl: string; qrUrl: string; expiresAt: string; maxUploads: number }
 
 export class VLMHttpClient {
   private baseUrl: string
@@ -298,8 +294,15 @@ export class VLMHttpClient {
     })
   }
 
+  async removeFromSceneLibrary(sceneId: string, id: string): Promise<void> {
+    await this._fetch(`/api/scenes/${encodeURIComponent(sceneId)}/library/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
   /** Companion upload token; the server requires `sceneId` (and scene.edit) for scene passes. */
-  async createUploadToken(sceneId: string, opts: { maxUploads?: number; expiresInMinutes?: number } = {}): Promise<{ token: any }> {
+  async createUploadToken(
+    sceneId: string,
+    opts: { maxUploads?: number; expiresInMinutes?: number; kinds?: ('image' | 'model' | 'video')[] } = {},
+  ): Promise<{ token: UploadToken }> {
     return this._fetch('/api/upload-tokens', {
       method: 'POST',
       body: JSON.stringify({ sceneId, maxUploads: 10, expiresInMinutes: 30, ...opts }),

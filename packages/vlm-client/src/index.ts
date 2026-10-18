@@ -1,5 +1,5 @@
 export { VLMHttpClient } from './http.js'
-export type { SetupStatus, SceneRoleEntry, MediaLibraryAsset, SceneLibraryItem } from './http.js'
+export type { SetupStatus, SceneRoleEntry, MediaLibraryAsset, SceneLibraryItem, UploadToken } from './http.js'
 export { VLMAuth } from './auth.js'
 export { ColyseusManager } from './colyseus.js'
 export { ensureNetworkPolyfills } from './polyfills.js'

@@ -112,6 +112,18 @@ describe('model resolution via adapter.resolveModelSrc', () => {
     expect(vlm.storage.models.missing.has('m1')).toBe(true)
   })
 
+  it('lists the srcs of missing models', () => {
+    const { adapter } = fakeAdapter({ resolveModelSrc: (src: string) => (src.includes('ok') ? 'models/vlm/ok.glb' : null) })
+    const vlm = new VLM(adapter)
+    const sm = (vlm as any).sceneManager
+    sm.handlePresetUpdate({
+      action: 'init', scenePreset: { models: [model('https://cdn.vlm.gg/u1/ab12.glb'), model('https://cdn.vlm.gg/u1/ok.glb', 'm2')] },
+    })
+    expect(vlm.missingModelSrcs()).toEqual(['https://cdn.vlm.gg/u1/ab12.glb'])
+    sm.handlePresetUpdate({ action: 'delete', element: 'model', id: 'm1' })
+    expect(vlm.missingModelSrcs()).toEqual([])
+  })
+
   it('clears the missing record when the element is deleted', () => {
     const { adapter } = fakeAdapter({ resolveModelSrc: () => null })
     const vlm = new VLM(adapter)

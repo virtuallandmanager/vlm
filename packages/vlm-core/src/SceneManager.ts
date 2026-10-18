@@ -125,6 +125,11 @@ export class SceneManager {
     this.managers[element]?.restoreTransform(sk)
   }
 
+  /** The modelSrc of each model element the platform can't load. */
+  missingModelSrcs(): string[] {
+    return (this.managers.model as MeshManager).missingSrcs()
+  }
+
   handlePresetChange(message: any): void {
     // Clear all current elements
     for (const manager of Object.values(this.managers)) {

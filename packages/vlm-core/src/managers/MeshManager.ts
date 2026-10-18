@@ -44,6 +44,16 @@ export class MeshManager {
     return this.adapter.resolveModelSrc ? this.adapter.resolveModelSrc(src) : src
   }
 
+  /** The modelSrc of each model element whose file the platform can't load. */
+  missingSrcs(): string[] {
+    const srcs: string[] = []
+    for (const sk of this.storage.models.missing) {
+      const src = this.configs.get(sk)?.modelSrc
+      if (src) srcs.push(src)
+    }
+    return srcs
+  }
+
   private setMissing(sk: string, missing: boolean): void {
     const set = this.storage.models.missing
     if (set.has(sk) === missing) return
