@@ -45,7 +45,15 @@ export default async function sceneLibraryRoutes(app: FastifyInstance) {
     const a = await access(request, sceneId)
     const allowed = isFullAccess(a) || (hasScope(a, 'scene.edit') && row.addedBy === request.user.id)
     if (!allowed) return reply.status(403).send({ error: 'forbidden' })
-    await db.delete(sceneLibrary).where(eq(sceneLibrary.id, id))
+    // Dismissing a failed or abandoned upload removes the file record too (the cascade drops the link)
+    const media = row.mediaAssetId
+      ? await db.query.mediaAssets.findFirst({ where: eq(mediaAssets.id, row.mediaAssetId), columns: { status: true } })
+      : null
+    if (media && (media.status === 'failed' || media.status === 'uploading')) {
+      await db.delete(mediaAssets).where(eq(mediaAssets.id, row.mediaAssetId!))
+    } else {
+      await db.delete(sceneLibrary).where(eq(sceneLibrary.id, id))
+    }
     await publishLibraryChanged(sceneId, id, true)
     return reply.status(204).send()
   })

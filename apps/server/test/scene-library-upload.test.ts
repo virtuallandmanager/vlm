@@ -92,17 +92,20 @@ describe('scene library uploads', () => {
     expect((await upload(tokenFor(perf), scene.id)).statusCode).toBe(403)
   })
 
-  it('companion upload links the model to the scene only when the token user may upload there', async () => {
+  it("companion upload stores into the scene owner's account and links it; a stranger's code is refused", async () => {
     const owner = await createUser(); const stranger = await createUser()
     const { scene } = await createScene(owner)
-    const mk = async (userId: string, code: string) => { await db.insert(uploadTokens).values({ code, userId, sceneId: scene.id, maxUploads: 5, expiresAt: new Date(Date.now() + 60_000) }) }
+    const mk = async (userId: string, code: string) => { await db.insert(uploadTokens).values({ code, userId, sceneId: scene.id, maxUploads: 5, minterVerified: true, expiresAt: new Date(Date.now() + 60_000) }) }
     await mk(owner.id, 'ownr22'); await mk(stranger.id, 'strg22')
-    const post = (code: string) => app.inject({ method: 'POST', url: `/api/upload/${code}`, payload: { filename: 'm.glb', contentType: 'model/gltf-binary', fileData: 'AAAA' } })
-    const a = await post('ownr22'); expect(a.statusCode).toBe(201)
-    const b = await post('strg22'); expect(b.statusCode).toBe(201)
+    const start = (code: string) => app.inject({ method: 'POST', url: `/api/upload/${code}/start`, payload: { filename: 'm.glb', contentType: 'model/gltf-binary', sizeBytes: 3 } })
+    const a = await start('ownr22'); expect(a.statusCode).toBe(201)
+    const sent = await app.inject({ method: 'POST', url: `/api/upload/ownr22/${a.json().assetId}`, payload: { fileData: 'AAAA' } })
+    expect(sent.statusCode).toBe(201)
+    expect((await start('strg22')).statusCode).toBe(403)
     const links = await db.select().from(sceneLibrary).where(eq(sceneLibrary.sceneId, scene.id))
-    expect(links.map((l) => l.mediaAssetId)).toEqual([a.json().asset.id])
+    expect(links.map((l) => l.mediaAssetId)).toEqual([a.json().assetId])
     expect(links[0].addedBy).toBe(owner.id)
-    void assetLibraryItems
+    void assetLibraryItems; void mediaAssets
   })
+
 })

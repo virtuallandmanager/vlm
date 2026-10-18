@@ -100,8 +100,13 @@ describe('POST /api/upload/:code (phone upload)', () => {
   const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
   async function setup() {
     const user = await createUser(); const { scene } = await createScene(user)
-    await db.insert(uploadTokens).values({ code: 'phone2', userId: user.id, sceneId: scene.id, maxUploads: 5, expiresAt: new Date(Date.now() + 60_000) })
-    const post = (payload: Record<string, unknown>) => app.inject({ method: 'POST', url: '/api/upload/phone2', payload })
+    await db.insert(uploadTokens).values({ code: 'phone2', userId: user.id, sceneId: scene.id, maxUploads: 5, minterVerified: true, expiresAt: new Date(Date.now() + 60_000) })
+    // start, then (when started) send the bytes
+    const post = async (payload: { filename: string; contentType: string; fileData: string }) => {
+      const st = await app.inject({ method: 'POST', url: '/api/upload/phone2/start', payload: { filename: payload.filename, contentType: payload.contentType, sizeBytes: Buffer.from(payload.fileData, 'base64').length } })
+      if (st.statusCode !== 201) return st
+      return app.inject({ method: 'POST', url: `/api/upload/phone2/${st.json().assetId}`, payload: { fileData: payload.fileData } })
+    }
     return { user, scene, post }
   }
 
@@ -110,7 +115,8 @@ describe('POST /api/upload/:code (phone upload)', () => {
     const res = await post({ filename: 'a.png', contentType: 'image/png', fileData: PNG })
     expect(res.statusCode).toBe(201)
     expect(res.json().asset.contentType).toBe('image/png')
-    expect(res.json().remainingUploads).toBe(4)
+    const [t] = await db.select().from(uploadTokens).where(eq(uploadTokens.code, 'phone2'))
+    expect(t.uploadCount).toBe(1)
     const links = await db.select().from(sceneLibrary).where(eq(sceneLibrary.sceneId, scene.id))
     expect(links.map((l) => l.mediaAssetId)).toEqual([res.json().asset.id])
   })

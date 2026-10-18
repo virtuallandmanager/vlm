@@ -182,7 +182,9 @@ const CASES: Case[] = [
 // Collected routes with a `:param` (or a body id) that are not another account's resource, each with its reason.
 const NOT_CROSS_ACCOUNT: Record<string, string> = {
   'GET /api/upload/:code': 'the upload code is the auth (companion phone upload)',
-  'POST /api/upload/:code': 'the upload code is the auth (companion phone upload)',
+  'GET /api/upload/:code/qr.png': 'the upload code is the auth (companion phone upload)',
+  'POST /api/upload/:code/start': 'the upload code is the auth (companion phone upload)',
+  'POST /api/upload/:code/:assetId': 'the upload code is the auth (companion phone upload)',
   'POST /api/orgs/accept-invite': 'invite token only; the token names the org',
   'GET /api/auth/google/callback': 'OAuth callback; no bearer',
   'GET /api/auth/discord/callback': 'OAuth callback; no bearer',

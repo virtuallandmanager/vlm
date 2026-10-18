@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { mediaAssets } from '../db/schema.js'
 import { assertStorageQuota } from './quota.js'
@@ -13,30 +14,69 @@ export class StoreMediaError extends Error {
   }
 }
 
+type MediaRow = typeof mediaAssets.$inferSelect
+
+/**
+ * Step 1 of an upload: classify the declared file, quota-check it against ownerId, and record it as 'uploading'
+ * (no bytes stored yet). Throws StoreMediaError for refusals, leaving no row.
+ */
+export async function reserveMedia(
+  ownerId: string,
+  file: { filename: string; contentType: string; sizeBytes: number; metadata?: Record<string, unknown> },
+  opts: { quotaMessage?: string; quotaStatus?: number } = {},
+): Promise<MediaRow> {
+  const verdict = classifyUpload(file.filename, file.contentType, file.sizeBytes)
+  if (!verdict.ok) throw new StoreMediaError(verdict.status, { error: verdict.error })
+  await assertStorageQuota(ownerId, file.sizeBytes, opts)
+  const [asset] = await db.insert(mediaAssets).values({
+    ownerId,
+    filename: file.filename,
+    contentType: verdict.contentType,
+    sizeBytes: file.sizeBytes,
+    storageKey: null,
+    publicUrl: null,
+    status: 'uploading',
+    metadata: file.metadata ?? null,
+  }).returning()
+  return asset
+}
+
+/**
+ * Step 2: store the bytes for a reserved asset. 'processing' while it runs, then 'ready'; any failure marks the
+ * asset 'failed' with the reason and rethrows. The real size is re-classified (the declared one can lie).
+ */
+export async function fillMedia(assetId: string, buffer: Buffer): Promise<MediaRow> {
+  const [asset] = await db.update(mediaAssets).set({ status: 'processing' }).where(eq(mediaAssets.id, assetId)).returning()
+  if (!asset) throw new StoreMediaError(404, { error: 'not_found' })
+  try {
+    const verdict = classifyUpload(asset.filename, asset.contentType, buffer.length)
+    if (!verdict.ok) throw new StoreMediaError(verdict.status, { error: verdict.error })
+    const key = `${asset.ownerId}/${randomUUID()}.${extensionFor(verdict.contentType)}`
+    const publicUrl = await storage.upload(key, buffer, verdict.contentType)
+    const [stored] = await db.update(mediaAssets)
+      .set({ status: 'ready', error: null, storageKey: key, publicUrl, sizeBytes: buffer.length })
+      .where(eq(mediaAssets.id, assetId))
+      .returning()
+    return stored
+  } catch (err) {
+    const reason = err instanceof StoreMediaError ? err.message : 'Upload failed'
+    await db.update(mediaAssets).set({ status: 'failed', error: reason }).where(eq(mediaAssets.id, assetId))
+    throw err
+  }
+}
+
 /** Classify, quota-check (against ownerId), upload and record a media file. Throws StoreMediaError for refusals. */
 export async function storeMedia(
   ownerId: string,
   file: { filename: string; contentType: string; data: Buffer },
   opts: { quotaMessage?: string; quotaStatus?: number } = {},
-): Promise<typeof mediaAssets.$inferSelect> {
-  const { filename, contentType, data: buffer } = file
-
-  const verdict = classifyUpload(filename, contentType, buffer.length)
-  if (!verdict.ok) throw new StoreMediaError(verdict.status, { error: verdict.error })
-  const storedType = verdict.contentType
-
-  await assertStorageQuota(ownerId, buffer.length, opts)
-
-  const key = `${ownerId}/${randomUUID()}.${extensionFor(storedType)}`
-  const publicUrl = await storage.upload(key, buffer, storedType)
-
-  const [asset] = await db.insert(mediaAssets).values({
-    ownerId,
-    filename,
-    contentType: storedType,
-    sizeBytes: buffer.length,
-    storageKey: key,
-    publicUrl,
-  }).returning()
-  return asset
+): Promise<MediaRow> {
+  const reserved = await reserveMedia(ownerId, { filename: file.filename, contentType: file.contentType, sizeBytes: file.data.length }, opts)
+  try {
+    return await fillMedia(reserved.id, file.data)
+  } catch (err) {
+    // A one-shot upload that fails leaves nothing behind (only two-step uploads keep a failed row to show)
+    await db.delete(mediaAssets).where(eq(mediaAssets.id, reserved.id))
+    throw err
+  }
 }

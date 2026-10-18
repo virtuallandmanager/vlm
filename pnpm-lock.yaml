@@ -111,6 +111,9 @@ importers:
       prom-client:
         specifier: ^15.1.3
         version: 15.1.3
+      qrcode:
+        specifier: 1.5.4
+        version: 1.5.4
       sharp:
         specifier: ^0.33.0
         version: 0.33.5
@@ -136,6 +139,9 @@ importers:
       '@types/nodemailer':
         specifier: ^7.0.11
         version: 7.0.11
+      '@types/qrcode':
+        specifier: ^1.5.6
+        version: 1.5.6
       colyseus.js:
         specifier: ^0.15.26
         version: 0.15.28
@@ -275,7 +281,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 3.2.7
-        version: 3.2.7(@types/debug@4.1.13)(@types/node@22.19.15)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
       vlm-client:
         specifier: workspace:*
         version: link:../vlm-client
@@ -659,19 +665,22 @@ packages:
   '@dcl-sdk/utils@1.4.0':
     resolution: {integrity: sha512-gHp+eNdkBwc2JnlBKlcNRTjYKdmp4yTW+XXMTw1rW6tk2Eql88t8c0qJoAsaQvRxT4cLhUla3GM6oFD0Efm0gw==}
 
-  '@dcl/asset-packs@2.12.3':
-    resolution: {integrity: sha512-lt0UISn+beILFQXqmbK8zzkdDDby+67p1ppHtVqM7qw+HsLQtUYQCiKe70UJ+T+I5A3ql6orj/xWYIUSaBL7sg==}
-    peerDependencies:
-      '@dcl/ecs': 7.15.2
-
   '@dcl/asset-packs@2.2.1':
     resolution: {integrity: sha512-UX5zjlGsKhRcRdJ70XigHmQep6zqgH1m7jViu4Hq3z84GggRgWhyGDzHt2deIlmxj8FCtRH3du3zxKnnUML2xA==}
+
+  '@dcl/asset-packs@2.22.1':
+    resolution: {integrity: sha512-hkLJmOMq/YDSvhRtPC+0BUYopyKIm7ttXMUDI9Z9oD7+O+wyYrEIgCrboULH36lxPpXSxFnqv0UrNm84rh51lg==}
+    peerDependencies:
+      '@dcl/ecs': ^7.15.2
 
   '@dcl/catalyst-contracts@4.4.2':
     resolution: {integrity: sha512-gJZo3IB8U+jhBJWR0DgoLS+zaUDIb/u79e7Rp+MEM78uH3bvC19S3Dd8lxWEbPXNKlCB0saUptfK/Buw0c1y2Q==}
 
   '@dcl/core-commons@0.10.1':
     resolution: {integrity: sha512-iLBpIg15czlzV7No5Wzb3FyreXpqYx8YnVJ8xYKczXpl6C3eqBQoqEA02hRkd/UASbzqcPJeG1wH1wHSxYTmQw==}
+
+  '@dcl/core-commons@0.11.0':
+    resolution: {integrity: sha512-VJ6FgMQoF242slJy1EDJkfkOqYKrywSKJf/ZNg5buGsZj2CAc+RLyBnp0XSl/iCp3VJfpJA3lm5yuKCqWralCA==}
 
   '@dcl/crypto-middleware@6.3.0':
     resolution: {integrity: sha512-HUwaPBuXjf3xSGIcnwm52NIZchaPg0rDe/bsjlYdo4ZpjuTlTeQ8m7fjTT3V14/pRTa55T404eHGZURU5jJDog==}
@@ -687,14 +696,17 @@ packages:
   '@dcl/ecs-math@2.1.0':
     resolution: {integrity: sha512-tXoLKwKaWLJR9z9Iq29eMMttBovc/U8J0wkwTwZUJgCDSFhwjuN10HqpKuzr7ziC6npATpyga9fFBzjsgYkeyw==}
 
-  '@dcl/ecs@7.22.0':
-    resolution: {integrity: sha512-PmIx9hqKeEu08uhZ/hRSQZqC/qjYOZui0GlWUrPpuYzdg0IGWCovI+NUIDGZ19syOoNR7q9v7bDAjXRfxZfxCA==}
+  '@dcl/ecs@7.30.1':
+    resolution: {integrity: sha512-3ZNB1OStBoEWCw1Fov8zxHPhWzH7UJHXelqUEaEQQKcjuqLffOfFiPrE0gbE+iwvJC3Me6zNIM90s+lBgpP+FQ==}
 
   '@dcl/ecs@7.7.9':
     resolution: {integrity: sha512-JhXt0NG2XyXLuQULgFjKgjz5huWvX/T6vmvZgy3cOAxacSzVx8X9zdswXmgrTmwGoUfXYqiF2dgWfOePYPqS9Q==}
 
   '@dcl/explorer@1.0.164509-20240802172549.commit-fb95b9b':
     resolution: {integrity: sha512-R+vmK+rdxjKJ7s3/1nNdefEG5tCyB1Z8VZH+s6EvV9mMwMXpiI4hFUAZ0gSCEQz9D2P7clern9E95AajWzbeIQ==}
+
+  '@dcl/fetch-component@1.1.2':
+    resolution: {integrity: sha512-AzryeK3QwE13NgszhvIx9mib/S5+r3yZOiltFha/4rtJ27cs5TBf+jzQZKDFyhqDFEGBcEqOrJNAKYXCemp85Q==}
 
   '@dcl/gltf-validator-ts@1.0.14':
     resolution: {integrity: sha512-2sfCvyLKEJlmUrgkWQh57NnjvYeynJWyGCr/WMcUFFur1xlbJEC3kgqbkkNEmVKuOhM/DeYoL5fQDV/BGcxHQg==}
@@ -706,14 +718,14 @@ packages:
   '@dcl/hashing@3.0.4':
     resolution: {integrity: sha512-Cg+MoIOn+BYmQV2q8zSFnNYY+GldlnUazwBnfgrq3i66ZxOaZ65h01btd8OUtSAlfWG4VTNIOHDjtKqmuwJNBg==}
 
-  '@dcl/inspector@7.25.0':
-    resolution: {integrity: sha512-TDpU0hUx6CbxM7jPET3t1L1w2JWbmKpzNSxmoqe+OWjmiopNhZQyBuldSEbjf7eUR4ZBijMAcYfMy3EOoDgKiQ==}
+  '@dcl/inspector@7.36.3':
+    resolution: {integrity: sha512-EwvXoZlXvDKZsK2qrRYG+Yia7qKHWgQUqbWY7e6zSVMffRDhhjVyS2FEipgrLqL0YMrTkJcfAsHaNnZgZsnP4A==}
 
   '@dcl/inspector@7.7.9':
     resolution: {integrity: sha512-klhpMA9glSMoL5wSuJ9Z8McEAPRntDPOvGMkkS8cktJMcsrPMB2T4pS9UNSwvpoJhhFYAveVPrmbThPacOIdJg==}
 
-  '@dcl/js-runtime@7.22.0':
-    resolution: {integrity: sha512-BWCqvmnjeCTJhhWIHV9ikCzylXyD9ZMrvMsszIGJg2hDnJZBuPf99kQFW1kf4pa+spqNjIa7iMzE1ysrlW2A9g==}
+  '@dcl/js-runtime@7.30.1':
+    resolution: {integrity: sha512-3Fzh/RIFOch3pAyzJA91cn2jK8htAuvEazdrEGiFxWBXprc9m3ISiaruTnVmybensdt2i5VFTbHoDnPWoS/4QQ==}
 
   '@dcl/js-runtime@7.7.4':
     resolution: {integrity: sha512-pbpAP5IKdkUAoAJrIJZhuYrY2wM6X539Jct1lUqODegjhOaNxJoi1eVyFN2s6NaZTjRHkHPsuBqbXAZKWEbWNQ==}
@@ -724,8 +736,8 @@ packages:
   '@dcl/linker-dapp@0.14.2':
     resolution: {integrity: sha512-Sq3ziGZUN/fXpSZ0+y7ngdS8WbHuinuJKJeNm81izDH7qo/viToDcnKMNX3lqgGqZqtDes604QxBhehJ0MhsRQ==}
 
-  '@dcl/linker-dapp@0.15.0':
-    resolution: {integrity: sha512-YwRvHzfyyHq2mj17ceRMjXEeMhPEamr+Fq1nM8/+G2OjujmofFnoQzri37zIBOJunYeEHaUP+ftoNoHgRTx73Q==}
+  '@dcl/linker-dapp@0.15.2':
+    resolution: {integrity: sha512-aYUCfcQp0eMCZfDt+iV2wMBl3oVMsl68uMz6jSVpnfTFqEqMlCmfeh0uZTr/eVMkSvQl8JUSrsKE1aGSE//bNw==}
 
   '@dcl/mini-comms@1.0.1-20230216163137.commit-a4c75be':
     resolution: {integrity: sha512-gRatBUHwYTk9Ko03fVnU6aIpIrPwLVUiJg67MQJ42F/9/W0SONm7SFjuOtSIwNff+Cq6my5K3rbS0itut/TH+w==}
@@ -733,8 +745,8 @@ packages:
   '@dcl/protocol@1.0.0-13589257140.commit-dc6f088':
     resolution: {integrity: sha512-sRYx0h1P8ult8E6WekCLkOu8xsaNPj4rhyikdJs//ggiSm27sO+ptxGwc4knoWgMKHBdmMitqlglg4HhR6vpMQ==}
 
-  '@dcl/protocol@1.0.0-22669986637.commit-fb11819':
-    resolution: {integrity: sha512-/N6EB6wjBbRFvVwZOW5++KIPKSQC7nxoPlIEfRYmR8Ysi1NzPCKHHftg9NiswfTRkyOPcjbaUtq9fT8jkjiTjA==}
+  '@dcl/protocol@1.0.0-34643020503.commit-6402953':
+    resolution: {integrity: sha512-lt4RgUL9CE3CBOXwcff1ukKjyZZhbbpFoCkIhLR0W50Ub4WASFdkzNOe67taCplfkJc2A1LwSTJilZujJsL3oQ==}
 
   '@dcl/quests-client@1.0.3':
     resolution: {integrity: sha512-VwZbXuHsRbRcboUUlBrauuR7VQ7IQP31rWI7wNKIYfWroTH4Yw7Bby1au9JBPWPayM/zRDij4uSd9pMJtidsqw==}
@@ -742,8 +754,8 @@ packages:
   '@dcl/quests-manager@0.1.4':
     resolution: {integrity: sha512-IPB043+NbQB3om2FlmQGmaRxTokHaSM9o3a7sEL0yJgBb60mukCpMdNXxzdIcemixfV3EhIJQ2G8HgK30XKTkA==}
 
-  '@dcl/react-ecs@7.22.0':
-    resolution: {integrity: sha512-fekdvYUtBMckrexQGcJEwFZoBMpUdemtshjv+G6fFF+6Vht+i8Q9vgjAwVXM8puCCz2amdi5l7mWAPbafbN29g==}
+  '@dcl/react-ecs@7.30.1':
+    resolution: {integrity: sha512-n15NrwRVndndhBI6/kLD4oahSmVJXGgX/Qo5tVbISXyUMQJz6GQWl25IcS0Ad3Uvju1MWzK7hMGxFGiQf5oSSQ==}
 
   '@dcl/react-ecs@7.7.9':
     resolution: {integrity: sha512-o5JzEl/ia8XfXljSoYJT6vCoviEz+W+S9RpTw/e6KV4gaJJ3K+qUacbN8cxqjhFkFuM8mUna8kppPPghmI/g+g==}
@@ -766,16 +778,17 @@ packages:
   '@dcl/schemas@9.15.0':
     resolution: {integrity: sha512-nip5rsOcJplNfBWeImwezuHLprM0gLW03kEeqGIvT9J6HnEBTtvIwkk9+NSt7hzFKEvWGI+C23vyNWbG3nU+SQ==}
 
-  '@dcl/sdk-commands@7.22.0':
-    resolution: {integrity: sha512-ixDQoPqnFUsmaIYEsbohhnfpQu0+2vpL3wIa86y8rzdLcp7MqeZOGZO6g8qf3t3rO9Un7uzzSUNNFnPiRhaimQ==}
+  '@dcl/sdk-commands@7.30.1':
+    resolution: {integrity: sha512-pcMZHoyFj9hli1aRfJRduwmKh6OGqUcWTHOXDP8kIfRI5ArcXFdl6J2AkNnVerDJ6u+oTT/CyEJhouq7DloQaQ==}
+    engines: {node: '>=22.0.0'}
     hasBin: true
 
   '@dcl/sdk-commands@7.7.9':
     resolution: {integrity: sha512-01y3la76jIPtHrtZuem8yT9ZhoFJdcJwh53dhjYk8GJVIyMAU6lOq+EOZu7Epq5Hbsm5GwlR8jcjqcx3ltKUOQ==}
     hasBin: true
 
-  '@dcl/sdk@7.22.0':
-    resolution: {integrity: sha512-ZJaHJcnLAu3LhpjHaWSHj2L6MGtFNX1Po0bfhx573I1NySOlwxzvNtZ1Wd5imB4jkrr1NT2iDR94QOd07raXRw==}
+  '@dcl/sdk@7.30.1':
+    resolution: {integrity: sha512-ndRWBYhoJKowK9WhruX1SeOoOqwr3ojYyEXJ8dH4WvvAu0MIjKtnB0Zt7vwrZ8WFwnToLvXWg70hMidT0lXjYQ==}
 
   '@dcl/sdk@7.7.9':
     resolution: {integrity: sha512-d1oO3rf2+Svlk1L9m9OpE9h9wz++ujr7d4tNb9L0AqM4itEKemqeBtGehdmII7yKoF/l3HHCdayA6MP0fnDMiA==}
@@ -2113,12 +2126,22 @@ packages:
   '@segment/analytics-core@1.4.1':
     resolution: {integrity: sha512-kV0Pf33HnthuBOVdYNani21kYyj118Fn+9757bxqoksiXoZlYvBsFq6giNdCsKcTIE1eAMqNDq3xE1VQ0cfsHA==}
 
+  '@segment/analytics-core@1.8.3':
+    resolution: {integrity: sha512-63X8e2DWb2ZnJ9S3H8iSOFnbeDXMkTGhA8kZG4eFAO07QBwBVyWo5BCpv6vmuOMEkv2le6t2FMg1p6ZeJQA/4A==}
+
   '@segment/analytics-generic-utils@1.1.1':
     resolution: {integrity: sha512-THTIzBPHnvu1HYJU3fARdJ3qIkukO3zDXsmDm+kAeUks5R9CBXOQ6rPChiASVzSmwAIIo5uFIXXnCraojlq/Gw==}
+
+  '@segment/analytics-generic-utils@1.2.0':
+    resolution: {integrity: sha512-DfnW6mW3YQOLlDQQdR89k4EqfHb0g/3XvBXkovH1FstUN93eL1kfW9CsDcVQyH3bAC5ZsFyjA/o/1Q2j0QeoWw==}
 
   '@segment/analytics-node@1.3.0':
     resolution: {integrity: sha512-lRLz1WZaDokMoUe299yP5JkInc3OgJuqNNlxb6j0q22umCiq6b5iDo2gRmFn93reirIvJxWIicQsGrHd93q8GQ==}
     engines: {node: '>=14'}
+
+  '@segment/analytics-node@3.1.0':
+    resolution: {integrity: sha512-F3pJmzUxmWZFV2wxJfuGvjLViCrQBFpxLLp4++fkoDsohWwS89T7n0M5nW1zxeYc2X2rA/v7q5ou3JZIw9bl3g==}
+    engines: {node: '>=20'}
 
   '@shikijs/core@1.29.2':
     resolution: {integrity: sha512-vju0lY9r27jJfOY4Z7+Rt/nIOjzJpZ3y+nYpqtUZInVoXQ/TJZcfGnNOGnKjFdVZb8qexiCuSlZRKcGfhhTTZQ==}
@@ -2574,6 +2597,9 @@ packages:
   '@types/object-hash@3.0.6':
     resolution: {integrity: sha512-fOBV8C1FIu2ELinoILQ+ApxcUKz4ngq+IWUYrxSGjXzzjUALijilampwkMgEtJ+h2njAW3pi853QpzNVCHB73w==}
 
+  '@types/qrcode@1.5.6':
+    resolution: {integrity: sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw==}
+
   '@types/react-dom@19.2.3':
     resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
     peerDependencies:
@@ -2698,9 +2724,6 @@ packages:
 
   '@well-known-components/fetch-component@2.0.2':
     resolution: {integrity: sha512-LdY+6n9kuyACg3fcU4qMrNhLZuG7eqPxLSqzDgQyoHKeNjlzggoUqTVJKtIyi6vjPs8pSQ/Fx1xdLuBhOKCgww==}
-
-  '@well-known-components/fetch-component@3.0.0':
-    resolution: {integrity: sha512-ycIaojkwLJvhpicdPsmsEzA9qPbV7voAjrRcVE7+n7UNctIQC8ppymapj0UQ3FFpdEWWVSzjoo33H0BW+sD8eg==}
 
   '@well-known-components/http-server@2.1.0':
     resolution: {integrity: sha512-IHD7aLTA+9DYEchQubHDBwc4FmVEmQC+2TWbi8Tz+QlkiQdtndcuba8XHH+EwqlB5sna/EAJGZGXPxS7okcHKA==}
@@ -3216,6 +3239,10 @@ packages:
 
   dcl-catalyst-client@21.10.3:
     resolution: {integrity: sha512-P3j+oSNwezqIN/MZtz0Ii8dmd5bTxziBqR2ifq4ZMydf016+MLSCwkexFZhz9wZ5eW0PN/bEOAcx4Rhx+xTcwg==}
+
+  dcl-catalyst-client@22.0.0:
+    resolution: {integrity: sha512-K2cjYR5RZcdH6YNC7YjQMmZd4fhlE7zGyc79sYWvJGgofjO8TxAJ7CCNahqqllzMrdnxidFFGOWXTYJMJmOdqA==}
+    engines: {node: '>=18'}
 
   debug@2.6.9:
     resolution: {integrity: sha512-bC7ElrdJaJnPbAP+1EotYvqZsb3ecl5wi6Bfi6BJTUcNowp6cvspg0jXznRTKDjm/E7AdgFBVeAPVMNcKGsHMA==}
@@ -4202,6 +4229,9 @@ packages:
     resolution: {integrity: sha512-ekilCSN1jwRvIbgeg/57YFh8qQDNbwDb9xT/qu2DAHbFFZUicIl4ygVaAvzveMhMVr3LnpSKTNnwt8PoOfmKhQ==}
     hasBin: true
 
+  jose@5.10.0:
+    resolution: {integrity: sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg==}
+
   js-sha3@0.8.0:
     resolution: {integrity: sha512-gF1cRrHhIzNfToc802P800N8PpXS+evLLXfsVpowqmAFR9uwbi89WvXg2QspOmXL8QL86J4T1EpFu+yUkwJY3Q==}
 
@@ -4434,6 +4464,10 @@ packages:
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
+
+  maxmind@4.3.29:
+    resolution: {integrity: sha512-Vxx0rh7omBekjZnsDxpw35SrGGM3Uy7NoIKWzZlvh3UcjihGaySR8n+YSQ8YBseCvhEn+yehA98rZkTDW+uhPw==}
+    engines: {node: '>=12', npm: '>=6'}
 
   mdast-util-definitions@6.0.0:
     resolution: {integrity: sha512-scTllyX6pnYNZH/AIp/0ePz6s4cZtARxImwoPJ7kS42n+MnVsI4XbnG6d4ibehRIldYMWM2LD7ImQblVhUejVQ==}
@@ -4692,10 +4726,6 @@ packages:
     resolution: {integrity: sha512-+hEnITedc8LAtIP9u3HJDFIdcLV2vXP33sqLLIzkv1Db1zO/1OxbvYf0Y1OC/S/Qo5dxHXepofhmxL02PsKe+A==}
     engines: {node: '>=10'}
     hasBin: true
-
-  maxmind@4.3.29:
-    resolution: {integrity: sha512-Vxx0rh7omBekjZnsDxpw35SrGGM3Uy7NoIKWzZlvh3UcjihGaySR8n+YSQ8YBseCvhEn+yehA98rZkTDW+uhPw==}
-    engines: {node: '>=12', npm: '>=6'}
 
   mmdb-lib@2.2.1:
     resolution: {integrity: sha512-DXO4L9W+08T+A7h5+xdT32l7IMot8z7WOH+7C1Maol571PnktQ8un7Ni4CyPFp4H+vht/FDA5/tpjRvWMFQDMw==}
@@ -5068,6 +5098,7 @@ packages:
   prom-client@15.1.3:
     resolution: {integrity: sha512-6ZiOBfCywsD4k1BN9IX0uZhF+tJkV8q8llP64G5Hajs4JOeVLPCwpPVcpXy3BwYiUGgyJzsJJQeOIv7+hDSq8g==}
     engines: {node: ^16 || ^18 || >=20}
+    deprecated: prom-client has been replaced by @prometheus-io/client
 
   prompts@2.4.2:
     resolution: {integrity: sha512-NxNv/kLguCA7p3jE8oL2aEBsrJWgAakBpgmgK6lpPWV+WuOmY6r2/zbAVnP+T8bQlA0nzHXSJSJW0Hq7ylaD2Q==}
@@ -5735,6 +5766,10 @@ packages:
     resolution: {integrity: sha512-gBLkYIlEnSp8pFbT64yFgGE6UIB9tAkhukC23PmMDCe5Nd+cRqKxSjw5y54MK2AZMgZfJWMaNE4nYUHgi1XEOw==}
     engines: {node: '>=18.17'}
 
+  undici@7.30.1:
+    resolution: {integrity: sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==}
+    engines: {node: '>=20.18.1'}
+
   unified@11.0.5:
     resolution: {integrity: sha512-xKvGhPWw3k84Qjh8bI3ZeJjqnyadK+GEFtazSfZv/rKeTkTjOJho6mFqh2SM96iIcZokxiOpg78GazTSg8+KHA==}
 
@@ -5853,10 +5888,12 @@ packages:
 
   uuid@8.3.2:
     resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@9.0.1:
     resolution: {integrity: sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   varint@5.0.2:
@@ -6824,13 +6861,6 @@ snapshots:
 
   '@dcl-sdk/utils@1.4.0': {}
 
-  '@dcl/asset-packs@2.12.3(@dcl/ecs@7.22.0)':
-    dependencies:
-      '@dcl/ecs': 7.22.0
-      '@types/glob': 8.1.0
-      glob: 11.1.0
-      mitt: 3.0.1
-
   '@dcl/asset-packs@2.2.1':
     dependencies:
       '@dcl-sdk/utils': 1.4.0
@@ -6839,9 +6869,20 @@ snapshots:
       glob: 11.1.0
       mitt: 3.0.1
 
+  '@dcl/asset-packs@2.22.1(@dcl/ecs@7.30.1)':
+    dependencies:
+      '@dcl/ecs': 7.30.1
+      '@types/glob': 8.1.0
+      glob: 11.1.0
+      mitt: 3.0.1
+
   '@dcl/catalyst-contracts@4.4.2': {}
 
   '@dcl/core-commons@0.10.1':
+    dependencies:
+      '@well-known-components/interfaces': 1.5.2
+
+  '@dcl/core-commons@0.11.0':
     dependencies:
       '@well-known-components/interfaces': 1.5.2
 
@@ -6864,11 +6905,15 @@ snapshots:
 
   '@dcl/ecs-math@2.1.0': {}
 
-  '@dcl/ecs@7.22.0': {}
+  '@dcl/ecs@7.30.1': {}
 
   '@dcl/ecs@7.7.9': {}
 
   '@dcl/explorer@1.0.164509-20240802172549.commit-fb95b9b': {}
+
+  '@dcl/fetch-component@1.1.2':
+    dependencies:
+      '@dcl/core-commons': 0.11.0
 
   '@dcl/gltf-validator-ts@1.0.14': {}
 
@@ -6883,10 +6928,10 @@ snapshots:
 
   '@dcl/hashing@3.0.4': {}
 
-  '@dcl/inspector@7.25.0(@dcl/ecs@7.22.0)':
+  '@dcl/inspector@7.36.3(@dcl/ecs@7.30.1)':
     dependencies:
       '@babel/parser': 7.28.5
-      '@dcl/asset-packs': 2.12.3(@dcl/ecs@7.22.0)
+      '@dcl/asset-packs': 2.22.1(@dcl/ecs@7.30.1)
       ts-deepmerge: 7.0.3
     transitivePeerDependencies:
       - '@dcl/ecs'
@@ -6896,7 +6941,7 @@ snapshots:
       '@dcl/asset-packs': 2.2.1
       ts-deepmerge: 7.0.3
 
-  '@dcl/js-runtime@7.22.0': {}
+  '@dcl/js-runtime@7.30.1': {}
 
   '@dcl/js-runtime@7.7.4': {}
 
@@ -6904,7 +6949,7 @@ snapshots:
 
   '@dcl/linker-dapp@0.14.2': {}
 
-  '@dcl/linker-dapp@0.15.0': {}
+  '@dcl/linker-dapp@0.15.2': {}
 
   '@dcl/mini-comms@1.0.1-20230216163137.commit-a4c75be':
     dependencies:
@@ -6929,7 +6974,7 @@ snapshots:
     dependencies:
       '@dcl/ts-proto': 1.154.0
 
-  '@dcl/protocol@1.0.0-22669986637.commit-fb11819':
+  '@dcl/protocol@1.0.0-34643020503.commit-6402953':
     dependencies:
       '@dcl/ts-proto': 1.154.0
       protobufjs: 7.2.4
@@ -6938,7 +6983,7 @@ snapshots:
     dependencies:
       '@dcl/protocol': 1.0.0-13589257140.commit-dc6f088
       '@dcl/rpc': 1.1.2
-      '@dcl/sdk': 7.22.0(@well-known-components/interfaces@1.5.2)
+      '@dcl/sdk': 7.30.1(@well-known-components/interfaces@1.5.2)
       mitt: 3.0.1
     transitivePeerDependencies:
       - '@well-known-components/interfaces'
@@ -6949,9 +6994,9 @@ snapshots:
 
   '@dcl/quests-manager@0.1.4': {}
 
-  '@dcl/react-ecs@7.22.0':
+  '@dcl/react-ecs@7.30.1':
     dependencies:
-      '@dcl/ecs': 7.22.0
+      '@dcl/ecs': 7.30.1
       react: 18.3.1
       react-reconciler: 0.29.2(react@18.3.1)
 
@@ -6998,46 +7043,37 @@ snapshots:
       ajv-errors: 3.0.0(ajv@8.18.0)
       ajv-keywords: 5.1.0(ajv@8.18.0)
 
-  '@dcl/sdk-commands@7.22.0(@well-known-components/interfaces@1.5.2)':
+  '@dcl/sdk-commands@7.30.1(@well-known-components/interfaces@1.5.2)':
     dependencies:
-      '@dcl/crypto': 3.4.5
-      '@dcl/ecs': 7.22.0
+      '@dcl/crypto': 3.7.0
+      '@dcl/ecs': 7.30.1
       '@dcl/gltf-validator-ts': 1.0.14
       '@dcl/hashing': 1.1.3
-      '@dcl/inspector': 7.25.0(@dcl/ecs@7.22.0)
-      '@dcl/linker-dapp': 0.15.0
+      '@dcl/inspector': 7.36.3(@dcl/ecs@7.30.1)
+      '@dcl/linker-dapp': 0.15.2
       '@dcl/mini-comms': 1.0.1-20230216163137.commit-a4c75be
-      '@dcl/protocol': 1.0.0-22669986637.commit-fb11819
+      '@dcl/protocol': 1.0.0-34643020503.commit-6402953
       '@dcl/quests-client': 1.0.3(@well-known-components/interfaces@1.5.2)
       '@dcl/quests-manager': 0.1.4
       '@dcl/rpc': 1.1.2
       '@dcl/schemas': 8.2.3-20230801124703.commit-ade94fc
-      '@segment/analytics-node': 1.3.0
+      '@segment/analytics-node': 3.1.0
       '@well-known-components/env-config-provider': 1.2.0(@well-known-components/interfaces@1.5.2)
-      '@well-known-components/fetch-component': 3.0.0
       '@well-known-components/http-server': 2.1.0
       '@well-known-components/logger': 3.1.3(@well-known-components/interfaces@1.5.2)
       '@well-known-components/metrics': 2.1.0
       archiver: 5.3.2
       arg: 5.0.2
       chokidar: 3.6.0
-      colorette: 2.0.20
-      dcl-catalyst-client: 21.10.3
+      dcl-catalyst-client: 22.0.0
       esbuild: 0.18.20
       extract-zip: 2.0.1
-      fp-future: 1.0.1
-      glob: 9.3.5
       i18next: 25.10.5(typescript@5.9.3)
       i18next-fs-backend: 2.6.1
       ignore: 5.3.2
-      node-fetch: 2.7.0
-      open: 8.4.2
-      portfinder: 1.0.38
-      prompts: 2.4.2
       qrcode: 1.5.4
       typescript: 5.9.3
-      undici: 5.29.0
-      uuid: 9.0.1
+      undici: 7.30.1
     transitivePeerDependencies:
       - '@well-known-components/interfaces'
       - bufferutil
@@ -7088,15 +7124,13 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@dcl/sdk@7.22.0(@well-known-components/interfaces@1.5.2)':
+  '@dcl/sdk@7.30.1(@well-known-components/interfaces@1.5.2)':
     dependencies:
-      '@dcl/ecs': 7.22.0
+      '@dcl/ecs': 7.30.1
       '@dcl/ecs-math': 2.1.0
-      '@dcl/explorer': 1.0.164509-20240802172549.commit-fb95b9b
-      '@dcl/js-runtime': 7.22.0
-      '@dcl/react-ecs': 7.22.0
-      '@dcl/sdk-commands': 7.22.0(@well-known-components/interfaces@1.5.2)
-      text-encoding: 0.7.0
+      '@dcl/js-runtime': 7.30.1
+      '@dcl/react-ecs': 7.30.1
+      '@dcl/sdk-commands': 7.30.1(@well-known-components/interfaces@1.5.2)
     transitivePeerDependencies:
       - '@well-known-components/interfaces'
       - bufferutil
@@ -8076,7 +8110,18 @@ snapshots:
       dset: 3.1.4
       tslib: 2.8.1
 
+  '@segment/analytics-core@1.8.3':
+    dependencies:
+      '@lukeed/uuid': 2.0.1
+      '@segment/analytics-generic-utils': 1.2.0
+      dset: 3.1.4
+      tslib: 2.8.1
+
   '@segment/analytics-generic-utils@1.1.1':
+    dependencies:
+      tslib: 2.8.1
+
+  '@segment/analytics-generic-utils@1.2.0':
     dependencies:
       tslib: 2.8.1
 
@@ -8090,6 +8135,15 @@ snapshots:
       tslib: 2.8.1
     transitivePeerDependencies:
       - encoding
+
+  '@segment/analytics-node@3.1.0':
+    dependencies:
+      '@lukeed/uuid': 2.0.1
+      '@segment/analytics-core': 1.8.3
+      '@segment/analytics-generic-utils': 1.2.0
+      buffer: 6.0.3
+      jose: 5.10.0
+      tslib: 2.8.1
 
   '@shikijs/core@1.29.2':
     dependencies:
@@ -8671,6 +8725,10 @@ snapshots:
 
   '@types/object-hash@3.0.6': {}
 
+  '@types/qrcode@1.5.6':
+    dependencies:
+      '@types/node': 22.19.15
+
   '@types/react-dom@19.2.3(@types/react@19.2.14)':
     dependencies:
       '@types/react': 19.2.14
@@ -8809,6 +8867,14 @@ snapshots:
     optionalDependencies:
       vite: 6.4.1(@types/node@22.19.15)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
 
+  '@vitest/mocker@3.2.7(vite@6.4.1(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))':
+    dependencies:
+      '@vitest/spy': 3.2.7
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 6.4.1(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+
   '@vitest/pretty-format@3.2.7':
     dependencies:
       tinyrainbow: 2.0.0
@@ -8841,13 +8907,6 @@ snapshots:
       dotenv: 16.6.1
 
   '@well-known-components/fetch-component@2.0.2':
-    dependencies:
-      '@well-known-components/interfaces': 1.5.2
-      cross-fetch: 3.2.0
-    transitivePeerDependencies:
-      - encoding
-
-  '@well-known-components/fetch-component@3.0.0':
     dependencies:
       '@well-known-components/interfaces': 1.5.2
       cross-fetch: 3.2.0
@@ -9494,6 +9553,15 @@ snapshots:
       form-data: 4.0.5
     transitivePeerDependencies:
       - encoding
+
+  dcl-catalyst-client@22.0.0:
+    dependencies:
+      '@dcl/catalyst-contracts': 4.4.2
+      '@dcl/crypto': 3.7.0
+      '@dcl/fetch-component': 1.1.2
+      '@dcl/hashing': 3.0.4
+      '@dcl/schemas': 23.1.0
+      cookie: 0.5.0
 
   debug@2.6.9:
     dependencies:
@@ -10762,6 +10830,8 @@ snapshots:
 
   jiti@2.6.1: {}
 
+  jose@5.10.0: {}
+
   js-sha3@0.8.0: {}
 
   js-tokens@4.0.0: {}
@@ -10972,6 +11042,11 @@ snapshots:
   markdown-table@3.0.4: {}
 
   math-intrinsics@1.1.0: {}
+
+  maxmind@4.3.29:
+    dependencies:
+      mmdb-lib: 2.2.1
+      tiny-lru: 11.3.4
 
   mdast-util-definitions@6.0.0:
     dependencies:
@@ -11497,11 +11572,6 @@ snapshots:
   mkdirp@1.0.4: {}
 
   mkdirp@2.1.6: {}
-
-  maxmind@4.3.29:
-    dependencies:
-      mmdb-lib: 2.2.1
-      tiny-lru: 11.3.4
 
   mmdb-lib@2.2.1: {}
 
@@ -12735,6 +12805,8 @@ snapshots:
 
   undici@6.21.3: {}
 
+  undici@7.30.1: {}
+
   unified@11.0.5:
     dependencies:
       '@types/unist': 3.0.3
@@ -12868,6 +12940,27 @@ snapshots:
       - tsx
       - yaml
 
+  vite-node@3.2.4(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3):
+    dependencies:
+      cac: 6.7.14
+      debug: 4.4.3
+      es-module-lexer: 1.7.0
+      pathe: 2.0.3
+      vite: 6.4.1(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+    transitivePeerDependencies:
+      - '@types/node'
+      - jiti
+      - less
+      - lightningcss
+      - sass
+      - sass-embedded
+      - stylus
+      - sugarss
+      - supports-color
+      - terser
+      - tsx
+      - yaml
+
   vite@6.4.1(@types/node@22.19.15)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3):
     dependencies:
       esbuild: 0.25.12
@@ -12932,6 +13025,48 @@ snapshots:
     optionalDependencies:
       '@types/debug': 4.1.13
       '@types/node': 22.19.15
+    transitivePeerDependencies:
+      - jiti
+      - less
+      - lightningcss
+      - msw
+      - sass
+      - sass-embedded
+      - stylus
+      - sugarss
+      - supports-color
+      - terser
+      - tsx
+      - yaml
+
+  vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3):
+    dependencies:
+      '@types/chai': 5.2.3
+      '@vitest/expect': 3.2.7
+      '@vitest/mocker': 3.2.7(vite@6.4.1(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3))
+      '@vitest/pretty-format': 3.2.7
+      '@vitest/runner': 3.2.7
+      '@vitest/snapshot': 3.2.7
+      '@vitest/spy': 3.2.7
+      '@vitest/utils': 3.2.7
+      chai: 5.3.3
+      debug: 4.4.3
+      expect-type: 1.4.0
+      magic-string: 0.30.21
+      pathe: 2.0.3
+      picomatch: 4.0.3
+      std-env: 3.10.0
+      tinybench: 2.9.0
+      tinyexec: 0.3.2
+      tinyglobby: 0.2.15
+      tinypool: 1.1.1
+      tinyrainbow: 2.0.0
+      vite: 6.4.1(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+      vite-node: 3.2.4(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@types/debug': 4.1.13
+      '@types/node': 24.12.0
     transitivePeerDependencies:
       - jiti
       - less

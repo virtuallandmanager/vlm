@@ -243,6 +243,10 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       })
     }
 
+    // Companion upload links (/u/<code>): the static export has one page for every code, at u/_/
+    app.get('/u/:code', (_request, reply) => reply.sendFile('u/_/index.html'))
+    app.get('/u/:code/', (_request, reply) => reply.sendFile('u/_/index.html'))
+
     // SPA fallback: serve index.html for unmatched non-API routes.
     // The client-side Next.js router handles routing from there.
     app.setNotFoundHandler(async (request, reply) => {
