@@ -3,6 +3,10 @@ import { resetDb } from './helpers/db.js'
 import { testApp, createUser, tokenFor } from './helpers/factories.js'
 import { classifyUpload, extensionFor, IMAGE_MAX_BYTES, MODEL_MAX_BYTES, VIDEO_MAX_BYTES } from '../src/storage/upload-policy.js'
 import { config } from '../src/config.js'
+import { db } from '../src/db/connection.js'
+import { eq } from 'drizzle-orm'
+import { mediaAssets, sceneLibrary, uploadTokens } from '../src/db/schema.js'
+import { createScene } from './helpers/factories.js'
 
 describe('classifyUpload', () => {
   it('enforces image size boundary', () => {
@@ -85,5 +89,50 @@ describe('POST /api/media/upload', () => {
   it('rejects a 51 MB GLB with 413', async () => {
     const res = await upload('big.glb', 'model/gltf-binary', 51 * 1024 * 1024)
     expect(res.statusCode).toBe(413)
+  })
+})
+
+describe('POST /api/upload/:code (phone upload)', () => {
+  let app: Awaited<ReturnType<typeof testApp>>
+  beforeEach(async () => { await resetDb(); app = await testApp() })
+  afterEach(() => app.close())
+
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+  async function setup() {
+    const user = await createUser(); const { scene } = await createScene(user)
+    await db.insert(uploadTokens).values({ code: 'phone2', userId: user.id, sceneId: scene.id, maxUploads: 5, expiresAt: new Date(Date.now() + 60_000) })
+    const post = (payload: Record<string, unknown>) => app.inject({ method: 'POST', url: '/api/upload/phone2', payload })
+    return { user, scene, post }
+  }
+
+  it('stores a valid PNG as a media row and links it to the scene library', async () => {
+    const { scene, post } = await setup()
+    const res = await post({ filename: 'a.png', contentType: 'image/png', fileData: PNG })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().asset.contentType).toBe('image/png')
+    expect(res.json().remainingUploads).toBe(4)
+    const links = await db.select().from(sceneLibrary).where(eq(sceneLibrary.sceneId, scene.id))
+    expect(links.map((l) => l.mediaAssetId)).toEqual([res.json().asset.id])
+  })
+
+  it('refuses html and path-laden names without spending an upload', async () => {
+    const { post } = await setup()
+    const html = await post({ filename: '../x.png', contentType: 'text/html', fileData: PNG })
+    expect(html.statusCode).toBe(415)
+    expect(html.json().error).toBe('unsupported_type')
+    const [t] = await db.select().from(uploadTokens).where(eq(uploadTokens.code, 'phone2'))
+    expect(t.uploadCount).toBe(0)
+    const ok = await post({ filename: '../x.png', contentType: 'image/png', fileData: PNG })
+    expect(ok.statusCode).toBe(201)
+    expect(ok.json().asset.storageKey).not.toContain('..')
+    void mediaAssets
+  })
+
+  it('clamps token limits', async () => {
+    const user = await createUser()
+    const res = await app.inject({ method: 'POST', url: '/api/upload-tokens', headers: { authorization: `Bearer ${tokenFor(user)}` }, payload: { maxUploads: 100000, expiresInMinutes: 100000 } })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().token.maxUploads).toBe(50)
+    expect(new Date(res.json().token.expiresAt).getTime() - Date.now()).toBeLessThanOrEqual(60 * 60 * 1000)
   })
 })

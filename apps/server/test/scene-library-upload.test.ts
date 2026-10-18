@@ -101,7 +101,7 @@ describe('scene library uploads', () => {
     const a = await post('ownr22'); expect(a.statusCode).toBe(201)
     const b = await post('strg22'); expect(b.statusCode).toBe(201)
     const links = await db.select().from(sceneLibrary).where(eq(sceneLibrary.sceneId, scene.id))
-    expect(links.map((l) => l.assetItemId)).toEqual([a.json().asset.id])
+    expect(links.map((l) => l.mediaAssetId)).toEqual([a.json().asset.id])
     expect(links[0].addedBy).toBe(owner.id)
     void assetLibraryItems
   })

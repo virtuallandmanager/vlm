@@ -15,9 +15,9 @@ interface TokenInfo {
 
 interface UploadedAsset {
   id: string
-  name: string
-  cdnUrl: string
-  fileSizeBytes: number
+  filename: string
+  publicUrl: string
+  sizeBytes: number
 }
 
 export default function CompanionUploadClient() {
@@ -64,7 +64,6 @@ export default function CompanionUploadClient() {
             filename: file.name,
             contentType: file.type || 'application/octet-stream',
             fileData: base64,
-            name: file.name.replace(/\.[^.]+$/, ''),
           }),
         })
 
@@ -135,14 +134,14 @@ export default function CompanionUploadClient() {
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept=".glb,.gltf,.png,.jpg,.jpeg,.webp,.mp4,.webm,.mp3,.wav,.ogg"
+                accept=".glb,.png,.jpg,.jpeg,.webp,.gif,.mp4,.webm"
                 onChange={handleFileSelect}
                 disabled={uploading || remaining <= 0}
                 style={{ display: 'none' }}
               />
             </label>
             <p style={styles.hint}>
-              GLB, images, video, or audio files
+              GLB models, images, or video
             </p>
           </>
         )}
@@ -154,8 +153,8 @@ export default function CompanionUploadClient() {
             <h2 style={styles.listTitle}>Uploaded</h2>
             {uploaded.map((asset) => (
               <div key={asset.id} style={styles.uploadItem}>
-                <span style={styles.assetName}>{asset.name}</span>
-                <span style={styles.assetSize}>{formatSize(asset.fileSizeBytes)}</span>
+                <span style={styles.assetName}>{asset.filename}</span>
+                <span style={styles.assetSize}>{formatSize(asset.sizeBytes)}</span>
               </div>
             ))}
           </div>

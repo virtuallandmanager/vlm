@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { giveaways, giveawayItems, giveawayClaims } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
@@ -165,7 +165,11 @@ export default async function giveawayRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
-      await db.delete(giveawayItems).where(eq(giveawayItems.id, itemId))
+      const deleted = await db
+        .delete(giveawayItems)
+        .where(and(eq(giveawayItems.id, itemId), eq(giveawayItems.giveawayId, giveawayId)))
+        .returning({ id: giveawayItems.id })
+      if (deleted.length === 0) return reply.status(404).send({ error: 'Item not found' })
       return reply.status(204).send()
     },
   )

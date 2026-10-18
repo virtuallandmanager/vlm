@@ -10,11 +10,16 @@
  */
 
 import { FastifyInstance } from 'fastify'
+import { randomUUID } from 'node:crypto'
 import { eq, ilike, and, or, sql, arrayContains } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { assetLibraryItems } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { createStorage } from '../storage/index.js'
+import { classifyUpload, extensionFor } from '../storage/upload-policy.js'
+import { assertStorageQuota } from '../media/quota.js'
+import { StoreMediaError } from '../media/store.js'
+import { verifySessionToken } from '../auth/tokens.js'
 import { generateThumbnail } from '../services/thumbnails.js'
 
 export default async function assetRoutes(app: FastifyInstance) {
@@ -98,7 +103,12 @@ export default async function assetRoutes(app: FastifyInstance) {
       where: eq(assetLibraryItems.id, id),
     })
 
-    if (!asset) {
+    // Optional bearer: private assets are visible to their uploader and admins only; scene-pass and bad tokens count as anonymous
+    const bearer = request.headers.authorization?.startsWith('Bearer ') ? request.headers.authorization.slice(7) : null
+    const claims = bearer && !bearer.startsWith('vlm_') ? verifySessionToken(bearer) : null
+    const caller = claims?.kind === 'account' ? claims : null
+    const visible = asset && (asset.isPublic || (caller && (asset.uploadedBy === caller.id || caller.role === 'admin')))
+    if (!asset || !visible) {
       return reply.status(404).send({ error: 'Asset not found' })
     }
 
@@ -134,8 +144,20 @@ export default async function assetRoutes(app: FastifyInstance) {
       }
 
       const buffer = Buffer.from(body.fileData, 'base64')
-      const key = `assets/${Date.now()}-${body.filename || 'asset.glb'}`
-      const publicUrl = await storage.upload(key, buffer, body.contentType)
+      const verdict = classifyUpload(body.filename || 'asset.glb', body.contentType, buffer.length)
+      if (!verdict.ok) return reply.status(verdict.status).send({ error: verdict.error })
+      // The asset library holds 3D models only
+      if (verdict.contentType !== 'model/gltf-binary') return reply.status(415).send({ error: 'unsupported_type' })
+
+      try {
+        await assertStorageQuota(request.user.id, buffer.length)
+      } catch (err) {
+        if (err instanceof StoreMediaError) return reply.status(err.status).send(err.body)
+        throw err
+      }
+
+      const key = `assets/${request.user.id}/${randomUUID()}.${extensionFor(verdict.contentType)}`
+      const publicUrl = await storage.upload(key, buffer, verdict.contentType)
 
       const [asset] = await db
         .insert(assetLibraryItems)
@@ -154,14 +176,14 @@ export default async function assetRoutes(app: FastifyInstance) {
           dimensions: body.dimensions || null,
           license: body.license || null,
           author: body.author || null,
-          isPublic: body.isPublic ?? true,
+          isPublic: body.isPublic ?? false,
           uploadedBy: request.user.id,
         })
         .returning()
 
       // Generate thumbnail after insert so we can use the real asset ID
       try {
-        const thumbnailUrl = await generateThumbnail(buffer, body.contentType, asset.id)
+        const thumbnailUrl = await generateThumbnail(buffer, verdict.contentType, asset.id)
         if (thumbnailUrl) {
           await db
             .update(assetLibraryItems)

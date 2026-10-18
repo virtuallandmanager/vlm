@@ -13,13 +13,13 @@ import { FastifyInstance } from 'fastify'
 import { randomBytes } from 'node:crypto'
 import { eq, and, gt } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { uploadTokens, assetLibraryItems } from '../db/schema.js'
+import { uploadTokens } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess, hasScope } from '../auth/permissions.js'
 import { fromBody } from '../auth/scene-from.js'
 import { linkToScene, uploadDestination } from '../library/scene-library.js'
-import { createStorage } from '../storage/index.js'
+import { storeMedia, StoreMediaError } from '../media/store.js'
 
 /** Generate a short alphanumeric code (6 chars, easy to type on mobile). */
 function generateCode(): string {
@@ -31,9 +31,14 @@ function generateCode(): string {
     .join('')
 }
 
-export default async function companionUploadRoutes(app: FastifyInstance) {
-  const storage = createStorage()
+/** Integer within [min, max]; fallback when absent or not a number. */
+function clamp(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Math.floor(Number(value))
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(max, Math.max(min, n))
+}
 
+export default async function companionUploadRoutes(app: FastifyInstance) {
   // ── Create Upload Token (authenticated) ───────────────────────────────
   app.post(
     '/api/upload-tokens',
@@ -50,7 +55,7 @@ export default async function companionUploadRoutes(app: FastifyInstance) {
       }
 
       const code = generateCode()
-      const expiresInMs = (body.expiresInMinutes || 30) * 60 * 1000
+      const expiresInMs = clamp(body.expiresInMinutes, 1, 60, 30) * 60 * 1000
       const expiresAt = new Date(Date.now() + expiresInMs)
 
       const [token] = await db
@@ -59,7 +64,7 @@ export default async function companionUploadRoutes(app: FastifyInstance) {
           code,
           userId: request.user.id,
           sceneId: body.sceneId || null,
-          maxUploads: body.maxUploads || 10,
+          maxUploads: clamp(body.maxUploads, 1, 50, 10),
           expiresAt,
         })
         .returning()
@@ -129,8 +134,6 @@ export default async function companionUploadRoutes(app: FastifyInstance) {
       filename: string
       contentType: string
       fileData: string // base64
-      name?: string
-      category?: string
     }
 
     if (!body.filename || !body.contentType || !body.fileData) {
@@ -139,28 +142,18 @@ export default async function companionUploadRoutes(app: FastifyInstance) {
       })
     }
 
-    const buffer = Buffer.from(body.fileData, 'base64')
-    const key = `companion/${token.userId}/${Date.now()}-${body.filename}`
-    const publicUrl = await storage.upload(key, buffer, body.contentType)
-
-    // Create asset library entry
-    const [asset] = await db
-      .insert(assetLibraryItems)
-      .values({
-        name: body.name || body.filename,
-        category: body.category || null,
-        storageKey: key,
-        cdnUrl: publicUrl,
-        fileSizeBytes: buffer.length,
-        isPublic: false, // personal upload
-        uploadedBy: token.userId,
-      })
-      .returning()
+    let asset
+    try {
+      asset = await storeMedia(token.userId, { filename: body.filename, contentType: body.contentType, data: Buffer.from(body.fileData, 'base64') })
+    } catch (err) {
+      if (err instanceof StoreMediaError) return reply.status(err.status).send(err.body)
+      throw err
+    }
 
     // Link to the token's scene when its user may upload there (the code is the auth, so re-check the user's access)
     if (token.sceneId) {
       const dest = await uploadDestination(actorFromClaims({ id: token.userId, role: 'user', verified: true, kind: 'account' } as any), token.sceneId)
-      if (dest) await linkToScene(token.sceneId, { assetItemId: asset.id }, token.userId, dest.bookingId)
+      if (dest) await linkToScene(token.sceneId, { mediaAssetId: asset.id }, token.userId, dest.bookingId)
     }
 
     // Increment upload count
