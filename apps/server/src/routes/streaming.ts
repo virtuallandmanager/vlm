@@ -283,7 +283,6 @@ export default async function streamingRoutes(app: FastifyInstance) {
           action: 'video_status',
           isLive: true,
           url: server.hlsPlaylistUrl,
-          streamKey: body.streamKey,
         }).catch(() => {})
       }
       if (server.hlsPlaylistUrl) await publishStreamStatus({ playlistUrl: server.hlsPlaylistUrl, live: true })
@@ -318,7 +317,6 @@ export default async function streamingRoutes(app: FastifyInstance) {
         dispatchPlatformCallbacks(server.sceneId, {
           action: 'video_status',
           isLive: false,
-          streamKey: body.streamKey,
         }).catch(() => {})
       }
       if (server.hlsPlaylistUrl) await publishStreamStatus({ playlistUrl: server.hlsPlaylistUrl, live: false })

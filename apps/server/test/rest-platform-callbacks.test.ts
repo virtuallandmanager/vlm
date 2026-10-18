@@ -6,8 +6,10 @@ vi.mock('../src/integrations/platform-hooks.js', async (importOriginal) => ({
 }))
 
 import { db } from '../src/db/connection.js'
-import { scenePresets } from '../src/db/schema.js'
+import { eq } from 'drizzle-orm'
+import { scenePresets, platformCallbacks, sceneRoles, streamingServers } from '../src/db/schema.js'
 import { dispatchPlatformCallbacks } from '../src/integrations/platform-hooks.js'
+import { MAX_CALLBACKS_PER_SCENE } from '../src/routes/hooks.js'
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene, tokenFor, testApp } from './helpers/factories.js'
 
@@ -74,5 +76,94 @@ describe('REST element/instance writes dispatch platform callbacks', () => {
       payload: { type: 'image', name: 'Shown' },
     })
     expect(ok.statusCode).toBe(201)
+  })
+})
+
+describe('platform hook callback safety', () => {
+  let app: Awaited<ReturnType<typeof testApp>>
+  beforeEach(async () => {
+    await resetDb()
+    app = await testApp()
+    dispatch.mockClear()
+  })
+  afterEach(() => app.close())
+  const register = (sceneId: string, callbackUrl: string) =>
+    app.inject({ method: 'POST', url: '/hook/register', payload: { sceneId, callbackUrl, platform: 'secondlife' } })
+
+  it('refuses internal callback addresses and stores nothing', async () => {
+    const { scene } = await createScene(await createUser())
+    const res = await register(scene.id, 'http://169.254.169.254/latest')
+    expect(res.statusCode).toBe(400)
+    expect(res.json()).toEqual({ error: 'callback_url_not_allowed' })
+    expect(await db.select().from(platformCallbacks)).toHaveLength(0)
+  })
+
+  it('caps distinct callbacks per scene; re-registering an existing URL still works', async () => {
+    const { scene } = await createScene(await createUser())
+    await db.insert(platformCallbacks).values(
+      Array.from({ length: MAX_CALLBACKS_PER_SCENE }, (_, i) => ({
+        sceneId: scene.id, platform: 'secondlife', callbackUrl: `https://203.0.113.${i + 1}/cb`,
+      })),
+    )
+    const over = await register(scene.id, 'https://203.0.113.200/cb')
+    expect(over.statusCode).toBe(429)
+    expect(over.json()).toEqual({ error: 'too_many_callbacks' })
+    const again = await register(scene.id, 'https://203.0.113.1/cb')
+    expect(again.statusCode).toBe(200)
+  })
+
+  it('stream webhook video_status payloads carry no streamKey', async () => {
+    process.env.STREAMING_WEBHOOK_KEY = 'k'
+    const host = await createUser()
+    const { scene } = await createScene(host)
+    await db.insert(streamingServers).values({
+      ownerId: host.id, sceneId: scene.id, name: 's', status: 'ready', streamKey: 'secret-key',
+      rtmpUrl: 'rtmp://ingest.vlm.gg/live/secret-key', hlsPlaylistUrl: 'https://live.vlm.gg/streams/x/playlist.m3u8',
+    })
+    for (const status of ['live', 'offline']) {
+      dispatch.mockClear()
+      const res = await app.inject({ method: 'POST', url: '/api/streaming/webhook', headers: { 'x-webhook-key': 'k' }, payload: { streamKey: 'secret-key', status } })
+      expect(res.statusCode).toBe(200)
+      await until(1)
+      const payload = (dispatch.mock.calls[0] as any)[1]
+      expect(payload.action).toBe('video_status')
+      expect(payload).not.toHaveProperty('streamKey')
+    }
+    delete process.env.STREAMING_WEBHOOK_KEY
+  })
+
+  it('dispatch refuses a stored private URL: no request, counts as a failure', async () => {
+    const { dispatchPlatformCallbacks } = await vi.importActual<typeof import('../src/integrations/platform-hooks.js')>('../src/integrations/platform-hooks.js')
+    const { scene } = await createScene(await createUser())
+    const [row] = await db.insert(platformCallbacks).values({ sceneId: scene.id, platform: 'secondlife', callbackUrl: 'http://127.0.0.1:9/cb' }).returning()
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    await dispatchPlatformCallbacks(scene.id, { action: 'config_update' })
+    expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
+    const [after] = await db.select().from(platformCallbacks).where(eq(platformCallbacks.id, row.id))
+    expect(after.failureCount).toBe(1)
+  })
+
+  it('list and delete follow full access: cohost yes, editor 403, stranger 404', async () => {
+    const host = await createUser()
+    const cohost = await createUser()
+    const editor = await createUser()
+    const stranger = await createUser()
+    const { scene } = await createScene(host)
+    await db.insert(sceneRoles).values([
+      { sceneId: scene.id, userId: cohost.id, walletAddress: '0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0', role: 'cohost' },
+      { sceneId: scene.id, userId: editor.id, walletAddress: '0xed0ed0ed0ed0ed0ed0ed0ed0ed0ed0ed0ed0ed0e', role: 'editor' },
+    ] as any)
+    const [row] = await db.insert(platformCallbacks).values({ sceneId: scene.id, platform: 'secondlife', callbackUrl: 'https://203.0.113.9/cb' }).returning()
+    const as = (u: Awaited<ReturnType<typeof createUser>>) => ({ authorization: `Bearer ${tokenFor(u)}` })
+    const list = (u: Awaited<ReturnType<typeof createUser>>) => app.inject({ method: 'GET', url: '/api/hooks', headers: as(u) })
+    expect((await list(cohost)).json().hooks).toHaveLength(1)
+    expect((await list(host)).json().hooks).toHaveLength(1)
+    expect((await list(editor)).json().hooks).toHaveLength(0)
+    expect((await list(stranger)).json().hooks).toHaveLength(0)
+    const del = (u: Awaited<ReturnType<typeof createUser>>) => app.inject({ method: 'DELETE', url: `/api/hooks/${row.id}`, headers: as(u) })
+    expect((await del(stranger)).statusCode).toBe(404)
+    expect((await del(editor)).statusCode).toBe(403)
+    expect((await del(cohost)).statusCode).toBe(204)
   })
 })

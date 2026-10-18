@@ -11,15 +11,23 @@
  */
 
 import { FastifyInstance } from 'fastify'
-import { eq, and, inArray } from 'drizzle-orm'
+import { eq, and, or, isNull, inArray, count } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   platformCallbacks,
   scenes,
   scenePresets,
   sceneElements,
+  sceneCollaborators,
+  sceneRoles,
 } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
+import { actorFromClaims } from '../auth/actor.js'
+import { getSceneAccess, isFullAccess } from '../auth/permissions.js'
+import { assertPublicHttpUrl, UnsafeUrlError } from '../net/public-url.js'
+import { config } from '../config.js'
+
+export const MAX_CALLBACKS_PER_SCENE = 20
 
 export default async function hookRoutes(app: FastifyInstance) {
   // ── GET /api/hooks — List all platform callbacks for user's scenes ──────
@@ -27,13 +35,40 @@ export default async function hookRoutes(app: FastifyInstance) {
     '/api/hooks',
     { preHandler: [authenticate] },
     async (request, reply) => {
-      const userId = request.user.id
+      const actor = actorFromClaims(request.user)
+      if (!actor.userId || !actor.verified) return reply.send({ hooks: [] })
 
-      // Get all scenes owned by the current user
-      const userScenes = await db
+      // Candidate scenes: owned, plus collaborator and role grants; keep those with full access
+      const owned = await db
+        .select({ id: scenes.id })
+        .from(scenes)
+        .where(eq(scenes.ownerId, actor.userId))
+      const collabs = await db
+        .select({ sceneId: sceneCollaborators.sceneId })
+        .from(sceneCollaborators)
+        .where(eq(sceneCollaborators.userId, actor.userId))
+      const roleRows = await db
+        .select({ sceneId: sceneRoles.sceneId })
+        .from(sceneRoles)
+        .where(
+          and(
+            isNull(sceneRoles.revokedAt),
+            actor.wallet
+              ? or(eq(sceneRoles.userId, actor.userId), eq(sceneRoles.walletAddress, actor.wallet))
+              : eq(sceneRoles.userId, actor.userId),
+          ),
+        )
+      const candidateIds = [...new Set([...owned.map((s) => s.id), ...collabs.map((c) => c.sceneId), ...roleRows.map((r) => r.sceneId)])]
+      if (candidateIds.length === 0) return reply.send({ hooks: [] })
+
+      const candidates = await db
         .select({ id: scenes.id, name: scenes.name })
         .from(scenes)
-        .where(eq(scenes.ownerId, userId))
+        .where(inArray(scenes.id, candidateIds))
+      const userScenes: { id: string; name: string }[] = []
+      for (const scene of candidates) {
+        if (isFullAccess(await getSceneAccess(actor, scene.id))) userScenes.push(scene)
+      }
 
       if (userScenes.length === 0) {
         return reply.send({ hooks: [] })
@@ -71,7 +106,6 @@ export default async function hookRoutes(app: FastifyInstance) {
     '/api/hooks/:hookId',
     { preHandler: [authenticate] },
     async (request, reply) => {
-      const userId = request.user.id
       const { hookId } = request.params
 
       // Find the callback
@@ -85,15 +119,13 @@ export default async function hookRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: 'Hook not found' })
       }
 
-      // Verify the user owns the scene this callback belongs to
-      const [scene] = await db
-        .select({ ownerId: scenes.ownerId })
-        .from(scenes)
-        .where(eq(scenes.id, callback.sceneId))
-        .limit(1)
-
-      if (!scene || scene.ownerId !== userId) {
-        return reply.status(403).send({ error: 'You do not own the scene this hook belongs to' })
+      // Hooks are managed by anyone with full access to the scene
+      const access = await getSceneAccess(actorFromClaims(request.user), callback.sceneId)
+      if (access.level === 'none') {
+        return reply.status(404).send({ error: 'Hook not found' })
+      }
+      if (!isFullAccess(access)) {
+        return reply.status(403).send({ error: 'You do not have full access to the scene this hook belongs to' })
       }
 
       await db
@@ -122,6 +154,15 @@ export default async function hookRoutes(app: FastifyInstance) {
       return reply.status(400).send({
         error: 'Missing required fields: sceneId, callbackUrl, platform',
       })
+    }
+
+    try {
+      await assertPublicHttpUrl(body.callbackUrl, { allowPrivate: config.allowPrivateCallbackUrls })
+    } catch (err) {
+      if (err instanceof UnsafeUrlError) {
+        return reply.status(400).send({ error: 'callback_url_not_allowed' })
+      }
+      throw err
     }
 
     const mode = body.mode || 'element'
@@ -155,7 +196,14 @@ export default async function hookRoutes(app: FastifyInstance) {
         })
         .where(eq(platformCallbacks.id, existing[0].id))
     } else {
-      // New registration
+      // New registration — cap distinct callbacks per scene
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(platformCallbacks)
+        .where(eq(platformCallbacks.sceneId, body.sceneId))
+      if (total >= MAX_CALLBACKS_PER_SCENE) {
+        return reply.status(429).send({ error: 'too_many_callbacks' })
+      }
       await db.insert(platformCallbacks).values({
         sceneId: body.sceneId,
         elementId: body.elementId || null,

@@ -35,6 +35,9 @@ export const config = {
   // Accept unverified DCL platform logins (local preview only — never in production)
   allowUnverifiedPlatformAuth: env('ALLOW_UNVERIFIED_PLATFORM_AUTH') === 'true',
 
+  // Let platform hooks call back to private/loopback addresses (local development and tests only)
+  allowPrivateCallbackUrls: env('ALLOW_PRIVATE_CALLBACK_URLS') === 'true',
+
   // ── Google OAuth ──────────────────────────────────────────────────────────
   googleClientId: env('GOOGLE_CLIENT_ID'),
   googleClientSecret: env('GOOGLE_CLIENT_SECRET'),

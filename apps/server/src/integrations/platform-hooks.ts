@@ -12,6 +12,11 @@
 import { eq, lt, and } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { platformCallbacks } from '../db/schema.js'
+import { assertPublicHttpUrl } from '../net/public-url.js'
+import { config } from '../config.js'
+
+/** Refuse non-public targets at send time too: DNS may have changed since registration. */
+const checkTarget = (url: string) => assertPublicHttpUrl(url, { allowPrivate: config.allowPrivateCallbackUrls })
 
 /**
  * Dispatch a payload to all registered callbacks for a scene.
@@ -39,6 +44,7 @@ export async function dispatchPlatformCallbacks(
   await Promise.allSettled(
     callbacks.map(async (cb) => {
       try {
+        await checkTarget(cb.callbackUrl)
         const controller = new AbortController()
         const timeout = setTimeout(() => controller.abort(), 5000)
 
@@ -47,6 +53,7 @@ export async function dispatchPlatformCallbacks(
           headers: { 'Content-Type': 'application/json' },
           body,
           signal: controller.signal,
+          redirect: 'manual',
         })
 
         clearTimeout(timeout)
@@ -113,6 +120,7 @@ export async function pingAllCallbacks(): Promise<void> {
   await Promise.allSettled(
     callbacks.map(async (cb) => {
       try {
+        await checkTarget(cb.callbackUrl)
         const controller = new AbortController()
         const timeout = setTimeout(() => controller.abort(), 5000)
 
@@ -121,6 +129,7 @@ export async function pingAllCallbacks(): Promise<void> {
           headers: { 'Content-Type': 'application/json' },
           body,
           signal: controller.signal,
+          redirect: 'manual',
         })
 
         clearTimeout(timeout)
