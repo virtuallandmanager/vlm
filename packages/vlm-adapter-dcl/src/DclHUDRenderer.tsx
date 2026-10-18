@@ -21,7 +21,8 @@ import type {
 } from 'vlm-shared'
 import { HUDPanelType } from 'vlm-shared'
 import type { EntityHandle, WorldStatus } from 'vlm-shared'
-import type { VLMConnectionState } from 'vlm-core'
+import type { VLMConnectionState, HUDMediaStatus } from 'vlm-core'
+import type { UploadToken } from 'vlm-client'
 import { nearbyPlayers } from './players.js'
 import { markHudPress } from './hud/press.js'
 import { EditModeBar, NO_EDIT_MODE, type EditModeHUDState } from './hud/EditModeBar.js'
@@ -76,13 +77,16 @@ interface HUDState {
   editMessage: { text: string; error: boolean } | null
   confirmDelete: string | null
   missingModels: number
+  /** The Media Library's Upload view: an upload link (this computer) and its QR (phone), minted on open. */
+  upload: UploadViewState
 
   // In-world transform editing (editors); mirrored from DclEditMode.state
   editMode: EditModeHUDState
 }
 
 type SceneRole = 'host' | 'cohost' | 'editor' | 'viewer'
-export type HUDMediaItem = { id: string; name: string; kind: 'image' | 'model' }
+export type HUDMediaItem = { id: string; name: string; kind: 'image' | 'model'; status: HUDMediaStatus; error?: string }
+export type UploadViewState = { open: boolean; loading: boolean; error: string | null; token: UploadToken | null }
 export type HUDLayoutItem = { id: string; name: string; type: string; enabled: boolean }
 const canEdit = () => state.sceneRole === 'host' || state.sceneRole === 'cohost' || state.sceneRole === 'editor'
 type RolesData = { hostWallets: string[]; roles: { wallet: string; role: string; displayName?: string | null }[] }
@@ -127,6 +131,7 @@ const state: HUDState = {
   editMessage: null,
   confirmDelete: null,
   missingModels: 0,
+  upload: { open: false, loading: false, error: null, token: null },
   editMode: NO_EDIT_MODE,
 }
 
@@ -773,52 +778,130 @@ function SceneLayoutPanel() {
 // Panel: Asset Browser (the signed-in user's Media library)
 // ---------------------------------------------------------------------------
 
+// Badge per HUD status: a marker and a word (the marker carries the color)
+const MEDIA_BADGE: Record<HUDMediaStatus, { text: string; color: ReturnType<typeof Color4.create> }> = {
+  uploading: { text: '• Uploading', color: C.textMuted },
+  processing: { text: '• Processing', color: C.textMuted },
+  available: { text: '✓ Available', color: C.success },
+  needs_sync: { text: '⟳ Needs sync', color: C.warning },
+  failed: { text: '✕ Failed', color: C.danger },
+}
+
+const closeUploadView = () => onSceneAction?.('media_upload_back')
+
+function MediaRow({ asset }: { asset: HUDMediaItem; key?: string }) {
+  const badge = MEDIA_BADGE[asset.status]
+  const placeable = asset.status === 'available' || asset.status === 'needs_sync'
+  return (
+    <UiEntity
+      uiTransform={{
+        width: '100%',
+        height: asset.error ? 46 : 34,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: { left: 10, right: 4 },
+        margin: { bottom: 2 },
+      }}
+      uiBackground={{ color: C.bgCard }}
+    >
+      <UiEntity uiTransform={{ flexDirection: 'column', width: 240 }}>
+        <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', width: 240 }}>
+          <Label value={asset.kind === 'model' ? 'GLB' : 'IMG'} fontSize={8}
+            color={asset.kind === 'model' ? C.warning : C.textMuted} uiTransform={{ margin: { right: 6 } }} />
+          <Label value={asset.name} fontSize={11} color={C.text} textAlign="middle-left" uiTransform={{ maxWidth: 150 }} />
+          <Label value={badge.text} fontSize={9} color={badge.color} textAlign="middle-left" uiTransform={{ margin: { left: 6 } }} />
+        </UiEntity>
+        {asset.error && (
+          <Label value={asset.error} fontSize={9} color={C.danger} textAlign="middle-left" uiTransform={{ width: 240, height: 12 }} />
+        )}
+      </UiEntity>
+      {placeable && (
+        <Button label="Place" color={C.accent}
+          onPress={() => onSceneAction?.('media_place', { assetId: asset.id })}
+          width={56} height={24} fontSize={10} />
+      )}
+      {asset.status === 'failed' && (
+        <Button label="Dismiss"
+          onPress={() => onSceneAction?.('media_dismiss', { assetId: asset.id })}
+          width={56} height={24} fontSize={10} />
+      )}
+    </UiEntity>
+  )
+}
+
+/** Upload link for this computer, the same link as a QR for a phone, and the code to type in by hand. */
+function UploadView() {
+  const { loading, error, token } = state.upload
+  const expires = token ? new Date(token.expiresAt) : null
+  const hhmm = expires ? `${String(expires.getHours()).padStart(2, '0')}:${String(expires.getMinutes()).padStart(2, '0')}` : ''
+  return (
+    <UiEntity uiTransform={{ width: '100%', flexDirection: 'column', alignItems: 'center', padding: 8 }}>
+      <Label value="Upload media" fontSize={13} color={C.text} uiTransform={{ height: 22 }} />
+      {loading && <Label value="Making a link…" fontSize={11} color={C.textDim} uiTransform={{ height: 24 }} />}
+      {error && <Label value={error} fontSize={11} color={C.danger} uiTransform={{ height: 24 }} />}
+      {token && (
+        <UiEntity uiTransform={{ width: '100%', flexDirection: 'column', alignItems: 'center' }}>
+          <Button label="Open on this computer" color={C.accent}
+            onPress={() => onSceneAction?.('media_upload_computer')} width={220} height={30} fontSize={11} />
+          <UiEntity
+            uiTransform={{ width: 168, height: 168, margin: { top: 10, bottom: 6 } }}
+            uiBackground={{ texture: { src: token.qrUrl, filterMode: 'point' }, textureMode: 'stretch' }}
+          />
+          <Label value="Scan to upload from your phone" fontSize={11} color={C.text} uiTransform={{ height: 18 }} />
+          <Label value={token.uploadUrl} fontSize={10} color={C.textDim} uiTransform={{ height: 16 }} />
+          <Label value={`Code: ${token.code}`} fontSize={12} color={C.text} uiTransform={{ height: 20 }} />
+          <Label value={`Link expires ${hhmm} · ${token.maxUploads} uploads`} fontSize={9} color={C.textMuted} uiTransform={{ height: 16 }} />
+        </UiEntity>
+      )}
+      <UiEntity uiTransform={{ flexDirection: 'row', margin: { top: 8 } }}>
+        <Button label="New link" onPress={() => onSceneAction?.('media_upload_new')} width={100} height={26} fontSize={10} />
+        <UiEntity uiTransform={{ width: 8 }} />
+        <Button label="Back" onPress={closeUploadView} width={100} height={26} fontSize={10} />
+      </UiEntity>
+    </UiEntity>
+  )
+}
+
+function UploadButton() {
+  return (
+    <Button label="Upload" color={C.accent} onPress={() => onSceneAction?.('media_upload_open')}
+      width={80} height={24} fontSize={10} />
+  )
+}
+
 function AssetBrowserPanel() {
   const editable = canEdit()
   return (
     <UiEntity uiTransform={{ width: '100%', flexDirection: 'column' }}>
-      <PanelHeader title="Media Library" subtitle="Images and GLB models" onClose={() => { state.activePanel = null }} />
+      <PanelHeader title="Media Library" subtitle="Images and GLB models"
+        onClose={() => { if (state.upload.open) closeUploadView(); state.activePanel = null }} />
       <UiEntity uiTransform={{ width: '100%', padding: 8, flexDirection: 'column' }}>
         {!editable ? (
           <UiEntity uiTransform={{ width: '100%', padding: 16, flexDirection: 'column', alignItems: 'center' }}>
             <Label value="Only the host, co-hosts and editors can place media" fontSize={11} color={C.textDim} />
           </UiEntity>
+        ) : state.upload.open ? (
+          <UploadView />
         ) : (
           <UiEntity uiTransform={{ width: '100%', flexDirection: 'column' }}>
             <EditMessage />
+            {state.media.length > 0 && (
+              <UiEntity uiTransform={{ width: '100%', flexDirection: 'row', justifyContent: 'flex-end', margin: { bottom: 4 } }}>
+                <UploadButton />
+              </UiEntity>
+            )}
             {state.media.length === 0 ? (
               <UiEntity uiTransform={{ width: '100%', padding: 16, flexDirection: 'column', alignItems: 'center' }}>
                 <Label value={state.mediaFailed ? "Couldn't load your media library" : state.mediaLoaded ? 'No images or models yet' : 'Loading…'} fontSize={12} color={C.textDim} />
                 {state.mediaLoaded && !state.mediaFailed && (
-                  <Label value="Upload them on the dashboard's Media page" fontSize={10} color={C.textMuted}
-                    uiTransform={{ margin: { top: 4 } }} />
+                  <UiEntity uiTransform={{ margin: { top: 8 } }}>
+                    <UploadButton />
+                  </UiEntity>
                 )}
               </UiEntity>
             ) : (
-              state.media.slice(0, 10).map((asset) => (
-                <UiEntity
-                  key={asset.id}
-                  uiTransform={{
-                    width: '100%',
-                    height: 34,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: { left: 10, right: 4 },
-                    margin: { bottom: 2 },
-                  }}
-                  uiBackground={{ color: C.bgCard }}
-                >
-                  <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', width: 240 }}>
-                    <Label value={asset.kind === 'model' ? 'GLB' : 'IMG'} fontSize={8}
-                      color={asset.kind === 'model' ? C.warning : C.textMuted} uiTransform={{ margin: { right: 6 } }} />
-                    <Label value={asset.name} fontSize={11} color={C.text} textAlign="middle-left" />
-                  </UiEntity>
-                  <Button label="Place" color={C.accent}
-                    onPress={() => onSceneAction?.('media_place', { assetId: asset.id })}
-                    width={56} height={24} fontSize={10} />
-                </UiEntity>
-              ))
+              state.media.slice(0, 10).map((asset) => <MediaRow key={asset.id} asset={asset} />)
             )}
             {state.media.length > 10 && (
               <Label value={`+${state.media.length - 10} more — place them from the dashboard`} fontSize={10} color={C.textMuted}
@@ -1319,6 +1402,10 @@ export class DclHUDRenderer implements HUDRenderer {
   /** Mirrors DclEditMode.state (the bar shows while active). */
   setEditMode(s: EditModeHUDState): void {
     state.editMode = s
+  }
+
+  setUploadView(v: Partial<UploadViewState>): void {
+    state.upload = { ...state.upload, ...v }
   }
 
   setMissingModels(n: number): void {

@@ -1,4 +1,4 @@
-import { VLM, resolveApiUrl, analyticsUrlFor, handoffUrlFor, dashboardOriginFor } from 'vlm-core'
+import { VLM, resolveApiUrl, analyticsUrlFor, handoffUrlFor, dashboardOriginFor, hudStatus, applyLibraryChange } from 'vlm-core'
 import { VLMHttpClient } from 'vlm-client'
 import type { SetupStatus, SceneLibraryItem } from 'vlm-client'
 import type { VLMConnectionState } from 'vlm-core'
@@ -49,11 +49,23 @@ const LAYOUT_TYPES = new Set(['image', 'video', 'model', 'sound'])
 
 /** Images (rendered live) and GLBs (rendered after `npx vlm-dcl sync` + redeploy) can be placed from the HUD. */
 function mediaKind(a: SceneLibraryItem): 'image' | 'model' | null {
-  if (!a.url) return null
+  // In-flight and failed uploads have no url yet but still show (with their status)
+  if (!a.url && a.status === 'ready') return null
   if (a.kind === 'model') return 'model'
   if (a.contentType && PLACEABLE_IMAGE_TYPES.has(a.contentType)) return 'image'
   if (a.contentType === 'model/gltf-binary' || /\.glb$/i.test(a.name)) return 'model'
   return null
+}
+
+/** HUD rows for the library: placeable kinds only, each with its status (needs sync = placed but not deployed). */
+function toHUDMedia(items: SceneLibraryItem[], missingSrcs: string[]): HUDMediaItem[] {
+  const missing = new Set(missingSrcs)
+  return items.flatMap((a): HUDMediaItem[] => {
+    const kind = mediaKind(a)
+    if (!kind) return []
+    const status = hudStatus(a, kind === 'model', missing)
+    return [{ id: a.id, name: a.name, kind, status, ...(status === 'failed' && a.error ? { error: a.error } : {}) }]
+  })
 }
 
 const toLayoutItem = (el: any): HUDLayoutItem => ({ id: el.id, name: el.name, type: el.type, enabled: el.enabled !== false })
@@ -243,6 +255,8 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
 
     // In-world transform tools: one edit mode per VLM, only for members who can edit (HUD actions drive it)
     let editMode: DclEditMode | null = null
+    // Live library + missing-model subscriptions of the current connected handler (replaced on reinstall)
+    let offLibrary: (() => void)[] = []
 
     // Scene actions once connected: 'retry' for everyone; roles management for host and co-hosts;
     // placing media and showing / hiding / deleting elements for host, co-hosts and editors
@@ -271,15 +285,34 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
           renderer?.setRolesError(friendlyRoleError(err))
         }
       }
+      const pushMedia = () => renderer?.setMedia(toHUDMedia(media, vlm.missingModelSrcs()))
       const refreshMedia = async () => {
         const { items } = await vlm.httpClient.getSceneLibrary(sceneId)
         media = items
-        renderer?.setMedia(
-          items.flatMap((a): HUDMediaItem[] => {
-            const kind = mediaKind(a)
-            return kind ? [{ id: a.id, name: a.name, kind }] : []
-          }),
-        )
+        pushMedia()
+      }
+      // Uploads (from this computer, a phone, or another editor) arrive live; a model's sync state follows placing and redeploys
+      for (const off of offLibrary) off()
+      offLibrary = [
+        vlm.onLibraryChanged((change) => {
+          if (!edits()) return
+          media = applyLibraryChange(media, change)
+          pushMedia()
+        }),
+        vlm.onModelsMissing(() => { if (edits() && media.length) pushMedia() }),
+      ]
+      // Upload link: minted on the press, kept only while the Upload view is open
+      let uploadUrl: string | null = null
+      const mintUploadLink = async () => {
+        uploadUrl = null
+        renderer?.setUploadView({ open: true, loading: true, error: null, token: null })
+        try {
+          const { token } = await vlm.httpClient.createUploadToken(sceneId, { kinds: ['image', 'model'] })
+          uploadUrl = token.uploadUrl
+          renderer?.setUploadView({ loading: false, token })
+        } catch {
+          renderer?.setUploadView({ loading: false, error: "Couldn't make an upload link — try again" })
+        }
       }
       const activePreset = async () => {
         const { scene } = await vlm.httpClient.getScene(sceneId)
@@ -299,6 +332,10 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         const kind = asset ? mediaKind(asset) : null
         if (!asset || !kind) {
           renderer?.setEditMessage('That file is no longer in the scene library', true)
+          return
+        }
+        if (asset.status !== 'ready') {
+          renderer?.setEditMessage("That file isn't ready yet", true)
           return
         }
         const scene = (await vlm.httpClient.getScene(sceneId)).scene
@@ -366,6 +403,31 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
             renderer?.setRolesError(friendlyRoleError(err))
           } finally {
             busy = false
+          }
+          return
+        }
+
+        if (action.startsWith('media_upload_')) {
+          if (!edits()) return
+          if (action === 'media_upload_open' || action === 'media_upload_new') return mintUploadLink()
+          if (action === 'media_upload_back') {
+            uploadUrl = null
+            return renderer?.setUploadView({ open: false, loading: false, error: null, token: null })
+          }
+          if (action === 'media_upload_computer' && uploadUrl) {
+            void Promise.resolve(adapter.openUrl(uploadUrl)).catch(() => {})
+          }
+          return
+        }
+
+        if (action === 'media_dismiss') {
+          if (!edits()) return
+          try {
+            await vlm.httpClient.removeFromSceneLibrary(sceneId, String(data?.assetId))
+            media = media.filter((a) => a.id !== String(data?.assetId))
+            pushMedia()
+          } catch (err) {
+            renderer?.setEditMessage(friendlyEditError(err), true)
           }
           return
         }
