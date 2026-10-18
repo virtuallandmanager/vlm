@@ -70,4 +70,4 @@ editors or viewers by wallet address.
 
 ## Requirements
 
-`@dcl/sdk` 7.15 or later (Creator Hub's Script component needs 7.15+).
+vlm-dcl 2.4.0 needs `@dcl/sdk` 7.23 or newer (Shift, used by the in-world transform tools, was added in 7.23).

@@ -1,4 +1,6 @@
-import type { VLMPlatformAdapter, VLMStorage } from 'vlm-shared'
+import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData } from 'vlm-shared'
+import type { Selected } from './transform/session.js'
+import type { ListedInstance } from './managers/transform-ops.js'
 import { VideoManager } from './managers/VideoManager.js'
 import { ImageManager } from './managers/ImageManager.js'
 import { MeshManager } from './managers/MeshManager.js'
@@ -17,15 +19,22 @@ interface ElementManager {
   delete(elementId: string): void
   deleteInstance(instanceId: string): void
   clear(): void
+  listInstances(): ListedInstance[]
+  previewTransform(sk: string, t: TransformData): void
+  restoreTransform(sk: string): void
   /** Optional full replace that can keep in-memory state (see VideoManager.upsert). */
   upsert?(elementData: any): void
 }
 
+const EDITABLE: Selected['element'][] = ['image', 'video', 'model', 'sound']
+
 export class SceneManager {
   private managers: Record<string, ElementManager>
   private events: EventBus
+  private adapter: VLMPlatformAdapter
 
   constructor(adapter: VLMPlatformAdapter, storage: VLMStorage, events: EventBus) {
+    this.adapter = adapter
     this.events = events
     this.managers = {
       video: new VideoManager(adapter, storage),
@@ -85,6 +94,35 @@ export class SceneManager {
         }
         break
     }
+  }
+
+  /** Which editable instance (if any) owns this entity. */
+  findByEntity(entity: EntityHandle): Selected | null {
+    for (const element of EDITABLE) {
+      const hit = this.managers[element].listInstances().find((i) => i.entity === entity)
+      if (hit) return { element, sk: hit.sk, name: hit.name, transform: hit.transform }
+    }
+    return null
+  }
+
+  /** Every instance of the four element types that has a live entity (visible ones). */
+  listEditable(): (Selected & { entity: EntityHandle })[] {
+    const out: (Selected & { entity: EntityHandle })[] = []
+    for (const element of EDITABLE) {
+      for (const i of this.managers[element].listInstances()) {
+        if (!this.adapter.entityExists(i.entity)) continue
+        out.push({ element, sk: i.sk, name: i.name, transform: i.transform, entity: i.entity })
+      }
+    }
+    return out
+  }
+
+  previewTransform(element: Selected['element'], sk: string, t: TransformData): void {
+    this.managers[element]?.previewTransform(sk, t)
+  }
+
+  restoreTransform(element: Selected['element'], sk: string): void {
+    this.managers[element]?.restoreTransform(sk)
   }
 
   handlePresetChange(message: any): void {

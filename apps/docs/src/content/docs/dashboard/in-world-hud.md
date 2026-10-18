@@ -10,3 +10,21 @@ The management HUD and all scene-changing messages now require a signed-in, veri
 - `forbidden` — the user lacks permission for the requested action
 - `not_found` — the requested scene or resource does not exist
 - `server_error` — the handler threw an unhandled exception
+
+## Moving things in-world
+
+Editors can move, rotate and resize placed models, images, screens and sounds without leaving Decentraland.
+
+Open the Layout panel and press **Edit layout**. The button shows for editors, cohosts and hosts. Venue renters (and the crew they invite) never see it. Items have to be visible (synced) in your scene before you can edit them.
+
+Click an item to select it, then pick a mode on the bar:
+
+- **Move:** click and drag. The item lands where your pointer hits the scene. Tap **Shift** to cycle Free, X, Y, Z, then back to Free. The locked axis shows as a guide line (red for X, green for Y, blue for Z) and follows the scene's axes.
+- **Rotate:** drag one of three rings. Hold **Shift** to turn in 15° steps.
+- **Resize:** drag the corner handle to scale evenly, or an axis handle to stretch one way. The handles turn with the item, so a handle always stretches along the item's own side, even on a tilted screen. Images and screens are flat, so they have no depth handle. Hold **Shift** to snap (the corner in 10% steps, an axis handle in 0.25 m steps).
+
+Changes are drafts until you press **Save**. Save stores them to the live preset only; the bar shows **Saving…** until the server confirms. If the save fails, or you're disconnected, the bar says so and your change stays as a draft so you can try again. **Revert** puts the item back. If you press **Done** with unsaved changes, you are asked what to do first.
+
+While you hold an item, other editors see "being moved by" and your name on it and can't grab it until you save or revert. Visitors only ever see saved changes.
+
+vlm-dcl 2.4.0 needs Decentraland SDK 7.23 or newer (Shift was added in 7.23).

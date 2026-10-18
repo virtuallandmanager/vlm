@@ -6,6 +6,7 @@ import { engine, Transform } from '@dcl/sdk/ecs'
 import { DclAdapter } from './DclAdapter'
 import { startVLMAnalytics, getAnalyticsSceneRef } from './analytics.js'
 import { DclHUDRenderer, setSceneActionHandler } from './DclHUDRenderer.js'
+import { DclEditMode } from './transform/edit-mode.js'
 import type { HUDMediaItem, HUDLayoutItem } from './DclHUDRenderer.js'
 import { locationKeyFor } from 'vlm-shared'
 import type { VLMInitConfig, VLMStorage } from 'vlm-shared'
@@ -240,6 +241,9 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       }
     }
 
+    // In-world transform tools: one edit mode per VLM, only for members who can edit (HUD actions drive it)
+    let editMode: DclEditMode | null = null
+
     // Scene actions once connected: 'retry' for everyone; roles management for host and co-hosts;
     // placing media and showing / hiding / deleting elements for host, co-hosts and editors
     // (the server enforces the same; the scene room's upsert/delete broadcast renders the result)
@@ -249,6 +253,11 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       let currentRole: SceneRole = role
       const managesRoles = () => currentRole === 'host' || currentRole === 'cohost'
       const edits = () => currentRole !== 'viewer'
+      if (edits() && !editMode) editMode = new DclEditMode(vlm, adapter)
+      if (editMode) {
+        const em = editMode
+        em.onChange = () => renderer?.setEditMode(em.state)
+      }
       let busy = false
       let media: SceneLibraryItem[] = []
       let layout: HUDLayoutItem[] = []
@@ -324,6 +333,17 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         if (action === 'open_analytics') return openAnalytics(sceneId)
 
         if (action === 'retry') return reconnect(sceneId)
+
+        if (action.startsWith('edit_')) {
+          if (!edits() || !editMode) return
+          if (action === 'edit_enter') editMode.enter()
+          if (action === 'edit_exit') editMode.exit() // dirty: shows the Save / Revert prompt instead
+          if (action === 'edit_mode' && ['move', 'rotate', 'resize'].includes(data?.mode)) editMode.setMode(data.mode)
+          // Answering the Done prompt completes, then leaves edit mode (DclEditMode.exitAfterPrompt)
+          if (action === 'edit_save') editMode.save()
+          if (action === 'edit_revert') editMode.revert()
+          return
+        }
 
         if (action.startsWith('roles_')) {
           if (!managesRoles() || busy) return
@@ -495,5 +515,8 @@ export default VLMCompat
 
 export { DclAdapter }
 export { DclHUDRenderer } from './DclHUDRenderer.js'
+export { DclEditMode } from './transform/edit-mode.js'
+export type { DclEditModeState } from './transform/edit-mode.js'
+export { SHIFT_ACTION } from './transform/input.js'
 export type { VLMInitConfig }
 export { startVLMAnalytics, stopVLMAnalytics, DclAnalyticsProbe, getAnalyticsSceneRef } from './analytics.js'

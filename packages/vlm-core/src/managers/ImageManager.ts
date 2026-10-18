@@ -1,4 +1,6 @@
-import type { VLMPlatformAdapter, VLMStorage, EntityHandle } from 'vlm-shared'
+import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData } from 'vlm-shared'
+import { listTransformable, previewOn, restoreOn } from './transform-ops.js'
+import type { ListedInstance } from './transform-ops.js'
 
 // Internal tracking of element config
 interface ImageConfig {
@@ -182,6 +184,19 @@ export class ImageManager {
     // Update storage
     const key = instance.customId || instance.sk
     this.storage.images.instances[key] = { ...this.storage.images.instances[key], ...instanceData }
+  }
+
+  // In-world transform editing (see transform-ops.ts)
+  listInstances(): ListedInstance[] {
+    return listTransformable(this.instances, this.configs)
+  }
+
+  previewTransform(sk: string, t: TransformData): void {
+    previewOn(this.adapter, this.instances, sk, t)
+  }
+
+  restoreTransform(sk: string): void {
+    restoreOn(this.adapter, this.instances, sk)
   }
 
   updateInstance(instanceId: string, property: string, value: unknown): void {

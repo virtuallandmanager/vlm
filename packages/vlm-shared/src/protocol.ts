@@ -16,7 +16,9 @@ export type ClientMessage =
   | { type: 'scene_delete_preset'; data: { presetId: string } }
   | { type: 'scene_video_update'; data: VideoUpdateData }
   | { type: 'scene_sound_locator'; data: { enabled: boolean } }
-  | { type: 'user_message'; data: UserMessageData };
+  | { type: 'user_message'; data: UserMessageData }
+  | { type: 'transform_draft'; data: TransformDraftData }
+  | { type: 'transform_end'; data: TransformEndData };
 
 // ============================================================================
 // Server -> Client messages
@@ -36,7 +38,10 @@ export type ServerMessage =
   | { type: 'add_session_action'; data: SessionActionBroadcast }
   | { type: 'command_center_status'; data: CommandCenterStatusData }
   | { type: 'cross_world_update'; data: CrossWorldUpdateData }
-  | { type: 'hud_state_update'; data: HUDStateUpdateData };
+  | { type: 'hud_state_update'; data: HUDStateUpdateData }
+  | { type: 'transform_draft'; data: TransformDraftData & { holderName: string; holderSessionId: string } }
+  | { type: 'transform_draft_end'; data: TransformEndData }
+  | { type: 'transform_held'; data: { sk: string; holderName: string } };
 
 // ============================================================================
 // Shared message data interfaces
@@ -52,6 +57,20 @@ export interface ScenePresetUpdateData {
   sceneSettings?: SceneSetting[];
   elementData?: SceneElement;
   instanceData?: SceneElementInstance;
+}
+
+/** Unsaved transform of an instance while an editor drags it. Relayed to editors only, never persisted. */
+export interface TransformDraftData {
+  element: 'image' | 'video' | 'model' | 'sound';
+  sk: string;
+  position: Vec3;
+  rotation: Vec3;
+  scale: Vec3;
+}
+
+export interface TransformEndData {
+  sk: string;
+  saved: boolean;
 }
 
 export interface SceneSettingUpdateData {
