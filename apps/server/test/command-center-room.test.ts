@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createRequire } from 'node:module'
 import { Client } from 'colyseus.js'
 import { db } from '../src/db/connection.js'
-import { events } from '../src/db/schema.js'
+import { events, eventSceneLinks } from '../src/db/schema.js'
 import { VLMCommandCenterRoom } from '../src/ws/VLMCommandCenterRoom.js'
 import { resetDb } from './helpers/db.js'
-import { createUser, tokenFor } from './helpers/factories.js'
+import { createUser, createScene, tokenFor } from './helpers/factories.js'
 
 const _require = createRequire(import.meta.url)
 const { Server, LocalPresence } = _require('colyseus') as any
@@ -33,7 +33,7 @@ describe('VLMCommandCenterRoom cross_world_update', () => {
   beforeEach(async () => {
     await resetDb()
     server = new Server({ transport: new WebSocketTransport(), presence: new LocalPresence() })
-    server.define('vlm_command_center', VLMCommandCenterRoom)
+    server.define('vlm_command_center', VLMCommandCenterRoom).filterBy(['eventId'])
     const port = 20000 + Math.floor(Math.random() * 20000)
     await server.listen(port)
     url = `ws://localhost:${port}`
@@ -46,13 +46,9 @@ describe('VLMCommandCenterRoom cross_world_update', () => {
     const admin = await createUser({ role: 'admin' })
     const [event] = await db.insert(events).values({ ownerId: owner.id, name: 'Festival' }).returning()
 
-    const s = await join(url, event.id, tokenFor(stranger))
-    s.room.send('cross_world_update', { action: { presetId: 'x' } })
-    expect((await s.waitFor('vlm_error')).code).toBe('forbidden')
+    await expect(join(url, event.id, tokenFor(stranger))).rejects.toThrow()
 
-    const unverifiedAdmin = await join(url, event.id, tokenFor(admin, { verified: false }))
-    unverifiedAdmin.room.send('cross_world_update', { action: { presetId: 'x' } })
-    expect((await unverifiedAdmin.waitFor('vlm_error')).code).toBe('forbidden')
+    await expect(join(url, event.id, tokenFor(admin, { verified: false }))).rejects.toThrow()
 
     const o = await join(url, event.id, tokenFor(owner))
     o.room.send('cross_world_update', { action: { presetId: 'x' } })
@@ -61,5 +57,38 @@ describe('VLMCommandCenterRoom cross_world_update', () => {
     const a = await join(url, event.id, tokenFor(admin))
     a.room.send('cross_world_update', { action: { presetId: 'y' } })
     expect((await a.waitFor('cross_world_dispatched')).action).toEqual({ presetId: 'y' })
+  })
+
+  it('rejects anonymous, invalid and scene-pass joins', async () => {
+    const owner = await createUser()
+    const [event] = await db.insert(events).values({ ownerId: owner.id, name: 'Festival' }).returning()
+    const c = new Client(url)
+    await expect(c.joinOrCreate('vlm_command_center', { eventId: event.id })).rejects.toThrow()
+    await expect(c.joinOrCreate('vlm_command_center', { eventId: event.id, sessionToken: 'garbage' })).rejects.toThrow()
+    const pass = tokenFor(owner, { kind: 'scene', sceneId: crypto.randomUUID() })
+    await expect(join(url, event.id, pass)).rejects.toThrow()
+  })
+
+  it('different events land in different rooms; a stranger cannot join another owner\'s event', async () => {
+    const a = await createUser()
+    const b = await createUser()
+    const [ea] = await db.insert(events).values({ ownerId: a.id, name: 'A' }).returning()
+    const [eb] = await db.insert(events).values({ ownerId: b.id, name: 'B' }).returning()
+    const ja = await join(url, ea.id, tokenFor(a))
+    const jb = await join(url, eb.id, tokenFor(b))
+    expect(ja.room.roomId).not.toBe(jb.room.roomId)
+    await expect(join(url, eb.id, tokenFor(a))).rejects.toThrow()
+  })
+
+  it('fans out only to scenes the sender fully controls', async () => {
+    const a = await createUser()
+    const b = await createUser()
+    const { scene: mine } = await createScene(a)
+    const { scene: theirs } = await createScene(b)
+    const [event] = await db.insert(events).values({ ownerId: a.id, name: 'Festival' }).returning()
+    await db.insert(eventSceneLinks).values([{ eventId: event.id, sceneId: mine.id }, { eventId: event.id, sceneId: theirs.id }])
+    const o = await join(url, event.id, tokenFor(a))
+    o.room.send('cross_world_update', { action: { presetId: 'x' } })
+    expect((await o.waitFor('cross_world_dispatched')).targetScenes).toEqual([mine.id])
   })
 })

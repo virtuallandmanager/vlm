@@ -63,7 +63,7 @@ async function main() {
 
   // Register rooms
   gameServer.define('vlm_scene', VLMSceneRoom).filterBy(['sceneId'])
-  gameServer.define('vlm_command_center', VLMCommandCenterRoom)
+  gameServer.define('vlm_command_center', VLMCommandCenterRoom).filterBy(['eventId'])
 
   console.log(`[vlm-server] Colyseus WebSocket attached`)
 

@@ -23,7 +23,9 @@ import {
 } from '../db/schema.js'
 import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 import { verifySessionToken } from '../auth/tokens.js'
-import { ANONYMOUS, actorFromClaims, type Actor } from '../auth/actor.js'
+import { actorFromClaims, type Actor } from '../auth/actor.js'
+import { isUuid } from '../auth/scene-from.js'
+import { accessibleSceneIds } from '../routes/command-center.js'
 
 interface JoinOptions {
   sessionToken: string
@@ -48,8 +50,10 @@ export class VLMCommandCenterRoom extends Room {
 
   async onAuth(_client: Client, options: JoinOptions): Promise<Actor> {
     const claims = verifySessionToken(options?.sessionToken)
-    if (claims?.kind === 'scene') return ANONYMOUS
-    return actorFromClaims(claims)
+    const actor = actorFromClaims(claims)
+    // Account sessions only: no anonymous visitors, no scene passes, no unverified wallets.
+    if (claims?.kind !== 'account' || !actor.userId || !actor.verified) throw new Error('Unauthorized')
+    return actor
   }
 
   onCreate(options: JoinOptions) {
@@ -83,7 +87,7 @@ export class VLMCommandCenterRoom extends Room {
           .from(eventSceneLinks)
           .where(eq(eventSceneLinks.eventId, this.eventId))
 
-        const sceneIds = links.map((l) => l.sceneId)
+        const sceneIds = await accessibleSceneIds(actor, links.map((l) => l.sceneId))
         const action = message.action || message.data
 
         // Fan out to HTTP callbacks for each scene
@@ -116,6 +120,13 @@ export class VLMCommandCenterRoom extends Room {
   }
 
   async onJoin(client: Client, options: JoinOptions) {
+    // this.eventId is the room's own event (set in onCreate); a joining client's options.eventId can be faked via joinById.
+    const actor = client.auth as Actor
+    if (!isUuid(this.eventId)) throw new Error('Forbidden')
+    if (actor.role !== 'admin') {
+      const event = await db.query.events.findFirst({ where: eq(events.id, this.eventId), columns: { ownerId: true } })
+      if (!event || event.ownerId !== actor.userId) throw new Error('Forbidden')
+    }
     this.userId = options.userId || client.sessionId
     console.log(`[VLMCommandCenter] Client joined: ${client.sessionId}`)
 

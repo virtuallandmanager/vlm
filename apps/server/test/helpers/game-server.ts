@@ -2,6 +2,7 @@ import { createRequire } from 'node:module'
 import { Client } from 'colyseus.js'
 import { initBus } from '../../src/realtime/bus.js'
 import { VLMSceneRoom } from '../../src/ws/VLMSceneRoom.js'
+import { VLMCommandCenterRoom } from '../../src/ws/VLMCommandCenterRoom.js'
 
 const _require = createRequire(import.meta.url)
 const { Server, LocalPresence, matchMaker } = _require('colyseus') as any
@@ -12,6 +13,7 @@ export async function startGameServer() {
   initBus(presence)
   const server = new Server({ transport: new WebSocketTransport(), presence })
   server.define('vlm_scene', VLMSceneRoom).filterBy(['sceneId'])
+  server.define('vlm_command_center', VLMCommandCenterRoom).filterBy(['eventId'])
   const port = 20000 + Math.floor(Math.random() * 20000)
   await server.listen(port)
   return { url: `ws://localhost:${port}`, stop: () => server.gracefullyShutdown(false) as Promise<void> }

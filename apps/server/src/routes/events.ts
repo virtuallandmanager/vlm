@@ -1,8 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { events, eventSceneLinks, eventGiveawayLinks } from '../db/schema.js'
+import { events, eventSceneLinks, eventGiveawayLinks, giveaways } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
+import { getSceneAccess, isFullAccess } from '../auth/permissions.js'
+import { actorFromClaims } from '../auth/actor.js'
+import { isUuid } from '../auth/scene-from.js'
 
 interface CreateEventBody {
   name: string
@@ -147,6 +150,12 @@ export default async function eventRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
+      // Linking pulls the scene into the event's broadcasts, so the caller must run the scene themselves.
+      if (!isUuid(sceneId)) return reply.status(400).send({ error: 'sceneId must be a UUID' })
+      if (!isFullAccess(await getSceneAccess(actorFromClaims(request.user), sceneId))) {
+        return reply.status(404).send({ error: 'Scene not found' })
+      }
+
       const [link] = await db
         .insert(eventSceneLinks)
         .values({ eventId, sceneId })
@@ -173,6 +182,12 @@ export default async function eventRoutes(app: FastifyInstance) {
       if (!event) return reply.status(404).send({ error: 'Event not found' })
       if (event.ownerId !== request.user.id && request.user.role !== 'admin') {
         return reply.status(403).send({ error: 'Forbidden' })
+      }
+
+      if (!isUuid(giveawayId)) return reply.status(400).send({ error: 'giveawayId must be a UUID' })
+      const giveaway = await db.query.giveaways.findFirst({ where: eq(giveaways.id, giveawayId), columns: { ownerId: true } })
+      if (!giveaway || (giveaway.ownerId !== request.user.id && request.user.role !== 'admin')) {
+        return reply.status(404).send({ error: 'Giveaway not found' })
       }
 
       const [link] = await db

@@ -21,6 +21,9 @@ import { authenticate } from '../middleware/auth.js'
 import { requireFeature } from '../middleware/feature-gate.js'
 import { config } from '../config.js'
 import { publishStreamStatus } from '../realtime/bus.js'
+import { getSceneAccess, hasScope } from '../auth/permissions.js'
+import { actorFromClaims } from '../auth/actor.js'
+import { isUuid } from '../auth/scene-from.js'
 
 const hlsBaseUrl = () => process.env.HLS_BASE_URL || 'http://localhost:8000/streams'
 /** Public playback URL for a playback id (the stream key never appears in it: it is shown to every visitor). */
@@ -56,13 +59,17 @@ export default async function streamingRoutes(app: FastifyInstance) {
 
       const body = request.body as {
         name: string
-        type?: 'shared' | 'dedicated'
         region?: string
         sceneId?: string
       }
 
       if (!body.name) {
         return reply.status(400).send({ error: 'Missing required field: name' })
+      }
+
+      if (body.sceneId != null) {
+        const allowed = isUuid(body.sceneId) && hasScope(await getSceneAccess(actorFromClaims(request.user), body.sceneId), 'scene.edit')
+        if (!allowed) return reply.status(404).send({ error: 'Scene not found' })
       }
 
       const streamKey = randomBytes(16).toString('hex')
@@ -74,7 +81,7 @@ export default async function streamingRoutes(app: FastifyInstance) {
         .values({
           ownerId: request.user.id,
           name: body.name,
-          type: body.type || 'shared',
+          type: 'shared',
           status: 'ready',
           rtmpUrl: `${ingestUrl}/${streamKey}`,
           streamKey,
@@ -84,9 +91,6 @@ export default async function streamingRoutes(app: FastifyInstance) {
           sceneId: body.sceneId || null,
         })
         .returning()
-
-      // For dedicated servers, would provision infrastructure here
-      // (similar to Hyperfy provisioning). For shared, just return the stream key.
 
       return reply.status(201).send({
         server,

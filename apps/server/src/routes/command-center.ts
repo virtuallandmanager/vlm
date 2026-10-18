@@ -16,6 +16,14 @@ import {
 } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
+import { getSceneAccess, isFullAccess } from '../auth/permissions.js'
+import { actorFromClaims, type Actor } from '../auth/actor.js'
+
+/** The scenes of `sceneIds` the actor fully controls; an event's links alone never grant a fan-out. */
+export async function accessibleSceneIds(actor: Actor, sceneIds: string[]): Promise<string[]> {
+  const checks = await Promise.all(sceneIds.map(async (id) => isFullAccess(await getSceneAccess(actor, id))))
+  return sceneIds.filter((_, i) => checks[i])
+}
 
 export default async function commandCenterRoutes(app: FastifyInstance) {
   // ── Event Status ──────────────────────────────────────────────────────
@@ -30,6 +38,9 @@ export default async function commandCenterRoutes(app: FastifyInstance) {
       })
 
       if (!event) {
+        return reply.status(404).send({ error: 'Event not found' })
+      }
+      if (event.ownerId !== request.user.id && request.user.role !== 'admin') {
         return reply.status(404).send({ error: 'Event not found' })
       }
 
@@ -112,7 +123,7 @@ export default async function commandCenterRoutes(app: FastifyInstance) {
         .from(eventSceneLinks)
         .where(eq(eventSceneLinks.eventId, eventId))
 
-      let sceneIds = links.map((l) => l.sceneId)
+      let sceneIds = await accessibleSceneIds(actorFromClaims(request.user), links.map((l) => l.sceneId))
 
       // Filter to specific scenes if requested
       if (body.targetScenes && body.targetScenes !== 'all') {

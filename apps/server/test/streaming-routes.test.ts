@@ -5,7 +5,7 @@ import { db } from '../src/db/connection.js'
 import { streamingServers } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { resetDb } from './helpers/db.js'
-import { createUser, tokenFor, testApp } from './helpers/factories.js'
+import { createUser, createScene, tokenFor, testApp } from './helpers/factories.js'
 
 const KEY = 'test-webhook-secret'
 const PLAYLIST = 'https://live.vlm.gg/streams/k1/playlist.m3u8'
@@ -136,6 +136,30 @@ describe('streaming routes', () => {
       const s = await as(stranger, url)
       expect(s.statusCode).toBe(404)
       expect(s.body).not.toContain('k1')
+    }
+  })
+
+  it('provision: another owner\'s sceneId 404, own scene accepted, type always stored as shared', async () => {
+    const a = await createUser()
+    const b = await createUser()
+    const { scene: mine } = await createScene(a)
+    const { scene: theirs } = await createScene(b)
+    const prev = config.streamingEnabled
+    ;(config as any).streamingEnabled = true
+    try {
+      const provision = (payload: unknown) => app.inject({
+        method: 'POST', url: '/api/streaming/provision',
+        headers: { authorization: `Bearer ${tokenFor(a)}` }, payload: payload as any,
+      })
+      const refused = await provision({ name: 'X', sceneId: theirs.id })
+      expect(refused.statusCode).toBe(404)
+      expect(refused.json()).toEqual({ error: 'Scene not found' })
+      expect((await provision({ name: 'X', sceneId: 'nope' })).statusCode).toBe(404)
+      const ok = await provision({ name: 'X', sceneId: mine.id, type: 'dedicated' })
+      expect(ok.statusCode).toBe(201)
+      expect(ok.json().server).toMatchObject({ type: 'shared', sceneId: mine.id })
+    } finally {
+      ;(config as any).streamingEnabled = prev
     }
   })
 })
