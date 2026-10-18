@@ -12,8 +12,8 @@
  * DELETE /api/deploy/wallets/:id      — Remove a deployment wallet
  */
 
-import { FastifyInstance } from 'fastify'
-import { eq, desc } from 'drizzle-orm'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
+import { eq, desc, and } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   sceneDeployments,
@@ -24,6 +24,43 @@ import { authenticate } from '../middleware/auth.js'
 import { requireFeature } from '../middleware/feature-gate.js'
 import { HyperfyProvisioner } from '../services/hyperfy/provisioner.js'
 import { executeDCLDeploy } from '../services/dcl/deployer.js'
+import { actorFromClaims } from '../auth/actor.js'
+import { getSceneAccess, hasScope, isFullAccess } from '../auth/permissions.js'
+import { assertPublicHttpUrl } from '../net/public-url.js'
+
+type Deployment = typeof sceneDeployments.$inferSelect
+
+/** Copy of a deployment safe to send to clients: the Hyperfy admin code never leaves the server. */
+export function publicDeployment(d: Deployment): Deployment {
+  const { adminCode: _, ...target } = (d.target ?? {}) as Record<string, unknown>
+  return { ...d, target }
+}
+
+/** Load a deployment the caller may see (`read`: scene.edit) or change (`manage`: full access); null otherwise. */
+export async function deploymentForCaller(
+  request: FastifyRequest,
+  id: string,
+  need: 'read' | 'manage',
+): Promise<Deployment | null> {
+  if (!UUID.test(id)) return null
+  const deployment = await db.query.sceneDeployments.findFirst({ where: eq(sceneDeployments.id, id) })
+  if (!deployment) return null
+  const access = await getSceneAccess(actorFromClaims(request.user), deployment.sceneId)
+  const ok = need === 'manage' ? isFullAccess(access) : hasScope(access, 'scene.edit')
+  return ok ? deployment : null
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Deploy targets are never local: https only, public addresses only. */
+async function validContentServer(target: Record<string, unknown>): Promise<boolean> {
+  try {
+    const url = await assertPublicHttpUrl(String(target.contentServer ?? ''))
+    return url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
 
 export default async function deployRoutes(app: FastifyInstance) {
   // ── Start Deployment ──────────────────────────────────────────────────
@@ -54,8 +91,19 @@ export default async function deployRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: 'Scene not found' })
       }
 
-      if (scene.ownerId !== request.user.id && request.user.role !== 'admin') {
-        return reply.status(403).send({ error: 'Forbidden' })
+      const access = await getSceneAccess(actorFromClaims(request.user), body.sceneId)
+      if (access.level === 'none') return reply.status(404).send({ error: 'Scene not found' })
+      if (!isFullAccess(access)) return reply.status(403).send({ error: 'Forbidden' })
+
+      if (body.walletId) {
+        const wallet = await db.query.deploymentWallets.findFirst({
+          where: and(eq(deploymentWallets.id, body.walletId), eq(deploymentWallets.userId, request.user.id)),
+        })
+        if (!wallet) return reply.status(404).send({ error: 'Wallet not found' })
+      }
+
+      if (body.platform === 'decentraland' && !(await validContentServer(body.target))) {
+        return reply.status(400).send({ error: 'invalid_content_server' })
       }
 
       // Hyperfy: use the provisioner for end-to-end deployment
@@ -108,15 +156,13 @@ export default async function deployRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params as { id: string }
 
-      const deployment = await db.query.sceneDeployments.findFirst({
-        where: eq(sceneDeployments.id, id),
-      })
+      const deployment = await deploymentForCaller(request, id, 'read')
 
       if (!deployment) {
         return reply.status(404).send({ error: 'Deployment not found' })
       }
 
-      return reply.send({ deployment })
+      return reply.send({ deployment: publicDeployment(deployment) })
     },
   )
 
@@ -127,6 +173,10 @@ export default async function deployRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { sceneId } = request.params as { sceneId: string }
 
+      if (!UUID.test(sceneId) || !hasScope(await getSceneAccess(actorFromClaims(request.user), sceneId), 'scene.edit')) {
+        return reply.status(404).send({ error: 'Scene not found' })
+      }
+
       const deployments = await db
         .select()
         .from(sceneDeployments)
@@ -134,7 +184,7 @@ export default async function deployRoutes(app: FastifyInstance) {
         .orderBy(desc(sceneDeployments.createdAt))
         .limit(20)
 
-      return reply.send({ deployments })
+      return reply.send({ deployments: deployments.map(publicDeployment) })
     },
   )
 
@@ -145,9 +195,7 @@ export default async function deployRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params as { id: string }
 
-      const deployment = await db.query.sceneDeployments.findFirst({
-        where: eq(sceneDeployments.id, id),
-      })
+      const deployment = await deploymentForCaller(request, id, 'manage')
 
       if (!deployment) {
         return reply.status(404).send({ error: 'Deployment not found' })
@@ -165,7 +213,7 @@ export default async function deployRoutes(app: FastifyInstance) {
         .where(eq(sceneDeployments.id, id))
         .returning()
 
-      return reply.send({ deployment: updated })
+      return reply.send({ deployment: publicDeployment(updated) })
     },
   )
 
@@ -176,12 +224,14 @@ export default async function deployRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params as { id: string }
 
-      const original = await db.query.sceneDeployments.findFirst({
-        where: eq(sceneDeployments.id, id),
-      })
+      const original = await deploymentForCaller(request, id, 'manage')
 
       if (!original) {
         return reply.status(404).send({ error: 'Deployment not found' })
+      }
+
+      if (original.platform === 'decentraland' && !(await validContentServer(original.target as Record<string, unknown>))) {
+        return reply.status(400).send({ error: 'invalid_content_server' })
       }
 
       // Create a new deployment based on the original
@@ -313,9 +363,9 @@ export default async function deployRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: 'Scene not found' })
       }
 
-      if (scene.ownerId !== request.user.id && request.user.role !== 'admin') {
-        return reply.status(403).send({ error: 'Forbidden' })
-      }
+      const access = await getSceneAccess(actorFromClaims(request.user), body.sceneId)
+      if (access.level === 'none') return reply.status(404).send({ error: 'Scene not found' })
+      if (!isFullAccess(access)) return reply.status(403).send({ error: 'Forbidden' })
 
       const provisioner = new HyperfyProvisioner()
       try {
@@ -342,6 +392,10 @@ export default async function deployRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params as { id: string }
 
+      if (!(await deploymentForCaller(request, id, 'manage'))) {
+        return reply.status(404).send({ error: 'Deployment not found' })
+      }
+
       const provisioner = new HyperfyProvisioner()
       try {
         await provisioner.destroy(id)
@@ -362,6 +416,10 @@ export default async function deployRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params as { id: string }
 
+      if (!(await deploymentForCaller(request, id, 'read'))) {
+        return reply.status(404).send({ error: 'Deployment not found' })
+      }
+
       const provisioner = new HyperfyProvisioner()
       const status = await provisioner.getInstanceStatus(id)
 
@@ -380,6 +438,10 @@ export default async function deployRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = request.params as { id: string }
       const query = request.query as { lines?: string }
+
+      if (!(await deploymentForCaller(request, id, 'manage'))) {
+        return reply.status(404).send({ error: 'Deployment not found' })
+      }
 
       const provisioner = new HyperfyProvisioner()
       const logs = await provisioner.getLogs(id, parseInt(query.lines || '100'))

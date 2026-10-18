@@ -11,7 +11,7 @@
 
 import { createHash, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { Wallet } from 'ethers'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '../../db/connection.js'
 import {
   sceneDeployments,
@@ -379,9 +379,12 @@ export async function executeDCLDeploy(
   let privateKey: string | null = null
 
   if (walletId) {
-    const wallet = await db.query.deploymentWallets.findFirst({
-      where: eq(deploymentWallets.id, walletId),
-    })
+    // Only the deployer's own wallet may be used
+    const wallet = deployment.deployedBy
+      ? await db.query.deploymentWallets.findFirst({
+          where: and(eq(deploymentWallets.id, walletId), eq(deploymentWallets.userId, deployment.deployedBy)),
+        })
+      : undefined
     if (!wallet?.encryptedPrivateKey) {
       await updateDeploymentStatus(deploymentId, 'failed', {
         errorMessage: 'Deployment wallet not found or has no private key',
