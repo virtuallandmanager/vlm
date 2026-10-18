@@ -187,6 +187,16 @@ describe('TransformSession move', () => {
     expect(session.draft?.position.z).toBeCloseTo(3)
   })
 
+  it('axis lock retries an unresolved grab on the next frame instead of dying', () => {
+    const { session } = selected()
+    session.cycleLock() // x
+    session.beginDrag({ kind: 'body' }, toward(v(0, 2, 3), v(1, 0, 0)), null) // parallel: no grab
+    session.drag(down(2, 5, 3), null) // becomes the grab; no movement
+    expect(session.draft).toEqual(item().transform)
+    session.drag(down(6, 5, 3), null)
+    expect(session.draft?.position.x).toBeCloseTo(5) // 1 + (6 - 2)
+  })
+
   it('cycleLock while not dragging only changes the lock', () => {
     const { session } = selected()
     session.cycleLock()
@@ -272,6 +282,57 @@ describe('TransformSession rotate', () => {
     session.beginDrag({ kind: 'ring', axis: 'x' }, toward(v(5, 1, 0), v(-1, 0, 0)), null)
     session.drag(toward(v(0, 1, 0), v(0, 0, 1)), null)
     expect(session.draft).toEqual({ ...item().transform, ...origin })
+  })
+
+  it('a ring click with no movement leaves an awkward start rotation untouched and clean', () => {
+    for (const rotation of [v(-10, 370, 5), v(90, 0, 30), v(-90, 45, 20)]) {
+      const { session, onDraft } = selected({ ...origin, rotation }, 'rotate')
+      const ray = toward(v(5, 1, 0), v(-1, 0, 0))
+      session.beginDrag({ kind: 'ring', axis: 'x' }, ray, null)
+      session.drag(ray, null)
+      session.endDrag()
+      expect(session.draft?.rotation).toEqual(rotation)
+      expect(session.dirty).toBe(false)
+      expect(onDraft).not.toHaveBeenCalled()
+    }
+  })
+
+  it('snap that rounds the delta to zero keeps the exact start rotation', () => {
+    const { session } = selected({ ...origin, rotation: v(90, 0, 30) }, 'rotate')
+    session.setSnap(true)
+    const a = (deg: number) => {
+      const r = (deg * Math.PI) / 180
+      return toward(v(5, Math.cos(r), Math.sin(r)), v(-1, 0, 0))
+    }
+    session.beginDrag({ kind: 'ring', axis: 'x' }, a(0), null)
+    session.drag(a(5), null)
+    expect(session.draft?.rotation).toEqual(v(90, 0, 30))
+    expect(session.dirty).toBe(false)
+  })
+
+  it('rotating +30 then back -30 reads clean', () => {
+    const { session } = selected({ ...origin, rotation: v(10, 20, 30) }, 'rotate')
+    const a = (deg: number) => {
+      const r = (deg * Math.PI) / 180
+      return toward(v(5, Math.cos(r), Math.sin(r)), v(-1, 0, 0))
+    }
+    session.beginDrag({ kind: 'ring', axis: 'x' }, a(0), null)
+    session.drag(a(30), null)
+    expect(session.dirty).toBe(true)
+    session.drag(a(0), null)
+    expect(session.dirty).toBe(false)
+  })
+
+  it('rotating back to a start near 0 reads clean even if it lands at 359.99999', () => {
+    const { session } = selected({ ...origin, rotation: v(0, 0, 0) }, 'rotate')
+    const a = (deg: number) => {
+      const r = (deg * Math.PI) / 180
+      return toward(v(5, Math.cos(r), Math.sin(r)), v(-1, 0, 0))
+    }
+    session.beginDrag({ kind: 'ring', axis: 'x' }, a(0), null)
+    session.drag(a(-30), null)
+    session.drag(a(0), null)
+    expect(session.dirty).toBe(false)
   })
 
   it('ignores a body handle in rotate mode', () => {
@@ -433,20 +494,20 @@ describe('TransformSession save / revert / emit', () => {
   it('emits on the first changing drag, then every >= 100 ms, and once more on endDrag', () => {
     const { session, onDraft, setTime } = selected()
     session.beginDrag({ kind: 'body' }, down(0, 10, 0), null)
-    const frames = [0, 30, 60, 90, 120]
+    const frames = [0, 30, 60, 90, 120, 150]
     frames.forEach((t, i) => {
       setTime(t)
       session.drag(down(0, 10, 0), v(10 + i, 0, 0))
     })
     expect(onDraft).toHaveBeenCalledTimes(2)
-    setTime(130)
+    setTime(160)
     session.endDrag()
     expect(onDraft).toHaveBeenCalledTimes(3)
     const last = onDraft.mock.calls[2][0]
     expect(last).toEqual({
       element: 'model',
       sk: 'model#1',
-      transform: { position: v(14, 0, 0), rotation: v(0, 0, 0), scale: v(1, 1, 1) },
+      transform: { position: v(15, 0, 0), rotation: v(0, 0, 0), scale: v(1, 1, 1) },
     })
   })
 
@@ -461,13 +522,91 @@ describe('TransformSession save / revert / emit', () => {
     expect(onDraft).toHaveBeenCalledTimes(2)
   })
 
-  it('does not emit for drags that change nothing, but endDrag still emits the draft', () => {
+  it('a bare click (drag that changes nothing) emits nothing, even on endDrag', () => {
     const { session, onDraft } = selected()
     session.beginDrag({ kind: 'body' }, down(0, 10, 0), null)
     session.drag(down(0, 10, 0), v(1, 2, 3))
+    session.endDrag()
     expect(onDraft).not.toHaveBeenCalled()
+  })
+
+  it('endDrag emits a newer position that fell inside the throttle window, and only once', () => {
+    const { session, onDraft, setTime } = selected()
+    session.beginDrag({ kind: 'body' }, down(0, 10, 0), null)
+    setTime(0)
+    session.drag(down(0, 10, 0), v(10, 0, 0))
+    setTime(30)
+    session.drag(down(0, 10, 0), v(11, 0, 0))
+    expect(onDraft).toHaveBeenCalledTimes(1)
+    session.endDrag()
+    expect(onDraft).toHaveBeenCalledTimes(2)
+    expect(onDraft.mock.calls[1][0].transform.position).toEqual(v(11, 0, 0))
+  })
+
+  it('endDrag does not repeat a draft that was already emitted', () => {
+    const { session, onDraft, setTime } = selected()
+    session.beginDrag({ kind: 'body' }, down(0, 10, 0), null)
+    setTime(0)
+    session.drag(down(0, 10, 0), v(10, 0, 0))
     session.endDrag()
     expect(onDraft).toHaveBeenCalledTimes(1)
+  })
+
+  it('setMode during a drag flushes the unsent draft ignoring the throttle, then cancels the drag', () => {
+    const { session, onDraft, setTime } = selected()
+    session.beginDrag({ kind: 'body' }, down(0, 10, 0), null)
+    setTime(0)
+    session.drag(down(0, 10, 0), v(10, 0, 0))
+    setTime(30)
+    session.drag(down(0, 10, 0), v(11, 0, 0))
+    expect(onDraft).toHaveBeenCalledTimes(1)
+    session.setMode('rotate')
+    expect(onDraft).toHaveBeenCalledTimes(2)
+    expect(onDraft.mock.calls[1][0].transform.position).toEqual(v(11, 0, 0))
+    session.drag(down(0, 10, 0), v(20, 0, 0))
+    session.endDrag()
+    expect(session.draft?.position).toEqual(v(11, 0, 0))
+    expect(onDraft).toHaveBeenCalledTimes(2)
+  })
+
+  it('setMode during a drag with nothing unsent, or with no drag, emits nothing', () => {
+    const { session, onDraft } = selected()
+    session.setMode('rotate')
+    session.setMode('move')
+    session.beginDrag({ kind: 'body' }, down(0, 10, 0), null)
+    session.drag(down(0, 10, 0), v(1, 2, 3))
+    session.setMode('resize')
+    expect(onDraft).not.toHaveBeenCalled()
+  })
+
+  it('selected returns a copy and takeSave updates the selection transform', () => {
+    const { session } = dragged()
+    session.selected!.transform.position.x = 999
+    expect(session.selected?.transform.position).toEqual(v(1, 2, 3))
+    session.takeSave()
+    expect(session.selected?.transform.position).toEqual(v(7, 0, 8))
+  })
+
+  it('takeSave then a new drag then revert returns the saved transform', () => {
+    const { session } = dragged()
+    session.takeSave()
+    session.beginDrag({ kind: 'body' }, down(0, 10, 0), null)
+    session.drag(down(0, 10, 0), v(20, 0, 20))
+    session.endDrag()
+    expect(session.dirty).toBe(true)
+    expect(session.revert()?.position).toEqual(v(7, 0, 8))
+    expect(session.dirty).toBe(false)
+  })
+
+  it('takeSave during an active drag saves the current draft; further frames dirty it again', () => {
+    const { session } = selected()
+    session.beginDrag({ kind: 'body' }, down(0, 10, 0), null)
+    session.drag(down(0, 10, 0), v(7, 0, 8))
+    expect(session.takeSave()?.transform.position).toEqual(v(7, 0, 8))
+    expect(session.dirty).toBe(false)
+    session.drag(down(0, 10, 0), v(9, 0, 9))
+    expect(session.dirty).toBe(true)
+    expect(session.revert()?.position).toEqual(v(7, 0, 8))
   })
 
   it('endDrag without a drag does not emit', () => {

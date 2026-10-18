@@ -49,9 +49,15 @@ const copyTransform = (t: TransformData): TransformData => ({
   rotation: copyVec(t.rotation),
   scale: copyVec(t.scale),
 })
-const sameVec = (a: Vec3, b: Vec3): boolean => a.x === b.x && a.y === b.y && a.z === b.z
+const EPSILON = 1e-4
+const closeTo = (a: number, b: number): boolean => Math.abs(a - b) < EPSILON
+/** Degrees compared modulo 360, so 359.99999 and 0 are the same angle. */
+const closeAngle = (a: number, b: number): boolean => closeTo(wrap180(a - b), 0)
+const sameVec = (a: Vec3, b: Vec3): boolean => closeTo(a.x, b.x) && closeTo(a.y, b.y) && closeTo(a.z, b.z)
+const sameRotation = (a: Vec3, b: Vec3): boolean =>
+  closeAngle(a.x, b.x) && closeAngle(a.y, b.y) && closeAngle(a.z, b.z)
 const sameTransform = (a: TransformData, b: TransformData): boolean =>
-  sameVec(a.position, b.position) && sameVec(a.rotation, b.rotation) && sameVec(a.scale, b.scale)
+  sameVec(a.position, b.position) && sameRotation(a.rotation, b.rotation) && sameVec(a.scale, b.scale)
 const floorScale = (v: Vec3): Vec3 => ({
   x: Math.max(MIN_SCALE, v.x),
   y: Math.max(MIN_SCALE, v.y),
@@ -71,7 +77,7 @@ const axisHit = (ray: Ray, point: Vec3, axis: Axis): Vec3 | null =>
 
 type DragState =
   | { kind: 'move-free'; start: TransformData }
-  | { kind: 'move-axis'; start: TransformData; axis: Axis; grab: Vec3 | null }
+  | { kind: 'move-axis'; start: TransformData; axis: Axis; grab: Vec3 | null } // null grab: retried next frame
   | { kind: 'rotate'; start: TransformData; axis: Axis; startQuat: Quat; lastAngle: number | null; total: number }
   | { kind: 'uniform'; start: TransformData; normal: Vec3; grabDistance: number | null }
   | { kind: 'stretch'; start: TransformData; axis: Axis; grabDistance: number | null }
@@ -94,6 +100,8 @@ export class TransformSession {
   private dragLock: MoveLock = 'free'
   private emittedThisDrag = false
   private lastEmit = 0
+  /** What the network last saw this drag (the drag-start transform until the first emit). */
+  private lastSent: TransformData | null = null
 
   constructor(opts: { now: () => number; onDraft: (d: DraftPayload) => void; draftIntervalMs?: number }) {
     this.now = opts.now
@@ -102,7 +110,7 @@ export class TransformSession {
   }
 
   get selected(): Selected | null {
-    return this._selected
+    return this._selected ? { ...this._selected, transform: copyTransform(this._selected.transform) } : null
   }
   get draft(): TransformData | null {
     return this._draft ? copyTransform(this._draft) : null
@@ -128,6 +136,7 @@ export class TransformSession {
 
   setMode(m: TransformMode): void {
     this._mode = m
+    this.flushIfChanged()
     this.resetDrag()
   }
 
@@ -145,6 +154,7 @@ export class TransformSession {
     if (!this._draft || !this.handleFitsMode(handle)) return
     this.handle = handle
     this.emittedThisDrag = false
+    this.lastSent = copyTransform(this._draft)
     this.startFrom(this._draft, ray)
   }
 
@@ -164,16 +174,24 @@ export class TransformSession {
     }
   }
 
-  endDrag(): void {
-    if (!this.dragState) return
+  /** Sends the draft unless the network already has it. */
+  private flushIfChanged(): void {
+    if (!this.dragState || !this._draft) return
+    if (this.lastSent && sameTransform(this._draft, this.lastSent)) return
     this.lastEmit = this.now()
     this.emit()
+  }
+
+  endDrag(): void {
+    if (!this.dragState) return
+    this.flushIfChanged()
     this.resetDrag()
   }
 
   takeSave(): DraftPayload | null {
     if (!this._selected || !this._draft || !this.dirty) return null
     this.baseline = copyTransform(this._draft)
+    this._selected.transform = copyTransform(this._draft)
     return { element: this._selected.element, sk: this._selected.sk, transform: copyTransform(this._draft) }
   }
 
@@ -195,10 +213,12 @@ export class TransformSession {
     this.handle = null
     this.dragState = null
     this.emittedThisDrag = false
+    this.lastSent = null
   }
 
   private emit(): void {
     if (!this._selected || !this._draft) return
+    this.lastSent = copyTransform(this._draft)
     this.onDraft({ element: this._selected.element, sk: this._selected.sk, transform: copyTransform(this._draft) })
   }
 
@@ -268,7 +288,11 @@ export class TransformSession {
       }
       case 'move-axis': {
         const now = axisHit(ray, state.start.position, state.axis)
-        if (!state.grab || !now) return null
+        if (!state.grab) {
+          state.grab = now // grab couldn't be resolved earlier; use this frame as the grab, no movement yet
+          return null
+        }
+        if (!now) return null
         const along = dot(sub(now, state.grab), AXIS_VECTORS[state.axis])
         out.position = add(state.start.position, scale(AXIS_VECTORS[state.axis], along))
         return out
@@ -282,7 +306,11 @@ export class TransformSession {
         if (state.lastAngle !== null) state.total += wrap180(angle - state.lastAngle)
         state.lastAngle = angle
         const delta = this.snapOn ? snap(state.total, ROTATE_SNAP_DEGREES) : state.total
-        out.rotation = quatToEulerDegrees(quatMultiply(quatFromAxisAngle(axisVec, delta), state.startQuat))
+        // No net rotation: keep the exact start Euler (the quaternion round trip wraps angles and zeroes z at the poles).
+        out.rotation =
+          Math.abs(delta) < 1e-6
+            ? copyVec(state.start.rotation)
+            : quatToEulerDegrees(quatMultiply(quatFromAxisAngle(axisVec, delta), state.startQuat))
         return out
       }
       case 'uniform': {
