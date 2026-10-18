@@ -41,11 +41,31 @@ export type ServerMessage =
   | { type: 'hud_state_update'; data: HUDStateUpdateData }
   | { type: 'transform_draft'; data: TransformDraftData & { holderName: string; holderSessionId: string } }
   | { type: 'transform_draft_end'; data: TransformEndData }
-  | { type: 'transform_held'; data: { sk: string; holderName: string } };
+  | { type: 'transform_held'; data: { sk: string; holderName: string } }
+  | { type: 'scene_library_changed'; data: SceneLibraryChangeData };
 
 // ============================================================================
 // Shared message data interfaces
 // ============================================================================
+
+/** One entry in a scene's media library (`GET /api/scenes/:sceneId/library` and `scene_library_changed`). */
+export interface SceneLibraryItemData {
+  id: string;
+  kind: 'media' | 'model';
+  name: string;
+  contentType: string | null;
+  url: string;
+  sizeBytes: number;
+  bookingId: string | null;
+  createdAt: string;
+  status: 'uploading' | 'processing' | 'ready' | 'failed';
+  error: string | null;
+}
+
+/** Sent to editors when a library entry is added, changes status, or is removed. */
+export type SceneLibraryChangeData =
+  | { action: 'upsert'; item: SceneLibraryItemData }
+  | { action: 'remove'; id: string };
 
 export interface ScenePresetUpdateData {
   action: 'init' | 'create' | 'update' | 'updateAll' | 'delete';

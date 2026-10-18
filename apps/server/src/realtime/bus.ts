@@ -14,6 +14,7 @@ export type VenueEvent =
       elementType: string
       deleted: boolean
     }
+  | { type: 'library_changed'; sceneId: string; linkId: string; removed: boolean }
 
 export interface BusPresence {
   publish(topic: string, data: unknown): unknown
@@ -43,6 +44,17 @@ export async function publishElementChanged(e: Omit<Extract<VenueEvent, { type: 
     await publishVenueEvent({ type: 'element_changed', ...e })
   } catch (err) {
     console.error('[bus] element_changed publish failed:', err)
+  }
+}
+
+/**
+ * Tell scene rooms a scene-library entry was added, changed status, or removed. Never throws, like publishElementChanged.
+ */
+export async function publishLibraryChanged(sceneId: string, linkId: string, removed = false): Promise<void> {
+  try {
+    await publishVenueEvent({ type: 'library_changed', sceneId, linkId, removed })
+  } catch (err) {
+    console.error('[bus] library_changed publish failed:', err)
   }
 }
 

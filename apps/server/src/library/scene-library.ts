@@ -2,6 +2,7 @@ import { and, eq, lt, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { assetLibraryItems, bookings, mediaAssets, sceneLibrary, scenes, systemFlags } from '../db/schema.js'
 import type { Actor } from '../auth/actor.js'
+import { publishLibraryChanged } from '../realtime/bus.js'
 import { getSceneAccess, hasScope } from '../auth/permissions.js'
 
 export interface LibraryItem {
@@ -91,7 +92,10 @@ export async function linkToScene(
 ): Promise<string> {
   const values = { sceneId, mediaAssetId: item.mediaAssetId ?? null, assetItemId: item.assetItemId ?? null, addedBy, bookingId }
   const [row] = await db.insert(sceneLibrary).values(values).onConflictDoNothing().returning({ id: sceneLibrary.id })
-  if (row) return row.id
+  if (row) {
+    await publishLibraryChanged(sceneId, row.id)
+    return row.id
+  }
   const existing = await db.query.sceneLibrary.findFirst({
     where: and(
       eq(sceneLibrary.sceneId, sceneId),

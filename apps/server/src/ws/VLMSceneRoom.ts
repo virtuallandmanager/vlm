@@ -22,6 +22,7 @@ import { verifySessionToken } from '../auth/tokens.js'
 import { ANONYMOUS, actorFromClaims, type Actor } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess, toVenueAccessMessage, type SceneAccess } from '../auth/permissions.js'
 import { authorizeSceneMessage, propertiesOf, type GuardResult, type GuardTarget } from './scene-guard.js'
+import { getSceneLibraryItem } from '../library/scene-library.js'
 import { venueTopic, STREAMS_TOPIC, type VenueEvent, type StreamStatusEvent } from '../realtime/bus.js'
 import { normalizeUrl, withLiveStatus, withLiveVideo } from '../streaming/live-status.js'
 import type { VenueAccessMessage } from 'vlm-shared'
@@ -406,11 +407,11 @@ export class VLMSceneRoom extends Room {
     return name && name !== 'Guest' ? name : 'Another editor'
   }
 
-  /** Send to every other client whose access includes scene.edit. */
-  private async relayToEditors(type: string, msg: unknown, except: Client) {
+  /** Send to every client (but `except`, when given) whose access includes scene.edit. */
+  private async relayToEditors(type: string, msg: unknown, except?: Client) {
     await Promise.all(
       (this.clients as Client[]).map(async (c) => {
-        if (c.sessionId === except.sessionId) return
+        if (except && c.sessionId === except.sessionId) return
         try {
           if (hasScope(await this.getAccess(c), 'scene.edit')) c.send(type, msg)
         } catch {
@@ -462,6 +463,16 @@ export class VLMSceneRoom extends Room {
     try {
       if (e.type === 'element_changed') {
         await this.broadcastElementChange(e)
+        return
+      }
+      if (e.type === 'library_changed') {
+        // Editors only: viewers don't use the library and shouldn't see the owner's file names
+        if (e.removed) {
+          await this.relayToEditors('scene_library_changed', { action: 'remove', id: e.linkId })
+          return
+        }
+        const item = await getSceneLibraryItem(this.sceneId, e.linkId)
+        if (item) await this.relayToEditors('scene_library_changed', { action: 'upsert', item })
         return
       }
       if (e.type === 'preset_changed') {

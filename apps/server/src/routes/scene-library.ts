@@ -8,6 +8,7 @@ import { getSceneAccess, hasScope, isFullAccess } from '../auth/permissions.js'
 import { fromParam, isUuid } from '../auth/scene-from.js'
 import { linkToScene, listSceneLibrary, uploadDestination } from '../library/scene-library.js'
 import { storeMedia, StoreMediaError } from '../media/store.js'
+import { publishLibraryChanged } from '../realtime/bus.js'
 
 export default async function sceneLibraryRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)
@@ -45,6 +46,7 @@ export default async function sceneLibraryRoutes(app: FastifyInstance) {
     const allowed = isFullAccess(a) || (hasScope(a, 'scene.edit') && row.addedBy === request.user.id)
     if (!allowed) return reply.status(403).send({ error: 'forbidden' })
     await db.delete(sceneLibrary).where(eq(sceneLibrary.id, id))
+    await publishLibraryChanged(sceneId, id, true)
     return reply.status(204).send()
   })
 
