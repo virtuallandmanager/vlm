@@ -79,10 +79,10 @@ Success: the editor clicks Upload, scans the QR, picks a photo on the phone, and
 
 ### Where uploads land
 
-- `POST /api/upload/:code` stores the file in the account `uploadDestination(tokenUser, token.sceneId)` returns, the same rule as `/library/upload`:
-  - An editor's upload goes into the scene owner's account and counts against the owner's quota.
-  - A renter's goes into their own account.
-- If `uploadDestination` returns null because the user lost access since minting, the upload is refused with 403.
+- `POST /api/upload/:code` stores the file in the account `uploadDestination(minter, token.sceneId)` returns, the same rule as `/library/upload`. An editor's upload goes into the scene owner's account and counts against the owner's quota.
+- If `uploadDestination` returns null because the minter lost access since minting, the upload is refused with 403.
+- The minter's access must be re-checked with their real identity. Today the route rebuilds them as `{role: 'user'}` with no wallet, which would wrongly refuse admins and any cohost or editor tied only to their wallet. Store what's needed on the token, or look the user up.
+- Renters are out of scope (my call). They can't mint codes today (`scene.edit` is required, and the HUD panel is editors-only), and this design doesn't change that.
 - Every upload through an in-world code is linked to the code's scene (`linkToScene`), as it is today.
 
 ### Status
@@ -97,7 +97,7 @@ Statuses as the HUD shows them:
 | **Needs sync** | A GLB stored and placeable, but it won't render until the creator runs `npx vlm-dcl sync` and redeploys | — |
 | **Failed** | Too big, wrong type, over quota, or abandoned. The reason is shown | — |
 
-The user said "Syncing". "Needs sync" is my wording, since nothing is syncing on its own; see the questions below.
+The user said "Syncing". "Needs sync" is my wording, since nothing is syncing on its own; see open question 1 below.
 
 **Data model**
 - Add `status` to `media_assets`: `'uploading' | 'processing' | 'ready' | 'failed'`, defaulting to `'ready'` so existing rows and dashboard uploads are unaffected.
