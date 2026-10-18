@@ -14,6 +14,7 @@ import { db } from '../db/connection.js'
 import { mediaAssets, scenes, streamingSessions } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { config } from '../config.js'
+import { verifyWebhookEvent } from '../billing/webhook-verify.js'
 import {
   createCheckoutSession,
   createPortalSession,
@@ -142,37 +143,25 @@ export default async function billingRoutes(app: FastifyInstance) {
   // ── Stripe Webhook ────────────────────────────────────────────────────
   // NOT authenticated via JWT — uses Stripe signature verification
   app.post('/api/billing/webhook', {
-    config: {
-      rawBody: true, // Need raw body for Stripe signature verification
-    },
     handler: async (request, reply) => {
       if (!config.billingEnabled || !config.stripeSecretKey) {
         return reply.status(404).send({ error: 'Billing not enabled' })
       }
 
-      const sig = (request.headers as any)['stripe-signature']
-      const webhookSecret = config.stripeWebhookSecret
-
-      let event: any
-
-      if (webhookSecret && sig) {
-        try {
-          const { default: Stripe } = await import('stripe')
-          const stripe = new Stripe(config.stripeSecretKey!)
-          event = stripe.webhooks.constructEvent(
-            (request as any).rawBody || request.body,
-            sig,
-            webhookSecret,
-          )
-        } catch (err) {
-          return reply.status(400).send({
-            error: 'Webhook signature verification failed',
-          })
-        }
-      } else {
-        // No webhook secret configured — accept raw body (dev mode)
-        event = request.body
+      const verified = await verifyWebhookEvent(
+        (request as any).rawBody,
+        request.headers['stripe-signature'] as string | undefined,
+        {
+          secret: config.stripeWebhookSecret,
+          stripeKey: config.stripeSecretKey,
+          mode: config.mode,
+          nodeEnv: process.env.NODE_ENV,
+        },
+      )
+      if (!verified.ok) {
+        return reply.status(verified.status).send({ error: verified.error })
       }
+      const event = verified.event as any
 
       try {
         await handleWebhookEvent(event)

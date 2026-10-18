@@ -5,6 +5,7 @@ import fastifySwagger from '@fastify/swagger'
 import fastifySwaggerUi from '@fastify/swagger-ui'
 import { randomUUID } from 'node:crypto'
 import { config } from './config.js'
+import { withRawJson } from './http/raw-json.js'
 import { registerJwt } from './middleware/auth.js'
 import authRoutes from './routes/auth.js'
 import walletAuthRoutes from './routes/wallet-auth.js'
@@ -119,13 +120,8 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
         rateLimit: { max: 20, timeWindow: '1 minute' },
       }
     })
-    // Keep the raw JSON string so /api/auth/platform can check the signed body hash,
-    // then delegate to Fastify's own parser (400s, prototype-poisoning protection).
-    const parseJson = scope.getDefaultJsonParser('error', 'error')
-    scope.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
-      ;(req as any).rawBody = body
-      parseJson(req, body as string, done)
-    })
+    // /api/auth/platform checks the signed body hash against request.rawBody
+    withRawJson(scope)
     await scope.register(authRoutes)
     await scope.register(walletAuthRoutes)
     await scope.register(authHandoffRoutes)
@@ -148,7 +144,11 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(deployRoutes)
   await app.register(commandCenterRoutes)
   await app.register(streamingRoutes)
-  await app.register(billingRoutes)
+  // Stripe signs the exact raw body, so billing keeps request.rawBody too
+  await app.register(async (scope) => {
+    withRawJson(scope)
+    await scope.register(billingRoutes)
+  })
   await app.register(companionUploadRoutes)
   await app.register(organizationRoutes)
   await app.register(apiKeyRoutes)
