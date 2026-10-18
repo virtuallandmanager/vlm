@@ -13,10 +13,11 @@ export interface EditModeHUDState {
   dirty: boolean
   message: string | null
   prompt: boolean
+  saving: boolean
 }
 
 export const NO_EDIT_MODE: EditModeHUDState = {
-  active: false, mode: 'move', lock: 'free', selectedName: null, dirty: false, message: null, prompt: false,
+  active: false, mode: 'move', lock: 'free', selectedName: null, dirty: false, message: null, prompt: false, saving: false,
 }
 
 const BG = Color4.create(0.06, 0.06, 0.1, 0.96)
@@ -75,8 +76,8 @@ export function EditModeBar({ s, act }: { s: EditModeHUDState; act: Act }) {
         >
           <Label value={`Save or revert changes to ${name} first.`} fontSize={11} color={WHITE} uiTransform={{ height: 26 }} />
           <UiEntity uiTransform={{ flexDirection: 'row' }}>
-            <Btn label="Save" width={80} color={ACCENT} onPress={() => act('edit_save')} />
-            <Btn label="Revert" width={80} color={DANGER} onPress={() => act('edit_revert')} />
+            <Btn label="Save" width={80} color={ACCENT} off={s.saving} onPress={() => act('edit_save')} />
+            <Btn label="Revert" width={80} color={DANGER} off={s.saving} onPress={() => act('edit_revert')} />
           </UiEntity>
         </UiEntity>
       )}
@@ -98,8 +99,8 @@ export function EditModeBar({ s, act }: { s: EditModeHUDState; act: Act }) {
           <Label value={s.lock === 'free' ? 'Free' : s.lock.toUpperCase()} fontSize={12} color={LOCK_COLORS[s.lock]} uiTransform={{ width: 36, height: 30 }} />
         )}
         <UiEntity uiTransform={{ flexGrow: 1 }} />
-        <Btn label="Save" width={52} color={ACCENT} off={!s.dirty} onPress={() => act('edit_save')} />
-        <Btn label="Revert" width={52} color={DANGER} off={!s.dirty} onPress={() => act('edit_revert')} />
+        <Btn label="Save" width={52} color={ACCENT} off={!s.dirty || s.saving} onPress={() => act('edit_save')} />
+        <Btn label="Revert" width={52} color={DANGER} off={!s.dirty || s.saving} onPress={() => act('edit_revert')} />
         <Btn label="Done" width={52} onPress={() => act('edit_exit')} />
       </UiEntity>
     </UiEntity>

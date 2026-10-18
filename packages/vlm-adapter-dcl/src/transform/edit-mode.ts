@@ -20,10 +20,14 @@ export interface DclEditModeState {
   message: string | null
   /** Unsaved changes block the request (select another item, Done): the HUD asks Save or Revert. */
   prompt: boolean
+  /** A Save is waiting for the server: Save / Revert are off and the item can't be dragged. */
+  saving: boolean
 }
 
 const NOT_CONNECTED = 'Not connected — your change is still a draft'
-const SAVE_ERROR_WINDOW_MS = 3000
+const SAVING = 'Saving…'
+const CHANGED_ELSEWHERE = 'Item changed elsewhere — draft discarded'
+const NO_EDIT_ACCESS = 'You no longer have edit access'
 /** How long a remote save's transform beats stored data that hasn't caught up yet. */
 const REMOTE_SAVE_WINDOW_MS = 3000
 const RESCAN_SECONDS = 1
@@ -41,8 +45,11 @@ export class DclEditMode implements EditHost {
   private readonly input: EditInput
   private _active = false
   private remote = new Map<string, { holderName: string; transform: TransformData | null }>()
-  /** Transforms another editor saved, until our stored data shows them (draft_end can beat the preset update). */
-  private remoteSaves = new Map<string, { transform: TransformData; at: number }>()
+  /**
+   * Transforms another editor saved, until our stored data changes (draft_end can beat the preset update). `stored`
+   * is the stored transform's key when the entry was recorded (null if the item had no click area then).
+   */
+  private remoteSaves = new Map<string, { transform: TransformData; at: number; stored: string | null }>()
   private labels = new Map<string, Entity>()
   private selectedEntity: Entity | null = null
   /** The sk this client holds on the server (sent a draft, no end yet). */
@@ -53,7 +60,10 @@ export class DclEditMode implements EditHost {
   private prompt = false
   /** Done was pressed while dirty: leave edit mode once the prompt is answered. */
   private exitAfterPrompt = false
-  private lastSaveAt = -Infinity
+  /** The sk of a Save waiting for the server's ack, or null. */
+  private savingSk: string | null = null
+  /** The server refused a draft as forbidden: stop sending them (Save will report the same). */
+  private draftsForbidden = false
   private lastDirty = false
   private appliedKey = ''
   private rescanIn = 0
@@ -65,6 +75,7 @@ export class DclEditMode implements EditHost {
     vlm.events.on('transform_draft_end', (d: any) => this.onRemoteEnd(d))
     vlm.events.on('transform_held', (d: any) => this.onHeld(d))
     vlm.events.on('vlm_error', (e: any) => this.onError(e))
+    vlm.events.on('connection_lost', () => this.onConnectionLost())
   }
 
   get active(): boolean {
@@ -85,6 +96,7 @@ export class DclEditMode implements EditHost {
       dirty: this.session.dirty,
       message: this.message,
       prompt: this.prompt,
+      saving: this.savingSk !== null,
     }
   }
 
@@ -92,6 +104,7 @@ export class DclEditMode implements EditHost {
     if (this._active) return
     this._active = true
     this.message = null
+    this.draftsForbidden = false
     this.scan()
     this.input.start()
     this.changed()
@@ -130,37 +143,58 @@ export class DclEditMode implements EditHost {
     this.changed()
   }
 
+  /** Sends the draft and commits it only once the server confirms; on failure the draft stays for another try. */
   save(): void {
+    if (this.savingSk !== null || !this.session.dirty) return
+    // The item may have been rebuilt since the last rescan (preset switch, upsert): scan drops a stale selection
+    this.scan()
     const sel = this.session.selected
-    const draft = this.session.draft
-    if (!sel || !draft || !this.session.dirty) return
+    if (!sel || !this.session.dirty) return
     if (this.input.isDragging) {
       this.input.cancelDrag()
       this.session.endDrag()
     }
-    try {
-      this.vlm.editing.save(sel.element, sel.sk, draft)
-    } catch (err) {
-      // The session stays dirty, so the draft is kept for another try
-      this.message = err instanceof Error && err.message === 'not_connected' ? NOT_CONNECTED : 'Save failed — try again'
-      this.changed()
-      return
+    const draft = this.session.draft!
+    const draftKey = keyOf(draft)
+    this.savingSk = sel.sk
+    this.message = SAVING
+    this.changed()
+    this.vlm.editing.save(sel.element, sel.sk, draft).then(
+      () => this.saved(sel.sk, draftKey),
+      (err: unknown) => this.saveFailed(sel.sk, err),
+    )
+  }
+
+  private saved(sk: string, draftKey: string): void {
+    this.savingSk = null
+    const sel = this.session.selected
+    const draft = this.session.draft
+    if (sel?.sk === sk && draft && keyOf(draft) === draftKey) this.session.takeSave()
+    if (this.sentDraftFor === sk) {
+      this.sentDraftFor = null
+      try {
+        this.vlm.editing.endDraft(sk, true)
+      } catch {
+        // Disconnected right after the save; the server releases the hold when this client leaves
+      }
     }
-    this.session.takeSave()
-    this.lastSaveAt = Date.now()
-    try {
-      this.vlm.editing.endDraft(sel.sk, true)
-    } catch {
-      // Disconnected right after the save; the server releases the hold when this client leaves
-    }
-    this.sentDraftFor = null
-    this.message = null
-    this.answerPrompt()
+    if (this.message === SAVING) this.message = null
+    if (sel?.sk === sk) this.answerPrompt()
+    else this.changed()
+  }
+
+  private saveFailed(sk: string, err: unknown): void {
+    this.savingSk = null
+    // No takeSave: the session stays dirty, the draft stays previewed, Save / Revert stay on
+    const code = err instanceof Error ? err.message : 'server_error'
+    if (this.session.selected?.sk === sk) this.message = code === 'not_connected' ? NOT_CONNECTED : `Save failed — ${code}`
+    else if (this.message === SAVING) this.message = null
+    this.changed()
   }
 
   revert(): void {
     const sel = this.session.selected
-    if (!sel) return
+    if (!sel || this.savingSk !== null) return
     this.input.cancelDrag()
     this.session.revert()
     this.vlm.editing.scene.restoreTransform(sel.element, sel.sk)
@@ -196,7 +230,7 @@ export class DclEditMode implements EditHost {
   beginDrag(handle: Handle, ray: Ray, surfaceHit: Vec3 | null): void {
     const sel = this.session.selected
     const holder = sel ? this.remote.get(sel.sk)?.holderName : undefined
-    if (!sel || holder) {
+    if (!sel || holder || this.savingSk === sel.sk) {
       this.input.cancelDrag()
       if (holder) {
         this.message = `Being moved by ${holder}`
@@ -255,7 +289,10 @@ export class DclEditMode implements EditHost {
     if (!item) return null
     const saved = this.remoteSaves.get(sk)
     if (saved) {
-      if (Date.now() - saved.at < REMOTE_SAVE_WINDOW_MS && keyOf(saved.transform) !== keyOf(item.transform)) {
+      const stored = keyOf(item.transform)
+      // Any change to stored data since the entry was recorded (the save landing, or a later one) ends it
+      const storedMoved = saved.stored !== null ? stored !== saved.stored : stored === keyOf(saved.transform)
+      if (Date.now() - saved.at < REMOTE_SAVE_WINDOW_MS && !storedMoved) {
         return { ...item, transform: saved.transform }
       }
       this.remoteSaves.delete(sk)
@@ -318,7 +355,9 @@ export class DclEditMode implements EditHost {
 
   private onDraft(d: DraftPayload): void {
     this.applyDraft()
+    if (this.draftsForbidden) return
     try {
+      // Dropped silently while disconnected (connection_lost shows the message)
       this.vlm.editing.sendDraft({ element: d.element, sk: d.sk, ...d.transform })
       this.sentDraftFor = d.sk
     } catch {
@@ -352,7 +391,11 @@ export class DclEditMode implements EditHost {
   private onRemoteEnd(d: { sk: string; saved: boolean }): void {
     const last = this.remote.get(d.sk)?.transform ?? null
     this.remote.delete(d.sk)
-    if (d.saved && last) this.remoteSaves.set(d.sk, { transform: last, at: Date.now() })
+    if (d.saved && last) {
+      const p = this.picks.get(d.sk)
+      const stored = p ? this.vlm.editing.scene.findByEntity(p.entity)?.transform : null
+      this.remoteSaves.set(d.sk, { transform: last, at: Date.now(), stored: stored ? keyOf(stored) : null })
+    }
     this.removeLabel(d.sk)
     // Our clean selection of that item is stale now (saved elsewhere, or restored): reselect it fresh
     const sel = this.session.selected
@@ -382,10 +425,21 @@ export class DclEditMode implements EditHost {
     this.changed()
   }
 
+  /** Save errors arrive through editing.save's promise; this only handles a refused draft. */
   private onError(e: { code?: string; messageType?: string }): void {
-    if (Date.now() - this.lastSaveAt > SAVE_ERROR_WINDOW_MS) return
-    if (e?.messageType !== 'scene_preset_update' && e?.messageType !== 'transform_end') return
-    this.message = `Save failed — ${e.code ?? 'server error'}`
+    if (e?.messageType !== 'transform_draft' || e.code !== 'forbidden') return
+    this.draftsForbidden = true
+    this.sentDraftFor = null // the server never gave us the hold
+    if (!this._active) return
+    this.message = NO_EDIT_ACCESS
+    this.changed()
+  }
+
+  /** The room dropped: the server released our hold; the draft stays here for a Save once reconnected. */
+  private onConnectionLost(): void {
+    this.sentDraftFor = null
+    if (!this._active) return
+    if (this.savingSk === null) this.message = NOT_CONNECTED // a pending save reports it when it rejects
     this.changed()
   }
 
@@ -423,7 +477,8 @@ export class DclEditMode implements EditHost {
     for (const sk of this.remote.keys()) this.ensureLabel(sk)
     const sel = this.session.selected
     if (sel && live.get(sel.sk) !== this.selectedEntity) {
-      // The selected item is gone (deleted, hidden, preset change): its draft goes with it
+      // The selected item is gone or rebuilt (deleted, hidden, preset change, upsert, rejoin): its draft goes with it
+      if (this.session.dirty) this.message = CHANGED_ELSEWHERE
       this.input.cancelDrag()
       if (this.sentDraftFor === sel.sk) this.releaseHold()
       this.session.clear()

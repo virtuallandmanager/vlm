@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { SceneManager } from '../src/SceneManager.js'
 import { VLMStorageImpl } from '../src/storage.js'
 import { EventBus } from '../src/events/EventBus.js'
@@ -14,7 +14,9 @@ function fakeAdapter() {
     entityExists: vi.fn((e: number) => live.has(e)),
     setTransform: vi.fn(), setPlaneRenderer: vi.fn(), setGltfModel: vi.fn(), setMaterial: vi.fn(),
     setCollider: vi.fn(), removeCollider: vi.fn(), onPointerDown: vi.fn(), removePointerEvents: vi.fn(),
-    registerSystem: vi.fn(), unregisterSystem: vi.fn(),
+    systems: new Set<(dt: number) => void>(),
+    registerSystem: vi.fn((fn: (dt: number) => void) => adapter.systems.add(fn)),
+    unregisterSystem: vi.fn((fn: (dt: number) => void) => adapter.systems.delete(fn)),
   }
   return { adapter, live }
 }
@@ -39,7 +41,8 @@ function setupVlm(room: any | null) {
   colyseus.room = room
   const fire = (type: string, msg: unknown) => { for (const h of colyseus.messageHandlers.get(type) ?? []) h(msg) }
   ;(vlm as any).sceneManager.handlePresetUpdate({ action: 'init', scenePreset: preset })
-  return { vlm, adapter, fire }
+  const tick = () => { for (const fn of [...adapter.systems]) fn(0.016) }
+  return { vlm, adapter, fire, tick, colyseus }
 }
 
 describe('SceneManager transform wiring', () => {
@@ -77,9 +80,17 @@ describe('SceneManager transform wiring', () => {
   })
 })
 
+const openRoom = (send = vi.fn()) => ({ sessionId: 'me', send, connection: { isOpen: true } })
+const instanceSave = (x: number) => ({
+  action: 'update', element: 'image', instance: true,
+  instanceData: { sk: 'i1', position: T(x).position, rotation: T(x).rotation, scale: T(x).scale },
+})
+
 describe('VLM.editing', () => {
+  afterEach(() => { vi.useRealTimers() })
+
   it('an incoming transform_draft previews and emits; draft_end saved:false restores', () => {
-    const { vlm, adapter, fire } = setupVlm({ sessionId: 'me', send: vi.fn() })
+    const { vlm, adapter, fire } = setupVlm(openRoom())
     const seen = vi.fn()
     vlm.events.on('transform_draft', seen)
     adapter.setTransform.mockClear()
@@ -92,7 +103,7 @@ describe('VLM.editing', () => {
   })
 
   it('ignores a draft held by our own session', () => {
-    const { vlm, adapter, fire } = setupVlm({ sessionId: 'me', send: vi.fn() })
+    const { vlm, adapter, fire } = setupVlm(openRoom())
     const seen = vi.fn()
     vlm.events.on('transform_draft', seen)
     adapter.setTransform.mockClear()
@@ -102,7 +113,7 @@ describe('VLM.editing', () => {
   })
 
   it('transform_held is emitted; saved draft_end does not restore', () => {
-    const { vlm, adapter, fire } = setupVlm({ sessionId: 'me', send: vi.fn() })
+    const { vlm, adapter, fire } = setupVlm(openRoom())
     const held = vi.fn(); const ended = vi.fn()
     vlm.events.on('transform_held', held)
     vlm.events.on('transform_draft_end', ended)
@@ -114,30 +125,116 @@ describe('VLM.editing', () => {
     expect(adapter.setTransform).not.toHaveBeenCalled()
   })
 
-  it('save with no room throws not_connected and changes nothing', () => {
+  it('save with no room rejects not_connected and changes nothing', async () => {
     const { vlm, adapter } = setupVlm(null)
     adapter.setTransform.mockClear()
-    expect(() => vlm.editing.save('image', 'i1', T(9))).toThrow('not_connected')
+    await expect(vlm.editing.save('image', 'i1', T(9))).rejects.toThrow('not_connected')
     expect(adapter.setTransform).not.toHaveBeenCalled()
     expect(vlm.storage.images.instances.i1.position.x).toBe(3)
   })
 
-  it('save sends scene_preset_update and applies locally', () => {
+  it('a room whose connection is closed counts as not connected: save rejects, sendDraft drops silently', async () => {
     const send = vi.fn()
-    const { vlm, adapter } = setupVlm({ sessionId: 'me', send })
+    const { vlm, adapter } = setupVlm({ sessionId: 'me', send, connection: { isOpen: false } })
     adapter.setTransform.mockClear()
-    vlm.editing.save('image', 'i1', T(9))
-    expect(send).toHaveBeenCalledWith('scene_preset_update', {
-      action: 'update', element: 'image', instance: true,
-      instanceData: { sk: 'i1', position: T(9).position, rotation: T(9).rotation, scale: T(9).scale },
-    })
+    await expect(vlm.editing.save('image', 'i1', T(9))).rejects.toThrow('not_connected')
+    expect(() => vlm.editing.sendDraft({ element: 'image', sk: 'i1', ...T(5) })).not.toThrow()
+    expect(send).not.toHaveBeenCalled()
+    expect(adapter.setTransform).not.toHaveBeenCalled()
+    expect(vlm.storage.images.instances.i1.position.x).toBe(3)
+  })
+
+  it('save sends scene_preset_update and applies locally only on the ack for this instance', async () => {
+    const send = vi.fn()
+    const { vlm, adapter, fire } = setupVlm(openRoom(send))
+    adapter.setTransform.mockClear()
+    const saved = vi.fn()
+    const p = vlm.editing.save('image', 'i1', T(9)).then(saved)
+    expect(send).toHaveBeenCalledWith('scene_preset_update', instanceSave(9))
+    await Promise.resolve()
+    expect(saved).not.toHaveBeenCalled()
+    expect(vlm.storage.images.instances.i1.position.x).toBe(3)
+    fire('scene_preset_update_ack', { action: 'update', sk: 'other' })
+    fire('scene_preset_update_ack', { action: 'update', id: 'img1' }) // an element ack, not ours
+    await Promise.resolve()
+    expect(saved).not.toHaveBeenCalled()
+    fire('scene_preset_update_ack', { action: 'update', sk: 'i1' })
+    await p
+    expect(saved).toHaveBeenCalledOnce()
     expect(adapter.setTransform).toHaveBeenCalledWith(expect.anything(), T(9))
     expect(vlm.storage.images.instances.i1.position.x).toBe(9)
   })
 
+  it('a vlm_error for scene_preset_update rejects the save with its code and leaves storage unchanged', async () => {
+    const { vlm, adapter, fire } = setupVlm(openRoom())
+    adapter.setTransform.mockClear()
+    const p = vlm.editing.save('image', 'i1', T(9))
+    fire('vlm_error', { code: 'rate_limited', messageType: 'transform_draft' }) // not ours
+    fire('vlm_error', { code: 'forbidden', messageType: 'scene_preset_update' })
+    await expect(p).rejects.toThrow('forbidden')
+    fire('scene_preset_update_ack', { action: 'update', sk: 'i1' }) // a late ack applies nothing
+    expect(adapter.setTransform).not.toHaveBeenCalled()
+    expect(vlm.storage.images.instances.i1.position.x).toBe(3)
+  })
+
+  it('a save with no ack rejects save_timeout after 5 s and leaves storage unchanged', async () => {
+    vi.useFakeTimers()
+    const { vlm, adapter, tick } = setupVlm(openRoom())
+    const rejected = vi.fn()
+    const p = vlm.editing.save('image', 'i1', T(9)).catch(rejected)
+    vi.advanceTimersByTime(4900)
+    tick()
+    await Promise.resolve()
+    expect(rejected).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(200)
+    tick()
+    await p
+    expect(rejected).toHaveBeenCalledWith(new Error('save_timeout'))
+    expect(vlm.storage.images.instances.i1.position.x).toBe(3)
+    expect(adapter.systems.size).toBe(0) // the timeout check stops once nothing is pending
+  })
+
+  it('a dropped connection clears the room, rejects a pending save and emits connection_lost', async () => {
+    const { adapter } = fakeAdapter()
+    const vlm = new VLM(adapter)
+    const colyseus: any = (vlm as any).colyseus
+    ;(vlm as any).registerMessageHandlers()
+    ;(vlm as any).sceneManager.handlePresetUpdate({ action: 'init', scenePreset: preset })
+    let leave: (code: number) => void = () => {}
+    const room = { sessionId: 'me', send: vi.fn(), connection: { isOpen: true }, onMessage: vi.fn(), onLeave: (cb: any) => { leave = cb } }
+    colyseus.client = { joinOrCreate: vi.fn(async () => room) }
+    await colyseus.joinSceneRoom('scene1')
+    const lost = vi.fn()
+    vlm.events.on('connection_lost', lost)
+    const p = vlm.editing.save('image', 'i1', T(9))
+    room.connection.isOpen = false
+    leave(1006)
+    await expect(p).rejects.toThrow('not_connected')
+    expect(colyseus.getRoom()).toBeNull()
+    expect(lost).toHaveBeenCalledWith({ code: 1006 })
+    await expect(vlm.editing.save('image', 'i1', T(9))).rejects.toThrow('not_connected')
+    expect(vlm.storage.images.instances.i1.position.x).toBe(3)
+  })
+
+  it('an intentional leave does not emit connection_lost', async () => {
+    const { adapter } = fakeAdapter()
+    const vlm = new VLM(adapter)
+    const colyseus: any = (vlm as any).colyseus
+    ;(vlm as any).registerMessageHandlers()
+    let leave: (code: number) => void = () => {}
+    const room = { sessionId: 'me', send: vi.fn(), connection: { isOpen: true }, onMessage: vi.fn(), onLeave: (cb: any) => { leave = cb }, leave: vi.fn() }
+    colyseus.client = { joinOrCreate: vi.fn(async () => room) }
+    await colyseus.joinSceneRoom('scene1')
+    const lost = vi.fn()
+    vlm.events.on('connection_lost', lost)
+    colyseus.leaveRoom()
+    leave(1000)
+    expect(lost).not.toHaveBeenCalled()
+  })
+
   it('sendDraft and endDraft send the protocol messages', () => {
     const send = vi.fn()
-    const { vlm } = setupVlm({ sessionId: 'me', send })
+    const { vlm } = setupVlm(openRoom(send))
     const d = { element: 'image' as const, sk: 'i1', ...T(5) }
     vlm.editing.sendDraft(d)
     vlm.editing.endDraft('i1', false)

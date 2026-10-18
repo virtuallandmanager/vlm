@@ -51,6 +51,11 @@ export class VLM {
   private _user: { id: string; displayName?: string; email?: string; role: string } | null = null
   private _scenes: Scene[] = []
   private wssUrl: string = ''
+  /** Saves waiting for the server's scene_preset_update_ack, by instance sk. */
+  private pendingSaves = new Map<string, { resolve: () => void; reject: (err: Error) => void; deadline: number }>()
+  /** Frame system timing pending saves out (platforms have no timers here); null when none are pending. */
+  private saveTimeoutSystem: ((dt: number) => void) | null = null
+  private static SAVE_TIMEOUT_MS = 5000
   public storage: VLMStorageType
   public hud: any | null = null // HUDManager — typed as any to avoid hard dep on vlm-hud
 
@@ -328,7 +333,22 @@ export class VLM {
       this.events.emit('transform_held', message)
     })
 
-    this.colyseus.onMessage('vlm_error', (message: unknown) => this.events.emit('vlm_error', message))
+    this.colyseus.onMessage('scene_preset_update_ack', (message: unknown) => {
+      const sk = (message as { sk?: string } | null)?.sk
+      if (sk) this.pendingSaves.get(sk)?.resolve()
+    })
+
+    this.colyseus.onMessage('vlm_error', (message: unknown) => {
+      const e = message as { code?: string; messageType?: string } | null
+      // Errors carry no sk: a refused scene_preset_update fails every save still waiting
+      if (e?.messageType === 'scene_preset_update') this.failSaves(e.code || 'server_error')
+      this.events.emit('vlm_error', message)
+    })
+
+    this.colyseus.onLeave((code: number) => {
+      this.failSaves('not_connected')
+      this.events.emit('connection_lost', { code })
+    })
 
     this.colyseus.onMessage('scene_change_preset', (message: unknown) => {
       this.sceneManager.handlePresetChange(message as any)
@@ -404,15 +424,67 @@ export class VLM {
         previewTransform: (element: Selected['element'], sk: string, t: TransformData) => scene.previewTransform(element, sk, t),
         restoreTransform: (element: Selected['element'], sk: string) => scene.restoreTransform(element, sk),
       },
-      sendDraft: (d: TransformDraftData): void => this.colyseus.send('transform_draft', d),
+      /** Dropped silently when not connected (drafts are previews; the next one or Save catches up). */
+      sendDraft: (d: TransformDraftData): void => {
+        if (this.colyseus.isConnected()) this.colyseus.send('transform_draft', d)
+      },
       endDraft: (sk: string, saved: boolean): void => this.colyseus.send('transform_end', { sk, saved }),
-      save: (element: Selected['element'], sk: string, t: TransformData): void => {
-        if (!this.colyseus.getRoom()) throw new Error('not_connected')
+      /**
+       * Saves the instance's transform to the live preset. Resolves (and applies locally) only once the server acks
+       * this instance; rejects with `not_connected`, the server's error code, or `save_timeout` after 5 s.
+       */
+      save: (element: Selected['element'], sk: string, t: TransformData): Promise<void> => {
+        if (!this.colyseus.isConnected()) return Promise.reject(new Error('not_connected'))
         const instanceData = { sk, position: t.position, rotation: t.rotation, scale: t.scale }
-        this.colyseus.send('scene_preset_update', { action: 'update', element, instance: true, instanceData })
-        scene.handlePresetUpdate({ action: 'update', element, instance: true, instanceData })
+        const update = { action: 'update', element, instance: true, instanceData }
+        return new Promise<void>((resolve, reject) => {
+          this.pendingSaves.get(sk)?.reject(new Error('save_superseded'))
+          const entry = {
+            resolve: () => {
+              this.settleSave(sk, entry)
+              scene.handlePresetUpdate(update)
+              resolve()
+            },
+            reject: (err: Error) => {
+              this.settleSave(sk, entry)
+              reject(err)
+            },
+            deadline: Date.now() + VLM.SAVE_TIMEOUT_MS,
+          }
+          this.pendingSaves.set(sk, entry)
+          this.watchSaveTimeouts()
+          try {
+            this.colyseus.send('scene_preset_update', update)
+          } catch {
+            entry.reject(new Error('not_connected'))
+          }
+        })
       },
     }
+  }
+
+  private settleSave(sk: string, entry: unknown): void {
+    if (this.pendingSaves.get(sk) === entry) this.pendingSaves.delete(sk)
+    if (this.pendingSaves.size === 0 && this.saveTimeoutSystem) {
+      this.adapter.unregisterSystem(this.saveTimeoutSystem)
+      this.saveTimeoutSystem = null
+    }
+  }
+
+  private failSaves(code: string): void {
+    for (const entry of [...this.pendingSaves.values()]) entry.reject(new Error(code))
+  }
+
+  private watchSaveTimeouts(): void {
+    if (this.saveTimeoutSystem) return
+    const system = (_dt: number) => {
+      const now = Date.now()
+      for (const entry of [...this.pendingSaves.values()]) {
+        if (now >= entry.deadline) entry.reject(new Error('save_timeout'))
+      }
+    }
+    this.saveTimeoutSystem = system
+    this.adapter.registerSystem(system)
   }
 
   /** Model elements whose files this platform can't load (see adapter.resolveModelSrc). */
