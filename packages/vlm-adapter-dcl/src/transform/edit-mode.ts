@@ -1,26 +1,15 @@
-// In-world edit mode for editors: pointer click areas on every editable item, sound markers, remote-draft labels,
-// the transform session and its gizmo. Everything here exists only on an editor's client and only while active;
-// every collider is on CL_POINTER (never CL_PHYSICS) and exit() removes all of it.
-import {
-  engine,
-  Entity,
-  Transform,
-  MeshRenderer,
-  MeshCollider,
-  Material,
-  GltfContainer,
-  ColliderLayer,
-  TextShape,
-  Billboard,
-} from '@dcl/sdk/ecs'
-import type { PBMeshCollider } from '@dcl/sdk/ecs'
-import { Color3, Color4, Vector3 } from '@dcl/sdk/math'
+// In-world edit mode for editors: click areas on every editable item (picks.ts), remote-draft labels, the transform
+// session and its gizmo. Everything here exists only on an editor's client and only while active; every collider
+// is on CL_POINTER (never CL_PHYSICS) and exit() removes all of it.
+import { engine, Entity, Transform, TextShape, Billboard } from '@dcl/sdk/ecs'
+import { Color3, Color4 } from '@dcl/sdk/math'
 import { TransformSession } from 'vlm-core'
-import type { VLM, DraftPayload, ElementKind, Handle, MoveLock, Ray, TransformMode } from 'vlm-core'
+import type { VLM, DraftPayload, Handle, MoveLock, Ray, Selected, TransformMode } from 'vlm-core'
 import type { TransformData, Vec3 } from 'vlm-shared'
 import type { DclAdapter } from '../DclAdapter'
 import { Gizmo } from './gizmo.js'
 import { EditInput, type EditHost } from './input.js'
+import { MARKER_SIZE, Picks, entityPosition, follow, type Pick } from './picks.js'
 
 export interface DclEditModeState {
   active: boolean
@@ -35,23 +24,11 @@ export interface DclEditModeState {
 
 const NOT_CONNECTED = 'Not connected — your change is still a draft'
 const SAVE_ERROR_WINDOW_MS = 3000
+/** How long a remote save's transform beats stored data that hasn't caught up yet. */
+const REMOTE_SAVE_WINDOW_MS = 3000
 const RESCAN_SECONDS = 1
 const LABEL_GAP = 0.3
-const MARKER_SIZE = 0.3
-const MARKER_COLOR = Color4.create(1, 0.6, 0.1, 1)
 
-/** How an item was made clickable, so exit() can undo exactly that. */
-type Pick = {
-  sk: string
-  element: ElementKind
-  entity: Entity
-  how: 'self' | 'child' | 'mask' | 'marker'
-  helper: Entity | null
-  prevMask?: number
-}
-
-const isOurPlane = (mc: PBMeshCollider | null): boolean =>
-  mc?.mesh?.$case === 'plane' && mc.collisionMask === ColliderLayer.CL_POINTER
 const keyOf = (t: TransformData) => JSON.stringify(t)
 
 export class DclEditMode implements EditHost {
@@ -60,12 +37,12 @@ export class DclEditMode implements EditHost {
   readonly session: TransformSession
 
   private readonly gizmo = new Gizmo()
+  private readonly picks = new Picks()
   private readonly input: EditInput
   private _active = false
-  private picks = new Map<string, Pick>()
-  private byEntity = new Map<Entity, string>()
-  private helpers = new Set<Entity>()
   private remote = new Map<string, { holderName: string; transform: TransformData | null }>()
+  /** Transforms another editor saved, until our stored data shows them (draft_end can beat the preset update). */
+  private remoteSaves = new Map<string, { transform: TransformData; at: number }>()
   private labels = new Map<string, Entity>()
   private selectedEntity: Entity | null = null
   /** The sk this client holds on the server (sent a draft, no end yet). */
@@ -114,7 +91,6 @@ export class DclEditMode implements EditHost {
     this._active = true
     this.message = null
     this.scan()
-    for (const sk of this.remote.keys()) this.ensureLabel(sk)
     this.input.start()
     this.changed()
   }
@@ -135,10 +111,7 @@ export class DclEditMode implements EditHost {
     this.prompt = false
     this.message = null
     this.gizmo.clear()
-    for (const p of this.picks.values()) this.removePick(p)
     this.picks.clear()
-    this.byEntity.clear()
-    this.helpers.clear()
     for (const e of this.labels.values()) engine.removeEntity(e)
     this.labels.clear()
     this._active = false
@@ -200,29 +173,36 @@ export class DclEditMode implements EditHost {
   }
 
   itemAt(entity: Entity): string | null {
-    return this.byEntity.get(entity) ?? null
+    return this.picks.skAt(entity)
   }
 
   excludedFromSurface(entity: Entity): boolean {
-    if (this.helpers.has(entity) || this.gizmo.owns(entity) || entity === this.selectedEntity) return true
+    if (this.picks.isHelper(entity) || this.gizmo.owns(entity) || entity === this.selectedEntity) return true
     const sel = this.session.selected
-    return !!sel && this.byEntity.get(entity) === sel.sk
+    return !!sel && this.picks.skAt(entity) === sel.sk
   }
 
-  press(target: { handle: Handle } | { sk: string } | null, ray: Ray, surfaceHit: Vec3 | null): boolean {
-    if (!target) return false
-    if ('sk' in target && this.session.selected?.sk !== target.sk && !this.selectSk(target.sk)) return false
-    if ('sk' in target && this.session.mode !== 'move') return false
+  press(target: { handle: Handle } | { sk: string } | null): Handle | null {
+    if (!target) return null
+    if ('handle' in target) return this.session.selected ? target.handle : null
+    if (this.session.selected?.sk !== target.sk && !this.selectSk(target.sk)) return null
+    return this.session.mode === 'move' ? { kind: 'body' } : null
+  }
+
+  beginDrag(handle: Handle, ray: Ray, surfaceHit: Vec3 | null): void {
     const sel = this.session.selected
-    if (!sel) return false
-    const holder = this.remote.get(sel.sk)?.holderName
-    if (holder) {
-      this.message = `Being moved by ${holder}`
-      this.changed()
-      return false
+    const holder = sel ? this.remote.get(sel.sk)?.holderName : undefined
+    if (!sel || holder) {
+      this.input.cancelDrag()
+      if (holder) {
+        this.message = `Being moved by ${holder}`
+        this.changed()
+      }
+      return
     }
-    this.session.beginDrag('handle' in target ? target.handle : { kind: 'body' }, ray, surfaceHit)
-    return true
+    // A clean selection may be stale (another editor saved since): start from what's stored now
+    if (!this.session.dirty) this.reselect(sel.sk)
+    this.session.beginDrag(handle, ray, surfaceHit)
   }
 
   drag(ray: Ray, surfaceHit: Vec3 | null): void {
@@ -249,22 +229,39 @@ export class DclEditMode implements EditHost {
       this.rescanIn = RESCAN_SECONDS
       this.scan()
     }
-    for (const p of this.picks.values()) {
-      if (p.how === 'marker' && p.helper !== null) this.follow(p.helper, this.itemPosition(p.entity, 0))
-    }
+    this.picks.followItems()
     for (const [sk, label] of this.labels) {
       const p = this.picks.get(sk)
-      if (p) this.follow(label, this.itemPosition(p.entity, this.labelHeight(p)))
+      const pos = p ? entityPosition(p.entity, this.labelHeight(p)) : null
+      if (pos) follow(label, pos)
     }
-    this.gizmo.update(this.session.mode, this.session.lock, this.session.selected ? this.session.draft : null)
+    const sel = this.session.selected
+    // While someone else holds the item, the gizmo sits where they have it, not at our stale draft
+    const remoteT = sel && !this.session.dirty ? this.remote.get(sel.sk)?.transform : null
+    this.gizmo.update(this.session.mode, this.session.lock, sel ? remoteT ?? this.session.draft : null)
     if (this.session.dirty !== this.lastDirty) this.changed()
   }
 
   // ── Selection and drafts ──────────────────────────────────────────────
 
-  private selectSk(sk: string): boolean {
+  /** The item as stored now, or as another editor just saved it if stored data hasn't caught up. */
+  private freshItem(sk: string): Selected | null {
     const p = this.picks.get(sk)
     const item = p ? this.vlm.editing.scene.findByEntity(p.entity) : null
+    if (!item) return null
+    const saved = this.remoteSaves.get(sk)
+    if (saved) {
+      if (Date.now() - saved.at < REMOTE_SAVE_WINDOW_MS && keyOf(saved.transform) !== keyOf(item.transform)) {
+        return { ...item, transform: saved.transform }
+      }
+      this.remoteSaves.delete(sk)
+    }
+    return item
+  }
+
+  private selectSk(sk: string): boolean {
+    const p = this.picks.get(sk)
+    const item = this.freshItem(sk)
     if (!p || !item) return false
     if (this.session.dirty) {
       this.prompt = true
@@ -281,6 +278,15 @@ export class DclEditMode implements EditHost {
     this.message = null
     this.changed()
     return true
+  }
+
+  /** Replaces a clean selection's baseline with fresh data (no hold change, mode and lock kept). */
+  private reselect(sk: string): void {
+    const item = this.freshItem(sk)
+    if (!item || this.session.dirty) return
+    this.session.clear()
+    this.session.select(item)
+    this.appliedKey = keyOf(item.transform)
   }
 
   private answerPrompt(): void {
@@ -336,17 +342,16 @@ export class DclEditMode implements EditHost {
   }
 
   private onRemoteEnd(d: { sk: string; saved: boolean }): void {
+    const last = this.remote.get(d.sk)?.transform ?? null
     this.remote.delete(d.sk)
-    const label = this.labels.get(d.sk)
-    if (label !== undefined) engine.removeEntity(label)
-    this.labels.delete(d.sk)
-    // Our selection of that item is stale now (saved elsewhere, or restored): reselect it fresh
+    if (d.saved && last) this.remoteSaves.set(d.sk, { transform: last, at: Date.now() })
+    this.removeLabel(d.sk)
+    // Our clean selection of that item is stale now (saved elsewhere, or restored): reselect it fresh
     const sel = this.session.selected
     if (sel?.sk === d.sk && !this.session.dirty) {
       this.input.cancelDrag()
-      this.session.clear()
-      this.selectedEntity = null
-      this.selectSk(d.sk)
+      this.reselect(d.sk)
+      this.changed()
     }
   }
 
@@ -376,8 +381,10 @@ export class DclEditMode implements EditHost {
     this.changed()
   }
 
+  /** Only for items with a click area (so the label has somewhere to sit), only while active. */
   private ensureLabel(sk: string): void {
-    if (!this._active) return
+    const p = this.picks.get(sk)
+    if (!this._active || !p) return
     const text = `being moved by ${this.remote.get(sk)?.holderName ?? 'another editor'}`
     const existing = this.labels.get(sk)
     if (existing !== undefined) {
@@ -385,43 +392,27 @@ export class DclEditMode implements EditHost {
       if (ts && ts.text !== text) ts.text = text
       return
     }
+    const pos = entityPosition(p.entity, this.labelHeight(p))
+    if (!pos) return
     const e = engine.addEntity()
-    Transform.create(e, {})
+    Transform.create(e, { position: pos })
     TextShape.create(e, { text, fontSize: 3, textColor: Color4.White(), outlineWidth: 0.1, outlineColor: Color3.Black() })
     Billboard.create(e, {})
     this.labels.set(sk, e)
   }
 
-  // ── Click areas and sound markers ─────────────────────────────────────
+  private removeLabel(sk: string): void {
+    const label = this.labels.get(sk)
+    if (label !== undefined) engine.removeEntity(label)
+    this.labels.delete(sk)
+  }
 
-  /** Adds click areas for new items, drops them for removed ones, and re-applies any a manager replaced. */
+  /** Refreshes click areas, drops a selection whose item is gone, and keeps labels in step with picks. */
   private scan(): void {
     if (!this._active) return
-    const live = new Map<string, Entity>()
-    for (const item of this.vlm.editing.scene.listEditable()) {
-      const entity = item.entity as Entity
-      live.set(item.sk, entity)
-      const p = this.picks.get(item.sk)
-      if (p && p.entity === entity) this.refreshPick(p)
-      else {
-        if (p) this.removePick(p)
-        this.addPick(item.sk, item.element, entity)
-      }
-    }
-    for (const [sk, p] of this.picks) {
-      if (live.has(sk)) continue
-      this.removePick(p)
-      this.picks.delete(sk)
-    }
-    this.byEntity.clear()
-    this.helpers.clear()
-    for (const p of this.picks.values()) {
-      this.byEntity.set(p.entity, p.sk)
-      if (p.helper !== null) {
-        this.byEntity.set(p.helper, p.sk)
-        this.helpers.add(p.helper)
-      }
-    }
+    const live = this.picks.sync(this.vlm.editing.scene.listEditable())
+    for (const sk of [...this.labels.keys()]) if (!this.picks.get(sk)) this.removeLabel(sk)
+    for (const sk of this.remote.keys()) this.ensureLabel(sk)
     const sel = this.session.selected
     if (sel && live.get(sel.sk) !== this.selectedEntity) {
       // The selected item is gone (deleted, hidden, preset change): its draft goes with it
@@ -435,81 +426,12 @@ export class DclEditMode implements EditHost {
     }
   }
 
-  private addPick(sk: string, element: ElementKind, entity: Entity): void {
-    const p: Pick = { sk, element, entity, how: 'self', helper: null }
-    if (element === 'image' || element === 'video') {
-      if (MeshCollider.has(entity)) this.addChildPlane(p)
-      else MeshCollider.setPlane(entity, ColliderLayer.CL_POINTER)
-    } else if (element === 'model') {
-      const g = GltfContainer.getMutableOrNull(entity)
-      if (!g) return // not loadable here (missing model): nothing to click
-      p.how = 'mask'
-      p.prevMask = g.visibleMeshesCollisionMask
-      g.visibleMeshesCollisionMask = (p.prevMask ?? 0) | ColliderLayer.CL_POINTER
-    } else {
-      p.how = 'marker'
-      const m = engine.addEntity()
-      Transform.create(m, { position: this.itemPosition(entity, 0), scale: Vector3.create(MARKER_SIZE, MARKER_SIZE, MARKER_SIZE) })
-      MeshRenderer.setSphere(m)
-      Material.setBasicMaterial(m, { diffuseColor: MARKER_COLOR, castShadows: false })
-      MeshCollider.setSphere(m, ColliderLayer.CL_POINTER)
-      p.helper = m
-    }
-    this.picks.set(sk, p)
-  }
-
-  /** A pointer plane on a child entity, for items that already have a collider of their own. */
-  private addChildPlane(p: Pick): void {
-    const c = engine.addEntity()
-    Transform.create(c, { parent: p.entity })
-    MeshCollider.setPlane(c, ColliderLayer.CL_POINTER)
-    p.how = 'child'
-    p.helper = c
-  }
-
-  private refreshPick(p: Pick): void {
-    if (p.how === 'self') {
-      const mc = MeshCollider.getOrNull(p.entity)
-      if (!mc) MeshCollider.setPlane(p.entity, ColliderLayer.CL_POINTER)
-      else if (!isOurPlane(mc)) this.addChildPlane(p) // a manager set its own collider: don't fight it
-    } else if (p.how === 'mask') {
-      const g = GltfContainer.getMutableOrNull(p.entity)
-      const mask = g?.visibleMeshesCollisionMask ?? 0
-      if (g && !(mask & ColliderLayer.CL_POINTER)) {
-        // The model was reloaded; its new mask is the one to restore
-        p.prevMask = g.visibleMeshesCollisionMask
-        g.visibleMeshesCollisionMask = mask | ColliderLayer.CL_POINTER
-      }
-    }
-  }
-
-  private removePick(p: Pick): void {
-    if (p.helper !== null) engine.removeEntity(p.helper)
-    if (p.how === 'self' && isOurPlane(MeshCollider.getOrNull(p.entity))) MeshCollider.deleteFrom(p.entity)
-    if (p.how === 'mask') {
-      const g = GltfContainer.getMutableOrNull(p.entity)
-      if (g) g.visibleMeshesCollisionMask = p.prevMask
-    }
-  }
-
-  private itemPosition(entity: Entity, up: number): Vec3 {
-    const pos = Transform.getOrNull(entity)?.position
-    return pos ? { x: pos.x, y: pos.y + up, z: pos.z } : { x: 0, y: -100, z: 0 }
-  }
-
   /** Label height above the item's origin: over the top of a plane, the marker, or a base-origin model. */
   private labelHeight(p: Pick): number {
     const sy = Math.abs(Transform.getOrNull(p.entity)?.scale.y ?? 1)
     if (p.how === 'marker') return MARKER_SIZE / 2 + LABEL_GAP
     if (p.element === 'model') return sy + LABEL_GAP
     return sy / 2 + LABEL_GAP
-  }
-
-  private follow(entity: Entity, pos: Vec3): void {
-    const t = Transform.getOrNull(entity)
-    if (!t) return
-    if (Math.abs(t.position.x - pos.x) < 1e-4 && Math.abs(t.position.y - pos.y) < 1e-4 && Math.abs(t.position.z - pos.z) < 1e-4) return
-    Transform.getMutable(entity).position = Vector3.create(pos.x, pos.y, pos.z)
   }
 
   private changed(): void {

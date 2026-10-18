@@ -13,6 +13,9 @@ import {
   inputSystem,
 } from '@dcl/sdk/ecs'
 import type { LastWriteWinElementSetComponentDefinition } from '@dcl/sdk/ecs'
+// Namespace import: a static property read below keeps PrimaryPointerInfo's @__PURE__ definition from being
+// tree-shaken out of a creator's scene build (getComponentOrNull alone only finds components already defined).
+import * as ecs from '@dcl/sdk/ecs'
 import { Vector3 } from '@dcl/sdk/math'
 import type { Handle, Ray, TransformMode } from 'vlm-core'
 import type { Vec3 } from 'vlm-shared'
@@ -24,6 +27,13 @@ import type { Vec3 } from 'vlm-shared'
 export const SHIFT_ACTION = 14 as InputAction
 
 const RAY_DISTANCE = 50
+/** A press only becomes a drag once the pointer ray has turned this far, so a plain click selects without moving. */
+const DRAG_THRESHOLD_DEGREES = 2
+const DRAG_THRESHOLD_COS = Math.cos((DRAG_THRESHOLD_DEGREES * Math.PI) / 180)
+
+type PointerInfoComponent = LastWriteWinElementSetComponentDefinition<{ worldRayDirection?: Vec3 }>
+/** Defined by @dcl/ecs >= 7.20; undefined on older SDKs (camera forward is used then). */
+const PrimaryPointerInfo: PointerInfoComponent | null = ((ecs as any).PrimaryPointerInfo as PointerInfoComponent | undefined) ?? null
 
 /** What the frame system needs from edit mode. Entities are raycast hit ids. */
 export interface EditHost {
@@ -34,9 +44,12 @@ export interface EditHost {
   itemAt(entity: Entity): string | null
   /** True for the selected item, its helper, and every editor-only helper. Never a surface. */
   excludedFromSurface(entity: Entity): boolean
-  /** Pointer went down; true when a drag began. */
-  press(target: { handle: Handle } | { sk: string } | null, ray: Ray, surfaceHit: Vec3 | null): boolean
+  /** Pointer went down (selection happens here); the handle a drag would use, or null for none. */
+  press(target: { handle: Handle } | { sk: string } | null): Handle | null
+  /** The pointer moved past the drag threshold while still down. */
+  beginDrag(handle: Handle, ray: Ray, surfaceHit: Vec3 | null): void
   drag(ray: Ray, surfaceHit: Vec3 | null): void
+  /** Pointer released after beginDrag. */
   release(): void
   shiftTapped(): void
   setSnap(on: boolean): void
@@ -46,12 +59,9 @@ export interface EditHost {
 
 type Hit = { entity: Entity | null; position: Vec3; length: number }
 
-/** Pointer ray direction: PrimaryPointerInfo (SDK >= 7.20, looked up by name for older typings), else camera forward. */
+/** Pointer ray direction: PrimaryPointerInfo.worldRayDirection, else camera forward. */
 function rayDirection(cameraRotation: { x: number; y: number; z: number; w: number }): Vec3 {
-  const info = engine.getComponentOrNull('core::PrimaryPointerInfo') as LastWriteWinElementSetComponentDefinition<{
-    worldRayDirection?: Vec3
-  }> | null
-  const d = info?.getOrNull(engine.RootEntity)?.worldRayDirection
+  const d = PrimaryPointerInfo?.getOrNull(engine.RootEntity)?.worldRayDirection
   const len = d ? Math.hypot(d.x, d.y, d.z) : 0
   if (d && len > 1e-6) return { x: d.x / len, y: d.y / len, z: d.z / len }
   return Vector3.rotate(Vector3.Forward(), cameraRotation)
@@ -62,6 +72,8 @@ export class EditInput {
   private pointerWasDown = false
   private shiftWasDown = false
   private dragging = false
+  /** Pressed on something draggable, waiting for the ray to pass the threshold. */
+  private armed: { handle: Handle; direction: Vec3 } | null = null
   private readonly system = (dt: number) => this.frame(dt)
 
   constructor(
@@ -90,6 +102,7 @@ export class EditInput {
     this.pointerWasDown = inputSystem.isPressed(InputAction.IA_POINTER)
     this.shiftWasDown = inputSystem.isPressed(SHIFT_ACTION)
     this.dragging = false
+    this.armed = null
     this.registerSystem(this.system)
   }
 
@@ -99,11 +112,13 @@ export class EditInput {
     engine.removeEntity(this.rayEntity)
     this.rayEntity = null
     this.dragging = false
+    this.armed = null
   }
 
   /** Ends a drag in progress without waiting for the pointer to come up (mode switch, held, save). */
   cancelDrag(): void {
     this.dragging = false
+    this.armed = null
   }
 
   private frame(dt: number): void {
@@ -134,8 +149,20 @@ export class EditInput {
       } else {
         this.host.drag(ray, surfaceHit)
       }
+    } else if (this.armed) {
+      if (released) {
+        this.armed = null // a plain click: selected, nothing moved
+      } else if (Vector3.dot(this.armed.direction, ray.direction) < DRAG_THRESHOLD_COS) {
+        const { handle } = this.armed
+        this.armed = null
+        this.dragging = true
+        this.host.beginDrag(handle, ray, surfaceHit)
+        // beginDrag may refuse (held by someone else) and cancel; only drag if still dragging
+        if (this.dragging) this.host.drag(ray, surfaceHit)
+      }
     } else if (pressed) {
-      this.dragging = this.host.press(this.pick(hits), ray, surfaceHit)
+      const handle = this.host.press(this.pick(hits))
+      if (handle && !released) this.armed = { handle, direction: ray.direction }
     }
 
     const shiftDown = inputSystem.isPressed(SHIFT_ACTION)
