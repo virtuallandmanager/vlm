@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
-import { fileToBase64 } from '@/lib/api'
+import { fileToBase64, mediaContentType } from '@/lib/api'
+import { acceptFor, codeFromPath, uploadErrorMessage } from '@/lib/companion'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3010'
 
@@ -11,31 +12,62 @@ interface TokenInfo {
   remainingUploads: number
   expiresAt: string
   sceneId: string | null
+  kinds: string[] | null
 }
 
-interface UploadedAsset {
-  id: string
-  filename: string
-  publicUrl: string
+/** One picked file and where it is in its upload. */
+interface FileRow {
+  key: string
+  name: string
   sizeBytes: number
+  state: 'starting' | 'uploading' | 'processing' | 'done' | 'failed'
+  percent: number
+  error?: string
+}
+
+async function readError(res: Response): Promise<string> {
+  const body = await res.json().catch(() => ({}))
+  return uploadErrorMessage(res.status, body)
+}
+
+/** POST the bytes with XHR so the page can show upload progress. */
+function sendBytes(url: string, body: string, onProgress: (percent: number) => void): Promise<{ status: number; body: any }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url)
+    xhr.setRequestHeader('Content-Type', 'application/json')
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)) }
+    xhr.onload = () => {
+      let parsed: any = {}
+      try { parsed = JSON.parse(xhr.responseText) } catch { /* not json */ }
+      resolve({ status: xhr.status, body: parsed })
+    }
+    xhr.onerror = () => reject(new Error('Network error — check your connection and try again'))
+    xhr.send(body)
+  })
 }
 
 export default function CompanionUploadClient() {
   const params = useParams()
-  const code = params.code as string
+  const [code, setCode] = useState<string | null>(null)
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
-  const [uploaded, setUploaded] = useState<UploadedAsset[]>([])
+  const [rows, setRows] = useState<FileRow[]>([])
   const [remaining, setRemaining] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Validate token on mount
+  // Validate token on mount (the code comes from the address bar in the static build)
   useEffect(() => {
-    if (!code || code === '_') return
-    fetch(`${API_URL}/api/upload/${code}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(res.status === 404 ? 'Invalid or expired code' : 'Upload limit reached')
+    const c = codeFromPath(window.location.pathname, params.code as string | undefined)
+    if (!c) {
+      setError('This upload link is missing its code')
+      return
+    }
+    setCode(c)
+    fetch(`${API_URL}/api/upload/${c}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await readError(res))
         return res.json()
       })
       .then((data) => {
@@ -43,45 +75,51 @@ export default function CompanionUploadClient() {
         setRemaining(data.remainingUploads)
       })
       .catch((err) => setError(err.message))
-  }, [code])
+  }, [params.code])
+
+  const update = (key: string, patch: Partial<FileRow>) =>
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)))
+
+  async function uploadOne(file: File, key: string) {
+    const start = await fetch(`${API_URL}/api/upload/${code}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name, contentType: mediaContentType(file), sizeBytes: file.size }),
+    })
+    if (!start.ok) {
+      update(key, { state: 'failed', error: await readError(start) })
+      return
+    }
+    const { assetId, remainingUploads } = await start.json()
+    setRemaining(remainingUploads)
+    update(key, { state: 'uploading' })
+
+    const data = await fileToBase64(file)
+    const res = await sendBytes(`${API_URL}/api/upload/${code}/${assetId}`, JSON.stringify({ fileData: data }), (percent) =>
+      update(key, percent >= 100 ? { percent, state: 'processing' } : { percent }),
+    )
+    if (res.status === 201) update(key, { state: 'done', percent: 100 })
+    else update(key, { state: 'failed', error: uploadErrorMessage(res.status, res.body) })
+  }
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
-    if (!files || files.length === 0) return
-
+    if (!files || files.length === 0 || !code) return
+    const picked = Array.from(files).map((file, i) => ({ file, key: `${Date.now()}-${i}-${file.name}` }))
+    setRows((prev) => [
+      ...picked.map(({ file, key }): FileRow => ({ key, name: file.name, sizeBytes: file.size, state: 'starting', percent: 0 })),
+      ...prev,
+    ])
     setUploading(true)
-
-    for (const file of Array.from(files)) {
-      if (remaining <= 0) break
-
+    // One at a time; a failure on one file doesn't stop the others
+    for (const { file, key } of picked) {
       try {
-        const base64 = await fileToBase64(file)
-
-        const res = await fetch(`${API_URL}/api/upload/${code}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            filename: file.name,
-            contentType: file.type || 'application/octet-stream',
-            fileData: base64,
-          }),
-        })
-
-        if (!res.ok) {
-          const err = await res.json()
-          throw new Error(err.error || 'Upload failed')
-        }
-
-        const data = await res.json()
-        setUploaded((prev) => [...prev, data.asset])
-        setRemaining(data.remainingUploads)
+        await uploadOne(file, key)
       } catch (err: any) {
-        setError(err.message)
+        update(key, { state: 'failed', error: err?.message || 'Upload failed' })
       }
     }
-
     setUploading(false)
-    // Reset file input
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -91,6 +129,14 @@ export default function CompanionUploadClient() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
+  function rowStatus(r: FileRow): string {
+    if (r.state === 'starting') return 'Starting…'
+    if (r.state === 'uploading') return `Uploading ${r.percent}%`
+    if (r.state === 'processing') return 'Processing…'
+    if (r.state === 'done') return 'Done'
+    return r.error ?? 'Upload failed'
+  }
+
   // Error state
   if (error && !tokenInfo) {
     return (
@@ -98,7 +144,7 @@ export default function CompanionUploadClient() {
         <div style={styles.card}>
           <h1 style={styles.title}>Upload Link</h1>
           <p style={styles.error}>{error}</p>
-          <p style={styles.hint}>This link may have expired or already been used.</p>
+          <p style={styles.hint}>Make a new upload link from the Media Library in your HUD.</p>
         </div>
       </div>
     )
@@ -109,11 +155,16 @@ export default function CompanionUploadClient() {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <p style={styles.hint}>Validating upload code...</p>
+          <p style={styles.hint}>Checking upload link...</p>
         </div>
       </div>
     )
   }
+
+  const modelsOnly = tokenInfo.kinds?.length === 1 && tokenInfo.kinds[0] === 'model'
+  const kindsHint = !tokenInfo.kinds
+    ? 'GLB models, images, or video'
+    : modelsOnly ? 'GLB models' : tokenInfo.kinds.includes('model') ? 'Images or GLB models' : 'Images'
 
   // Main upload UI
   return (
@@ -134,34 +185,39 @@ export default function CompanionUploadClient() {
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept=".glb,.png,.jpg,.jpeg,.webp,.gif,.mp4,.webm"
+                accept={acceptFor(tokenInfo.kinds)}
                 onChange={handleFileSelect}
                 disabled={uploading || remaining <= 0}
                 style={{ display: 'none' }}
               />
             </label>
-            <p style={styles.hint}>
-              GLB models, images, or video
-            </p>
+            <p style={styles.hint}>{kindsHint}</p>
           </>
         )}
 
-        {error && <p style={styles.error}>{error}</p>}
-
-        {uploaded.length > 0 && (
+        {rows.length > 0 && (
           <div style={styles.uploadList}>
-            <h2 style={styles.listTitle}>Uploaded</h2>
-            {uploaded.map((asset) => (
-              <div key={asset.id} style={styles.uploadItem}>
-                <span style={styles.assetName}>{asset.filename}</span>
-                <span style={styles.assetSize}>{formatSize(asset.sizeBytes)}</span>
+            <h2 style={styles.listTitle}>Uploads</h2>
+            {rows.map((r) => (
+              <div key={r.key} style={styles.uploadItem}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={styles.assetName}>{r.name}</span>
+                  <div style={{ ...styles.assetSize, color: r.state === 'failed' ? '#ef4444' : r.state === 'done' ? '#22c55e' : '#888' }}>
+                    {rowStatus(r)} · {formatSize(r.sizeBytes)}
+                  </div>
+                  {(r.state === 'uploading' || r.state === 'processing') && (
+                    <div style={styles.progressTrack}>
+                      <div style={{ ...styles.progressFill, width: `${r.percent}%` }} />
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         )}
 
         <p style={styles.footer}>
-          Assets will appear in your in-world Asset Browser automatically.
+          Uploads appear in the Media Library in your HUD.
         </p>
       </div>
     </div>
@@ -240,6 +296,18 @@ const styles: Record<string, React.CSSProperties> = {
   assetName: {
     fontSize: '0.9rem',
     color: '#e0e0e0',
+    wordBreak: 'break-all',
+  },
+  progressTrack: {
+    height: '4px',
+    background: '#2a2a3e',
+    borderRadius: '2px',
+    marginTop: '0.35rem',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '4px',
+    background: '#6366f1',
   },
   assetSize: {
     fontSize: '0.8rem',
