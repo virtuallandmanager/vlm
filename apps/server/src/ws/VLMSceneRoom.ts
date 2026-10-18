@@ -65,6 +65,13 @@ export class VLMSceneRoom extends Room {
   private draftHolders = new Map<string, string>()
   /** Recent draft timestamps per session, for the 20-per-second limit. */
   private draftTimes = new Map<string, number[]>()
+  /** Per-session count of transform_draft messages, taken on arrival (before the guard's await). */
+  private draftSeq = new Map<string, number>()
+  /** `${sk}\n${sessionId}` -> that session's draft count when it sent transform_end for sk. Older drafts still in
+   * their guard when the end arrived are dropped, so they can't re-take the hold. */
+  private draftEnds = new Map<string, number>()
+  /** `${sk}\n${sessionId}` -> drafts from that session for sk that arrived but haven't finished their handler. */
+  private draftsInFlight = new Map<string, number>()
   private static DRAFT_LIMIT = 20
   private static DRAFT_WINDOW_MS = 1000
 
@@ -111,7 +118,7 @@ export class VLMSceneRoom extends Room {
       console.log(`[VLMSceneRoom] scene_preset_update from ${client.sessionId}`, message.action)
 
       await this.persistPresetUpdate(message, result.target)
-      client.send('scene_preset_update_ack', { action: message.action, id: message.elementData?.sk || message.id })
+      client.send('scene_preset_update_ack', { action: message.action, id: message.elementData?.sk || message.id, sk: message.instanceData?.sk })
 
       // Edits to a non-active preset (e.g. a booking clone during setup) are not broadcast
       if (!result.broadcast) return
@@ -131,45 +138,77 @@ export class VLMSceneRoom extends Room {
     })
 
     // ── Transform drafts (editor-only live preview of an unsaved drag) ────
-    this.guarded('transform_draft', async (client, message) => {
-      if (!isValidDraft(message)) {
-        client.send('vlm_error', { code: 'bad_request', messageType: 'transform_draft' })
-        return
-      }
-      const sk: string = message.sk
-      const holder = this.draftHolders.get(sk)
-      if (holder && holder !== client.sessionId) {
-        client.send('transform_held', { sk, holderName: this.holderName(holder) })
-        return
-      }
-      const now = Date.now()
-      const times = (this.draftTimes.get(client.sessionId) ?? []).filter((t) => now - t < VLMSceneRoom.DRAFT_WINDOW_MS)
-      if (times.length >= VLMSceneRoom.DRAFT_LIMIT) {
+    this.guarded(
+      'transform_draft',
+      async (client, message, _result, seq) => {
+        if (!isValidDraft(message)) {
+          client.send('vlm_error', { code: 'bad_request', messageType: 'transform_draft' })
+          return
+        }
+        const sk: string = message.sk
+        const endKey = `${sk}\n${client.sessionId}`
+        const ended = this.draftEnds.get(endKey)
+        if (ended !== undefined) {
+          if ((seq as number) <= ended) return // sent before this client's end for sk: stale
+          this.draftEnds.delete(endKey)
+        }
+        const holder = this.draftHolders.get(sk)
+        if (holder && holder !== client.sessionId) {
+          client.send('transform_held', { sk, holderName: this.holderName(holder) })
+          return
+        }
+        const now = Date.now()
+        const times = (this.draftTimes.get(client.sessionId) ?? []).filter((t) => now - t < VLMSceneRoom.DRAFT_WINDOW_MS)
+        if (times.length >= VLMSceneRoom.DRAFT_LIMIT) {
+          this.draftTimes.set(client.sessionId, times)
+          return // over the limit: drop silently
+        }
+        times.push(now)
         this.draftTimes.set(client.sessionId, times)
-        return // over the limit: drop silently
-      }
-      times.push(now)
-      this.draftTimes.set(client.sessionId, times)
-      this.draftHolders.set(sk, client.sessionId)
-      await this.relayToEditors(
-        'transform_draft',
-        {
-          element: message.element,
-          sk,
-          position: message.position,
-          rotation: message.rotation,
-          scale: message.scale,
-          holderName: this.holderName(client.sessionId),
-          holderSessionId: client.sessionId,
+        this.draftHolders.set(sk, client.sessionId)
+        await this.relayToEditors(
+          'transform_draft',
+          {
+            element: message.element,
+            sk,
+            position: message.position,
+            rotation: message.rotation,
+            scale: message.scale,
+            holderName: this.holderName(client.sessionId),
+            holderSessionId: client.sessionId,
+          },
+          client,
+        )
+      },
+      {
+        arrive: (client, message) => {
+          const n = (this.draftSeq.get(client.sessionId) ?? 0) + 1
+          this.draftSeq.set(client.sessionId, n)
+          if (typeof message?.sk === 'string') {
+            const key = `${message.sk}\n${client.sessionId}`
+            this.draftsInFlight.set(key, (this.draftsInFlight.get(key) ?? 0) + 1)
+          }
+          return n
         },
-        client,
-      )
-    })
+        done: (client, message) => {
+          if (typeof message?.sk !== 'string') return
+          const key = `${message.sk}\n${client.sessionId}`
+          const left = (this.draftsInFlight.get(key) ?? 1) - 1
+          if (left > 0) this.draftsInFlight.set(key, left)
+          else this.draftsInFlight.delete(key)
+        },
+      },
+    )
 
     // The holder can always end its own draft, even if its scope was revoked or the instance was deleted since.
     this.onMessage('transform_end', async (client: Client, message: any) => {
       try {
         const sk = message?.sk
+        // Recorded when this client holds sk, or has a draft for sk still in its guard (it may not hold it yet)
+        const endKey = `${sk}\n${client.sessionId}`
+        if (typeof sk === 'string' && (this.draftHolders.get(sk) === client.sessionId || this.draftsInFlight.has(endKey))) {
+          this.draftEnds.set(endKey, this.draftSeq.get(client.sessionId) ?? 0)
+        }
         if (typeof sk === 'string' && this.draftHolders.get(sk) === client.sessionId) {
           this.draftHolders.delete(sk)
           await this.relayToEditors('transform_draft_end', { sk, saved: !!message.saved }, client)
@@ -316,6 +355,9 @@ export class VLMSceneRoom extends Room {
     }
 
     this.draftTimes.delete(client.sessionId)
+    this.draftSeq.delete(client.sessionId)
+    for (const key of [...this.draftEnds.keys()]) if (key.endsWith(`\n${client.sessionId}`)) this.draftEnds.delete(key)
+    for (const key of [...this.draftsInFlight.keys()]) if (key.endsWith(`\n${client.sessionId}`)) this.draftsInFlight.delete(key)
     for (const [sk, holder] of [...this.draftHolders]) {
       if (holder !== client.sessionId) continue
       this.draftHolders.delete(sk)
@@ -379,21 +421,29 @@ export class VLMSceneRoom extends Room {
   }
 
   /** Register a handler that runs only if the sender is authorized for this message. */
+  /**
+   * `hooks.arrive` runs synchronously when the message arrives, before the guard's await, and its value reaches the
+   * handler; `hooks.done` runs once the message is finished with (refused, handled or failed).
+   */
   private guarded(
     type: string,
-    handler: (client: Client, message: any, result: Extract<GuardResult, { ok: true }>) => unknown,
+    handler: (client: Client, message: any, result: Extract<GuardResult, { ok: true }>, arrival?: unknown) => unknown,
+    hooks: { arrive?: (client: Client, message: any) => unknown; done?: (client: Client, message: any) => void } = {},
   ) {
     this.onMessage(type, async (client: Client, message: any) => {
+      const arrival = hooks.arrive?.(client, message)
       try {
         const result = await authorizeSceneMessage(await this.getAccess(client), this.sceneId, type, message)
         if (!result.ok) {
           client.send('vlm_error', { code: result.code, messageType: type })
           return
         }
-        await handler(client, message, result)
+        await handler(client, message, result, arrival)
       } catch (err) {
         console.error(`[VLMSceneRoom] ${type} failed:`, err)
         client.send('vlm_error', { code: 'server_error', messageType: type })
+      } finally {
+        hooks.done?.(client, message)
       }
     })
   }

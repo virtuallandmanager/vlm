@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { sceneCollaborators, sceneElementInstances } from '../src/db/schema.js'
+import { sceneCollaborators, sceneElementInstances, sceneElements } from '../src/db/schema.js'
+import { createVenue, createBooking } from '../src/venues/service.js'
 import { resetDb } from './helpers/db.js'
-import { createUser, createScene, createElement, createInstance, tokenFor } from './helpers/factories.js'
+import { createUser, createScene, createElement, createInstance, tokenFor, randomWallet } from './helpers/factories.js'
 import { startGameServer, joinScene, serverRoom } from './helpers/game-server.js'
 
 const draft = (sk: string, x = 5) => ({
@@ -162,6 +163,8 @@ describe('transform draft relay', () => {
     })
     const upd = await s.visitor.waitFor('scene_preset_update')
     expect(upd.instanceData.position).toEqual({ x: 5, y: 2, z: 3 })
+    // The ack names the instance, so the client can match it to its pending save
+    expect(await s.owner.waitFor('scene_preset_update_ack')).toMatchObject({ action: 'update', sk: s.inst.id })
     s.owner.room.send('transform_end', { sk: s.inst.id, saved: true })
     expect(await s.editor.waitFor('transform_draft_end')).toEqual({ sk: s.inst.id, saved: true })
     expect((await row(s.inst.id)).position).toEqual({ x: 5, y: 2, z: 3 })
@@ -183,5 +186,76 @@ describe('transform draft relay', () => {
     for (let i = 0; i < 5; i++) s.owner.room.send('transform_draft', draft(s.inst.id, 40 + i))
     await settle(500)
     expect(await row(s.inst.id)).toEqual(before)
+  })
+
+  it('a draft still in its guard when the end arrives does not re-take the hold', async () => {
+    const s = await setup()
+    const srv = serverRoom(s.owner.room.roomId)
+    const real = srv.getAccess.bind(srv)
+    let slowed = false
+    srv.getAccess = async (client: any) => {
+      if (!slowed && client.sessionId === s.owner.room.sessionId) {
+        slowed = true // only the draft's guard lookup is slowed
+        await new Promise((r) => setTimeout(r, 300))
+      }
+      return real(client)
+    }
+    s.owner.room.send('transform_draft', draft(s.inst.id))
+    s.owner.room.send('transform_end', { sk: s.inst.id, saved: false })
+    await settle(600)
+    expect(srv.draftHolders.has(s.inst.id)).toBe(false)
+    await s.editor.expectNone('transform_draft', 10)
+    s.editor.room.send('transform_draft', draft(s.inst.id, 7))
+    await s.owner.waitFor('transform_draft')
+    expect(count(s.editor, 'transform_held')).toBe(0)
+  })
+
+  it('a later draft after an end takes the hold again', async () => {
+    const s = await setup()
+    s.owner.room.send('transform_draft', draft(s.inst.id))
+    await s.editor.waitFor('transform_draft')
+    s.owner.room.send('transform_end', { sk: s.inst.id, saved: false })
+    await s.editor.waitFor('transform_draft_end')
+    s.owner.room.send('transform_draft', draft(s.inst.id, 8))
+    expect((await s.editor.waitFor('transform_draft')).position.x).toBe(8)
+    expect(serverRoom(s.owner.room.roomId).draftHolders.get(s.inst.id)).toBe(s.owner.room.sessionId)
+  })
+
+  it('a venue renter (scene pass) never receives drafts and cannot send one', async () => {
+    const admin = await createUser({ role: 'admin', name: 'Ada' })
+    const { scene, preset } = await createScene(admin)
+    const screen = await createElement(preset.id)
+    const inst = await createInstance(screen.id)
+    const venue = await createVenue({ sceneId: scene.id, name: 'Aurora', slug: `aurora-${crypto.randomUUID()}`, rentableElementIds: [screen.id] })
+    const renterWallet = randomWallet()
+    const renter = await createUser({ wallet: renterWallet })
+    const startsAt = new Date(Date.now() + 24 * 3600_000)
+    const { booking } = await createBooking({
+      venueId: venue.id, renterWallet, title: 'Set', startsAt, endsAt: new Date(startsAt.getTime() + 2 * 3600_000), createdByUserId: admin.id,
+    })
+    const clone = (await db.select().from(sceneElements).where(eq(sceneElements.presetId, booking.bookingPresetId!))).find((c) => c.clonedFromId === screen.id)!
+    const cloneInst = (await db.select().from(sceneElementInstances).where(eq(sceneElementInstances.elementId, clone.id)))[0]
+    const editorU = await createUser()
+    await db.insert(sceneCollaborators).values({ sceneId: scene.id, userId: editorU.id, role: 'editor' })
+
+    const owner = await joinScene(gs.url, scene.id, tokenFor(admin))
+    const editor = await joinScene(gs.url, scene.id, tokenFor(editorU))
+    const r = await joinScene(gs.url, scene.id, tokenFor(renter, { kind: 'scene', sceneId: scene.id, orgId: null }))
+    for (const c of [owner, editor, r]) await c.waitFor('scene_preset_update') // init
+    await r.waitFor('venue_access') // the renter really holds a grant
+    expect(serverRoom(r.room.roomId).clients.find((c: any) => c.sessionId === r.room.sessionId).auth.userId).toBe(renter.id)
+
+    owner.room.send('transform_draft', draft(inst.id))
+    await editor.waitFor('transform_draft')
+    await r.expectNone('transform_draft', 200)
+
+    expect(cloneInst).toBeTruthy() // the renter's own booking copy
+    for (const sk of [inst.id, cloneInst.id]) {
+      r.room.send('transform_draft', draft(sk, 9))
+      expect(await r.waitFor('vlm_error')).toEqual({ code: 'forbidden', messageType: 'transform_draft' })
+    }
+    await owner.expectNone('transform_draft', 200)
+    await settle(100)
+    expect(count(editor, 'transform_draft')).toBe(0) // the owner's one was taken by waitFor; nothing from the renter
   })
 })
