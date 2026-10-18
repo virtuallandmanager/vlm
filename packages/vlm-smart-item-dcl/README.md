@@ -70,4 +70,4 @@ editors or viewers by wallet address.
 
 ## Requirements
 
-`@dcl/sdk` 7.15 or later (Creator Hub's Script component needs 7.15+).
+`@dcl/sdk` 7.23 or later (in-world transform tools use the Shift key, added in 7.23).

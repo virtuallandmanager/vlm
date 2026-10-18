@@ -20,7 +20,7 @@ Track your own events with `vlm.track('bought_ticket', { tier: 'vip' })`.
 npm install vlm-adapter-dcl vlm-core vlm-client vlm-shared
 ```
 
-**Peer dependency:** `@dcl/sdk ~7.7.9`
+**Peer dependency:** `@dcl/sdk >=7.23.0`
 
 ## Basic Usage
 
