@@ -3,7 +3,9 @@ title: REST API Reference
 description: Complete list of VLM API endpoints
 ---
 
-All endpoints are prefixed with `/api`. Authenticated endpoints require `Authorization: Bearer <token>`.
+All endpoints are prefixed with `/api` except the platform hooks (`/hook/*`). Authenticated endpoints require `Authorization: Bearer <token>`, where the token is an access token or an [API key](/api/authentication#api-keys).
+
+Requests for another account's scenes, deployments, events, giveaways, streams or wallets are refused with `403` or `404`.
 
 ## Auth
 
@@ -50,6 +52,8 @@ All endpoints are prefixed with `/api`. Authenticated endpoints require `Authori
 | POST | `/deploy/hyperfy/:id/destroy` | Yes | Destroy Hyperfy instance |
 | GET | `/deploy/hyperfy/:id/status` | Yes | Instance live status |
 
+Deploying needs full access to the scene (host or co-host). A deploy signs only with one of your own deployment wallets: a `walletId` that belongs to another account returns `404`.
+
 ## Streaming
 
 | Method | Path | Auth | Description |
@@ -78,6 +82,22 @@ All endpoints are prefixed with `/api`. Authenticated endpoints require `Authori
 | POST | `/hook/register` | No | Register callback URL |
 | GET | `/hook/config` | No | Poll element config |
 | GET | `/hook/scene` | No | Poll full scene config |
+
+Hooks return the same scene content a visitor sees in-world. Rules for `callbackUrl`:
+
+- It must resolve to a public address. Loopback, private and link-local addresses are refused with `400 callback_url_not_allowed`, at registration and again on each callback.
+- A scene can hold at most 20 hooks; one more returns `429 too_many_callbacks`.
+- Stream keys are never sent to hooks.
+
+Hooks are listed with `GET /api/hooks` and removed with `DELETE /api/hooks/:hookId` by anyone with full access to the scene.
+
+## API Keys
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/keys` | Yes | Create a key (returned once) |
+| GET | `/keys` | Yes | List your keys |
+| DELETE | `/keys/:keyId` | Yes | Delete a key |
 
 ## Companion Upload
 

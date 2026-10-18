@@ -64,6 +64,16 @@ describe('/api/venues', () => {
     expect(bad.statusCode).toBe(400)
   })
 
+  it('an unlisted venue is 404 to strangers and visible to its scene; a listed one to anyone', async () => {
+    const s = await venueSetup()
+    const stranger = await createUser()
+    const get = (u: any) => app.inject({ method: 'GET', url: `/api/venues/${s.venue.id}`, headers: as(u) })
+    expect((await get(stranger)).statusCode).toBe(404)
+    expect((await get(s.admin)).statusCode).toBe(200)
+    await app.inject({ method: 'PATCH', url: `/api/venues/${s.venue.id}`, headers: as(s.admin), payload: { isListed: true } })
+    expect((await get(stranger)).statusCode).toBe(200)
+  })
+
   it('a creator cannot turn someone else’s scene into a venue', async () => {
     const s = await venueSetup()
     const creator = await createUser()

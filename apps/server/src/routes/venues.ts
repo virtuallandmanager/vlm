@@ -84,7 +84,10 @@ export default async function venueRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { venueId: string } }>('/api/venues/:venueId', async (request, reply) => {
     const venue = await db.query.venues.findFirst({ where: eq(venues.id, request.params.venueId) })
-    if (!venue) return reply.status(404).send({ error: 'Venue not found' })
+    // Unlisted venues are visible only to people with some access to the venue's scene.
+    if (!venue || (!venue.isListed && (await getSceneAccess(actorOf(request), venue.sceneId)).level === 'none')) {
+      return reply.status(404).send({ error: 'Venue not found' })
+    }
     return reply.send({ venue })
   })
 

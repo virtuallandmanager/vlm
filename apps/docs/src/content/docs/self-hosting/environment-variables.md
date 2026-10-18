@@ -51,6 +51,12 @@ description: Complete reference for all VLM environment variables
 | `HLS_BASE_URL` | Playback base URL, e.g. `https://live.vlm.gg/streams` (default: `http://localhost:8000/streams`) |
 | `STREAMING_WEBHOOK_KEY` | Shared secret with the media server (`VLM_WEBHOOK_KEY` there) for publish checks and live/offline webhooks. Required in cloud mode; when unset, self-hosted servers accept unauthenticated media-server calls |
 
+## Platform Hooks
+
+| Variable | Description |
+|----------|-------------|
+| `ALLOW_PRIVATE_CALLBACK_URLS` | `true` lets platform hooks call private and loopback addresses. Local development and tests only; leave unset in production |
+
 ## Hyperfy Provisioning
 
 | Variable | Description |

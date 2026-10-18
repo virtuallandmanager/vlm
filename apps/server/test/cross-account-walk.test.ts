@@ -1,0 +1,270 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { db } from '../src/db/connection.js'
+import {
+  users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
+  sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
+  giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys,
+} from '../src/db/schema.js'
+import { config } from '../src/config.js'
+import { createVenue, createBooking, addGrant } from '../src/venues/service.js'
+import { resetDb } from './helpers/db.js'
+import { testApp, createUser, createScene, createElement, createInstance, tokenFor, randomWallet, type TestUser } from './helpers/factories.js'
+import { createAnalyticsScene } from './helpers/analytics.js'
+import { createSetup } from './helpers/setups.js'
+
+// A refused route must never reach the catalyst.
+vi.mock('../src/services/dcl/deployer.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/services/dcl/deployer.js')>('../src/services/dcl/deployer.js')
+  return { ...actual, executeDCLDeploy: vi.fn(async () => {}) }
+})
+
+const H = 3600_000
+const PUBLIC_TARGET = { parcels: ['0,0'], contentServer: 'https://1.1.1.1' }
+
+/** Everything below is B's, except `aScene`/`aEvent`, which A owns and uses to reach for B's ids in a body. */
+async function fixtures() {
+  const a = await createUser({ wallet: randomWallet() })
+  const b = await createUser({ wallet: randomWallet() })
+  const collaborator = await createUser()
+  const { scene, preset } = await createScene(b, 'B scene')
+  const element = await createElement(preset.id)
+  const instance = await createInstance(element.id)
+  await db.insert(sceneCollaborators).values({ sceneId: scene.id, userId: collaborator.id, role: 'editor' })
+  const roleWallet = randomWallet()
+  await db.insert(sceneRoles).values({ sceneId: scene.id, walletAddress: roleWallet, role: 'editor', grantedByUserId: b.id })
+  const [wallet] = await db.insert(deploymentWallets).values({ userId: b.id, platform: 'decentraland', walletAddress: '0xb', encryptedPrivateKey: 'not-decryptable' }).returning()
+  const [dcl] = await db.insert(sceneDeployments).values({ sceneId: scene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET, deployedBy: b.id }).returning()
+  const [hyperfy] = await db.insert(sceneDeployments).values({
+    sceneId: scene.id, platform: 'hyperfy', deploymentType: 'instance', status: 'deployed',
+    target: { instanceUrl: 'https://h.example', adminCode: 'sekret' }, deployedBy: b.id,
+  }).returning()
+  const [stream] = await db.insert(streamingServers).values({
+    ownerId: b.id, name: 'B stream', status: 'ready', streamKey: 'b-key', playbackId: 'b-pb', sceneId: scene.id,
+    rtmpUrl: 'rtmp://ingest.vlm.gg/live/b-key', hlsPlaylistUrl: 'https://live.vlm.gg/streams/b-pb/playlist.m3u8',
+  }).returning()
+  const [event] = await db.insert(events).values({ ownerId: b.id, name: 'B event' }).returning()
+  const [giveaway] = await db.insert(giveaways).values({ ownerId: b.id, name: 'B giveaway' }).returning()
+  const [item] = await db.insert(giveawayItems).values({ giveawayId: giveaway.id, name: 'B item' }).returning()
+  await db.insert(eventSceneLinks).values({ eventId: event.id, sceneId: scene.id })
+  await db.insert(eventGiveawayLinks).values({ eventId: event.id, giveawayId: giveaway.id })
+  const [asset] = await db.insert(assetLibraryItems).values({ name: 'B private', storageKey: 'assets/b/x.glb', isPublic: false, uploadedBy: b.id }).returning()
+  const [media] = await db.insert(mediaAssets).values({ ownerId: b.id, filename: 'b.png', contentType: 'image/png', sizeBytes: 1, storageKey: 'media/b/b.png', publicUrl: 'https://cdn.example/b.png' }).returning()
+  const [libraryItem] = await db.insert(sceneLibrary).values({ sceneId: scene.id, mediaAssetId: media.id, addedBy: b.id }).returning()
+  const [org] = await db.insert(organizations).values({ name: 'B org', slug: `b-org-${b.id.slice(0, 8)}`, billingOwnerId: b.id }).returning()
+  await db.insert(orgMembers).values({ orgId: org.id, userId: b.id, role: 'owner' })
+  const venue = await createVenue({ sceneId: scene.id, name: 'B venue', slug: `b-venue-${b.id.slice(0, 8)}` })
+  const startsAt = new Date(Date.now() + 24 * H)
+  const { booking } = await createBooking({
+    venueId: venue.id, renterWallet: randomWallet(), title: 'B night',
+    startsAt: startsAt.toISOString(), endsAt: new Date(startsAt.getTime() + 2 * H).toISOString(), createdByUserId: b.id,
+  })
+  const grant = await addGrant({ bookingId: booking.id, walletAddress: randomWallet(), role: 'vj', grantedByUserId: b.id })
+  await db.insert(uploadTokens).values({ code: 'bcode1', userId: b.id, sceneId: scene.id, expiresAt: new Date(Date.now() + H) })
+  const [hook] = await db.insert(platformCallbacks).values({ sceneId: scene.id, platform: 'secondlife', callbackUrl: 'https://1.1.1.1/cb' }).returning()
+  const location = await createAnalyticsScene({ claimedByUserId: b.id, claimStatus: 'active' })
+  await createSetup(location.id, scene.id)
+  const [bKey] = await db.insert(apiKeys).values({ userId: b.id, name: 'B key', keyHash: 'b-hash', keyPrefix: 'vlm_k1_b' }).returning()
+
+  const aScene = (await createScene(a, 'A scene')).scene
+  const [aEvent] = await db.insert(events).values({ ownerId: a.id, name: 'A event' }).returning()
+  return {
+    a, b, collaborator, scene, preset, element, instance, roleWallet, wallet, dcl, hyperfy, stream, event, giveaway, item,
+    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, aScene, aEvent,
+  }
+}
+type F = Awaited<ReturnType<typeof fixtures>>
+
+type Case = { route: string; url: (f: F) => string; body?: (f: F) => Record<string, unknown> }
+
+// One entry per collected route with a `:param` (B's id in it), plus routes that take B's id in the body.
+// Some routes appear twice: once on B's resource, once on A's own resource with B's id in the body.
+const CASES: Case[] = [
+  // scenes
+  { route: 'GET /api/scenes/:sceneId', url: (f) => `/api/scenes/${f.scene.id}` },
+  { route: 'PUT /api/scenes/:sceneId', url: (f) => `/api/scenes/${f.scene.id}`, body: () => ({ name: 'pwned' }) },
+  { route: 'DELETE /api/scenes/:sceneId', url: (f) => `/api/scenes/${f.scene.id}` },
+  { route: 'POST /api/scenes/:sceneId/presets', url: (f) => `/api/scenes/${f.scene.id}/presets`, body: () => ({ name: 'pwned' }) },
+  { route: 'POST /api/presets/:presetId/elements', url: (f) => `/api/presets/${f.preset.id}/elements`, body: () => ({ type: 'image', name: 'pwned' }) },
+  { route: 'PUT /api/elements/:elementId', url: (f) => `/api/elements/${f.element.id}`, body: () => ({ name: 'pwned' }) },
+  { route: 'DELETE /api/elements/:elementId', url: (f) => `/api/elements/${f.element.id}` },
+  { route: 'POST /api/elements/:elementId/instances', url: (f) => `/api/elements/${f.element.id}/instances`, body: () => ({ position: { x: 0, y: 0, z: 0 } }) },
+  { route: 'PUT /api/instances/:instanceId', url: (f) => `/api/instances/${f.instance.id}`, body: () => ({ enabled: false }) },
+  { route: 'DELETE /api/instances/:instanceId', url: (f) => `/api/instances/${f.instance.id}` },
+  { route: 'GET /api/scenes/:sceneId/collaborators', url: (f) => `/api/scenes/${f.scene.id}/collaborators` },
+  { route: 'POST /api/scenes/:sceneId/collaborators', url: (f) => `/api/scenes/${f.scene.id}/collaborators`, body: (f) => ({ email: f.a.email, role: 'editor' }) },
+  { route: 'PUT /api/scenes/:sceneId/collaborators/:userId', url: (f) => `/api/scenes/${f.scene.id}/collaborators/${f.collaborator.id}`, body: () => ({ role: 'viewer' }) },
+  { route: 'DELETE /api/scenes/:sceneId/collaborators/:userId', url: (f) => `/api/scenes/${f.scene.id}/collaborators/${f.collaborator.id}` },
+  { route: 'GET /api/scenes/:sceneId/roles', url: (f) => `/api/scenes/${f.scene.id}/roles` },
+  { route: 'POST /api/scenes/:sceneId/roles', url: (f) => `/api/scenes/${f.scene.id}/roles`, body: (f) => ({ wallet: f.a.wallet, role: 'cohost' }) },
+  { route: 'DELETE /api/scenes/:sceneId/roles/:wallet', url: (f) => `/api/scenes/${f.scene.id}/roles/${f.roleWallet}` },
+  { route: 'POST /api/scenes/:sceneId/transfer-host', url: (f) => `/api/scenes/${f.scene.id}/transfer-host`, body: (f) => ({ wallet: f.a.wallet }) },
+  // scene library
+  { route: 'GET /api/scenes/:sceneId/library', url: (f) => `/api/scenes/${f.scene.id}/library` },
+  { route: 'POST /api/scenes/:sceneId/library', url: (f) => `/api/scenes/${f.scene.id}/library`, body: (f) => ({ mediaAssetId: f.media.id }) },
+  { route: 'POST /api/scenes/:sceneId/library', url: (f) => `/api/scenes/${f.aScene.id}/library`, body: (f) => ({ mediaAssetId: f.media.id }) },
+  { route: 'DELETE /api/scenes/:sceneId/library/:id', url: (f) => `/api/scenes/${f.scene.id}/library/${f.libraryItem.id}` },
+  { route: 'POST /api/scenes/:sceneId/library/upload', url: (f) => `/api/scenes/${f.scene.id}/library/upload`, body: () => ({ filename: 'x.png', contentType: 'image/png', data: 'iVBORw0KGgo=' }) },
+  // deploy
+  { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.scene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET }) },
+  { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.aScene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET, walletId: f.wallet.id }) },
+  { route: 'POST /api/deploy/hyperfy/provision', url: () => '/api/deploy/hyperfy/provision', body: (f) => ({ sceneId: f.scene.id, name: 'pwned' }) },
+  { route: 'GET /api/deploy/:id', url: (f) => `/api/deploy/${f.dcl.id}` },
+  { route: 'GET /api/deploy/scene/:sceneId', url: (f) => `/api/deploy/scene/${f.scene.id}` },
+  { route: 'POST /api/deploy/:id/cancel', url: (f) => `/api/deploy/${f.dcl.id}/cancel` },
+  { route: 'POST /api/deploy/:id/redeploy', url: (f) => `/api/deploy/${f.dcl.id}/redeploy` },
+  { route: 'DELETE /api/deploy/wallets/:id', url: (f) => `/api/deploy/wallets/${f.wallet.id}` },
+  { route: 'POST /api/deploy/hyperfy/:id/destroy', url: (f) => `/api/deploy/hyperfy/${f.hyperfy.id}/destroy` },
+  { route: 'GET /api/deploy/hyperfy/:id/status', url: (f) => `/api/deploy/hyperfy/${f.hyperfy.id}/status` },
+  { route: 'GET /api/deploy/hyperfy/:id/logs', url: (f) => `/api/deploy/hyperfy/${f.hyperfy.id}/logs` },
+  // events and command center
+  { route: 'GET /api/events/:eventId', url: (f) => `/api/events/${f.event.id}` },
+  { route: 'PUT /api/events/:eventId', url: (f) => `/api/events/${f.event.id}`, body: () => ({ name: 'pwned' }) },
+  { route: 'DELETE /api/events/:eventId', url: (f) => `/api/events/${f.event.id}` },
+  { route: 'POST /api/events/:eventId/link-scene', url: (f) => `/api/events/${f.event.id}/link-scene`, body: (f) => ({ sceneId: f.aScene.id }) },
+  { route: 'POST /api/events/:eventId/link-scene', url: (f) => `/api/events/${f.aEvent.id}/link-scene`, body: (f) => ({ sceneId: f.scene.id }) },
+  { route: 'POST /api/events/:eventId/link-giveaway', url: (f) => `/api/events/${f.event.id}/link-giveaway`, body: (f) => ({ giveawayId: f.giveaway.id }) },
+  { route: 'POST /api/events/:eventId/link-giveaway', url: (f) => `/api/events/${f.aEvent.id}/link-giveaway`, body: (f) => ({ giveawayId: f.giveaway.id }) },
+  { route: 'DELETE /api/events/:eventId/unlink-scene/:sceneId', url: (f) => `/api/events/${f.event.id}/unlink-scene/${f.scene.id}` },
+  { route: 'DELETE /api/events/:eventId/unlink-giveaway/:giveawayId', url: (f) => `/api/events/${f.event.id}/unlink-giveaway/${f.giveaway.id}` },
+  { route: 'GET /api/command-center/:eventId/status', url: (f) => `/api/command-center/${f.event.id}/status` },
+  { route: 'POST /api/command-center/:eventId/broadcast', url: (f) => `/api/command-center/${f.event.id}/broadcast`, body: () => ({ action: { type: 'pwned' } }) },
+  // streaming
+  { route: 'POST /api/streaming/provision', url: () => '/api/streaming/provision', body: (f) => ({ name: 'pwned', sceneId: f.scene.id }) },
+  { route: 'GET /api/streaming/:id', url: (f) => `/api/streaming/${f.stream.id}` },
+  { route: 'DELETE /api/streaming/:id', url: (f) => `/api/streaming/${f.stream.id}` },
+  { route: 'GET /api/streaming/:id/sessions', url: (f) => `/api/streaming/${f.stream.id}/sessions` },
+  // giveaways
+  { route: 'GET /api/giveaways/:giveawayId', url: (f) => `/api/giveaways/${f.giveaway.id}` },
+  { route: 'PUT /api/giveaways/:giveawayId', url: (f) => `/api/giveaways/${f.giveaway.id}`, body: () => ({ name: 'pwned' }) },
+  { route: 'DELETE /api/giveaways/:giveawayId', url: (f) => `/api/giveaways/${f.giveaway.id}` },
+  { route: 'POST /api/giveaways/:giveawayId/items', url: (f) => `/api/giveaways/${f.giveaway.id}/items`, body: () => ({ name: 'pwned' }) },
+  { route: 'DELETE /api/giveaways/:giveawayId/items/:itemId', url: (f) => `/api/giveaways/${f.giveaway.id}/items/${f.item.id}` },
+  { route: 'GET /api/giveaways/:giveawayId/claims', url: (f) => `/api/giveaways/${f.giveaway.id}/claims` },
+  // uploads, assets, media, hooks
+  { route: 'POST /api/upload-tokens', url: () => '/api/upload-tokens', body: (f) => ({ sceneId: f.scene.id }) },
+  { route: 'GET /api/assets/:id', url: (f) => `/api/assets/${f.asset.id}` },
+  { route: 'PUT /api/assets/:id', url: (f) => `/api/assets/${f.asset.id}`, body: () => ({ isPublic: true }) },
+  { route: 'DELETE /api/assets/:id', url: (f) => `/api/assets/${f.asset.id}` },
+  { route: 'DELETE /api/media/:assetId', url: (f) => `/api/media/${f.media.id}` },
+  { route: 'DELETE /api/hooks/:hookId', url: (f) => `/api/hooks/${f.hook.id}` },
+  { route: 'DELETE /api/keys/:keyId', url: (f) => `/api/keys/${f.bKey.id}` },
+  // analytics
+  { route: 'GET /api/analytics/locations/:id/summary', url: (f) => `/api/analytics/locations/${f.location.id}/summary` },
+  { route: 'GET /api/analytics/locations/:id/timeseries', url: (f) => `/api/analytics/locations/${f.location.id}/timeseries` },
+  { route: 'GET /api/analytics/locations/:id/live', url: (f) => `/api/analytics/locations/${f.location.id}/live` },
+  { route: 'GET /api/analytics/locations/:id/heatmap', url: (f) => `/api/analytics/locations/${f.location.id}/heatmap` },
+  { route: 'GET /api/analytics/locations/:id/sessions', url: (f) => `/api/analytics/locations/${f.location.id}/sessions` },
+  { route: 'PATCH /api/analytics/locations/:id', url: (f) => `/api/analytics/locations/${f.location.id}`, body: () => ({ walletVisibility: true }) },
+  // orgs
+  { route: 'PUT /api/orgs/:orgId', url: (f) => `/api/orgs/${f.org.id}`, body: () => ({ name: 'pwned' }) },
+  { route: 'GET /api/orgs/:orgId/members', url: (f) => `/api/orgs/${f.org.id}/members` },
+  { route: 'POST /api/orgs/:orgId/invites', url: (f) => `/api/orgs/${f.org.id}/invites`, body: (f) => ({ email: f.a.email }) },
+  { route: 'PUT /api/orgs/:orgId/active', url: (f) => `/api/orgs/${f.org.id}/active` },
+  { route: 'DELETE /api/orgs/:orgId/members/:userId', url: (f) => `/api/orgs/${f.org.id}/members/${f.b.id}` },
+  // venues
+  { route: 'POST /api/venues', url: () => '/api/venues', body: (f) => ({ sceneId: f.scene.id, name: 'pwned', slug: 'pwned' }) },
+  { route: 'GET /api/venues/:venueId', url: (f) => `/api/venues/${f.venue.id}` },
+  { route: 'PATCH /api/venues/:venueId', url: (f) => `/api/venues/${f.venue.id}`, body: () => ({ name: 'pwned' }) },
+  { route: 'POST /api/venues/:venueId/bookings', url: (f) => `/api/venues/${f.venue.id}/bookings`, body: (f) => ({ renterWallet: f.a.wallet, title: 'pwned', startsAt: new Date(Date.now() + 72 * H).toISOString(), endsAt: new Date(Date.now() + 74 * H).toISOString() }) },
+  { route: 'POST /api/venues/bookings/:bookingId/cancel', url: (f) => `/api/venues/bookings/${f.booking.id}/cancel` },
+  { route: 'GET /api/venues/bookings/:bookingId/grants', url: (f) => `/api/venues/bookings/${f.booking.id}/grants` },
+  { route: 'POST /api/venues/bookings/:bookingId/grants', url: (f) => `/api/venues/bookings/${f.booking.id}/grants`, body: (f) => ({ walletAddress: f.a.wallet, role: 'vj' }) },
+  { route: 'PATCH /api/venues/grants/:grantId', url: (f) => `/api/venues/grants/${f.grant.id}`, body: () => ({ role: 'lighting' }) },
+  { route: 'DELETE /api/venues/grants/:grantId', url: (f) => `/api/venues/grants/${f.grant.id}` },
+  // admin (A is a creator)
+  { route: 'GET /api/admin/users/:userId', url: (f) => `/api/admin/users/${f.b.id}` },
+  { route: 'PUT /api/admin/users/:userId/role', url: (f) => `/api/admin/users/${f.b.id}/role`, body: () => ({ role: 'viewer' }) },
+  { route: 'DELETE /api/admin/users/:userId', url: (f) => `/api/admin/users/${f.b.id}` },
+  { route: 'DELETE /api/admin/orgs/:orgId', url: (f) => `/api/admin/orgs/${f.org.id}` },
+]
+
+// Collected routes with a `:param` (or a body id) that are not another account's resource, each with its reason.
+const NOT_CROSS_ACCOUNT: Record<string, string> = {
+  'GET /api/upload/:code': 'the upload code is the auth (companion phone upload)',
+  'POST /api/upload/:code': 'the upload code is the auth (companion phone upload)',
+  'POST /api/orgs/accept-invite': 'invite token only; the token names the org',
+  'GET /api/auth/google/callback': 'OAuth callback; no bearer',
+  'GET /api/auth/discord/callback': 'OAuth callback; no bearer',
+  'POST /hook/register': 'public by owner decision: scene content is public in-world (address checks and the 20-per-scene cap guard it)',
+  'GET /hook/config': 'public by owner decision: scene content is public in-world',
+  'GET /hook/scene': 'public by owner decision: scene content is public in-world',
+}
+
+// Every table holding B's fixtures; a refused request must leave all of them as they were.
+const TABLES = [
+  users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
+  sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
+  giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups,
+]
+async function snapshot(f: F) {
+  const all = await Promise.all(TABLES.map((t) => db.select().from(t as any)))
+  // API keys: only B's (A's own key gets lastUsedAt stamped on every request).
+  const keys = (await db.select().from(apiKeys)).filter((k) => k.userId === f.b.id)
+  return [...all, keys].map((rows) => rows.map((r) => JSON.stringify(r)).sort())
+}
+
+const paramRoutes = (app: any) =>
+  ((app.registeredRoutes as Array<{ method: string; url: string }>) ?? [])
+    .map((r) => `${r.method} ${r.url}`)
+    .filter((k) => /\/:/.test(k))
+
+describe('cross-account route walk', () => {
+  let app: Awaited<ReturnType<typeof testApp>>
+  let f: F
+  const prevStreaming = config.streamingEnabled
+  beforeEach(async () => {
+    await resetDb()
+    ;(config as any).streamingEnabled = true
+    app = await testApp()
+    f = await fixtures()
+  })
+  afterEach(async () => {
+    ;(config as any).streamingEnabled = prevStreaming
+    await app.close()
+  })
+
+  async function walk(bearer: string) {
+    const offenders: string[] = []
+    for (const c of CASES) {
+      const before = await snapshot(f)
+      const [method] = c.route.split(' ')
+      const res = await app.inject({ method: method as any, url: c.url(f), headers: { authorization: `Bearer ${bearer}` }, payload: c.body?.(f) })
+      // Fastify's own 404 means the URL matched no route: the case is broken, not refused.
+      if (res.statusCode === 404 && /^Route .* not found$/.test(res.json().message ?? '')) offenders.push(`${c.route} (${c.url(f)}) matched no route`)
+      else if (![401, 403, 404].includes(res.statusCode)) offenders.push(`${c.route} (${c.url(f)}) → ${res.statusCode} ${res.body.slice(0, 120)}`)
+      else if (JSON.stringify(await snapshot(f)) !== JSON.stringify(before)) offenders.push(`${c.route} (${c.url(f)}) → ${res.statusCode} but changed B's data`)
+    }
+    return offenders
+  }
+
+  it("A's account token cannot read or change any of B's resources", async () => {
+    expect(await walk(tokenFor(f.a))).toEqual([])
+  })
+
+  it("an API key for A cannot read or change any of B's resources", async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/keys', headers: { authorization: `Bearer ${tokenFor(f.a)}` }, payload: { name: 'A key' } })
+    expect(res.statusCode).toBe(201)
+    expect(await walk(res.json().key)).toEqual([])
+  })
+
+  it("B's own token reads every GET case (the fixtures are real, so A's refusals are not misses)", async () => {
+    const failed: string[] = []
+    for (const c of CASES.filter((c) => c.route.startsWith('GET ') && !c.route.includes('/hyperfy/') && !c.route.includes('/admin/'))) {
+      const res = await app.inject({ method: 'GET', url: c.url(f), headers: { authorization: `Bearer ${tokenFor(f.b)}` } })
+      if (res.statusCode !== 200) failed.push(`${c.route} → ${res.statusCode}`)
+    }
+    expect(failed).toEqual([])
+  })
+
+  it('every collected route with a :param is walked or listed in NOT_CROSS_ACCOUNT', async () => {
+    const covered = new Set([...CASES.map((c) => c.route), ...Object.keys(NOT_CROSS_ACCOUNT)])
+    expect(paramRoutes(app).filter((k) => !covered.has(k))).toEqual([])
+  })
+
+  it('every CASES and NOT_CROSS_ACCOUNT entry is a registered route (no stale entries)', async () => {
+    const keys = new Set(((app as any).registeredRoutes as Array<{ method: string; url: string }>).map((r) => `${r.method} ${r.url}`))
+    expect([...CASES.map((c) => c.route), ...Object.keys(NOT_CROSS_ACCOUNT)].filter((k) => !keys.has(k))).toEqual([])
+  })
+})

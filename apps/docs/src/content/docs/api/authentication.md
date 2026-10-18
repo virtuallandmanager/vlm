@@ -66,3 +66,19 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 Access tokens expire after 15 minutes. Use the refresh endpoint to get new ones.
+
+## API Keys
+
+For scripts and servers, create an API key while signed in:
+
+```http
+POST /api/keys
+Authorization: Bearer <access token>
+Content-Type: application/json
+
+{ "name": "my script", "expiresAt": "2027-01-01T00:00:00Z" }
+```
+
+The response contains the key (`vlm_k1_…`) once; only its hash is stored. Send it like a token: `Authorization: Bearer vlm_k1_…`.
+
+A key acts with its account's full access: it can do anything the account can, and there are no narrower scopes. A key cannot create other keys: `POST /api/keys` with a key returns `403`. Delete a key with `DELETE /api/keys/:keyId`.
