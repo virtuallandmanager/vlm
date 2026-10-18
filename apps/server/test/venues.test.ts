@@ -221,6 +221,31 @@ describe('/api/venues', () => {
     ).toBe(400)
   })
 
+  it('grant holders can only hand out scopes they hold, never crew (unless host), and cannot edit their own grant', async () => {
+    const s = await venueSetup()
+    const hostWallet = randomWallet()
+    const host = await createUser({ wallet: hostWallet })
+    const { booking } = (await book(s, hostWallet)).json()
+    const crewWallet = randomWallet()
+    const crew = await createUser({ wallet: crewWallet })
+    const url = `/api/venues/bookings/${booking.id}/grants`
+    const made = await app.inject({ method: 'POST', url, headers: as(host), payload: { walletAddress: crewWallet, role: 'vj', scopes: ['screens', 'crew'] } })
+    expect(made.statusCode).toBe(201)
+    const own = made.json().grant
+    const post = (scopes: string[], role = 'vj') =>
+      app.inject({ method: 'POST', url, headers: as(crew), payload: { walletAddress: randomWallet(), role, scopes } })
+    expect((await post(['presets'])).statusCode).toBe(403)
+    const crewGrant = await post(['crew'])
+    expect(crewGrant.statusCode).toBe(403)
+    expect(crewGrant.json()).toEqual({ error: 'forbidden' })
+    expect((await app.inject({ method: 'POST', url, headers: as(crew), payload: { walletAddress: randomWallet(), role: 'cohost' } })).statusCode).toBe(403)
+    expect((await post(['screens'])).statusCode).toBe(201)
+    const patchOwn = await app.inject({ method: 'PATCH', url: `/api/venues/grants/${own.id}`, headers: as(crew), payload: { scopes: ['screens'] } })
+    expect(patchOwn.statusCode).toBe(403)
+    expect(patchOwn.json()).toEqual({ error: 'forbidden' })
+    expect((await app.inject({ method: 'POST', url, headers: as(host), payload: { walletAddress: randomWallet(), role: 'cohost' } })).statusCode).toBe(201)
+  })
+
   it('revoke removes access; cancel revokes everything', async () => {
     const s = await venueSetup()
     const hostWallet = randomWallet()

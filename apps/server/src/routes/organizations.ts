@@ -133,13 +133,20 @@ export default async function organizationRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: 'Must be org owner or admin to invite' })
       }
 
+      // Only member/admin can be invited, and only the owner can mint admins.
+      const inviteRole = role ?? 'member'
+      if (inviteRole !== 'member' && inviteRole !== 'admin') return reply.status(400).send({ error: 'invalid_role' })
+      if (inviteRole === 'admin' && membership.role !== 'owner') {
+        return reply.status(403).send({ error: 'Only the owner can invite admins' })
+      }
+
       const token = crypto.randomBytes(32).toString('hex')
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
       const [invite] = await db.insert(orgInvites).values({
         orgId,
         email: email.toLowerCase(),
-        role: (role as any) || 'member',
+        role: inviteRole,
         invitedBy: request.user.id,
         token,
         expiresAt,
@@ -219,8 +226,10 @@ export default async function organizationRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: 'Insufficient permissions' })
       }
 
-      if (membership.role === 'owner' && request.user.id === userId) {
-        return reply.status(400).send({ error: 'Owner cannot remove themselves. Transfer ownership first.' })
+      const target = await getOrgMembership(userId, orgId)
+      if (target?.role === 'owner') return reply.status(400).send({ error: 'Transfer ownership first' })
+      if (target?.role === 'admin' && membership.role !== 'owner' && request.user.id !== userId) {
+        return reply.status(403).send({ error: 'Only the owner can remove an admin' })
       }
 
       await db.delete(orgMembers).where(

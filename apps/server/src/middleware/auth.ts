@@ -13,6 +13,7 @@ export interface AuthUser {
   wallet?: string | null
   verified?: boolean
   guest?: boolean
+  viaApiKey?: boolean
   kind?: 'account' | 'scene'
   sceneId?: string | null
   locationId?: string | null
@@ -86,6 +87,9 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
         email: user.email,
         role: user.role,
         orgId: apiKey.orgId ?? user.activeOrgId ?? null,
+        kind: 'account',
+        verified: true,
+        viaApiKey: true,
       }
       return
     }

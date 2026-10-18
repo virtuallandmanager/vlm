@@ -77,11 +77,11 @@ export default async function authRoutes(app: FastifyInstance) {
     })
 
     const accessToken = app.jwt.sign(
-      { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null, kind: 'account' as const },
+      { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null, verified: true, kind: 'account' as const },
       { expiresIn: config.jwtAccessExpiry },
     )
     const refreshToken = app.jwt.sign(
-      { id: user.id, email: user.email, role: user.role, refresh: true, kind: 'account' as const },
+      { id: user.id, email: user.email, role: user.role, refresh: true, verified: true, kind: 'account' as const },
       { expiresIn: config.jwtRefreshExpiry },
     )
 
@@ -133,11 +133,11 @@ export default async function authRoutes(app: FastifyInstance) {
     }
 
     const accessToken = app.jwt.sign(
-      { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null, kind: 'account' as const },
+      { id: user.id, email: user.email, role: user.role, orgId: user.activeOrgId || null, verified: true, kind: 'account' as const },
       { expiresIn: config.jwtAccessExpiry },
     )
     const refreshToken = app.jwt.sign(
-      { id: user.id, email: user.email, role: user.role, refresh: true, kind: 'account' as const },
+      { id: user.id, email: user.email, role: user.role, refresh: true, verified: true, kind: 'account' as const },
       { expiresIn: config.jwtRefreshExpiry },
     )
 
@@ -197,7 +197,7 @@ export default async function authRoutes(app: FastifyInstance) {
               role: user.role,
               orgId: user.activeOrgId || null,
               wallet: decoded.wallet ?? null,
-              ...(decoded.verified === false ? { verified: false } : {}),
+              verified: decoded.verified !== false,
               kind: 'account' as const,
             }
       const accessToken = app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry })
@@ -438,11 +438,11 @@ export default async function authRoutes(app: FastifyInstance) {
         }
 
         const accessToken = app.jwt.sign(
-          { id: dbUser.id, email: dbUser.email, role: dbUser.role, orgId: dbUser.activeOrgId || null, kind: 'account' as const },
+          { id: dbUser.id, email: dbUser.email, role: dbUser.role, orgId: dbUser.activeOrgId || null, verified: true, kind: 'account' as const },
           { expiresIn: config.jwtAccessExpiry },
         )
         const refreshToken = app.jwt.sign(
-          { id: dbUser.id, email: dbUser.email, role: dbUser.role, refresh: true, kind: 'account' as const },
+          { id: dbUser.id, email: dbUser.email, role: dbUser.role, refresh: true, verified: true, kind: 'account' as const },
           { expiresIn: config.jwtRefreshExpiry },
         )
 
@@ -591,11 +591,11 @@ export default async function authRoutes(app: FastifyInstance) {
         }
 
         const accessToken = app.jwt.sign(
-          { id: dbUser.id, email: dbUser.email, role: dbUser.role, orgId: dbUser.activeOrgId || null, kind: 'account' as const },
+          { id: dbUser.id, email: dbUser.email, role: dbUser.role, orgId: dbUser.activeOrgId || null, verified: true, kind: 'account' as const },
           { expiresIn: config.jwtAccessExpiry },
         )
         const refreshToken = app.jwt.sign(
-          { id: dbUser.id, email: dbUser.email, role: dbUser.role, refresh: true, kind: 'account' as const },
+          { id: dbUser.id, email: dbUser.email, role: dbUser.role, refresh: true, verified: true, kind: 'account' as const },
           { expiresIn: config.jwtRefreshExpiry },
         )
 

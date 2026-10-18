@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 const _require = createRequire(import.meta.url)
 const { Server: ColyseusServer } = _require('colyseus') as any
 const { WebSocketTransport } = _require('@colyseus/ws-transport') as any
-import { config } from './config.js'
+import { config, assertProductionSecrets } from './config.js'
 import { startHookCrons } from './integrations/platform-hooks.js'
 import { VLMSceneRoom } from './ws/VLMSceneRoom.js'
 import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
@@ -13,6 +13,7 @@ import { startAnalyticsJobs } from './analytics/jobs.js'
 import { initBus } from './realtime/bus.js'
 
 async function main() {
+  assertProductionSecrets({ mode: config.mode, nodeEnv: process.env.NODE_ENV, jwtSecret: config.jwtSecret })
   console.log(`[vlm-server] Starting in "${config.mode}" mode`)
 
   // ── Auto-migrate ─────────────────────────────────────────────────────────

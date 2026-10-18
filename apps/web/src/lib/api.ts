@@ -144,7 +144,7 @@ export function useApi() {
 
     // API Keys
     getApiKeys: () => apiFetch<{ keys: any[] }>('/api/keys'),
-    createApiKey: (name: string, scopes?: string[]) => apiFetch<{ key: string; apiKey: any }>('/api/keys', { method: 'POST', body: JSON.stringify({ name, scopes }) }),
+    createApiKey: (name: string) => apiFetch<{ key: string; apiKey: any }>('/api/keys', { method: 'POST', body: JSON.stringify({ name }) }),
     deleteApiKey: (keyId: string) => apiFetch(`/api/keys/${keyId}`, { method: 'DELETE' }),
 
     // Analytics (locations)

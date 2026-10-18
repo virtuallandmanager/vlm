@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { eq } from 'drizzle-orm'
+import { VENUE_ROLE_SCOPES, isVenueRole } from 'vlm-shared'
 import { db } from '../db/connection.js'
 import { scenes, venues } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
@@ -42,12 +43,24 @@ export default async function venueRoutes(app: FastifyInstance) {
     const booking = await getBookingWithVenue(bookingId)
     const actor = actorOf(request)
     const access = await getSceneAccess(actor, booking.venue.sceneId)
-    if (isFullAccess(access)) return booking
+    if (isFullAccess(access)) return { booking, grant: null }
     const grant = await getBookingGrant(actor, bookingId)
     if (!grant || !grant.scopes.includes('crew')) throw new VenueError(403, 'You cannot manage crew for this booking')
     if (targetRole === 'host' && grant.role !== 'host') throw new VenueError(403, 'Only the host can change the host')
-    return booking
+    return { booking, grant }
   }
+
+  /** A grant holder (not full access) may only hand out scopes they hold themselves, and only the host may hand out `crew`. */
+  function assertGrantable(caller: { role: string; scopes: string[] } | null, scopes: unknown) {
+    if (!caller || !Array.isArray(scopes)) return
+    if (scopes.some((sc) => !caller.scopes.includes(sc) || (sc === 'crew' && caller.role !== 'host'))) {
+      throw new VenueError(403, 'forbidden')
+    }
+  }
+
+  /** Scopes a grant would end up with: the explicit list, else the role's defaults. */
+  const requestedScopes = (role: unknown, scopes: unknown) =>
+    scopes !== undefined ? scopes : isVenueRole(role) ? VENUE_ROLE_SCOPES[role] : undefined
 
   app.post<{ Body: Record<string, any> }>('/api/venues', async (request, reply) => {
     try {
@@ -119,7 +132,8 @@ export default async function venueRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { bookingId: string }; Body: Record<string, any> }>('/api/venues/bookings/:bookingId/grants', async (request, reply) => {
     try {
-      await crewAccess(request, request.params.bookingId)
+      const { grant: caller } = await crewAccess(request, request.params.bookingId)
+      assertGrantable(caller, requestedScopes(request.body?.role, request.body?.scopes))
       const grant = await addGrant({ ...(request.body as any), bookingId: request.params.bookingId, grantedByUserId: request.user.id })
       return reply.status(201).send({ grant })
     } catch (err) {
@@ -130,7 +144,9 @@ export default async function venueRoutes(app: FastifyInstance) {
   app.patch<{ Params: { grantId: string }; Body: Record<string, any> }>('/api/venues/grants/:grantId', async (request, reply) => {
     try {
       const grant = await getGrant(request.params.grantId)
-      await crewAccess(request, grant.bookingId, grant.role)
+      const { grant: caller } = await crewAccess(request, grant.bookingId, grant.role)
+      if (caller && caller.id === grant.id) throw new VenueError(403, 'forbidden')
+      assertGrantable(caller, requestedScopes(request.body?.role, request.body?.scopes))
       return reply.send({ grant: await updateGrant(grant.id, request.body ?? {}) })
     } catch (err) {
       return fail(reply, err)

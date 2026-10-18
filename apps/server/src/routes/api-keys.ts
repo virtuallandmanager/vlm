@@ -2,13 +2,12 @@ import type { FastifyInstance } from 'fastify'
 import { randomBytes, createHash } from 'node:crypto'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { apiKeys } from '../db/schema.js'
+import { apiKeys, orgMembers } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 
 interface CreateKeyBody {
   name: string
   orgId?: string
-  scopes?: string[]
   expiresAt?: string // ISO date string
 }
 
@@ -18,15 +17,29 @@ interface DeleteKeyParams {
 
 export default async function apiKeyRoutes(app: FastifyInstance) {
   // ── POST /api/keys — Create a new API key ───────────────────────────────
+  // A key acts as its account (same access as the user who made it, no narrower), so keys carry no scopes
+  // and a key session cannot mint more keys.
 
   app.post<{ Body: CreateKeyBody }>(
     '/api/keys',
     { preHandler: [authenticate] },
     async (request, reply) => {
-      const { name, orgId, scopes, expiresAt } = request.body
+      const { name, orgId, expiresAt } = request.body
+
+      if (request.user.viaApiKey) {
+        return reply.status(403).send({ error: 'API keys cannot create API keys' })
+      }
 
       if (!name) {
         return reply.status(400).send({ error: 'name is required' })
+      }
+
+      if (orgId) {
+        const [member] = await db
+          .select({ id: orgMembers.userId })
+          .from(orgMembers)
+          .where(and(eq(orgMembers.orgId, orgId), eq(orgMembers.userId, request.user.id)))
+        if (!member) return reply.status(400).send({ error: 'Not a member of that organization' })
       }
 
       // Generate the raw key: vlm_k1_ + 32 random hex chars
@@ -47,7 +60,7 @@ export default async function apiKeyRoutes(app: FastifyInstance) {
           name,
           keyHash,
           keyPrefix,
-          scopes: scopes ?? null,
+          scopes: null,
           expiresAt: expiresAt ? new Date(expiresAt) : null,
         })
         .returning()
@@ -57,7 +70,6 @@ export default async function apiKeyRoutes(app: FastifyInstance) {
         name: apiKey.name,
         key: rawKey, // returned ONCE — not stored
         keyPrefix: apiKey.keyPrefix,
-        scopes: apiKey.scopes,
         expiresAt: apiKey.expiresAt,
         createdAt: apiKey.createdAt,
       })
@@ -75,7 +87,6 @@ export default async function apiKeyRoutes(app: FastifyInstance) {
           id: apiKeys.id,
           name: apiKeys.name,
           keyPrefix: apiKeys.keyPrefix,
-          scopes: apiKeys.scopes,
           lastUsedAt: apiKeys.lastUsedAt,
           expiresAt: apiKeys.expiresAt,
           createdAt: apiKeys.createdAt,

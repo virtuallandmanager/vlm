@@ -15,6 +15,14 @@ function env(key: string): string | undefined {
 
 const mode: VLMMode = (env('VLM_MODE') as VLMMode) || 'single'
 
+/** Refuse to start a production-like server on the well-known development JWT secret. */
+export function assertProductionSecrets(c: { mode: VLMMode; nodeEnv?: string; jwtSecret: string }): void {
+  const production = c.mode === 'cloud' || c.nodeEnv === 'production'
+  if (production && (!c.jwtSecret || c.jwtSecret === 'dev-secret-change-me')) {
+    throw new Error('JWT_SECRET must be set in production')
+  }
+}
+
 export const config = {
   mode,
 
