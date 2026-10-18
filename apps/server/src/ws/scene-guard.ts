@@ -76,6 +76,19 @@ export async function authorizeSceneMessage(access: SceneAccess, sceneId: string
       const venue = await db.query.venues.findFirst({ where: eq(venues.sceneId, sceneId), columns: { defaultPresetId: true } })
       return venue?.defaultPresetId === preset.id ? live : FORBIDDEN
     }
+    case 'transform_draft':
+    case 'transform_end': {
+      if (!hasScope(access, 'scene.edit')) return FORBIDDEN
+      // Same lookup as the instance case of scene_preset_update; any preset of this scene is fine.
+      const sk = message?.sk
+      if (typeof sk !== 'string' || !sk) return NOT_FOUND
+      const inst = await db.query.sceneElementInstances.findFirst({
+        where: eq(sceneElementInstances.id, sk),
+        with: { element: { with: { preset: true } } },
+      })
+      if (!inst || inst.element.preset.sceneId !== sceneId) return NOT_FOUND
+      return { ok: true, broadcast: false, target: { instanceId: inst.id } }
+    }
     case 'scene_preset_update':
       return authorizePresetUpdate(access, sceneId, message ?? {})
     default:

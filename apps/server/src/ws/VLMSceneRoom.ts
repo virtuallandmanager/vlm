@@ -19,7 +19,7 @@ import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 import { config } from '../config.js'
 import { verifySessionToken } from '../auth/tokens.js'
 import { ANONYMOUS, actorFromClaims, type Actor } from '../auth/actor.js'
-import { getSceneAccess, isFullAccess, toVenueAccessMessage, type SceneAccess } from '../auth/permissions.js'
+import { getSceneAccess, hasScope, isFullAccess, toVenueAccessMessage, type SceneAccess } from '../auth/permissions.js'
 import { authorizeSceneMessage, propertiesOf, type GuardResult, type GuardTarget } from './scene-guard.js'
 import { venueTopic, STREAMS_TOPIC, type VenueEvent, type StreamStatusEvent } from '../realtime/bus.js'
 import { normalizeUrl, withLiveStatus, withLiveVideo } from '../streaming/live-status.js'
@@ -54,6 +54,12 @@ export class VLMSceneRoom extends Room {
   private static ACCESS_TTL_MS = 10_000
   /** Scene passes only: when the client's pass expires (ms). After that it acts as an anonymous visitor until renewed. */
   private passExpiry: Map<string, number> = new Map()
+  /** Transform drafts: instance sk -> sessionId of the editor currently dragging it. Never persisted. */
+  private draftHolders = new Map<string, string>()
+  /** Recent draft timestamps per session, for the 20-per-second limit. */
+  private draftTimes = new Map<string, number[]>()
+  private static DRAFT_LIMIT = 20
+  private static DRAFT_WINDOW_MS = 1000
 
   async onAuth(_client: Client, options: JoinOptions): Promise<Actor> {
     const claims = verifySessionToken(options?.sessionToken)
@@ -115,6 +121,45 @@ export class VLMSceneRoom extends Room {
           ...this.extractCompactPayload(message),
         }).catch(() => {})
       }
+    })
+
+    // ── Transform drafts (editor-only live preview of an unsaved drag) ────
+    this.guarded('transform_draft', async (client, message) => {
+      const sk: string = message.sk
+      const holder = this.draftHolders.get(sk)
+      if (holder && holder !== client.sessionId) {
+        client.send('transform_held', { sk, holderName: this.holderName(holder) })
+        return
+      }
+      const now = Date.now()
+      const times = (this.draftTimes.get(client.sessionId) ?? []).filter((t) => now - t < VLMSceneRoom.DRAFT_WINDOW_MS)
+      if (times.length >= VLMSceneRoom.DRAFT_LIMIT) {
+        this.draftTimes.set(client.sessionId, times)
+        return // over the limit: drop silently
+      }
+      times.push(now)
+      this.draftTimes.set(client.sessionId, times)
+      this.draftHolders.set(sk, client.sessionId)
+      await this.relayToEditors(
+        'transform_draft',
+        {
+          element: message.element,
+          sk,
+          position: message.position,
+          rotation: message.rotation,
+          scale: message.scale,
+          holderName: this.holderName(client.sessionId),
+          holderSessionId: client.sessionId,
+        },
+        client,
+      )
+    })
+
+    this.guarded('transform_end', async (client, message) => {
+      const sk: string = message.sk
+      if (this.draftHolders.get(sk) !== client.sessionId) return // only the holder can end a draft
+      this.draftHolders.delete(sk)
+      await this.relayToEditors('transform_draft_end', { sk, saved: !!message.saved }, client)
     })
 
     // ── Preset Switching ──────────────────────────────────────────────────
@@ -238,6 +283,13 @@ export class VLMSceneRoom extends Room {
       this.broadcast('host_left', { displayName: meta.displayName })
     }
 
+    this.draftTimes.delete(client.sessionId)
+    for (const [sk, holder] of [...this.draftHolders]) {
+      if (holder !== client.sessionId) continue
+      this.draftHolders.delete(sk)
+      this.relayToEditors('transform_draft_end', { sk, saved: false }, client).catch(() => {})
+    }
+
     this.clientMeta.delete(client.sessionId)
     this.passExpiry.delete(client.sessionId)
     this.accessCache.delete(client.sessionId)
@@ -249,6 +301,8 @@ export class VLMSceneRoom extends Room {
     console.log(`[VLMSceneRoom] Disposed (scene: ${this.sceneId}, active rooms: ${VLMSceneRoom.activeRoomCount})`)
     if (this.sceneId) this.presence.unsubscribe(venueTopic(this.sceneId), this.onVenueEventBound)
     if (this.sceneId) this.presence.unsubscribe(STREAMS_TOPIC, this.onStreamEventBound)
+    this.draftHolders.clear()
+    this.draftTimes.clear()
     this.clientMeta.clear()
     this.accessCache.clear()
     this.lastAccess.clear()
@@ -271,6 +325,25 @@ export class VLMSceneRoom extends Room {
   /** Uncached access lookup (a seam for tests). */
   protected lookupAccess(actor: Actor): Promise<SceneAccess> {
     return getSceneAccess(actor, this.sceneId)
+  }
+
+  private holderName(sessionId: string): string {
+    const name = this.clientMeta.get(sessionId)?.displayName
+    return name && name !== 'Guest' ? name : 'Another editor'
+  }
+
+  /** Send to every other client whose access includes scene.edit. */
+  private async relayToEditors(type: string, msg: unknown, except: Client) {
+    await Promise.all(
+      (this.clients as Client[]).map(async (c) => {
+        if (c.sessionId === except.sessionId) return
+        try {
+          if (hasScope(await this.getAccess(c), 'scene.edit')) c.send(type, msg)
+        } catch {
+          /* client gone or access lookup failed: skip */
+        }
+      }),
+    )
   }
 
   /** Register a handler that runs only if the sender is authorized for this message. */
