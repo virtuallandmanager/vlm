@@ -17,7 +17,7 @@ import type { LastWriteWinElementSetComponentDefinition } from '@dcl/sdk/ecs'
 // tree-shaken out of a creator's scene build (getComponentOrNull alone only finds components already defined).
 import * as ecs from '@dcl/sdk/ecs'
 import { Vector3 } from '@dcl/sdk/math'
-import { hudPress } from '../hud/press.js'
+import { clearHudPress, hudPress } from '../hud/press.js'
 import type { Handle, Ray, TransformMode } from 'vlm-core'
 import type { Vec3 } from 'vlm-shared'
 
@@ -79,7 +79,7 @@ export class EditInput {
    * A press seen last frame, applied this frame unless the HUD claimed it: React-ECS onMouseDown and this system
    * run in no guaranteed order, but both have run by the next frame.
    */
-  private pendingPress: { target: { handle: Handle } | { sk: string } | null; direction: Vec3; released: boolean } | null = null
+  private pendingPress: { target: { handle: Handle } | { sk: string } | null; direction: Vec3; released: boolean; frame: number } | null = null
   private readonly system = (dt: number) => this.frame(dt)
 
   constructor(
@@ -110,7 +110,7 @@ export class EditInput {
     this.dragging = false
     this.armed = null
     this.pendingPress = null
-    hudPress.flag = false
+    clearHudPress()
     this.registerSystem(this.system)
   }
 
@@ -122,6 +122,7 @@ export class EditInput {
     this.dragging = false
     this.armed = null
     this.pendingPress = null
+    clearHudPress()
   }
 
   /** Ends a drag in progress without waiting for the pointer to come up (mode switch, held, save). */
@@ -132,6 +133,16 @@ export class EditInput {
   }
 
   private frame(dt: number): void {
+    hudPress.now++
+    try {
+      this.step(dt)
+    } finally {
+      // A mark older than one frame can never belong to a pending press
+      if (hudPress.frame < hudPress.now - 1) clearHudPress()
+    }
+  }
+
+  private step(dt: number): void {
     const rayEntity = this.rayEntity
     if (rayEntity === null) return
     this.host.sync(dt)
@@ -152,6 +163,20 @@ export class EditInput {
     const released = !pointerDown || inputSystem.isTriggered(InputAction.IA_POINTER, PointerEventType.PET_UP)
     this.pointerWasDown = pointerDown
 
+    // A press from last frame resolves first, so a press in this same frame is stored below, not lost
+    if (this.pendingPress && !this.dragging && !this.armed) {
+      const p = this.pendingPress
+      this.pendingPress = null
+      // The mark lands in the press frame or the next, before or after this system depending on order
+      const claimed = hudPress.frame >= p.frame - 1
+      clearHudPress()
+      if (!claimed) {
+        const handle = this.host.press(p.target)
+        // Still held: the drag threshold measures from the press-time ray
+        if (handle && !p.released && !released) this.armed = { handle, direction: p.direction }
+      }
+    }
+
     if (this.dragging) {
       if (released) {
         this.dragging = false
@@ -170,18 +195,8 @@ export class EditInput {
         // beginDrag may refuse (held by someone else) and cancel; only drag if still dragging
         if (this.dragging) this.host.drag(ray, surfaceHit)
       }
-    } else if (this.pendingPress) {
-      const p = this.pendingPress
-      this.pendingPress = null
-      const claimed = hudPress.flag
-      hudPress.flag = false
-      if (!claimed) {
-        const handle = this.host.press(p.target)
-        // Still held: the drag threshold measures from the press-time ray
-        if (handle && !p.released && !released) this.armed = { handle, direction: p.direction }
-      }
     } else if (pressed) {
-      this.pendingPress = { target: this.pick(hits), direction: ray.direction, released }
+      this.pendingPress = { target: this.pick(hits), direction: ray.direction, released, frame: hudPress.now }
     }
 
     const shiftDown = inputSystem.isPressed(SHIFT_ACTION)

@@ -23,6 +23,7 @@ import { HUDPanelType } from 'vlm-shared'
 import type { EntityHandle, WorldStatus } from 'vlm-shared'
 import type { VLMConnectionState } from 'vlm-core'
 import { nearbyPlayers } from './players.js'
+import { markHudPress } from './hud/press.js'
 import { EditModeBar, NO_EDIT_MODE, type EditModeHUDState } from './hud/EditModeBar.js'
 
 // ---------------------------------------------------------------------------
@@ -185,7 +186,7 @@ function HUDToggleButton() {
         justifyContent: 'center',
       }}
       uiBackground={{ color: C.bg }}
-      onMouseDown={() => { state.hudVisible = !state.hudVisible }}
+      onMouseDown={() => { markHudPress(); state.hudVisible = !state.hudVisible }}
     >
       <Label value="VLM" fontSize={12} color={C.text}
         uiTransform={{ width: 44, height: 34 }} />
@@ -223,7 +224,7 @@ function PanelHeader({ title, onClose, subtitle }: { title: string; onClose: () 
       <UiEntity
         uiTransform={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
         uiBackground={{ color: C.white08 }}
-        onMouseDown={onClose}
+        onMouseDown={() => { markHudPress(); onClose() }}
       >
         <Label value="X" fontSize={12} color={C.textDim}
           uiTransform={{ width: 28, height: 28 }} />
@@ -248,7 +249,7 @@ function Button({ label, color, textColor, onPress, width, height, fontSize }: {
         justifyContent: 'center',
       }}
       uiBackground={{ color: color || C.bgHover }}
-      onMouseDown={onPress}
+      onMouseDown={() => { markHudPress(); onPress() }}
     >
       <Label value={label} fontSize={fontSize || 12} color={textColor || C.text}
         uiTransform={{ width: w, height: h }} />
@@ -383,7 +384,7 @@ function SceneSetupScreen() {
                   margin: { bottom: 3 },
                 }}
                 uiBackground={{ color: C.bgCard }}
-                onMouseDown={() => onSceneAction?.('select_scene', { sceneId: scene.id })}
+                onMouseDown={() => { markHudPress(); onSceneAction?.('select_scene', { sceneId: scene.id }) }}
               >
                 <UiEntity uiTransform={{ flexDirection: 'column' }}>
                   <Label value={scene.name || 'Untitled'} fontSize={11} color={C.text} />
@@ -644,6 +645,7 @@ function NavBar() {
           uiTransform={{ width: `${100 / tabs.length}%`, height: 36, justifyContent: 'center', alignItems: 'center' }}
           uiBackground={{ color: state.activePanel === p.type ? C.accent : C.transparent }}
           onMouseDown={() => {
+            markHudPress()
             if (p.type === ACTION_STATS) {
               onSceneAction?.('open_analytics')
               return
@@ -1053,6 +1055,7 @@ function UpgradePrompt() {
         padding: 16,
       }}
       uiBackground={{ color: C.bg }}
+      onMouseDown={markHudPress}
     >
       <Label value="Upgrade Required" fontSize={16} color={C.warning} />
       <Label value={`The "${state.upgradePrompt.feature}" feature requires the ${state.upgradePrompt.tier} tier.`}
@@ -1081,6 +1084,7 @@ function NotificationToast() {
         width: 280,
         flexDirection: 'column',
       }}
+      onMouseDown={markHudPress}
     >
       {recent.map((notif, i) => (
         <UiEntity
@@ -1157,6 +1161,7 @@ function VLMHUD() {
                   flexDirection: 'column',
                 }}
                 uiBackground={{ color: C.bg }}
+                onMouseDown={markHudPress}
               >
                 <NavBar />
                 <SyncNotice />
@@ -1182,6 +1187,7 @@ function VLMHUD() {
                 flexDirection: 'column',
               }}
               uiBackground={{ color: C.bg }}
+              onMouseDown={markHudPress}
             >
               <NavBar />
               <SyncNotice />
