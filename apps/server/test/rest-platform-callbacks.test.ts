@@ -6,6 +6,8 @@ vi.mock('../src/integrations/platform-hooks.js', async (importOriginal) => ({
 }))
 
 import { db } from '../src/db/connection.js'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { eq } from 'drizzle-orm'
 import { scenePresets, platformCallbacks, sceneRoles, streamingServers } from '../src/db/schema.js'
 import { dispatchPlatformCallbacks } from '../src/integrations/platform-hooks.js'
@@ -132,14 +134,36 @@ describe('platform hook callback safety', () => {
     delete process.env.STREAMING_WEBHOOK_KEY
   })
 
+  async function listener() {
+    const hits: string[] = []
+    const server = createServer((req, res) => { hits.push(req.url!); res.end('ok') })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+    return { hits, port: (server.address() as AddressInfo).port, close: () => new Promise((r) => server.close(r)) }
+  }
+
   it('dispatch refuses a stored private URL: no request, counts as a failure', async () => {
     const { dispatchPlatformCallbacks } = await vi.importActual<typeof import('../src/integrations/platform-hooks.js')>('../src/integrations/platform-hooks.js')
     const { scene } = await createScene(await createUser())
-    const [row] = await db.insert(platformCallbacks).values({ sceneId: scene.id, platform: 'secondlife', callbackUrl: 'http://127.0.0.1:9/cb' }).returning()
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const l = await listener()
+    const [row] = await db.insert(platformCallbacks).values({ sceneId: scene.id, platform: 'secondlife', callbackUrl: `http://127.0.0.1:${l.port}/cb` }).returning()
     await dispatchPlatformCallbacks(scene.id, { action: 'config_update' })
-    expect(fetchSpy).not.toHaveBeenCalled()
-    fetchSpy.mockRestore()
+    await l.close()
+    expect(l.hits).toHaveLength(0)
+    const [after] = await db.select().from(platformCallbacks).where(eq(platformCallbacks.id, row.id))
+    expect(after.failureCount).toBe(1)
+  })
+
+  it('dispatch refuses a host that resolves public for the check but private for the connection (DNS rebinding)', async () => {
+    const { dispatchPlatformCallbacks } = await vi.importActual<typeof import('../src/integrations/platform-hooks.js')>('../src/integrations/platform-hooks.js')
+    const { scene } = await createScene(await createUser())
+    const l = await listener()
+    const [row] = await db.insert(platformCallbacks).values({ sceneId: scene.id, platform: 'secondlife', callbackUrl: `http://rebind.example:${l.port}/cb` }).returning()
+    let calls = 0
+    const lookup = async () => (++calls === 1 ? ['93.184.216.34'] : ['127.0.0.1'])
+    await dispatchPlatformCallbacks(scene.id, { action: 'config_update' }, { lookup })
+    await l.close()
+    expect(calls).toBeGreaterThanOrEqual(2)
+    expect(l.hits).toHaveLength(0)
     const [after] = await db.select().from(platformCallbacks).where(eq(platformCallbacks.id, row.id))
     expect(after.failureCount).toBe(1)
   })

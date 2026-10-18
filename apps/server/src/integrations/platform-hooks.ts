@@ -12,11 +12,63 @@
 import { eq, lt, and } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { platformCallbacks } from '../db/schema.js'
-import { assertPublicHttpUrl } from '../net/public-url.js'
+import { Agent, fetch as undiciFetch } from 'undici'
+import { assertPublicHttpUrl, defaultLookup, isPrivateAddress } from '../net/public-url.js'
 import { config } from '../config.js'
 
+type Lookup = (host: string) => Promise<string[]>
+
 /** Refuse non-public targets at send time too: DNS may have changed since registration. */
-const checkTarget = (url: string) => assertPublicHttpUrl(url, { allowPrivate: config.allowPrivateCallbackUrls })
+const checkTarget = (url: string, lookup?: Lookup) =>
+  assertPublicHttpUrl(url, { allowPrivate: config.allowPrivateCallbackUrls, lookup })
+
+/**
+ * An undici Agent whose connect step resolves the host itself and refuses private
+ * addresses, so the address we connect to is the one we checked (no DNS rebinding
+ * between a pre-check and the connection).
+ */
+function guardedAgent(lookup: Lookup = defaultLookup): Agent {
+  return new Agent({
+    connect: {
+      lookup: (host: string, options: any, cb: any) => {
+        lookup(host).then(
+          (addresses) => {
+            if (!config.allowPrivateCallbackUrls && (addresses.length === 0 || addresses.some(isPrivateAddress))) {
+              return cb(new Error(`Refusing non-public address for ${host}`))
+            }
+            const family = (a: string) => (a.includes(':') ? 6 : 4)
+            if (options?.all) cb(null, addresses.map((address) => ({ address, family: family(address) })))
+            else cb(null, addresses[0], family(addresses[0]))
+          },
+          (err) => cb(err),
+        )
+      },
+    },
+  })
+}
+
+const defaultAgent = guardedAgent()
+
+async function post(cb: { callbackUrl: string }, body: string, agent: Agent, lookup?: Lookup) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5000)
+  try {
+    await checkTarget(cb.callbackUrl, lookup)
+    const res = await undiciFetch(cb.callbackUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      signal: controller.signal,
+      redirect: 'manual',
+      dispatcher: agent,
+    })
+    // Drain so the socket is released
+    await res.body?.cancel().catch(() => {})
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  } finally {
+    clearTimeout(timeout)
+  }
+}
 
 /**
  * Dispatch a payload to all registered callbacks for a scene.
@@ -25,6 +77,7 @@ const checkTarget = (url: string) => assertPublicHttpUrl(url, { allowPrivate: co
 export async function dispatchPlatformCallbacks(
   sceneId: string,
   payload: Record<string, unknown>,
+  opts: { lookup?: Lookup } = {},
 ): Promise<void> {
   let callbacks: (typeof platformCallbacks.$inferSelect)[]
   try {
@@ -40,25 +93,12 @@ export async function dispatchPlatformCallbacks(
   if (callbacks.length === 0) return
 
   const body = JSON.stringify(payload)
+  const agent = opts.lookup ? guardedAgent(opts.lookup) : defaultAgent
 
   await Promise.allSettled(
     callbacks.map(async (cb) => {
       try {
-        await checkTarget(cb.callbackUrl)
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), 5000)
-
-        const res = await fetch(cb.callbackUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body,
-          signal: controller.signal,
-          redirect: 'manual',
-        })
-
-        clearTimeout(timeout)
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        await post(cb, body, agent, opts.lookup)
 
         // Reset failure count on success
         if (cb.failureCount > 0) {
@@ -120,21 +160,7 @@ export async function pingAllCallbacks(): Promise<void> {
   await Promise.allSettled(
     callbacks.map(async (cb) => {
       try {
-        await checkTarget(cb.callbackUrl)
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), 5000)
-
-        const res = await fetch(cb.callbackUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body,
-          signal: controller.signal,
-          redirect: 'manual',
-        })
-
-        clearTimeout(timeout)
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        await post(cb, body, defaultAgent)
       } catch {
         const newCount = (cb.failureCount || 0) + 1
         if (newCount >= 3) {

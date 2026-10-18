@@ -19,7 +19,7 @@ export interface PublicUrlOptions {
   lookup?: (host: string) => Promise<string[]>
 }
 
-const defaultLookup = async (host: string) => (await dns.lookup(host, { all: true })).map((r) => r.address)
+export const defaultLookup = async (host: string) => (await dns.lookup(host, { all: true })).map((r) => r.address)
 
 function isPrivateV4(ip: string): boolean {
   const [a, b] = ip.split('.').map(Number)
@@ -64,7 +64,7 @@ function isPrivateV6(ip: string): boolean {
   return false
 }
 
-function isPrivateAddress(ip: string): boolean {
+export function isPrivateAddress(ip: string): boolean {
   const kind = isIP(ip)
   if (kind === 4) return isPrivateV4(ip)
   if (kind === 6) return isPrivateV6(ip)
