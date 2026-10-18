@@ -9,6 +9,7 @@ import {
   scenePresets,
   sceneElements,
   sceneElementInstances,
+  users,
 } from '../db/schema.js'
 import {
   serializePreset,
@@ -38,6 +39,12 @@ interface ClientMeta {
   displayName: string
   clientType: 'host' | 'analytics'
   sceneId: string
+}
+
+const DRAFT_ELEMENTS = new Set(['image', 'video', 'model', 'sound'])
+const isVec3 = (v: any) => !!v && typeof v === 'object' && ['x', 'y', 'z'].every((k) => Number.isFinite(v[k]) && typeof v[k] === 'number')
+function isValidDraft(m: any) {
+  return !!m && DRAFT_ELEMENTS.has(m.element) && isVec3(m.position) && isVec3(m.rotation) && isVec3(m.scale)
 }
 
 export class VLMSceneRoom extends Room {
@@ -125,6 +132,10 @@ export class VLMSceneRoom extends Room {
 
     // ── Transform drafts (editor-only live preview of an unsaved drag) ────
     this.guarded('transform_draft', async (client, message) => {
+      if (!isValidDraft(message)) {
+        client.send('vlm_error', { code: 'bad_request', messageType: 'transform_draft' })
+        return
+      }
       const sk: string = message.sk
       const holder = this.draftHolders.get(sk)
       if (holder && holder !== client.sessionId) {
@@ -155,11 +166,22 @@ export class VLMSceneRoom extends Room {
       )
     })
 
-    this.guarded('transform_end', async (client, message) => {
-      const sk: string = message.sk
-      if (this.draftHolders.get(sk) !== client.sessionId) return // only the holder can end a draft
-      this.draftHolders.delete(sk)
-      await this.relayToEditors('transform_draft_end', { sk, saved: !!message.saved }, client)
+    // The holder can always end its own draft, even if its scope was revoked or the instance was deleted since.
+    this.onMessage('transform_end', async (client: Client, message: any) => {
+      try {
+        const sk = message?.sk
+        if (typeof sk === 'string' && this.draftHolders.get(sk) === client.sessionId) {
+          this.draftHolders.delete(sk)
+          await this.relayToEditors('transform_draft_end', { sk, saved: !!message.saved }, client)
+          return
+        }
+        // Non-holder: ignored, but a client that may not edit this scene still hears why.
+        const result = await authorizeSceneMessage(await this.getAccess(client), this.sceneId, 'transform_end', message)
+        if (!result.ok) client.send('vlm_error', { code: result.code, messageType: 'transform_end' })
+      } catch (err) {
+        console.error('[VLMSceneRoom] transform_end failed:', err)
+        client.send('vlm_error', { code: 'server_error', messageType: 'transform_end' })
+      }
     })
 
     // ── Preset Switching ──────────────────────────────────────────────────
@@ -251,7 +273,17 @@ export class VLMSceneRoom extends Room {
     const clientType = requested === 'host' && canHost ? 'host' : 'analytics'
     const actor = client.auth as Actor
     const userId = actor.userId || client.sessionId
-    const displayName = options.user?.displayName || 'Guest'
+    // Prefer the account's name from the database; the client-supplied name is only for tokens with no user.
+    let accountName: string | null = null
+    if (actor.userId) {
+      try {
+        const u = await db.query.users.findFirst({ where: eq(users.id, actor.userId), columns: { displayName: true } })
+        accountName = u?.displayName || null
+      } catch {
+        accountName = null
+      }
+    }
+    const displayName = accountName || options.user?.displayName || 'Guest'
 
     this.clientMeta.set(client.sessionId, {
       userId,

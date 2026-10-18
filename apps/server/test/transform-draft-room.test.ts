@@ -25,7 +25,7 @@ describe('transform draft relay', () => {
   afterEach(() => gs.stop())
 
   async function setup() {
-    const ownerU = await createUser()
+    const ownerU = await createUser({ name: 'Olivia' })
     const { scene, preset } = await createScene(ownerU)
     const screen = await createElement(preset.id)
     const inst = await createInstance(screen.id)
@@ -41,9 +41,7 @@ describe('transform draft relay', () => {
     const visitor = await joinScene(gs.url, scene.id)
     for (const c of [owner, editor, viewer, visitor]) await c.waitFor('scene_preset_update') // init
     const srv = serverRoom(owner.room.roomId)
-    srv.clientMeta.get(owner.room.sessionId).displayName = 'Olivia'
-    srv.clientMeta.get(editor.room.sessionId).displayName = 'Eddie'
-    return { scene, preset, screen, inst, owner, editor, viewer, visitor }
+    return { ownerU, editorU, scene, preset, screen, inst, owner, editor, viewer, visitor }
   }
   const row = async (id: string) => (await db.query.sceneElementInstances.findFirst({ where: eq(sceneElementInstances.id, id) }))!
 
@@ -55,6 +53,54 @@ describe('transform draft relay', () => {
     await s.visitor.expectNone('transform_draft', 200)
     await s.viewer.expectNone('transform_draft', 200)
     await s.owner.expectNone('transform_draft', 200)
+  })
+
+  it('uses the account display name from the database, not a client-supplied one', async () => {
+    const s = await setup()
+    const srv = serverRoom(s.owner.room.roomId)
+    expect(srv.clientMeta.get(s.owner.room.sessionId).displayName).toBe('Olivia')
+  })
+
+  it('falls back to "Another editor" when no name is available', async () => {
+    const s = await setup()
+    serverRoom(s.owner.room.roomId).clientMeta.get(s.owner.room.sessionId).displayName = 'Guest'
+    s.owner.room.send('transform_draft', draft(s.inst.id))
+    expect((await s.editor.waitFor('transform_draft')).holderName).toBe('Another editor')
+  })
+
+  it('holder can end after losing scene.edit', async () => {
+    const s = await setup()
+    s.editor.room.send('transform_draft', draft(s.inst.id))
+    await s.owner.waitFor('transform_draft')
+    await db.delete(sceneCollaborators).where(eq(sceneCollaborators.userId, s.editorU.id))
+    serverRoom(s.owner.room.roomId).accessCache.clear()
+    s.editor.room.send('transform_end', { sk: s.inst.id, saved: false })
+    expect(await s.owner.waitFor('transform_draft_end')).toEqual({ sk: s.inst.id, saved: false })
+    s.owner.room.send('transform_draft', draft(s.inst.id))
+    await settle()
+    expect(count(s.owner, 'transform_held')).toBe(0)
+  })
+
+  it('holder can end after the instance is deleted', async () => {
+    const s = await setup()
+    s.owner.room.send('transform_draft', draft(s.inst.id))
+    await s.editor.waitFor('transform_draft')
+    await db.delete(sceneElementInstances).where(eq(sceneElementInstances.id, s.inst.id))
+    s.owner.room.send('transform_end', { sk: s.inst.id, saved: false })
+    expect(await s.editor.waitFor('transform_draft_end')).toEqual({ sk: s.inst.id, saved: false })
+    expect(serverRoom(s.owner.room.roomId).draftHolders.has(s.inst.id)).toBe(false)
+  })
+
+  it('rejects malformed drafts and relays nothing', async () => {
+    const s = await setup()
+    s.owner.room.send('transform_draft', { ...draft(s.inst.id), position: { x: NaN, y: 0, z: 0 } })
+    expect((await s.owner.waitFor('vlm_error')).code).toBe('bad_request')
+    const { scale, ...noScale } = draft(s.inst.id)
+    s.owner.room.send('transform_draft', noScale)
+    expect((await s.owner.waitFor('vlm_error')).code).toBe('bad_request')
+    s.owner.room.send('transform_draft', { ...draft(s.inst.id), element: 'widget' })
+    expect((await s.owner.waitFor('vlm_error')).code).toBe('bad_request')
+    await s.editor.expectNone('transform_draft', 200)
   })
 
   it('rejects a viewer collaborator and relays nothing', async () => {

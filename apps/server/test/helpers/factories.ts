@@ -23,12 +23,12 @@ export function randomWallet() {
 }
 
 export async function createUser(
-  opts: { role?: 'admin' | 'creator' | 'viewer'; email?: string | null; wallet?: string | null } = {},
+  opts: { role?: 'admin' | 'creator' | 'viewer'; email?: string | null; wallet?: string | null; name?: string } = {},
 ): Promise<TestUser> {
   const [user] = await db
     .insert(users)
     .values({
-      displayName: 'Test User',
+      displayName: opts.name ?? 'Test User',
       email: opts.email === undefined ? `u${Date.now()}${Math.random()}@test.dev` : opts.email,
       role: opts.role ?? 'creator',
     })
