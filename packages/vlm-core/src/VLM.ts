@@ -1,7 +1,8 @@
-import type { VLMPlatformAdapter, VLMInitConfig, VLMStorage as VLMStorageType, HUDRenderer, BudgetLimits, Scene } from 'vlm-shared'
+import type { TransformData, TransformDraftData, VLMPlatformAdapter, VLMInitConfig, VLMStorage as VLMStorageType, HUDRenderer, BudgetLimits, Scene } from 'vlm-shared'
 import { VLMHttpClient, ColyseusManager } from 'vlm-client'
 import { SceneManager } from './SceneManager.js'
 import { VLMStorageImpl } from './storage.js'
+import type { Selected } from './transform/session.js'
 import { EventBus } from './events/EventBus.js'
 
 // Default API URLs by environment
@@ -40,7 +41,8 @@ export class VLM {
   private http: VLMHttpClient
   private colyseus: ColyseusManager
   private sceneManager: SceneManager
-  private events: EventBus
+  /** Core event emitter (also carries transform_draft / transform_draft_end / transform_held). */
+  public readonly events: EventBus
   private userMessageHandlers: Map<string, (data: unknown) => void> = new Map()
   private stateListeners: Set<VLMStateListener> = new Set()
   private handlersRegistered = false
@@ -304,6 +306,28 @@ export class VLM {
       }
     })
 
+    this.colyseus.onMessage('transform_draft', (message: unknown) => {
+      const d = message as TransformDraftData & { holderName: string; holderSessionId: string }
+      if (!d?.sk) return
+      // The server never echoes to the sender; ignore defensively if it ever does.
+      if (d.holderSessionId && d.holderSessionId === this.colyseus.getRoom()?.sessionId) return
+      this.sceneManager.previewTransform(d.element, d.sk, { position: d.position, rotation: d.rotation, scale: d.scale })
+      this.events.emit('transform_draft', d)
+    })
+
+    this.colyseus.onMessage('transform_draft_end', (message: unknown) => {
+      const d = message as { sk: string; saved: boolean }
+      if (!d?.sk) return
+      if (!d.saved) {
+        for (const e of ['image', 'video', 'model', 'sound'] as const) this.sceneManager.restoreTransform(e, d.sk)
+      }
+      this.events.emit('transform_draft_end', d)
+    })
+
+    this.colyseus.onMessage('transform_held', (message: unknown) => {
+      this.events.emit('transform_held', message)
+    })
+
     this.colyseus.onMessage('scene_change_preset', (message: unknown) => {
       this.sceneManager.handlePresetChange(message as any)
     })
@@ -365,6 +389,27 @@ export class VLM {
       this.hud.init()
     } catch {
       // vlm-hud not installed — that's fine, it's optional
+    }
+  }
+
+  /** In-world transform editing: scene helpers plus draft/save messaging. */
+  get editing() {
+    const scene = this.sceneManager
+    return {
+      scene: {
+        findByEntity: (entity: Parameters<SceneManager['findByEntity']>[0]) => scene.findByEntity(entity),
+        listEditable: () => scene.listEditable(),
+        previewTransform: (element: Selected['element'], sk: string, t: TransformData) => scene.previewTransform(element, sk, t),
+        restoreTransform: (element: Selected['element'], sk: string) => scene.restoreTransform(element, sk),
+      },
+      sendDraft: (d: TransformDraftData): void => this.colyseus.send('transform_draft', d),
+      endDraft: (sk: string, saved: boolean): void => this.colyseus.send('transform_end', { sk, saved }),
+      save: (element: Selected['element'], sk: string, t: TransformData): void => {
+        if (!this.colyseus.getRoom()) throw new Error('not_connected')
+        const instanceData = { sk, position: t.position, rotation: t.rotation, scale: t.scale }
+        this.colyseus.send('scene_preset_update', { action: 'update', element, instance: true, instanceData })
+        scene.handlePresetUpdate({ action: 'update', element, instance: true, instanceData })
+      },
     }
   }
 
