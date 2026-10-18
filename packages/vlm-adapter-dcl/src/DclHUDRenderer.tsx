@@ -23,7 +23,7 @@ import { HUDPanelType } from 'vlm-shared'
 import type { EntityHandle, WorldStatus } from 'vlm-shared'
 import type { VLMConnectionState } from 'vlm-core'
 import { nearbyPlayers } from './players.js'
-import { EditModeBar, NO_EDIT_MODE, pointerOverEditBar, type EditModeHUDState } from './hud/EditModeBar.js'
+import { EditModeBar, NO_EDIT_MODE, type EditModeHUDState } from './hud/EditModeBar.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -698,8 +698,10 @@ function SceneLayoutPanel() {
       <UiEntity uiTransform={{ width: '100%', padding: 8, flexDirection: 'column' }}>
         <EditMessage />
         {editable && (
-          <Button label="Edit layout" color={C.accent} height={30} fontSize={11}
-            onPress={() => { state.activePanel = null; onSceneAction?.('edit_enter') }} />
+          <UiEntity uiTransform={{ width: '100%', margin: { bottom: 6 } }}>
+            <Button label="Edit layout" color={C.accent} height={30} fontSize={11}
+              onPress={() => { state.activePanel = null; onSceneAction?.('edit_enter') }} />
+          </UiEntity>
         )}
         {elements.length === 0 ? (
           <UiEntity uiTransform={{ width: '100%', padding: 16, flexDirection: 'column', alignItems: 'center' }}>
@@ -1191,7 +1193,8 @@ function VLMHUD() {
       })()}
 
       {state.hudVisible && state.connectionState === 'connected' && !state.isNewScene && <NotificationToast />}
-      {state.hudVisible && state.connectionState === 'connected' && state.editMode.active && canEdit() && (
+      {/* Stays up when the HUD is toggled off, so Done is always reachable */}
+      {state.connectionState === 'connected' && state.editMode.active && canEdit() && (
         <EditModeBar s={state.editMode} act={(a, d) => onSceneAction?.(a, d)} />
       )}
       <UpgradePrompt />
@@ -1310,11 +1313,6 @@ export class DclHUDRenderer implements HUDRenderer {
   /** Mirrors DclEditMode.state (the bar shows while active). */
   setEditMode(s: EditModeHUDState): void {
     state.editMode = s
-  }
-
-  /** True while the pointer is over the edit bar (edit mode ignores presses there). */
-  overEditBar(): boolean {
-    return pointerOverEditBar(state.editMode)
   }
 
   setMissingModels(n: number): void {

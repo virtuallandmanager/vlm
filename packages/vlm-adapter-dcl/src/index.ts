@@ -257,7 +257,6 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       if (editMode) {
         const em = editMode
         em.onChange = () => renderer?.setEditMode(em.state)
-        em.pointerOverHud = () => renderer?.overEditBar() ?? false
       }
       let busy = false
       let media: SceneLibraryItem[] = []

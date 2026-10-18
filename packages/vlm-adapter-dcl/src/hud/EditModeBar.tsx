@@ -2,7 +2,7 @@
 // the held / error message and the "Save or revert first" prompt. Rendered by DclHUDRenderer from its module state.
 import ReactEcs, { UiEntity, Label } from '@dcl/sdk/react-ecs'
 import { Color4 } from '@dcl/sdk/math'
-import * as ecs from '@dcl/sdk/ecs'
+import { markHudPress } from './press.js'
 import type { MoveLock, TransformMode } from 'vlm-core'
 
 export interface EditModeHUDState {
@@ -34,13 +34,12 @@ const LOCK_COLORS: Record<string, Color4> = {
   z: Color4.create(0.35, 0.55, 0.95, 1),
 }
 
-const BAR_W = 580
+const BAR_W = 640
 const BAR_H = 44
 const PROMPT_W = 400
 const PROMPT_H = 70
 const MESSAGE_H = 22
 const BOTTOM = 20
-const PAD = 6
 
 type Act = (action: string, data?: any) => void
 
@@ -49,7 +48,7 @@ function Btn({ label, onPress, width, color, off }: { label: string; onPress: ()
     <UiEntity
       uiTransform={{ width, height: 30, margin: { left: 3, right: 3 }, alignItems: 'center', justifyContent: 'center' }}
       uiBackground={{ color: off ? BTN_OFF : color ?? BTN }}
-      onMouseDown={off ? undefined : onPress}
+      onMouseDown={() => { markHudPress(); if (!off) onPress() }}
     >
       <Label value={label} fontSize={11} color={off ? DIM : WHITE} />
     </UiEntity>
@@ -64,7 +63,7 @@ export function EditModeBar({ s, act }: { s: EditModeHUDState; act: Act }) {
       uiTransform={{ positionType: 'absolute', position: { bottom: BOTTOM, left: 0 }, width: '100%', flexDirection: 'column', alignItems: 'center' }}
     >
       {s.message && (
-        <UiEntity uiTransform={{ width: PROMPT_W, height: MESSAGE_H, alignItems: 'center', justifyContent: 'center', margin: { bottom: 4 } }} uiBackground={{ color: BG }}>
+        <UiEntity uiTransform={{ width: PROMPT_W, height: MESSAGE_H, alignItems: 'center', justifyContent: 'center', margin: { bottom: 4 } }} uiBackground={{ color: BG }} onMouseDown={markHudPress}>
           <Label value={s.message} fontSize={10} color={WARN} />
         </UiEntity>
       )}
@@ -72,6 +71,7 @@ export function EditModeBar({ s, act }: { s: EditModeHUDState; act: Act }) {
         <UiEntity
           uiTransform={{ width: PROMPT_W, height: PROMPT_H, margin: { bottom: 4 }, flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}
           uiBackground={{ color: BG }}
+          onMouseDown={markHudPress}
         >
           <Label value={`Save or revert changes to ${name} first.`} fontSize={11} color={WHITE} uiTransform={{ height: 26 }} />
           <UiEntity uiTransform={{ flexDirection: 'row' }}>
@@ -83,6 +83,7 @@ export function EditModeBar({ s, act }: { s: EditModeHUDState; act: Act }) {
       <UiEntity
         uiTransform={{ width: BAR_W, height: BAR_H, flexDirection: 'row', alignItems: 'center', padding: { left: 6, right: 6 } }}
         uiBackground={{ color: BG }}
+        onMouseDown={markHudPress}
       >
         {modes.map(([m, label]) => (
           <Btn key={m} label={label} width={64} color={s.mode === m ? ACCENT : BTN} onPress={() => act('edit_mode', { mode: m })} />
@@ -103,21 +104,4 @@ export function EditModeBar({ s, act }: { s: EditModeHUDState; act: Act }) {
       </UiEntity>
     </UiEntity>
   )
-}
-
-/** True while the screen-space pointer is over the bar (or its prompt / message), so a click on it never reaches items. */
-export function pointerOverEditBar(s: EditModeHUDState): boolean {
-  if (!s.active) return false
-  const root = (ecs as any).engine?.RootEntity
-  const info = (ecs as any).PrimaryPointerInfo?.getOrNull(root)?.screenCoordinates as { x: number; y: number } | undefined
-  const canvas = (ecs as any).UiCanvasInformation?.getOrNull(root) as { width: number; height: number; devicePixelRatio: number } | undefined
-  if (!info || !canvas) return false
-  const k = canvas.devicePixelRatio || 1
-  const w = canvas.width * k
-  const h = canvas.height * k
-  const height = BAR_H + (s.prompt ? PROMPT_H + 4 : 0) + (s.message ? MESSAGE_H + 4 : 0)
-  const width = s.prompt || s.message ? Math.max(BAR_W, PROMPT_W) : BAR_W
-  const halfW = (width / 2 + PAD) * k
-  // screenCoordinates: pixels from the top-left of the screen
-  return Math.abs(info.x - w / 2) <= halfW && info.y >= h - (BOTTOM + height + PAD) * k && info.y <= h - (BOTTOM - PAD) * k
 }

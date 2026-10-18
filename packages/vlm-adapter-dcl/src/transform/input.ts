@@ -17,6 +17,7 @@ import type { LastWriteWinElementSetComponentDefinition } from '@dcl/sdk/ecs'
 // tree-shaken out of a creator's scene build (getComponentOrNull alone only finds components already defined).
 import * as ecs from '@dcl/sdk/ecs'
 import { Vector3 } from '@dcl/sdk/math'
+import { hudPress } from '../hud/press.js'
 import type { Handle, Ray, TransformMode } from 'vlm-core'
 import type { Vec3 } from 'vlm-shared'
 
@@ -52,8 +53,6 @@ export interface EditHost {
   /** Pointer released after beginDrag. */
   release(): void
   shiftTapped(): void
-  /** The pointer is over HUD (the edit bar): a press there must not select or drag anything. */
-  pressBlocked(): boolean
   setSnap(on: boolean): void
   /** Runs first every frame (helpers follow their items, gizmo follows the draft). */
   sync(dt: number): void
@@ -76,6 +75,11 @@ export class EditInput {
   private dragging = false
   /** Pressed on something draggable, waiting for the ray to pass the threshold. */
   private armed: { handle: Handle; direction: Vec3 } | null = null
+  /**
+   * A press seen last frame, applied this frame unless the HUD claimed it: React-ECS onMouseDown and this system
+   * run in no guaranteed order, but both have run by the next frame.
+   */
+  private pendingPress: { target: { handle: Handle } | { sk: string } | null; direction: Vec3; released: boolean } | null = null
   private readonly system = (dt: number) => this.frame(dt)
 
   constructor(
@@ -105,6 +109,8 @@ export class EditInput {
     this.shiftWasDown = inputSystem.isPressed(SHIFT_ACTION)
     this.dragging = false
     this.armed = null
+    this.pendingPress = null
+    hudPress.flag = false
     this.registerSystem(this.system)
   }
 
@@ -115,12 +121,14 @@ export class EditInput {
     this.rayEntity = null
     this.dragging = false
     this.armed = null
+    this.pendingPress = null
   }
 
   /** Ends a drag in progress without waiting for the pointer to come up (mode switch, held, save). */
   cancelDrag(): void {
     this.dragging = false
     this.armed = null
+    this.pendingPress = null
   }
 
   private frame(dt: number): void {
@@ -162,9 +170,18 @@ export class EditInput {
         // beginDrag may refuse (held by someone else) and cancel; only drag if still dragging
         if (this.dragging) this.host.drag(ray, surfaceHit)
       }
-    } else if (pressed && !this.host.pressBlocked()) {
-      const handle = this.host.press(this.pick(hits))
-      if (handle && !released) this.armed = { handle, direction: ray.direction }
+    } else if (this.pendingPress) {
+      const p = this.pendingPress
+      this.pendingPress = null
+      const claimed = hudPress.flag
+      hudPress.flag = false
+      if (!claimed) {
+        const handle = this.host.press(p.target)
+        // Still held: the drag threshold measures from the press-time ray
+        if (handle && !p.released && !released) this.armed = { handle, direction: p.direction }
+      }
+    } else if (pressed) {
+      this.pendingPress = { target: this.pick(hits), direction: ray.direction, released }
     }
 
     const shiftDown = inputSystem.isPressed(SHIFT_ACTION)

@@ -34,8 +34,6 @@ const keyOf = (t: TransformData) => JSON.stringify(t)
 export class DclEditMode implements EditHost {
   /** Called after any change the HUD shows (see `state`). */
   onChange: () => void = () => {}
-  /** Set by the HUD: true while the pointer is over the edit bar, so clicking it doesn't press an item behind it. */
-  pointerOverHud: () => boolean = () => false
   readonly session: TransformSession
 
   private readonly gizmo = new Gizmo()
@@ -218,10 +216,6 @@ export class DclEditMode implements EditHost {
 
   release(): void {
     this.session.endDrag()
-  }
-
-  pressBlocked(): boolean {
-    return this.pointerOverHud()
   }
 
   shiftTapped(): void {
