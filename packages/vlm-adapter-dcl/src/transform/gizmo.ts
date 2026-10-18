@@ -1,8 +1,10 @@
 // Editor-only handle entities for the active transform mode. Built once per mode (and move lock), then only their
 // Transforms are updated as the draft changes. Colliders are on the pointer layer only, never physics.
+// Rings and the move guide sit on the scene's axes; resize handles sit under a sub-root turned with the item, so they
+// land on its own faces and corners (stretching follows the item's local axes, see TransformSession).
 import { engine, Entity, Transform, MeshRenderer, MeshCollider, Material, ColliderLayer } from '@dcl/sdk/ecs'
 import { Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
-import type { Axis, Handle, MoveLock, TransformMode } from 'vlm-core'
+import type { Axis, ElementKind, Handle, MoveLock, TransformMode } from 'vlm-core'
 import type { TransformData, Vec3 } from 'vlm-shared'
 
 const AXES: Axis[] = ['x', 'y', 'z']
@@ -38,19 +40,24 @@ const keyOf = (v: Vec3) => `${round(v.x)},${round(v.y)},${round(v.z)}`
 
 export class Gizmo {
   private root: Entity | null = null
+  /** Parent of the resize handles, rotated by the draft's rotation; null outside resize mode. */
+  private itemRoot: Entity | null = null
   private parts: Part[] = []
   private handles = new Map<Entity, Handle>()
   private builtFor: string | null = null
   private positionKey = ''
+  private rotationKey = ''
   private layoutKey = ''
 
   /** Shows this mode's handles at the transform (null hides everything). Call every frame. */
-  update(mode: TransformMode, lock: MoveLock, t: TransformData | null): void {
+  update(mode: TransformMode, lock: MoveLock, t: TransformData | null, element: ElementKind | null = null): void {
     if (!t) return this.clear()
-    const built = mode === 'move' ? `move:${lock}` : mode
+    // Images and videos are flat planes: no Z stretch handle
+    const flat = element === 'image' || element === 'video'
+    const built = mode === 'move' ? `move:${lock}` : mode === 'resize' ? `resize:${flat ? 'flat' : 'solid'}` : mode
     if (built !== this.builtFor) {
       this.clear()
-      this.build(mode, lock)
+      this.build(mode, lock, flat)
       this.builtFor = built
     }
     const root = this.root!
@@ -58,6 +65,11 @@ export class Gizmo {
     if (pk !== this.positionKey) {
       this.positionKey = pk
       Transform.getMutable(root).position = Vector3.create(t.position.x, t.position.y, t.position.z)
+    }
+    const rk = keyOf(t.rotation)
+    if (this.itemRoot !== null && rk !== this.rotationKey) {
+      this.rotationKey = rk
+      Transform.getMutable(this.itemRoot).rotation = Quaternion.fromEulerDegrees(t.rotation.x, t.rotation.y, t.rotation.z)
     }
     const lk = keyOf(t.scale)
     if (lk !== this.layoutKey) {
@@ -77,21 +89,24 @@ export class Gizmo {
   }
 
   owns(entity: Entity): boolean {
-    return entity === this.root || this.parts.some((p) => p.entity === entity)
+    return entity === this.root || entity === this.itemRoot || this.parts.some((p) => p.entity === entity)
   }
 
   clear(): void {
     for (const p of this.parts) engine.removeEntity(p.entity)
+    if (this.itemRoot !== null) engine.removeEntity(this.itemRoot)
     if (this.root !== null) engine.removeEntity(this.root)
     this.root = null
+    this.itemRoot = null
     this.parts = []
     this.handles.clear()
     this.builtFor = null
     this.positionKey = ''
+    this.rotationKey = ''
     this.layoutKey = ''
   }
 
-  private build(mode: TransformMode, lock: MoveLock): void {
+  private build(mode: TransformMode, lock: MoveLock, flat: boolean): void {
     const root = engine.addEntity()
     Transform.create(root, {})
     this.root = root
@@ -100,15 +115,19 @@ export class Gizmo {
     } else if (mode === 'rotate') {
       for (const axis of AXES) this.addRing(axis)
     } else {
+      const itemRoot = engine.addEntity()
+      Transform.create(itemRoot, { parent: root })
+      this.itemRoot = itemRoot
       this.addPart({ kind: 'uniform' }, UNIFORM_COLOR, (s) => ({
         position: { x: offset(s.x), y: offset(s.y), z: offset(s.z) },
         scale: { x: HANDLE_SIZE, y: HANDLE_SIZE, z: HANDLE_SIZE },
-      }))
+      }), itemRoot)
       for (const axis of AXES) {
+        if (flat && axis === 'z') continue
         this.addPart({ kind: 'stretch', axis }, COLORS[axis], (s) => ({
           position: Vector3.scale(AXIS_VEC[axis], offset(s[axis])),
           scale: { x: HANDLE_SIZE, y: HANDLE_SIZE, z: HANDLE_SIZE },
-        }))
+        }), itemRoot)
       }
     }
   }
@@ -138,9 +157,9 @@ export class Gizmo {
     }
   }
 
-  private addPart(handle: Handle | null, color: Color4, layout: Part['layout']): void {
+  private addPart(handle: Handle | null, color: Color4, layout: Part['layout'], parent: Entity = this.root!): void {
     const e = engine.addEntity()
-    Transform.create(e, { parent: this.root! })
+    Transform.create(e, { parent })
     MeshRenderer.setBox(e)
     Material.setBasicMaterial(e, { diffuseColor: color, castShadows: false })
     if (handle) {

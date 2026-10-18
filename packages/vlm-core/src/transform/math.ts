@@ -89,6 +89,13 @@ export function quatFromAxisAngle(axis: Vec3, degrees: number): Quat {
   return { x: n.x * s, y: n.y * s, z: n.z * s, w: Math.cos(half) }
 }
 
+/** `v` turned by `q` (q·v·q⁻¹, same as DCL `Vector3.rotate(v, q)`); `q` is expected to be unit length. */
+export function rotateVector(q: Quat, v: Vec3): Vec3 {
+  const u = { x: q.x, y: q.y, z: q.z }
+  const t = scale(cross(u, v), 2)
+  return add(add(v, scale(t, q.w)), cross(u, t))
+}
+
 /** Where the ray meets the plane, or null if parallel or the hit is behind the origin. */
 export function rayPlane(ray: Ray, planePoint: Vec3, planeNormal: Vec3): Vec3 | null {
   const denom = dot(ray.direction, planeNormal)

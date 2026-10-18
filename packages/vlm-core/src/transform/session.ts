@@ -13,6 +13,7 @@ import {
   quatMultiply,
   quatToEulerDegrees,
   rayPlane,
+  rotateVector,
   scale,
   snap,
   sub,
@@ -72,15 +73,16 @@ function near(ray: Ray, point: Vec3 | null): Vec3 | null {
   return length(sub(point, ray.origin)) > MAX_HIT_DISTANCE ? null : point
 }
 const planeHit = (ray: Ray, point: Vec3, normal: Vec3): Vec3 | null => near(ray, rayPlane(ray, point, normal))
-const axisHit = (ray: Ray, point: Vec3, axis: Axis): Vec3 | null =>
-  near(ray, closestPointOnAxis(ray, point, AXIS_VECTORS[axis]))
+const axisHit = (ray: Ray, point: Vec3, axis: Axis): Vec3 | null => lineHit(ray, point, AXIS_VECTORS[axis])
+const lineHit = (ray: Ray, point: Vec3, dir: Vec3): Vec3 | null => near(ray, closestPointOnAxis(ray, point, dir))
 
 type DragState =
   | { kind: 'move-free'; start: TransformData }
   | { kind: 'move-axis'; start: TransformData; axis: Axis; grab: Vec3 | null } // null grab: retried next frame
   | { kind: 'rotate'; start: TransformData; axis: Axis; startQuat: Quat; lastAngle: number | null; total: number }
   | { kind: 'uniform'; start: TransformData; normal: Vec3; grabDistance: number | null }
-  | { kind: 'stretch'; start: TransformData; axis: Axis; grabDistance: number | null }
+  /** `dir` is the item's own (rotated) axis: stretching follows the item, not the scene. */
+  | { kind: 'stretch'; start: TransformData; axis: Axis; dir: Vec3; grabDistance: number | null }
 
 export class TransformSession {
   private readonly now: () => number
@@ -268,9 +270,10 @@ export class TransformSession {
         break
       }
       case 'stretch': {
-        const grab = axisHit(ray, pos, handle.axis)
-        const d = grab ? Math.abs(dot(sub(grab, pos), AXIS_VECTORS[handle.axis])) : 0
-        this.dragState = { kind: 'stretch', start, axis: handle.axis, grabDistance: d >= MIN_GRAB_DISTANCE ? d : null }
+        const dir = rotateVector(eulerDegreesToQuat(start.rotation), AXIS_VECTORS[handle.axis])
+        const grab = lineHit(ray, pos, dir)
+        const d = grab ? Math.abs(dot(sub(grab, pos), dir)) : 0
+        this.dragState = { kind: 'stretch', start, axis: handle.axis, dir, grabDistance: d >= MIN_GRAB_DISTANCE ? d : null }
         break
       }
     }
@@ -324,10 +327,9 @@ export class TransformSession {
       }
       case 'stretch': {
         if (state.grabDistance === null) return null
-        const axisVec = AXIS_VECTORS[state.axis]
-        const hit = axisHit(ray, state.start.position, state.axis)
+        const hit = lineHit(ray, state.start.position, state.dir)
         if (!hit) return null
-        const factor = Math.abs(dot(sub(hit, state.start.position), axisVec)) / state.grabDistance
+        const factor = Math.abs(dot(sub(hit, state.start.position), state.dir)) / state.grabDistance
         let size = state.start.scale[state.axis] * factor
         if (this.snapOn) size = Math.max(STRETCH_SNAP_STEP, snap(size, STRETCH_SNAP_STEP))
         out.scale[state.axis] = Math.max(MIN_SCALE, size)

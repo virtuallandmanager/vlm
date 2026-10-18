@@ -10,6 +10,7 @@ import {
   AXIS_VECTORS,
   quatMultiply,
   quatFromAxisAngle,
+  rotateVector,
   type Axis,
 } from '../src/transform/math.js'
 
@@ -124,5 +125,35 @@ describe('snap', () => {
     expect(snap(22, 15)).toBe(15)
     expect(snap(23, 15)).toBe(30)
     expect(snap(-8, 15)).toBe(-15)
+  })
+})
+
+describe('rotateVector', () => {
+  const nearVec = (a: { x: number; y: number; z: number }, b: [number, number, number]) => {
+    near(a.x, b[0])
+    near(a.y, b[1])
+    near(a.z, b[2])
+  }
+  it('turns local X to scene -Z at yaw 90 (DCL Vector3.rotate)', () => {
+    nearVec(rotateVector(eulerDegreesToQuat({ x: 0, y: 90, z: 0 }), AXIS_VECTORS.x), [0, 0, -1])
+  })
+  it('matches DCL Vector3.rotate for a mixed rotation', () => {
+    // Vector3.rotate(Vector3.create(1, 2, 3), Quaternion.fromEulerDegrees(30, 45, 60)) from @dcl/ecs-math 2.1.0
+    nearVec(rotateVector(eulerDegreesToQuat({ x: 30, y: 45, z: 60 }), { x: 1, y: 2, z: 3 }), [1.62566543473024, 0.11602540378443937, 3.36804839632687])
+  })
+  it('agrees with quatFromAxisAngle: a quarter turn about Z takes X to Y, and the axis stays put', () => {
+    const q = quatFromAxisAngle(AXIS_VECTORS.z, 90)
+    nearVec(rotateVector(q, AXIS_VECTORS.x), [0, 1, 0])
+    nearVec(rotateVector(q, AXIS_VECTORS.z), [0, 0, 1])
+    const tilted = quatFromAxisAngle({ x: 1, y: 1, z: 0 }, 180)
+    nearVec(rotateVector(tilted, AXIS_VECTORS.x), [0, 1, 0])
+  })
+  it('composes like quatMultiply (b first, then a)', () => {
+    const a = quatFromAxisAngle(AXIS_VECTORS.y, 90)
+    const b = quatFromAxisAngle(AXIS_VECTORS.x, 90)
+    const v = { x: 0.3, y: -1, z: 2 }
+    const once = rotateVector(quatMultiply(a, b), v)
+    const twice = rotateVector(a, rotateVector(b, v))
+    nearVec(once, [twice.x, twice.y, twice.z])
   })
 })

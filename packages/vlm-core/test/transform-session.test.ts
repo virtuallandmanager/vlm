@@ -435,6 +435,24 @@ describe('TransformSession resize', () => {
     expect(session.draft?.scale).toEqual(v(2, 1, 1))
   })
 
+  it("stretch follows the item's own axes: yaw 90 X handle tracks local X (scene -Z), not scene X", () => {
+    const { session } = selected({ ...origin, rotation: v(0, 90, 0), scale: v(2, 1, 1) }, 'resize')
+    session.beginDrag({ kind: 'stretch', axis: 'x' }, down(0, 5, -4), null)
+    session.drag(down(0, 5, -6), null) // along local X
+    expect(session.draft?.scale.x).toBeCloseTo(3)
+    expect(session.draft?.scale.y).toBe(1)
+    expect(session.draft?.scale.z).toBe(1)
+    session.drag(down(3, 5, -6), null) // along scene X: no change
+    expect(session.draft?.scale.x).toBeCloseTo(3)
+  })
+
+  it('stretch along scene X does nothing for a yaw-90 item grabbed on its local X', () => {
+    const { session } = selected({ ...origin, rotation: v(0, 90, 0), scale: v(2, 1, 1) }, 'resize')
+    session.beginDrag({ kind: 'stretch', axis: 'x' }, down(0, 5, -4), null)
+    session.drag(down(5, 5, -4), null)
+    expect(session.draft?.scale).toEqual(v(2, 1, 1))
+  })
+
   it('stretch ignores a closest point farther than 50 m from the ray origin', () => {
     const { session } = selected({ ...origin, scale: v(2, 1, 1) }, 'resize')
     session.beginDrag({ kind: 'stretch', axis: 'x' }, down(4, 5, 0), null)

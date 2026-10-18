@@ -242,7 +242,7 @@ export class DclEditMode implements EditHost {
     const sel = this.session.selected
     // While someone else holds the item, the gizmo sits where they have it, not at our stale draft
     const remoteT = sel && !this.session.dirty ? this.remote.get(sel.sk)?.transform : null
-    this.gizmo.update(this.session.mode, this.session.lock, sel ? remoteT ?? this.session.draft : null)
+    this.gizmo.update(this.session.mode, this.session.lock, sel ? remoteT ?? this.session.draft : null, sel?.element ?? null)
     if (this.session.dirty !== this.lastDirty) this.changed()
   }
 
