@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, beforeAll } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
@@ -99,7 +99,7 @@ describe('importCatalog', () => {
     root = mkdtempSync(join(tmpdir(), 'catalog-'))
     mkdirSync(join(root, 'Kirzoz'))
     writeFileSync(join(root, 'Kirzoz/Chair.glb'), cube)
-    writeFileSync(join(root, 'Kirzoz/Chair.png'), Buffer.from('png'))
+    writeFileSync(join(root, 'Kirzoz/Chair.png'), Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('chair')]))
     writeFileSync(join(root, 'Kirzoz/Table.glb'), await cubeGlb([2, 1, 3]))
     writeFileSync(join(root, 'Kirzoz/Broken.glb'), Buffer.from('nope'))
   })
@@ -108,7 +108,7 @@ describe('importCatalog', () => {
   it('imports models as public catalog rows with no uploader', async () => {
     const { storage, files } = memoryStorage()
     const report = await importCatalog({ root, packs: PACKS, storage, rows: [row({ thumbnail: 'Kirzoz/Chair.png' })] })
-    expect(report).toMatchObject({ added: 1, updated: 0, duplicates: [], failed: [] })
+    expect(report).toMatchObject({ added: 1, updated: 0, duplicates: [], failed: [], warnings: [] })
     const [m] = await all()
     expect(m).toMatchObject({ packId: 'last-slice-kirzoz', isPublic: true, uploadedBy: null, name: 'Chair', author: 'Kirzoz', style: 'Cozy', category: 'Furniture', venueTags: ['cafe'], triangleCount: 12, dimensions: { x: 1, y: 1, z: 1 }, fileSizeBytes: cube.length, license: 'unstated' })
     expect(m.storageKey).toMatch(/^catalog\/last-slice-kirzoz\/[0-9a-f]{64}\.glb$/)
@@ -159,6 +159,53 @@ describe('importCatalog', () => {
     const { storage } = memoryStorage()
     const report = await importCatalog({ root, packs: PACKS, storage, rows: [row({ sourceRef: 'x', file: 'Kirzoz/Missing.glb' })] })
     expect(report.failed.map((f) => f.sourceRef)).toEqual(['x'])
+  })
+
+  it('refuses a thumbnail that is a symlink out of the repo, and does not upload it', async () => {
+    const secret = join(mkdtempSync(join(tmpdir(), 'secret-')), 'id_rsa')
+    writeFileSync(secret, 'PRIVATE KEY')
+    symlinkSync(secret, join(root, 'Kirzoz/Evil.png'))
+    const { storage, files } = memoryStorage()
+    const report = await importCatalog({ root, packs: PACKS, storage, rows: [row({ thumbnail: 'Kirzoz/Evil.png' })] })
+    expect([...files.values()].some((b) => b.toString() === 'PRIVATE KEY')).toBe(false)
+    expect(report.warnings.map((w) => w.sourceRef)).toEqual(['Kirzoz/Chair.glb'])
+  })
+
+  it('refuses a GLB that is a symlink out of the repo', async () => {
+    const outside = join(mkdtempSync(join(tmpdir(), 'outside-')), 'x.glb')
+    writeFileSync(outside, cube)
+    symlinkSync(outside, join(root, 'Kirzoz/Linked.glb'))
+    const { storage } = memoryStorage()
+    const report = await importCatalog({ root, packs: PACKS, storage, rows: [row({ sourceRef: 'l', file: 'Kirzoz/Linked.glb' })] })
+    expect(report.failed.map((f) => f.sourceRef)).toEqual(['l'])
+  })
+
+  it('a thumbnail that is not an image is skipped with a warning; the model still imports', async () => {
+    writeFileSync(join(root, 'Kirzoz/Fake.png'), Buffer.from('<html>not an image</html>'))
+    const { storage, files } = memoryStorage()
+    const report = await importCatalog({ root, packs: PACKS, storage, rows: [row({ thumbnail: 'Kirzoz/Fake.png' })] })
+    expect(report.added).toBe(1)
+    expect(report.warnings).toEqual([{ sourceRef: 'Kirzoz/Chair.glb', warning: expect.stringMatching(/thumbnail/) }])
+    expect(files.size).toBe(1)
+    expect((await all())[0].thumbnailUrl).toBeNull()
+  })
+
+  it('a missing thumbnail keeps the model (placeholder until it exists)', async () => {
+    const { storage } = memoryStorage()
+    const report = await importCatalog({ root, packs: PACKS, storage, rows: [row({ thumbnail: 'Kirzoz/Nope.png' })] })
+    expect(report.added).toBe(1)
+    expect(report.failed).toEqual([])
+    expect(report.warnings).toHaveLength(1)
+  })
+
+  it('a real PNG thumbnail uploads under its own content hash', async () => {
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('rest')])
+    writeFileSync(join(root, 'Kirzoz/Real.png'), png)
+    const { storage } = memoryStorage()
+    await importCatalog({ root, packs: PACKS, storage, rows: [row({ thumbnail: 'Kirzoz/Real.png' })] })
+    const [m] = await all()
+    const { createHash } = await import('node:crypto')
+    expect(m.thumbnailUrl).toBe(`https://cdn.test/catalog/last-slice-kirzoz/${createHash('sha256').update(png).digest('hex')}.png`)
   })
 
   it('catalog rows never count toward storage', async () => {

@@ -54,6 +54,17 @@ describe('catalog pack routes', () => {
     expect((await app.inject({ method: 'PATCH', url: '/api/admin/catalog/packs/nope', headers, payload: { enabled: false } })).statusCode).toBe(404)
   })
 
+  it('an admin cannot delete or edit a catalog model (switch its pack off instead)', async () => {
+    const headers = await as('admin')
+    const [m] = await db.select().from(assetLibraryItems).limit(1)
+    const del = await app.inject({ method: 'DELETE', url: `/api/assets/${m.id}`, headers })
+    expect(del.statusCode).toBe(409)
+    expect(del.json().error).toBe('catalog_model')
+    const put = await app.inject({ method: 'PUT', url: `/api/assets/${m.id}`, headers, payload: { isPublic: false } })
+    expect(put.statusCode).toBe(409)
+    expect((await db.select().from(assetLibraryItems)).find((x) => x.id === m.id)).toMatchObject({ isPublic: true })
+  })
+
   it('public packs list includes disabled packs that have models, and leaves out empty ones', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/catalog/packs' })
     expect(res.statusCode).toBe(200)

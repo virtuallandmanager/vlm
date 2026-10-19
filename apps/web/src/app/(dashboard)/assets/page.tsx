@@ -533,6 +533,9 @@ function AddToScene({ assetId }: { assetId: string }) {
 
 // ── Main Page ───────────────────────────────────────────────────────────────
 
+/** The catalog holds thousands of models: the list loads a page at a time. */
+const PAGE_SIZE = 48
+
 export default function AssetsPage() {
   const { token } = useAuth()
   const api = useApi()
@@ -544,6 +547,7 @@ export default function AssetsPage() {
   const [total, setTotal] = useState(0)
   const [categories, setCategories] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
 
   // Filters
   const [search, setSearch] = useState('')
@@ -555,10 +559,12 @@ export default function AssetsPage() {
   const [packs, setPacks] = useState<CatalogPack[]>([])
   const filtering = !!(search || categoryFilter || tagFilter || styleFilter || venueFilter || packFilter)
 
-  const fetchAssets = useCallback(async () => {
-    setLoading(true)
+  /** First page for the current filters, or (more) the next page appended to what's shown. */
+  const fetchAssets = useCallback(async (more = false) => {
+    if (more) setLoadingMore(true)
+    else setLoading(true)
     try {
-      const params: Record<string, string> = {}
+      const params: Record<string, string> = { limit: String(PAGE_SIZE), offset: String(more ? assets.length : 0) }
       if (search) params.q = search
       if (categoryFilter) params.category = categoryFilter
       if (tagFilter) params.tag = tagFilter
@@ -566,14 +572,15 @@ export default function AssetsPage() {
       if (venueFilter) params.venue = venueFilter
       if (packFilter) params.pack = packFilter
       const data = await api.getAssets(params)
-      setAssets(data.assets)
+      setAssets((prev) => (more ? [...prev, ...data.assets] : data.assets))
       setTotal(data.total)
     } catch {
       // ignore
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
-  }, [search, categoryFilter, tagFilter, styleFilter, venueFilter, packFilter, token])
+  }, [search, categoryFilter, tagFilter, styleFilter, venueFilter, packFilter, token, assets.length])
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -758,6 +765,17 @@ export default function AssetsPage() {
               </div>
             </button>
           ))}
+        </div>
+      )}
+      {!loading && assets.length < total && (
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={() => fetchAssets(true)}
+            disabled={loadingMore}
+            className="rounded-lg bg-gray-800 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+          >
+            {loadingMore ? 'Loading…' : `Load more (${assets.length} of ${total})`}
+          </button>
         </div>
       )}
     </div>

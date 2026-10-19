@@ -1,7 +1,7 @@
 // One-off catalog import: packs first, then every tag-file row's GLB (and thumbnail) uploaded under a key derived from
 // its content, upserted on (pack_id, source_ref). Safe to re-run: rows keep their id, packs keep their enabled flag.
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { readFile, realpath } from 'node:fs/promises'
 import { extname, join, resolve, sep } from 'node:path'
 import { and, eq, ne, or } from 'drizzle-orm'
 import { db } from '../db/connection.js'
@@ -18,21 +18,46 @@ export type ImportReport = {
   updated: number
   duplicates: { sourceRef: string; keptBy: string }[]
   failed: { sourceRef: string; error: string }[]
+  /** Imported, but something was left out (a thumbnail that's missing or isn't an image: placeholder for now). */
+  warnings: { sourceRef: string; warning: string }[]
 }
 
 const THUMB_TYPES: Record<string, string> = { '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg' }
 
-/** A path inside root (tag files are data; never read outside the repo they describe). */
-function inside(root: string, rel: string): string {
-  const base = resolve(root)
-  const p = resolve(join(base, rel))
-  if (p !== base && !p.startsWith(base + sep)) throw new Error(`path escapes the repo root: ${rel}`)
-  return p
+/**
+ * Reads a file inside root. Tag files and the cloned repos are data: a path, or a symlink in a repo, that leads
+ * outside root is refused, so nothing private can be uploaded as a catalog file.
+ */
+async function readInside(root: string, rel: string): Promise<Buffer> {
+  const base = await realpath(resolve(root))
+  const p = await realpath(resolve(join(base, rel)))
+  if (!p.startsWith(base + sep)) throw new Error(`path escapes the repo root: ${rel}`)
+  return readFile(p)
+}
+
+const IMAGE_MAGIC: Record<string, (b: Buffer) => boolean> = {
+  'image/png': (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  'image/jpeg': (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  'image/webp': (b) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP',
+}
+
+/** The thumbnail's bytes and type, or why it was left out. */
+async function readThumbnail(root: string, rel: string): Promise<{ data: Buffer; type: string; ext: string } | { warning: string }> {
+  const ext = extname(rel).toLowerCase()
+  const type = THUMB_TYPES[ext]
+  if (!type) return { warning: `thumbnail type ${ext} isn't supported` }
+  try {
+    const data = await readInside(root, rel)
+    if (!IMAGE_MAGIC[type](data)) return { warning: `thumbnail ${rel} isn't a ${type} image` }
+    return { data, type, ext }
+  } catch (err) {
+    return { warning: `thumbnail ${rel} unreadable: ${err instanceof Error ? err.message : String(err)}` }
+  }
 }
 
 export async function importCatalog(opts: { root: string; rows: TagRow[]; packs: PackDef[]; storage: StorageProvider }): Promise<ImportReport> {
   const { root, rows, packs, storage } = opts
-  const report: ImportReport = { added: 0, updated: 0, duplicates: [], failed: [] }
+  const report: ImportReport = { added: 0, updated: 0, duplicates: [], failed: [], warnings: [] }
   const licenseOf = new Map(packs.map((p) => [p.id, p.license]))
   for (const p of packs) {
     const { id, ...rest } = p
@@ -42,7 +67,7 @@ export async function importCatalog(opts: { root: string; rows: TagRow[]; packs:
 
   for (const row of rows) {
     try {
-      const glb = await readFile(inside(root, row.file))
+      const glb = await readInside(root, row.file)
       const hash = createHash('sha256').update(glb).digest('hex')
       const stats = await glbStats(glb)
       const existing = await db.query.assetLibraryItems.findFirst({
@@ -60,10 +85,13 @@ export async function importCatalog(opts: { root: string; rows: TagRow[]; packs:
       const cdnUrl = existing?.contentHash === hash && existing.cdnUrl ? existing.cdnUrl : await storage.upload(storageKey, glb, 'model/gltf-binary')
       let thumbnailUrl = existing?.thumbnailUrl ?? null
       if (row.thumbnail) {
-        const ext = extname(row.thumbnail).toLowerCase()
-        const type = THUMB_TYPES[ext]
-        if (!type) throw new Error(`unsupported thumbnail type ${ext}`)
-        thumbnailUrl = await storage.upload(`catalog/${row.pack}/${hash}${ext}`, await readFile(inside(root, row.thumbnail)), type)
+        const thumb = await readThumbnail(root, row.thumbnail)
+        if ('warning' in thumb) report.warnings.push({ sourceRef: row.sourceRef, warning: thumb.warning })
+        else {
+          // Keyed by the image's own hash, so a new image gets a new URL (no stale CDN copy)
+          const thumbHash = createHash('sha256').update(thumb.data).digest('hex')
+          thumbnailUrl = await storage.upload(`catalog/${row.pack}/${thumbHash}${thumb.ext}`, thumb.data, thumb.type)
+        }
       }
       const values = {
         name: row.name, description: row.description ?? null, category: row.category, style: row.style, venueTags: row.venueTags,

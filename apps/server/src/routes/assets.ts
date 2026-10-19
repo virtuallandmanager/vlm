@@ -23,6 +23,8 @@ import { StoreMediaError } from '../media/store.js'
 import { verifySessionToken } from '../auth/tokens.js'
 import { generateThumbnail } from '../services/thumbnails.js'
 
+const CATALOG_MODEL = { error: 'catalog_model', message: "Catalog models can't be changed or deleted; switch the pack off in Admin → Catalog packs instead" }
+
 /** Optional bearer: scene-pass, API-key and bad tokens count as anonymous (null). */
 function optionalAccount(authorization: string | undefined) {
   const bearer = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null
@@ -252,6 +254,8 @@ export default async function assetRoutes(app: FastifyInstance) {
       if (existing.uploadedBy !== request.user.id && request.user.role !== 'admin') {
         return reply.status(403).send({ error: 'Forbidden' })
       }
+      // Catalog models are shared by every scene that uses them: they change only through the importer
+      if (existing.packId) return reply.status(409).send(CATALOG_MODEL)
 
       const updates: Record<string, unknown> = {}
       if (body.name !== undefined) updates.name = body.name
@@ -290,6 +294,8 @@ export default async function assetRoutes(app: FastifyInstance) {
       if (existing.uploadedBy !== request.user.id && request.user.role !== 'admin') {
         return reply.status(403).send({ error: 'Forbidden' })
       }
+      // Deleting would break every scene that placed it; switch its pack off instead
+      if (existing.packId) return reply.status(409).send(CATALOG_MODEL)
 
       await storage.delete(existing.storageKey)
       await db.delete(assetLibraryItems).where(eq(assetLibraryItems.id, id))
