@@ -106,8 +106,9 @@ Low Poly Models is out for now: no public release was found. Adding it later is 
   so on. A chair can fit many. These are what "I need a café" filters on. Kept separate from category because the
   user's "kind" (café) is a place, not an object.
 - Tagging (my call): I propose the style, category and venue tags from names, Last Slice's `cat` / `sty` /
-  description, and folder paths. The output is a reviewable CSV or JSON checked into the repo. The user reviews it
-  before import. The import reads that file, so tags are data and can be fixed by editing it and re-running.
+  description, and folder paths. The output is a reviewable CSV or JSON checked into the repo. Every row carries a
+  confidence. Before import, the user spot-checks a sample from each pack plus every low-confidence row (the user's
+  ruling). Anything that can't be placed goes into "Other" and stays browsable. The import reads that file, so tags are data and can be fixed by editing it and re-running.
 
 ### Import
 
