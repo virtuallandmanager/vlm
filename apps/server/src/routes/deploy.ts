@@ -232,6 +232,10 @@ export default async function deployRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: 'Deployment not found' })
       }
 
+      if (original.platform === 'hyperfy' && !hyperfyHosting().available) {
+        return reply.status(503).send({ error: 'hyperfy_hosting_unavailable', message: "Hyperfy hosting isn't set up on this server yet" })
+      }
+
       if (original.platform === 'decentraland' && !(await validContentServer(original.target as Record<string, unknown>))) {
         return reply.status(400).send({ error: 'invalid_content_server' })
       }

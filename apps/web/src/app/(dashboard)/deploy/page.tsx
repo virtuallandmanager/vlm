@@ -1,4 +1,5 @@
 'use client'
+import { deployErrorMessage } from '@/lib/deploy'
 import { useApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -106,6 +107,7 @@ function DeployContent() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   // Hyperfy deploys stay off until this server can really host a world
   const [hyperfyAvailable, setHyperfyAvailable] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   // Load scenes
   useEffect(() => {
@@ -213,10 +215,13 @@ function DeployContent() {
 
   const handleRedeploy = async (id: string) => {
     setActionLoading(id)
+    setActionError(null)
     try {
       const { deployment } = await api.redeployDeployment(id)
       setDeployments((prev) => [deployment, ...prev])
-    } catch { /* ignore */ }
+    } catch (err) {
+      setActionError(deployErrorMessage(err))
+    }
     setActionLoading(null)
   }
 
@@ -252,35 +257,38 @@ function DeployContent() {
 
   // -- Hyperfy Actions --------------------------------------------------------
 
-  const handleViewLogs = async (deploymentId: string, infraId: string) => {
+  const handleViewLogs = async (deploymentId: string) => {
     try {
-      const { logs } = await api.getHyperfyLogs(infraId)
+      const { logs } = await api.getHyperfyLogs(deploymentId)
       setHyperfyLogs((prev) => ({ ...prev, [deploymentId]: logs }))
     } catch {
       setHyperfyLogs((prev) => ({ ...prev, [deploymentId]: 'Failed to fetch logs.' }))
     }
   }
 
-  const handleViewStatus = async (deploymentId: string, infraId: string) => {
+  const handleViewStatus = async (deploymentId: string) => {
     try {
-      const { instance } = await api.getHyperfyStatus(infraId)
+      const { instance } = await api.getHyperfyStatus(deploymentId)
       setHyperfyStatus((prev) => ({ ...prev, [deploymentId]: instance }))
     } catch {
       setHyperfyStatus((prev) => ({ ...prev, [deploymentId]: { error: 'Failed to fetch status' } }))
     }
   }
 
-  const handleDestroy = async (infraId: string, deploymentId: string) => {
+  const handleDestroy = async (deploymentId: string) => {
     setDestroying(true)
+    setActionError(null)
     try {
-      await api.destroyHyperfy(infraId)
+      await api.destroyHyperfy(deploymentId)
       // Refresh deployments
       if (selectedSceneId) {
         const data = await api.getDeployments(selectedSceneId)
         setDeployments(data.deployments)
       }
       setConfirmDestroy(null)
-    } catch { /* ignore */ }
+    } catch (err) {
+      setActionError(deployErrorMessage(err))
+    }
     setDestroying(false)
   }
 
@@ -317,6 +325,10 @@ function DeployContent() {
           ))}
         </select>
       </div>
+
+      {actionError && (
+        <p className="rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300" role="alert">{actionError}</p>
+      )}
 
       {!selectedSceneId && (
         <div className="text-center py-12">
@@ -459,12 +471,12 @@ function DeployContent() {
                   onRedeploy={() => handleRedeploy(dep.id)}
                   hyperfyLogs={hyperfyLogs[dep.id]}
                   hyperfyStatusData={hyperfyStatus[dep.id]}
-                  onViewLogs={() => dep.infrastructureId && handleViewLogs(dep.id, dep.infrastructureId)}
-                  onViewStatus={() => dep.infrastructureId && handleViewStatus(dep.id, dep.infrastructureId)}
+                  onViewLogs={() => handleViewLogs(dep.id)}
+                  onViewStatus={() => handleViewStatus(dep.id)}
                   confirmDestroy={confirmDestroy === dep.id}
                   onConfirmDestroy={() => setConfirmDestroy(dep.id)}
                   onCancelDestroy={() => setConfirmDestroy(null)}
-                  onDestroy={() => dep.infrastructureId && handleDestroy(dep.infrastructureId, dep.id)}
+                  onDestroy={() => handleDestroy(dep.id)}
                   destroying={destroying && confirmDestroy === dep.id}
                 />
               ))}

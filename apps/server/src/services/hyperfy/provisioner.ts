@@ -15,6 +15,7 @@ import { db } from '../../db/connection.js'
 import { sceneDeployments } from '../../db/schema.js'
 import {
   createInfrastructureProvider,
+  hyperfyHosting,
   type InfrastructureProvider,
   type InstanceInfo,
 } from './infrastructure.js'
@@ -140,19 +141,15 @@ export class HyperfyProvisioner {
       throw new Error('Deployment not found')
     }
 
-    if (!deployment.infrastructureId) {
-      throw new Error('No infrastructure ID — instance may not be running')
+    // Tear down the world only when it really exists on hosting this server can reach; the local dev stub never
+    // created anything in cloud mode. Then the deployment goes away.
+    const recordProvider = (deployment.target as { provider?: string } | null)?.provider
+    const hosting = hyperfyHosting()
+    if (deployment.infrastructureId && hosting.available && recordProvider === hosting.provider) {
+      await this.provider.destroyInstance(deployment.infrastructureId)
     }
 
-    await this.provider.destroyInstance(deployment.infrastructureId)
-
-    await db
-      .update(sceneDeployments)
-      .set({
-        status: 'failed', // reuse 'failed' as terminated state
-        errorMessage: 'Destroyed by user',
-      })
-      .where(eq(sceneDeployments.id, deploymentId))
+    await db.delete(sceneDeployments).where(eq(sceneDeployments.id, deploymentId))
   }
 
   /**

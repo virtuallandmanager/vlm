@@ -62,6 +62,29 @@ describe('Hyperfy hosting availability', () => {
     expect(await db.select().from(sceneDeployments)).toHaveLength(0)
   })
 
+  const fakeWorld = async () => (await db.insert(sceneDeployments).values({
+    sceneId, platform: 'hyperfy', deploymentType: 'instance', status: 'failed', deployedBy: owner.id,
+    infrastructureId: 'local-w-4000', target: { name: 'w', slug: 'w', instanceUrl: 'http://localhost:4000', provider: 'local', adminCode: 'secret' },
+  }).returning())[0]
+
+  it('destroy, by deployment id, removes a world that was never really created', async () => {
+    ;(config as any).mode = 'cloud'
+    const dep = await fakeWorld()
+    const res = await call('POST', `/api/deploy/hyperfy/${dep.id}/destroy`)
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ destroyed: true })
+    expect(await db.select().from(sceneDeployments)).toHaveLength(0)
+  })
+
+  it('redeploying a Hyperfy world is refused while hosting is unavailable, and creates nothing', async () => {
+    ;(config as any).mode = 'cloud'
+    const dep = await fakeWorld()
+    const res = await call('POST', `/api/deploy/${dep.id}/redeploy`)
+    expect(res.statusCode).toBe(503)
+    expect(res.json().error).toBe('hyperfy_hosting_unavailable')
+    expect(await db.select().from(sceneDeployments)).toHaveLength(1)
+  })
+
   it('GET /api/deploy/platforms says whether Hyperfy can be deployed', async () => {
     ;(config as any).mode = 'cloud'
     expect((await call('GET', '/api/deploy/platforms')).json()).toEqual({ platforms: { decentraland: true, hyperfy: false } })
