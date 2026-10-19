@@ -201,3 +201,26 @@ describe('companion uploads', () => {
     }
   })
 })
+
+describe('local storage files', () => {
+  it('are served at /uploads even when the server has no dashboard build (local dev)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vlm-uploads-'))
+    mkdirSync(join(dir, 'u1'))
+    writeFileSync(join(dir, 'u1', 'a.png'), Buffer.from(PNG, 'base64'))
+    const prevPath = process.env.LOCAL_STORAGE_PATH
+    const prevDash = config.dashboardDir
+    process.env.LOCAL_STORAGE_PATH = dir
+    ;(config as any).dashboardDir = join(dir, 'no-dashboard-here')
+    const app = await testApp()
+    try {
+      const res = await app.inject({ method: 'GET', url: '/uploads/u1/a.png' })
+      expect(res.statusCode).toBe(200)
+      expect(res.headers['content-type']).toBe('image/png')
+    } finally {
+      await app.close()
+      if (prevPath === undefined) delete process.env.LOCAL_STORAGE_PATH
+      else process.env.LOCAL_STORAGE_PATH = prevPath
+      ;(config as any).dashboardDir = prevDash
+    }
+  })
+})

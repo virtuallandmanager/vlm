@@ -219,6 +219,17 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     console.log(`[vlm-server] Prometheus metrics enabled at /metrics`)
   }
 
+  // ── Serve uploaded media files (local storage) ────────────────────────
+  // Independent of the dashboard build: local dev runs the dashboard separately but still needs its uploads served
+  const uploadsPath = resolve(process.env.LOCAL_STORAGE_PATH || './uploads')
+  if (existsSync(uploadsPath)) {
+    await app.register(fastifyStatic, {
+      root: uploadsPath,
+      prefix: '/uploads/',
+      decorateReply: false,
+    })
+  }
+
   // ── Static Dashboard ─────────────────────────────────────────────────────
   const dashboardPath = resolve(config.dashboardDir)
   console.log(`[vlm-server] Dashboard path: ${dashboardPath} (exists: ${existsSync(dashboardPath)})`)
@@ -232,16 +243,6 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
         if (path.includes('/auth/handoff')) res.setHeader('Referrer-Policy', 'no-referrer')
       },
     })
-
-    // ── Serve uploaded media files ─────────────────────────────────────────
-    const uploadsPath = resolve(process.env.LOCAL_STORAGE_PATH || './uploads')
-    if (existsSync(uploadsPath)) {
-      await app.register(fastifyStatic, {
-        root: uploadsPath,
-        prefix: '/uploads/',
-        decorateReply: false,
-      })
-    }
 
     // Companion upload links (/u/<code>): the static export has one page for every code, at u/_/
     app.get('/u/:code', (_request, reply) => reply.sendFile('u/_/index.html'))
