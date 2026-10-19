@@ -43,7 +43,7 @@ const PROMPT_W = 400
 const PROMPT_H = 70
 const MESSAGE_H = 22
 const BOTTOM = 20
-const EXACT_H = 64
+const EXACT_H = 70
 const AXES: Axis[] = ['x', 'y', 'z']
 const EXACT_TITLE: Record<TransformMode, string> = { move: 'Position (m)', rotate: 'Rotation (degrees)', resize: 'Scale' }
 
@@ -92,12 +92,12 @@ function ExactPanel({ s, act }: { s: EditModeHUDState; act: Act }) {
       onMouseDown={markHudPress}
     >
       <Label value={`${EXACT_TITLE[s.mode]} — type a value and press Enter`} fontSize={10} color={DIM} textAlign="middle-left" uiTransform={{ height: 18 }} />
-      <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', height: 34 }}>
+      <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', height: 40 }}>
         {AXES.map((axis) => (
           <UiEntity key={axis} uiTransform={{ flexDirection: 'row', alignItems: 'center', margin: { right: 14 } }}>
-            <Label value={axis.toUpperCase()} fontSize={12} color={LOCK_COLORS[axis]} uiTransform={{ width: 16, height: 28 }} />
+            <Label value={axis.toUpperCase()} fontSize={12} color={LOCK_COLORS[axis]} uiTransform={{ width: 16, height: 36 }} />
             <Input
-              uiTransform={{ width: 120, height: 28 }}
+              uiTransform={{ width: 120, height: 36 }}
               uiBackground={{ color: BTN }}
               color={WHITE}
               placeholderColor={DIM}

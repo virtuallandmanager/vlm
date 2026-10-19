@@ -558,7 +558,7 @@ function RolesPanel() {
         ))}
 
         <Input
-          uiTransform={{ width: '100%', height: 30, margin: { top: 6, bottom: 6 } }}
+          uiTransform={{ width: '100%', height: 36, margin: { top: 6, bottom: 6 } }}
           uiBackground={{ color: C.bgCard }}
           color={C.text}
           placeholderColor={C.textMuted}
@@ -797,11 +797,11 @@ function RenameRow({ asset }: { asset: HUDMediaItem }) {
   const save = () => onSceneAction?.('media_rename', { assetId: asset.id, name: draft })
   return (
     <UiEntity
-      uiTransform={{ width: '100%', height: 34, flexDirection: 'row', alignItems: 'center', padding: { left: 6, right: 4 }, margin: { bottom: 2 } }}
+      uiTransform={{ width: '100%', height: 42, flexDirection: 'row', alignItems: 'center', padding: { left: 6, right: 4 }, margin: { bottom: 2 } }}
       uiBackground={{ color: C.bgCard }}
     >
       <Input
-        uiTransform={{ width: 196, height: 26 }}
+        uiTransform={{ width: 196, height: 36 }}
         uiBackground={{ color: C.bgLight }}
         color={C.text}
         placeholderColor={C.textMuted}
