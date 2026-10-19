@@ -56,7 +56,8 @@ export class VLMHttpClient {
     const sentToken = this.auth.token
     const url = `${this.baseUrl}${path}`
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      // Only with a body: the server refuses an empty body labelled as JSON (bodyless DELETEs)
+      ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...this.auth.getAuthHeader(),
       ...(options.headers as Record<string, string> || {}),
     }

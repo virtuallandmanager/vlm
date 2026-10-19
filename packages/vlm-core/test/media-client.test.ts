@@ -106,4 +106,25 @@ describe('VLMHttpClient media + element calls', () => {
     const client = new VLMHttpClient('https://api.example')
     await expect(client.deleteElement('e1')).rejects.toThrow(/HTTP 403/)
   })
+
+  it('bodyless DELETEs send no JSON content type (the server rejects an empty JSON body)', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new VLMHttpClient('https://api.example')
+    await client.deleteElement('e1')
+    await client.removeFromSceneLibrary('s1', 'l1')
+    for (const i of [0, 1]) {
+      const [, init] = call(fetchMock, i)
+      expect(init.method).toBe('DELETE')
+      expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined()
+    }
+    expect(call(fetchMock, 1)[0]).toBe('https://api.example/api/scenes/s1/library/l1')
+  })
+
+  it('requests with a body still send the JSON content type', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ element: {} }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await new VLMHttpClient('https://api.example').createElement('p1', { type: 'image' })
+    expect((call(fetchMock)[1].headers as Record<string, string>)['Content-Type']).toBe('application/json')
+  })
 })
