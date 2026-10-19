@@ -104,6 +104,8 @@ function DeployContent() {
 
   // Action states
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  // Hyperfy deploys stay off until this server can really host a world
+  const [hyperfyAvailable, setHyperfyAvailable] = useState(false)
 
   // Load scenes
   useEffect(() => {
@@ -118,6 +120,8 @@ function DeployContent() {
         }
       }
     }).catch(() => setLoadingScenes(false))
+
+    api.getDeployPlatforms().then((d) => setHyperfyAvailable(d.platforms.hyperfy)).catch(() => setHyperfyAvailable(false))
 
     api.getDeployWallets().then((data) => {
       setWallets(data.wallets)
@@ -339,7 +343,7 @@ function DeployContent() {
                 className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="decentraland">Decentraland</option>
-                <option value="hyperfy">Hyperfy</option>
+                <option value="hyperfy" disabled={!hyperfyAvailable}>{hyperfyAvailable ? 'Hyperfy' : 'Hyperfy (hosting coming soon)'}</option>
               </select>
             </div>
 

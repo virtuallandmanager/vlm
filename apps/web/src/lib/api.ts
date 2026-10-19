@@ -236,6 +236,7 @@ export function useApi() {
       apiFetch<{ wallet: any }>('/api/deploy/wallets', { method: 'POST', body: JSON.stringify(data) }),
     deleteDeployWallet: (id: string) =>
       apiFetch<{ deleted: boolean }>(`/api/deploy/wallets/${id}`, { method: 'DELETE' }),
+    getDeployPlatforms: () => apiFetch<{ platforms: { decentraland: boolean; hyperfy: boolean } }>('/api/deploy/platforms'),
     provisionHyperfy: (data: { sceneId: string; name: string; region?: string }) =>
       apiFetch<any>('/api/deploy/hyperfy/provision', { method: 'POST', body: JSON.stringify(data) }),
     destroyHyperfy: (id: string) =>

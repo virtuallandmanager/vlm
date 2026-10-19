@@ -23,6 +23,7 @@ import {
 import { authenticate } from '../middleware/auth.js'
 import { requireFeature } from '../middleware/feature-gate.js'
 import { HyperfyProvisioner } from '../services/hyperfy/provisioner.js'
+import { hyperfyHosting } from '../services/hyperfy/infrastructure.js'
 import { executeDCLDeploy } from '../services/dcl/deployer.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess } from '../auth/permissions.js'
@@ -108,6 +109,7 @@ export default async function deployRoutes(app: FastifyInstance) {
 
       // Hyperfy: use the provisioner for end-to-end deployment
       if (body.platform === 'hyperfy') {
+        if (!hyperfyHosting().available) return reply.status(503).send({ error: 'hyperfy_hosting_unavailable', message: "Hyperfy hosting isn't set up on this server yet" })
         const provisioner = new HyperfyProvisioner()
         try {
           const result = await provisioner.provision({
@@ -336,6 +338,11 @@ export default async function deployRoutes(app: FastifyInstance) {
     },
   )
 
+  /** Which platforms this server can deploy to right now. */
+  app.get('/api/deploy/platforms', { preHandler: [authenticate] }, async () => ({
+    platforms: { decentraland: true, hyperfy: hyperfyHosting().available },
+  }))
+
   // ── Hyperfy-Specific Routes ─────────────────────────────────────────
 
   /** Provision a new Hyperfy world (convenience endpoint). */
@@ -366,6 +373,7 @@ export default async function deployRoutes(app: FastifyInstance) {
       const access = await getSceneAccess(actorFromClaims(request.user), body.sceneId)
       if (access.level === 'none') return reply.status(404).send({ error: 'Scene not found' })
       if (!isFullAccess(access)) return reply.status(403).send({ error: 'Forbidden' })
+      if (!hyperfyHosting().available) return reply.status(503).send({ error: 'hyperfy_hosting_unavailable', message: "Hyperfy hosting isn't set up on this server yet" })
 
       const provisioner = new HyperfyProvisioner()
       try {

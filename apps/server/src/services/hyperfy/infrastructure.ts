@@ -14,6 +14,7 @@
 // Interface
 // ---------------------------------------------------------------------------
 
+import { config } from '../../config.js'
 export interface InstanceConfig {
   /** Unique name/slug for this world */
   name: string
@@ -336,6 +337,17 @@ export class LocalProvider implements InfrastructureProvider {
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
+
+/**
+ * Whether Hyperfy worlds can really be hosted. The local provider is a development stub that starts nothing, so it
+ * never counts in cloud mode; Fly needs its API token.
+ */
+export function hyperfyHosting(): { available: boolean; provider: string } {
+  const provider = process.env.HYPERFY_INFRA_PROVIDER || 'local'
+  if (provider === 'fly') return { available: !!process.env.FLY_API_TOKEN, provider }
+  if (provider === 'docker') return { available: true, provider }
+  return { available: config.mode !== 'cloud', provider: 'local' }
+}
 
 export function createInfrastructureProvider(): InfrastructureProvider {
   const provider = process.env.HYPERFY_INFRA_PROVIDER || 'local'
