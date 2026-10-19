@@ -271,7 +271,7 @@ export default async function authRoutes(app: FastifyInstance) {
 
       let dbUser
       if (verifiedWallet) {
-        dbUser = await resolveVerifiedWalletUser(verifiedWallet, displayName)
+        dbUser = await resolveVerifiedWalletUser(verifiedWallet, displayName, 'visitor')
       } else {
         const authMethod = await db.query.userAuthMethods.findFirst({
           where: and(eq(userAuthMethods.type, 'wallet'), eq(userAuthMethods.identifier, identifier)),

@@ -85,7 +85,7 @@ export default async function walletAuthRoutes(app: FastifyInstance) {
       return reply.send({ linked: true })
     }
 
-    const user = await resolveVerifiedWalletUser(recovered, `${recovered.slice(0, 6)}…${recovered.slice(-4)}`)
+    const user = await resolveVerifiedWalletUser(recovered, `${recovered.slice(0, 6)}…${recovered.slice(-4)}`, 'account')
     await linkWalletGrants(user.id, recovered)
     return reply.send(issueWalletSession(app, user, recovered))
   })

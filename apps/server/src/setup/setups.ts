@@ -96,7 +96,7 @@ async function release(setup: LocationSetupRow, scene: AnalyticsSceneRow, now: D
 export async function setUpLocation(scene: AnalyticsSceneRow, wallet: string, now = new Date()) {
   const w = wallet.toLowerCase()
   if (await getActiveSetup(scene.id)) throw new SetupError(409, 'already_set_up')
-  const user = await resolveVerifiedWalletUser(w, `${w.slice(0, 6)}…${w.slice(-4)}`)
+  const user = await resolveVerifiedWalletUser(w, `${w.slice(0, 6)}…${w.slice(-4)}`, 'account')
   try {
     return await db.transaction(async (tx) => {
       const [created] = await tx.insert(scenes).values({ ownerId: user.id, name: scene.title || scene.locationKey }).returning()

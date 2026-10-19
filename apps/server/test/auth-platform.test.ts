@@ -93,7 +93,7 @@ describe('POST /api/auth/platform', () => {
     expect(await db.query.userAuthMethods.findFirst({ where: eq(userAuthMethods.identifier, VICTIM) })).toBeUndefined()
   })
 
-  it('only the very first user is auto-promoted to admin', async () => {
+  it('only the very first user is auto-promoted to admin; later in-world players are viewers', async () => {
     await createUser({ role: 'admin' })
     const res = await app.inject({
       method: 'POST',
@@ -101,7 +101,7 @@ describe('POST /api/auth/platform', () => {
       headers: { 'x-identity-auth-chain-0': `valid:${WALLET}` },
       payload: {},
     })
-    expect(res.json().user.role).toBe('creator')
+    expect(res.json().user.role).toBe('viewer')
   })
 
   it('the first-ever platform user becomes admin in single mode', async () => {
