@@ -1,0 +1,1297 @@
+[
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 01 Size 1x1/Dhingia Builds 01 Blue 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 01 Size 1x1/Dhingia Builds 01 Blue 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 01 Size 1x1/Render.png",
+  "name": "Dhingia Build 01 Blue (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 01 Size 1x1/Dhingia Builds 01 Pink 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 01 Size 1x1/Dhingia Builds 01 Pink 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 01 Size 1x1/Render.png",
+  "name": "Dhingia Build 01 Pink (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 02 Size 1x1/Dhingia Builds Blue 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 02 Size 1x1/Dhingia Builds Blue 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 02 Size 1x1/Render.png",
+  "name": "Dhingia Build 02 Blue (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 02 Size 1x1/Dhingia Builds Pink 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 02 Size 1x1/Dhingia Builds Pink 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 02 Size 1x1/Render.png",
+  "name": "Dhingia Build 02 Pink (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 02 Size 1x1/Dhingia Builds Yellow 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 02 Size 1x1/Dhingia Builds Yellow 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 02 Size 1x1/Render.png",
+  "name": "Dhingia Build 02 Yellow (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 03 Size 2x1/Dhingia Builds 03 Blck 2x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 03 Size 2x1/Dhingia Builds 03 Blck 2x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 03 Size 2x1/Render.png",
+  "name": "Dhingia Build 03 Blck (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 03 Size 2x1/Dhingia Builds 03 white 2x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 03 Size 2x1/Dhingia Builds 03 white 2x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 03 Size 2x1/Render.png",
+  "name": "Dhingia Build 03 White (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 04 Size 2x1/Dhingia Builds 04 Size 2x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 04 Size 2x1/Dhingia Builds 04 Size 2x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 04 Size 2x1/Render 2x1.png",
+  "name": "Dhingia Build 04 (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 04 Size 2x1/Dhingia Builds 04 Size 2x2.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 04 Size 2x1/Dhingia Builds 04 Size 2x2.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 04 Size 2x1/Render 2x1.png",
+  "name": "Dhingia Build 04 (2x2)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 05 Size 1x1/Dhingia Builds 05 gold size 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 05 Size 1x1/Dhingia Builds 05 gold size 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 05 Size 1x1/Render.png",
+  "name": "Dhingia Build 05 Gold (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 05 Size 1x1/Dhingia Builds 05 silver size 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 05 Size 1x1/Dhingia Builds 05 silver size 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 05 Size 1x1/Render.png",
+  "name": "Dhingia Build 05 Silver (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 06 Size 2x1/Dhingia Builds 06 Size 2x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 06 Size 2x1/Dhingia Builds 06 Size 2x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 06 Size 2x1/Render Facade 1.png",
+  "name": "Dhingia Build 06 (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 07 Size 1x1/Dhingia Builds 07 Size 1x1 Green.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 07 Size 1x1/Dhingia Builds 07 Size 1x1 Green.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 07 Size 1x1/Render.png",
+  "name": "Dhingia Build 07 Green (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 07 Size 1x1/Dhingia Builds 07 Size 1x1 Purple.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 07 Size 1x1/Dhingia Builds 07 Size 1x1 Purple.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 07 Size 1x1/Render.png",
+  "name": "Dhingia Build 07 Purple (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 07 Size 1x1/Dhingia Builds 07 Size 1x1 Yellow.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 07 Size 1x1/Dhingia Builds 07 Size 1x1 Yellow.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 07 Size 1x1/Render.png",
+  "name": "Dhingia Build 07 Yellow (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 07 Size 2x1/Dhingia Builds 07 Size 2x1 Green.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 07 Size 2x1/Dhingia Builds 07 Size 2x1 Green.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 07 Size 2x1/Render (1).png",
+  "name": "Dhingia Build 07 Green (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 07 Size 2x1/Dhingia Builds 07 Size 2x1 Purple.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 07 Size 2x1/Dhingia Builds 07 Size 2x1 Purple.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 07 Size 2x1/Render (1).png",
+  "name": "Dhingia Build 07 Purple (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 07 Size 2x1/Dhingia Builds 07 Size 2x1 Yellow.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 07 Size 2x1/Dhingia Builds 07 Size 2x1 Yellow.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 07 Size 2x1/Render (1).png",
+  "name": "Dhingia Build 07 Yellow (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 08 Size 2x2/Dhingia Builds 08 Size 2x2.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 08 Size 2x2/Dhingia Builds 08 Size 2x2.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 08 Size 2x2/Render.png",
+  "name": "Dhingia Build 08 (2x2)",
+  "description": "Fits a 2x2 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 09 Size 2x1/Dhingia Builds 09 Size 2x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 09 Size 2x1/Dhingia Builds 09 Size 2x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 09 Size 2x1/Render (8).png",
+  "name": "Dhingia Build 09 (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 10 Size 1x1/Dhingia Builds 10 Size 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 10 Size 1x1/Dhingia Builds 10 Size 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 10 Size 1x1/Render.png",
+  "name": "Dhingia Build 10 (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 11 Size 1x1/Dhingia Builds 11 Size 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 11 Size 1x1/Dhingia Builds 11 Size 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 11 Size 1x1/Render.png",
+  "name": "Dhingia Build 11 (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 12 Size 2x2/Dhingia Builds 12 Size 2x2 Blue.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 12 Size 2x2/Dhingia Builds 12 Size 2x2 Blue.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 12 Size 2x2/Render Sci-Fi HQ.png",
+  "name": "Dhingia Build 12 Blue (2x2)",
+  "description": "Fits a 2x2 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 12 Size 2x2/Dhingia Builds 12 Size 2x2 Green.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 12 Size 2x2/Dhingia Builds 12 Size 2x2 Green.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 12 Size 2x2/Render Sci-Fi HQ.png",
+  "name": "Dhingia Build 12 Green (2x2)",
+  "description": "Fits a 2x2 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 12 Size 2x2/Dhingia Builds 12 Size 2x2 Red.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 12 Size 2x2/Dhingia Builds 12 Size 2x2 Red.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 12 Size 2x2/Render Sci-Fi HQ.png",
+  "name": "Dhingia Build 12 Red (2x2)",
+  "description": "Fits a 2x2 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 13 Size 1x1/Dhingia Builds 13 Size 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 13 Size 1x1/Dhingia Builds 13 Size 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 13 Size 1x1/Render.png",
+  "name": "Dhingia Build 13 (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Dhingia Builds 14 Size 1x1 - DJ build & assets/00 DJ dance full floor for events 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 14 Size 1x1 - DJ build & assets/00 DJ dance full floor for events 1x1.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-dhingia-builds-14-size-1x1-dj-build-and-assets-00-dj-dance-full-floor-for-events-1x1-glb.png",
+  "name": "00 DJ Dance Full Floor For Events 1x1",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Tech & Music",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Dhingia Builds 14 Size 1x1 - DJ build & assets/DJ booth asset.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 14 Size 1x1 - DJ build & assets/DJ booth asset.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-dhingia-builds-14-size-1x1-dj-build-and-assets-dj-booth-asset-glb.png",
+  "name": "DJ Booth",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Tech & Music",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Dhingia Builds 14 Size 1x1 - DJ build & assets/Dance floor asset.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 14 Size 1x1 - DJ build & assets/Dance floor asset.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-dhingia-builds-14-size-1x1-dj-build-and-assets-dance-floor-asset-glb.png",
+  "name": "Dance Floor",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Tech & Music",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Dhingia Builds 14 Size 1x1 - DJ build & assets/Lazer Lights asset.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 14 Size 1x1 - DJ build & assets/Lazer Lights asset.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-dhingia-builds-14-size-1x1-dj-build-and-assets-lazer-lights-asset-glb.png",
+  "name": "Lazer Lights",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Lighting",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Dhingia Builds 14 Size 1x1 - DJ build & assets/Speaker asset.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 14 Size 1x1 - DJ build & assets/Speaker asset.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-dhingia-builds-14-size-1x1-dj-build-and-assets-speaker-asset-glb.png",
+  "name": "Speaker",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Tech & Music",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Dhingia Builds 14 Size 1x1 - DJ build & assets/Vertical Lights asset.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 14 Size 1x1 - DJ build & assets/Vertical Lights asset.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-dhingia-builds-14-size-1x1-dj-build-and-assets-vertical-lights-asset-glb.png",
+  "name": "Vertical Lights",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Lighting",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 15 Size 2x2/Dhingia Builds 15 Size 2x2 Red.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 15 Size 2x2/Dhingia Builds 15 Size 2x2 Red.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 15 Size 2x2/Render.png",
+  "name": "Dhingia Build 15 Red (2x2)",
+  "description": "Fits a 2x2 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 15 Size 2x2/Dhingia Builds 15 Size 2x2 White.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 15 Size 2x2/Dhingia Builds 15 Size 2x2 White.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 15 Size 2x2/Render.png",
+  "name": "Dhingia Build 15 White (2x2)",
+  "description": "Fits a 2x2 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 16 Size 2x1/Dhingia Builds 16 Size 2x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 16 Size 2x1/Dhingia Builds 16 Size 2x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 16 Size 2x1/Render.png",
+  "name": "Dhingia Build 16 (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 17 Size 1x1/Dhingia Builds 17 Blue Size 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 17 Size 1x1/Dhingia Builds 17 Blue Size 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 17 Size 1x1/RENDER BLUE.png",
+  "name": "Dhingia Build 17 Blue (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 17 Size 1x1/Dhingia Builds 17 Purple Pink Size 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 17 Size 1x1/Dhingia Builds 17 Purple Pink Size 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 17 Size 1x1/RENDER BLUE.png",
+  "name": "Dhingia Build 17 Purple Pink (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 17 Size 1x1/Dhingia Builds 17 White Size 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 17 Size 1x1/Dhingia Builds 17 White Size 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 17 Size 1x1/RENDER BLUE.png",
+  "name": "Dhingia Build 17 White (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 18 Size 2x2/Dhingia Builds 18 Size 2x2.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 18 Size 2x2/Dhingia Builds 18 Size 2x2.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 18 Size 2x2/Render.png",
+  "name": "Dhingia Build 18 (2x2)",
+  "description": "Fits a 2x2 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 19 Size 3x2 Event Space/Dhingia Builds 19 Size 3x2 Event Space.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 19 Size 3x2 Event Space/Dhingia Builds 19 Size 3x2 Event Space.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 19 Size 3x2 Event Space/Render.png",
+  "name": "Dhingia Build 19 Event Space Event Space (3x2)",
+  "description": "Fits a 3x2 parcel area",
+  "author": "Mr Dhingia",
+  "style": "Sci-Fi",
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 20 Size 2x1/Dhingia Builds 20 Size 2x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 20 Size 2x1/Dhingia Builds 20 Size 2x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 20 Size 2x1/Render.png",
+  "name": "Dhingia Build 20 (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 21 Size 2x1/Dhingia Builds 21 Size 2x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 21 Size 2x1/Dhingia Builds 21 Size 2x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 21 Size 2x1/Render.png",
+  "name": "Dhingia Build 21 (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 22 Size 2x1/Dhingia Builds 22 Size 2x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 22 Size 2x1/Dhingia Builds 22 Size 2x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 22 Size 2x1/Render.png",
+  "name": "Dhingia Build 22 (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 23 Size 2x1/Dhingia Builds 23 Size 2x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 23 Size 2x1/Dhingia Builds 23 Size 2x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 23 Size 2x1/Render.png",
+  "name": "Dhingia Build 23 (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 24 Size 2x1/Dhingia Builds 24 Size 2x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 24 Size 2x1/Dhingia Builds 24 Size 2x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 24 Size 2x1/Render.png",
+  "name": "Dhingia Build 24 (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 25 Size 2x1/Dhingia Builds 25 Size 2x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 25 Size 2x1/Dhingia Builds 25 Size 2x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 25 Size 2x1/Render.png",
+  "name": "Dhingia Build 25 (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Dhingia Builds 26 Size 2x1 Stage with SDK/Models/Lights.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 26 Size 2x1 Stage with SDK/Models/Lights.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-dhingia-builds-26-size-2x1-stage-with-sdk-models-lights-glb.png",
+  "name": "Lights",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Lighting",
+  "venueTags": [
+   "stage"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 26 Size 2x1 Stage with SDK/Models/Stage 1 Final.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 26 Size 2x1 Stage with SDK/Models/Stage 1 Final.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 26 Size 2x1 Stage with SDK/render.png",
+  "name": "Dhingia Build 26 Stage (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [
+   "stage"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 27 Size 2x1 Stage with SDK/Stage with SDK/Models/Stage 2 Final.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 27 Size 2x1 Stage with SDK/Stage with SDK/Models/Stage 2 Final.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 27 Size 2x1 Stage with SDK/Render.png",
+  "name": "Dhingia Build 27 Stage (2x1)",
+  "description": "Fits a 2x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [
+   "stage"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 28 Size 1x1/Dhingia Builds 28 Size 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 28 Size 1x1/Dhingia Builds 28 Size 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 28 Size 1x1/Render.png",
+  "name": "Dhingia Build 28 (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 29 Size 1x1/Dhingia Builds 29 Size 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 29 Size 1x1/Dhingia Builds 29 Size 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 29 Size 1x1/Render.png",
+  "name": "Dhingia Build 29 (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 30 Size 1x1/Dhingia Builds 30 Size 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 30 Size 1x1/Dhingia Builds 30 Size 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 30 Size 1x1/Render.png",
+  "name": "Dhingia Build 30 (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 31 Size 1x1/Dhingia Builds 31 Size 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 31 Size 1x1/Dhingia Builds 31 Size 1x1.glb",
+  "thumbnail": "thumbs/dhingia-buildings/dhingiabuilds-dhingia-builds-31-size-1x1-dhingia-builds-31-size-1x1-glb.png",
+  "name": "Dhingia Build 31 (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 32 Club with SDK Size 1x1/Models/BN49 Final.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 32 Club with SDK Size 1x1/Models/BN49 Final.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 32 Club with SDK Size 1x1/Render.png",
+  "name": "Dhingia Build 32 Club (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Dhingia Builds 32 Club with SDK Size 1x1/Models/Lights.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 32 Club with SDK Size 1x1/Models/Lights.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-dhingia-builds-32-club-with-sdk-size-1x1-models-lights-glb.png",
+  "name": "Lights",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Lighting",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 33 NFT Gallery or Club with SDK Size 1x1/Models/BN51 Final.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 33 NFT Gallery or Club with SDK Size 1x1/Models/BN51 Final.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 33 NFT Gallery or Club with SDK Size 1x1/Render.png",
+  "name": "Dhingia Build 33 NFT Gallery or Club (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [
+   "club",
+   "gallery"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Dhingia Builds 33 NFT Gallery or Club with SDK Size 1x1/Models/Stage.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 33 NFT Gallery or Club with SDK Size 1x1/Models/Stage.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-dhingia-builds-33-nft-gallery-or-club-with-sdk-size-1x1-models-stage-glb.png",
+  "name": "Stage",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Other",
+  "venueTags": [
+   "club",
+   "stage",
+   "gallery"
+  ],
+  "confidence": 0.3
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 34 NFT Gallery or Club with SDK Size 1x1/Models/BN43 Final.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 34 NFT Gallery or Club with SDK Size 1x1/Models/BN43 Final.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 34 NFT Gallery or Club with SDK Size 1x1/Render.png",
+  "name": "Dhingia Build 34 NFT Gallery or Club (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [
+   "club",
+   "gallery"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 35 NFT Gallery or Club with SDK Size 1x1/Models/BN004.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 35 NFT Gallery or Club with SDK Size 1x1/Models/BN004.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 35 NFT Gallery or Club with SDK Size 1x1/Render.png",
+  "name": "Dhingia Build 35 NFT Gallery or Club (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Building",
+  "venueTags": [
+   "club",
+   "gallery"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Dhingia Builds 35 NFT Gallery or Club with SDK Size 1x1/Models/Stage.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 35 NFT Gallery or Club with SDK Size 1x1/Models/Stage.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-dhingia-builds-35-nft-gallery-or-club-with-sdk-size-1x1-models-stage-glb.png",
+  "name": "Stage",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Other",
+  "venueTags": [
+   "club",
+   "stage",
+   "gallery"
+  ],
+  "confidence": 0.3
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 36 Arabic Club with SDK Size 1x1/Models/Arabic 3 Final.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 36 Arabic Club with SDK Size 1x1/Models/Arabic 3 Final.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 36 Arabic Club with SDK Size 1x1/Render.png",
+  "name": "Dhingia Build 36 Arabic Club (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": "Asian",
+  "category": "Building",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-buildings",
+  "sourceRef": "Dhingia Builds 37 Arabic Club Size 1x1/Dhingia Builds 37 Arabic Build Size 1x1.glb",
+  "file": "DhingiaBuilds/Dhingia Builds 37 Arabic Club Size 1x1/Dhingia Builds 37 Arabic Build Size 1x1.glb",
+  "thumbnail": "DhingiaBuilds/Dhingia Builds 37 Arabic Club Size 1x1/Render.png",
+  "name": "Dhingia Build 37 Arabic Club Arabic (1x1)",
+  "description": "Fits a 1x1 parcel area",
+  "author": "Mr Dhingia",
+  "style": "Asian",
+  "category": "Building",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Bed 1.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Bed 1.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-bed-1-glb.png",
+  "name": "Bed 1",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Chair 1 Pink.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Chair 1 Pink.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-chair-1-pink-glb.png",
+  "name": "Chair 1 Pink",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Chair 1 Red.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Chair 1 Red.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-chair-1-red-glb.png",
+  "name": "Chair 1 Red",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Chair 1 Yellow.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Chair 1 Yellow.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-chair-1-yellow-glb.png",
+  "name": "Chair 1 Yellow",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Chair 1.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Chair 1.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-chair-1-glb.png",
+  "name": "Chair 1",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Chair_2_Red.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Chair_2_Red.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-chair-2-red-glb.png",
+  "name": "Chair 2 Red",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Chair_3_Red.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Chair_3_Red.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-chair-3-red-glb.png",
+  "name": "Chair 3 Red",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Computer_Setup.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Computer_Setup.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-computer-setup-glb.png",
+  "name": "Computer Setup",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Tech & Music",
+  "venueTags": [
+   "office",
+   "home"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Lamp 1 Long.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Lamp 1 Long.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-lamp-1-long-glb.png",
+  "name": "Lamp 1 Long",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Lighting",
+  "venueTags": [
+   "home"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Lamp 1 Small.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Lamp 1 Small.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-lamp-1-small-glb.png",
+  "name": "Lamp 1 Small",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Lighting",
+  "venueTags": [
+   "home"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Lamp 2.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Lamp 2.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-lamp-2-glb.png",
+  "name": "Lamp 2",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Lighting",
+  "venueTags": [
+   "home"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Seat 2.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Seat 2.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-seat-2-glb.png",
+  "name": "Seat 2",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Seat.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Seat.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-seat-glb.png",
+  "name": "Seat",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Side Table 1 Black.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Side Table 1 Black.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-side-table-1-black-glb.png",
+  "name": "Side Table 1 Black",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Side Table 1 White.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Side Table 1 White.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-side-table-1-white-glb.png",
+  "name": "Side Table 1 White",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Side Table 2.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Side Table 2.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-side-table-2-glb.png",
+  "name": "Side Table 2",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Side Table 3.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Side Table 3.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-side-table-3-glb.png",
+  "name": "Side Table 3",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Side Table 4.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Side Table 4.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-side-table-4-glb.png",
+  "name": "Side Table 4",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Sofa 1 Big.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Sofa 1 Big.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-sofa-1-big-glb.png",
+  "name": "Sofa 1 Big",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Sofa 1 Small.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Sofa 1 Small.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-sofa-1-small-glb.png",
+  "name": "Sofa 1 Small",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Table 1 V1.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Table 1 V1.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-table-1-v1-glb.png",
+  "name": "Table 1 V1",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Table 1 V2.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Table 1 V2.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-table-1-v2-glb.png",
+  "name": "Table 1 V2",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Table_2.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Table_2.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-table-2-glb.png",
+  "name": "Table 2",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/Table_3.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/Table_3.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-table-3-glb.png",
+  "name": "Table 3",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Furniture",
+  "venueTags": [
+   "home",
+   "cafe",
+   "restaurant"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-interiors",
+  "sourceRef": "Interior assets for builds/laptop.glb",
+  "file": "DhingiaBuilds/Interior assets for builds/laptop.glb",
+  "thumbnail": "thumbs/dhingia-interiors/dhingiabuilds-interior-assets-for-builds-laptop-glb.png",
+  "name": "laptop",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Tech & Music",
+  "venueTags": [
+   "office",
+   "home"
+  ],
+  "confidence": 0.8
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Pole dance assets/Hex_Double_Pole.glb",
+  "file": "DhingiaBuilds/Pole dance assets/Hex_Double_Pole.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-pole-dance-assets-hex-double-pole-glb.png",
+  "name": "Hex Double Pole",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Other",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.3
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Pole dance assets/Hex_Single_Pole.glb",
+  "file": "DhingiaBuilds/Pole dance assets/Hex_Single_Pole.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-pole-dance-assets-hex-single-pole-glb.png",
+  "name": "Hex Single Pole",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Other",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.3
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Pole dance assets/Square_Double_Pole.glb",
+  "file": "DhingiaBuilds/Pole dance assets/Square_Double_Pole.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-pole-dance-assets-square-double-pole-glb.png",
+  "name": "Square Double Pole",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Other",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.3
+ },
+ {
+  "pack": "dhingia-dj",
+  "sourceRef": "Pole dance assets/Square_single_Pole.glb",
+  "file": "DhingiaBuilds/Pole dance assets/Square_single_Pole.glb",
+  "thumbnail": "thumbs/dhingia-dj/dhingiabuilds-pole-dance-assets-square-single-pole-glb.png",
+  "name": "Square Single Pole",
+  "author": "Mr Dhingia",
+  "style": null,
+  "category": "Other",
+  "venueTags": [
+   "club"
+  ],
+  "confidence": 0.3
+ }
+]
