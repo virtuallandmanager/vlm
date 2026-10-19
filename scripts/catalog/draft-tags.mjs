@@ -242,6 +242,9 @@ const LS_CATEGORY = {
   'User Interface': 'Signage', 'UI': 'Signage', 'Decorations': 'Decor', 'Wood': 'Structure', 'Construction': 'Structure', 'Elevator': 'Structure',
 }
 const UI_STYLES = new Set(['UI', 'User Interface', 'UI / VFX'])
+// The IWB minigame kit (weapons, ammo, pickups, checkpoints, spawn markers) does nothing without game code: it gets
+// its own pack that starts switched off
+const GAME_KIT = /^(Scifi|Steampunk|Anime|Candy) (Blaster|Rifle|Sword|Shield|Bullet|Checkpoint|Finish|Pick ?Up|Pickup|Grenade)|^Weapon Anime$|^Indicator (Spawn Area|Heart)/i
 
 function draftLastSlice() {
   const catalog = readJson(join(REPOS, 'iwb-catalog.json')).filter((i) => i.ty === '3D' && i.on !== 'Decentraland')
@@ -263,11 +266,16 @@ function draftLastSlice() {
     const folder = wipFolder.get(artist.toLowerCase().replace(/\s+/g, ''))
     const wipThumb = folder && i.m ? join(wip, folder, `${i.m}.png`) : null
     const thumb = wipThumb && existsSync(wipThumb) ? rel(wipThumb) : renderedThumb(id, rel(file))
+    const kit = GAME_KIT.test(i.n.trim())
+    if (kit) addPack({
+      id: 'last-slice-game-kit', name: 'Last Slice: Game kit', source: 'last-slice', license: 'unstated',
+      attribution: 'Last Slice In World Builder artists', sourceUrl: 'https://github.com/last-slice/dcl-iwb', enabled: false,
+    })
     const style = i.sty in LS_STYLE ? LS_STYLE[i.sty] : styleFromWords(text)
     const t = tag(text, { style, styleSure: i.sty in LS_STYLE, sourceCategory: LS_CATEGORY[i.cat] ?? (ui ? 'Signage' : null), venueText: (i.sty ?? '').toLowerCase() })
     // Last Slice's venue categories (Beach Club, Gym, Rock Show…) are themselves venue tags
     rows.push({
-      pack: id, sourceRef: i.id, file: rel(file), thumbnail: thumb,
+      pack: kit ? 'last-slice-game-kit' : id, sourceRef: i.id, file: rel(file), thumbnail: thumb,
       name: i.n.trim() || titleCase(i.m || i.id), description: i.d?.trim() || undefined, author: artist, ...t,
     })
   }

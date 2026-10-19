@@ -1,6 +1,6 @@
 # last-slice: tag review
 
-2930 models in 12 packs. Correct anything wrong in catalog/tags/last-slice.json (or tell Claude).
+2930 models in 13 packs. Correct anything wrong in catalog/tags/last-slice.json (or tell Claude).
 
 ## Unsure (143)
 
@@ -210,18 +210,18 @@ These got 'Other' or a guessed category.
 | Bacon | — | Food & Drink | restaurant | 1 |
 | Door.001 | — | Structure | — | 1 |
 
-## last-slice-doctordripp-ui (100): sample
+## last-slice-doctordripp-ui (84): sample
 
 | Model | Style | Category | Venues | Confidence |
 |---|---|---|---|---|
 | Axis Lines | — | Signage | — | 1 |
-| Indicator Arrow Down Purple | — | Signage | — | 1 |
-| Indicator Beam Black | — | Signage | — | 1 |
-| Indicator Exclamation Point Purple | — | Signage | — | 1 |
+| Indicator Arrow Down Green | — | Signage | — | 1 |
+| Indicator Arrow Up Purple | — | Signage | — | 1 |
+| Indicator Beam White | — | Signage | — | 1 |
 | Indicator Orb Black | — | Signage | — | 1 |
-| Animated Indicator Arrows Purple | — | Signage | — | 1 |
-| Indicator Question Mark Pink | — | Signage | — | 1 |
-| Indicator Spawn Area Yellow | — | Signage | — | 1 |
+| Animated Indicator Arrows Orange | — | Signage | — | 1 |
+| Gizmo Rotate Z Animated | — | Signage | — | 1 |
+| Indicator Star Blue | — | Signage | — | 1 |
 
 ## last-slice-doctordripp (419): sample
 
@@ -236,43 +236,56 @@ These got 'Other' or a guessed category.
 | Continue Sign Blue - left | — | Signage | stage, gallery, office | 0.8 |
 | Skateboard Pyramid Stairset | Nature | Vehicles | park | 0.8 |
 
-## last-slice-fgr3d (24): sample
+## last-slice-game-kit (70): sample
+
+| Model | Style | Category | Venues | Confidence |
+|---|---|---|---|---|
+| Indicator Heart Black | — | Signage | — | 1 |
+| Scifi Sword | Sci-Fi | Other | — | 0.3 |
+| Scifi Shield | Sci-Fi | Other | — | 0.3 |
+| Scifi Bullet 1 | Sci-Fi | Other | — | 0.3 |
+| Indicator Spawn Area Blue | — | Signage | — | 1 |
+| Steampunk Bullet 02 | Steampunk | Other | — | 0.3 |
+| Steampunk Sword | Steampunk | Other | — | 0.3 |
+| Anime Pick Up Flag Base B | — | Decor | — | 0.8 |
+
+## last-slice-fgr3d (16): sample
 
 | Model | Style | Category | Venues | Confidence |
 |---|---|---|---|---|
 | Candy Start Terminal | Fantasy | Other | — | 0.3 |
-| Candy Pick Up Flag | Fantasy | Decor | — | 0.8 |
 | Candy Projectile Lollipop | Fantasy | Other | — | 0.3 |
 | Scifi Big Structure | Sci-Fi | Structure | — | 0.8 |
-| Scifi Finish Line | Sci-Fi | Other | — | 0.3 |
+| Scifi Medium Structure | Sci-Fi | Structure | — | 0.8 |
 | Scifi Platform Cylinder | Sci-Fi | Structure | — | 0.8 |
-| Scifi Shield | Sci-Fi | Other | — | 0.3 |
-| Candy Helicopter | Fantasy | Vehicles | — | 0.8 |
+| Scifi  Platform Rectangular | Sci-Fi | Structure | — | 0.8 |
+| Candy Car | Fantasy | Vehicles | — | 0.8 |
+| Scifi Big Wall | Sci-Fi | Structure | — | 0.8 |
 
-## last-slice-nikki-fuego (76): sample
+## last-slice-nikki-fuego (37): sample
 
 | Model | Style | Category | Venues | Confidence |
 |---|---|---|---|---|
-| Scifi Sword | Sci-Fi | Other | — | 0.3 |
-| Scifi Beam Green | Sci-Fi | Structure | — | 0.8 |
-| Scifi Energy Dot Blue | Sci-Fi | Other | — | 0.3 |
-| Scifi Pick Up Health | Sci-Fi | Other | — | 0.3 |
-| Steampunk Car | Steampunk | Vehicles | — | 0.8 |
-| Steampunk Wall | Steampunk | Structure | — | 0.8 |
-| Anime Pick Up Ammo Base | — | Other | — | 0.3 |
-| Anime Shield | — | Other | — | 0.3 |
+| Candy Chest | Fantasy | Decor | — | 0.8 |
+| Candy Structure 2 | Fantasy | Structure | — | 0.8 |
+| Scifi Beam Yellow | Sci-Fi | Structure | — | 0.8 |
+| Scifi Energy Dot Green | Sci-Fi | Other | — | 0.3 |
+| Scifi Hostile NPC | Sci-Fi | Characters & Animals | — | 0.8 |
+| Scifi Tri Burst Blue | Sci-Fi | Other | — | 0.3 |
+| Steampunk Balloon | Steampunk | Decor | — | 0.8 |
+| Anime Car | — | Vehicles | — | 0.8 |
 
-## last-slice-kj-walker (107): sample
+## last-slice-kj-walker (100): sample
 
 | Model | Style | Category | Venues | Confidence |
 |---|---|---|---|---|
 | Candy Enemy NPC | Fantasy | Characters & Animals | — | 0.8 |
-| Thick Steampunk Plank C | Steampunk | Structure | — | 0.8 |
-| Building Modular Demo Steampunk | Steampunk | Building | — | 0.8 |
-| Railing Module Steampunk | Steampunk | Structure | — | 0.8 |
-| Thin Steampunk Plank 01 | Steampunk | Structure | — | 0.8 |
-| Rotating Platform Steampunk | Steampunk | Structure | — | 0.8 |
-| Mint Flag with Stand | Fantasy | Decor | — | 0.8 |
+| Thick Steampunk Plank D | Steampunk | Structure | — | 0.8 |
+| Canopy Module Inner Corner Steampunk | Steampunk | Other | — | 0.3 |
+| Roof Module Corner Steampunk | Steampunk | Structure | — | 0.8 |
+| Thin Steampunk Plank 03 | Steampunk | Structure | — | 0.8 |
+| Start Terminal Steampunk | Steampunk | Other | — | 0.3 |
+| Pink Flag | Fantasy | Decor | — | 0.8 |
 | Landing Anime Module | — | Other | — | 0.3 |
 
 ## last-slice-kj-walker-ui (1168): sample

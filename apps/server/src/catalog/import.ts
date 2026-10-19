@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto'
 import { readFile, realpath } from 'node:fs/promises'
 import { extname, join, resolve, sep } from 'node:path'
-import { and, eq, ne, or } from 'drizzle-orm'
+import { and, eq, inArray, ne, or } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { assetLibraryItems, catalogPacks } from '../db/schema.js'
 import type { StorageProvider } from '../storage/index.js'
@@ -59,10 +59,11 @@ export async function importCatalog(opts: { root: string; rows: TagRow[]; packs:
   const { root, rows, packs, storage } = opts
   const report: ImportReport = { added: 0, updated: 0, duplicates: [], failed: [], warnings: [] }
   const licenseOf = new Map(packs.map((p) => [p.id, p.license]))
+  const siblingsOf = new Map(packs.map((p) => [p.id, packs.filter((q) => q.source === p.source).map((q) => q.id)]))
   for (const p of packs) {
-    const { id, ...rest } = p
+    const { id, enabled, ...rest } = p
     // enabled is set only on creation: an admin's switch survives re-imports
-    await db.insert(catalogPacks).values(p).onConflictDoUpdate({ target: catalogPacks.id, set: rest })
+    await db.insert(catalogPacks).values({ ...p, enabled: enabled ?? true }).onConflictDoUpdate({ target: catalogPacks.id, set: rest })
   }
 
   for (const row of rows) {
@@ -70,8 +71,9 @@ export async function importCatalog(opts: { root: string; rows: TagRow[]; packs:
       const glb = await readInside(root, row.file)
       const hash = createHash('sha256').update(glb).digest('hex')
       const stats = await glbStats(glb)
+      // A sourceRef is unique within a source, so a row found in a sibling pack is this model moved between packs
       const existing = await db.query.assetLibraryItems.findFirst({
-        where: and(eq(assetLibraryItems.packId, row.pack), eq(assetLibraryItems.sourceRef, row.sourceRef)),
+        where: and(inArray(assetLibraryItems.packId, siblingsOf.get(row.pack) ?? [row.pack]), eq(assetLibraryItems.sourceRef, row.sourceRef)),
       })
       const twin = await db.query.assetLibraryItems.findFirst({
         where: and(eq(assetLibraryItems.contentHash, hash), existing ? ne(assetLibraryItems.id, existing.id) : undefined,
@@ -81,8 +83,10 @@ export async function importCatalog(opts: { root: string; rows: TagRow[]; packs:
         report.duplicates.push({ sourceRef: row.sourceRef, keptBy: twin.packId ?? 'upload' })
         continue
       }
-      const storageKey = `catalog/${row.pack}/${hash}.glb`
-      const cdnUrl = existing?.contentHash === hash && existing.cdnUrl ? existing.cdnUrl : await storage.upload(storageKey, glb, 'model/gltf-binary')
+      // An unchanged file keeps its stored copy, even when the model moved to another pack
+      const keep = existing?.contentHash === hash && existing.cdnUrl ? existing : null
+      const storageKey = keep ? keep.storageKey : `catalog/${row.pack}/${hash}.glb`
+      const cdnUrl = keep ? keep.cdnUrl! : await storage.upload(storageKey, glb, 'model/gltf-binary')
       let thumbnailUrl = existing?.thumbnailUrl ?? null
       if (row.thumbnail) {
         const thumb = await readThumbnail(root, row.thumbnail)

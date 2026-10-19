@@ -137,6 +137,37 @@ describe('importCatalog', () => {
     expect((await db.query.catalogPacks.findFirst({ where: eq(catalogPacks.id, 'last-slice-kirzoz') }))!.enabled).toBe(false)
   })
 
+  it('a pack defined with enabled: false starts off, and re-imports leave an admin switch alone', async () => {
+    const { storage } = memoryStorage()
+    const packs = [...PACKS, { ...PACKS[1], id: 'last-slice-game-kit', name: 'Last Slice: Game kit', enabled: false }]
+    await importCatalog({ root, packs, storage, rows: [row({ pack: 'last-slice-game-kit' })] })
+    const kit = () => db.query.catalogPacks.findFirst({ where: eq(catalogPacks.id, 'last-slice-game-kit') })
+    expect((await kit())!.enabled).toBe(false)
+    await db.update(catalogPacks).set({ enabled: true }).where(eq(catalogPacks.id, 'last-slice-game-kit'))
+    await importCatalog({ root, packs, storage, rows: [row({ pack: 'last-slice-game-kit' })] })
+    expect((await kit())!.enabled).toBe(true)
+  })
+
+  it('moving a model to another pack of the same source moves its row: same id, same cdnUrl', async () => {
+    const { storage } = memoryStorage()
+    const packs = [...PACKS, { ...PACKS[1], id: 'last-slice-game-kit', name: 'Last Slice: Game kit' }]
+    await importCatalog({ root, packs, storage, rows: [row({})] })
+    const [before] = await all()
+    const report = await importCatalog({ root, packs, storage, rows: [row({ pack: 'last-slice-game-kit' })] })
+    expect(report).toMatchObject({ added: 0, updated: 1, duplicates: [] })
+    const rows = await all()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ id: before.id, cdnUrl: before.cdnUrl, storageKey: before.storageKey, packId: 'last-slice-game-kit' })
+  })
+
+  it('the same sourceRef in a pack of another source is not a move', async () => {
+    const { storage } = memoryStorage()
+    await importCatalog({ root, packs: PACKS, storage, rows: [row({ pack: 'dcl-cyberpunk' })] })
+    const report = await importCatalog({ root, packs: PACKS, storage, rows: [row({})] })
+    expect(report.duplicates).toEqual([{ sourceRef: 'Kirzoz/Chair.glb', keptBy: 'dcl-cyberpunk' }])
+    expect((await all())[0].packId).toBe('dcl-cyberpunk')
+  })
+
   it('skips a file already in another pack and reports it', async () => {
     const { storage } = memoryStorage()
     await importCatalog({ root, packs: PACKS, storage, rows: [row({ pack: 'dcl-cyberpunk', sourceRef: 'cyberpunk/chair' })] })

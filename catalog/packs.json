@@ -216,6 +216,15 @@
     "sourceUrl": "https://github.com/last-slice/dcl-iwb"
   },
   {
+    "id": "last-slice-game-kit",
+    "name": "Last Slice: Game kit",
+    "source": "last-slice",
+    "license": "unstated",
+    "attribution": "Last Slice In World Builder artists",
+    "sourceUrl": "https://github.com/last-slice/dcl-iwb",
+    "enabled": false
+  },
+  {
     "id": "last-slice-fgr3d",
     "name": "Last Slice: FGR3D",
     "source": "last-slice",
