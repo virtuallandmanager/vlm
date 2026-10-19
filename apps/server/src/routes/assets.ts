@@ -137,7 +137,14 @@ export default async function assetRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'Asset not found' })
     }
 
-    return reply.send({ asset })
+    // Catalog models carry their pack's credit (shown even when the pack is switched off: the model may be in use)
+    const pack = asset.packId
+      ? (await db
+          .select({ id: catalogPacks.id, name: catalogPacks.name, license: catalogPacks.license, attribution: catalogPacks.attribution })
+          .from(catalogPacks)
+          .where(eq(catalogPacks.id, asset.packId)))[0] ?? null
+      : null
+    return reply.send({ asset: { ...asset, pack } })
   })
 
   // ── Upload New Asset ──────────────────────────────────────────────────

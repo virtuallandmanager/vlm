@@ -3,6 +3,8 @@ import { useApi, fileToBase64 } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import { CATALOG_STYLES, CATALOG_VENUES, type CatalogPack } from 'vlm-shared'
+import { creditLine, licenseLabel } from '@/lib/catalog'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -16,12 +18,6 @@ function formatTriangles(count: number): string {
   if (count >= 1_000_000) return (count / 1_000_000).toFixed(1) + 'M'
   if (count >= 1_000) return (count / 1_000).toFixed(1) + 'K'
   return String(count)
-}
-
-const LICENSE_LABELS: Record<string, string> = {
-  cc0: 'CC0',
-  'cc-by': 'CC-BY',
-  proprietary: 'Proprietary',
 }
 
 // ── Upload Form ─────────────────────────────────────────────────────────────
@@ -266,7 +262,9 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
   if (loading) return <p className="text-gray-400">Loading asset...</p>
   if (!asset) return <p className="text-gray-500">Asset not found.</p>
 
-  const dims = asset.dimensions as { width?: number; height?: number; depth?: number } | null
+  // Uploads store { width, height, depth }; catalog models store their bounding box { x, y, z } in meters
+  const raw = asset.dimensions as { width?: number; height?: number; depth?: number; x?: number; y?: number; z?: number } | null
+  const dims = raw ? { width: raw.width ?? raw.x, height: raw.height ?? raw.y, depth: raw.depth ?? raw.z } : null
 
   return (
     <div>
@@ -353,8 +351,10 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
                 <div>
                   <h1 className="text-2xl font-bold">{asset.name}</h1>
                   {asset.description && <p className="text-gray-400 mt-1">{asset.description}</p>}
+                  {asset.pack && <p className="text-xs text-gray-500 mt-1">{creditLine(asset)}</p>}
                 </div>
-                <div className="flex gap-2">
+                {/* Catalog models are VLM's, not yours: view and add only */}
+                {!asset.packId && <div className="flex gap-2">
                   <button
                     onClick={startEditing}
                     className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs hover:bg-gray-700"
@@ -384,8 +384,10 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
                       Delete
                     </button>
                   )}
-                </div>
+                </div>}
               </div>
+
+              <AddToScene assetId={asset.id} />
 
               {/* Badges row */}
               <div className="flex flex-wrap gap-2">
@@ -396,7 +398,7 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
                 )}
                 {asset.license && (
                   <span className="rounded-full bg-green-900/40 px-2.5 py-0.5 text-xs text-green-300">
-                    {LICENSE_LABELS[asset.license] || asset.license}
+                    {licenseLabel(asset.license)}
                   </span>
                 )}
                 {asset.tags?.map((tag: string) => (
@@ -479,6 +481,56 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
   )
 }
 
+// ── Add to scene ────────────────────────────────────────────────────────────
+
+/** Links the model into one of your scenes' Media Library (catalog models use no storage). */
+function AddToScene({ assetId }: { assetId: string }) {
+  const api = useApi()
+  const [scenes, setScenes] = useState<any[] | null>(null)
+  const [sceneId, setSceneId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
+
+  useEffect(() => {
+    api.getScenes().then((d) => {
+      setScenes(d.scenes)
+      if (d.scenes[0]) setSceneId(d.scenes[0].id)
+    }, () => setScenes([]))
+  }, [])
+
+  const add = async () => {
+    if (!sceneId) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      await api.addModelToSceneLibrary(sceneId, assetId)
+      const name = scenes?.find((s) => s.id === sceneId)?.name ?? 'the scene'
+      setMessage({ text: `Added to ${name}'s Media Library`, error: false })
+    } catch (err: any) {
+      setMessage({ text: err.message === 'pack_disabled' ? 'This pack is no longer available' : err.message === 'forbidden' ? "You can't add models to that scene" : 'Could not add the model', error: true })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (scenes === null) return null
+  if (scenes.length === 0) return <p className="text-xs text-gray-500">Create a scene to add this model to it.</p>
+  return (
+    <div className="rounded-lg border border-gray-800 bg-gray-900 p-3">
+      <p className="text-xs text-gray-500 mb-2">Add to a scene&apos;s Media Library</p>
+      <div className="flex gap-2">
+        <select value={sceneId} onChange={(e) => setSceneId(e.target.value)} className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500">
+          {scenes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <button onClick={add} disabled={busy} className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50">
+          {busy ? 'Adding…' : 'Add to scene'}
+        </button>
+      </div>
+      {message && <p className={`mt-2 text-xs ${message.error ? 'text-red-400' : 'text-green-400'}`}>{message.text}</p>}
+    </div>
+  )
+}
+
 // ── Main Page ───────────────────────────────────────────────────────────────
 
 export default function AssetsPage() {
@@ -497,6 +549,11 @@ export default function AssetsPage() {
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [tagFilter, setTagFilter] = useState('')
+  const [styleFilter, setStyleFilter] = useState('')
+  const [venueFilter, setVenueFilter] = useState('')
+  const [packFilter, setPackFilter] = useState('')
+  const [packs, setPacks] = useState<CatalogPack[]>([])
+  const filtering = !!(search || categoryFilter || tagFilter || styleFilter || venueFilter || packFilter)
 
   const fetchAssets = useCallback(async () => {
     setLoading(true)
@@ -505,6 +562,9 @@ export default function AssetsPage() {
       if (search) params.q = search
       if (categoryFilter) params.category = categoryFilter
       if (tagFilter) params.tag = tagFilter
+      if (styleFilter) params.style = styleFilter
+      if (venueFilter) params.venue = venueFilter
+      if (packFilter) params.pack = packFilter
       const data = await api.getAssets(params)
       setAssets(data.assets)
       setTotal(data.total)
@@ -513,7 +573,7 @@ export default function AssetsPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, categoryFilter, tagFilter, token])
+  }, [search, categoryFilter, tagFilter, styleFilter, venueFilter, packFilter, token])
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -527,11 +587,12 @@ export default function AssetsPage() {
   useEffect(() => {
     if (!token) return
     fetchAssets()
-  }, [token, search, categoryFilter, tagFilter])
+  }, [token, search, categoryFilter, tagFilter, styleFilter, venueFilter, packFilter])
 
   useEffect(() => {
     if (!token) return
     fetchCategories()
+    api.getCatalogPacks().then((d) => setPacks(d.packs.filter((p) => p.enabled)), () => {})
   }, [token])
 
   // Debounced search
@@ -596,6 +657,20 @@ export default function AssetsPage() {
             </option>
           ))}
         </select>
+        <select value={styleFilter} onChange={(e) => setStyleFilter(e.target.value)} className="rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500">
+          <option value="">All Styles</option>
+          {CATALOG_STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={venueFilter} onChange={(e) => setVenueFilter(e.target.value)} className="rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500">
+          <option value="">Any Venue</option>
+          {CATALOG_VENUES.map((v) => <option key={v} value={v}>{v[0].toUpperCase() + v.slice(1)}</option>)}
+        </select>
+        {packs.length > 0 && (
+          <select value={packFilter} onChange={(e) => setPackFilter(e.target.value)} className="rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500">
+            <option value="">All Packs</option>
+            {packs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        )}
         <input
           type="text"
           value={tagFilter}
@@ -603,13 +678,16 @@ export default function AssetsPage() {
           placeholder="Filter by tag..."
           className="rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500 w-40"
         />
-        {(search || categoryFilter || tagFilter) && (
+        {filtering && (
           <button
             onClick={() => {
               setSearchInput('')
               setSearch('')
               setCategoryFilter('')
               setTagFilter('')
+              setStyleFilter('')
+              setVenueFilter('')
+              setPackFilter('')
             }}
             className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-700"
           >
@@ -624,7 +702,7 @@ export default function AssetsPage() {
         <div className="text-center py-16">
           <div className="text-4xl text-gray-600 mb-3">&#9651;</div>
           <p className="text-gray-500">
-            {search || categoryFilter || tagFilter
+            {filtering
               ? 'No assets match your filters.'
               : 'No 3D assets yet. Upload one to get started.'}
           </p>
@@ -665,7 +743,7 @@ export default function AssetsPage() {
                   )}
                   {asset.license && (
                     <span className="rounded-full bg-green-900/40 px-2 py-0.5 text-[10px] text-green-300">
-                      {LICENSE_LABELS[asset.license] || asset.license}
+                      {licenseLabel(asset.license)}
                     </span>
                   )}
                 </div>
@@ -674,8 +752,9 @@ export default function AssetsPage() {
                   {asset.triangleCount != null && (
                     <span>{formatTriangles(asset.triangleCount)} tris</span>
                   )}
-                  {asset.author && <span className="truncate">{asset.author}</span>}
+                  {asset.author && !asset.pack && <span className="truncate">{asset.author}</span>}
                 </div>
+                {asset.pack && <p className="mt-1.5 truncate text-[10px] text-gray-500" title={creditLine(asset)}>{creditLine(asset)}</p>}
               </div>
             </button>
           ))}

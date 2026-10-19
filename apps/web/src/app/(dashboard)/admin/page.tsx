@@ -3,6 +3,7 @@
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/lib/api'
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 
 type Tab = 'users' | 'orgs'
 
@@ -131,7 +132,10 @@ export default function AdminPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+        <Link href="/admin/catalog" className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm hover:bg-gray-700">Catalog packs</Link>
+      </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -57,6 +57,12 @@ describe('catalog browse and linking', () => {
     expect(res.json().categories).toEqual(['Furniture'])
   })
 
+  it('GET /api/assets/:id returns the model\'s pack (null for an upload)', async () => {
+    const m = await model('on'); const own = await model(null)
+    expect((await app.inject({ method: 'GET', url: `/api/assets/${m.id}` })).json().asset.pack).toEqual({ id: 'on', name: 'Pack on', license: 'unstated', attribution: 'Models by on' })
+    expect((await app.inject({ method: 'GET', url: `/api/assets/${own.id}` })).json().asset.pack).toBeNull()
+  })
+
   it('GET /api/assets/:id still returns a model from a disabled pack', async () => {
     const m = await model('off')
     const res = await app.inject({ method: 'GET', url: `/api/assets/${m.id}` })
