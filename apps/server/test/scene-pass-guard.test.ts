@@ -34,6 +34,7 @@ const PUBLIC_EXACT = [
   'GET /api/assets', // public browse list (never reads a bearer)
   'GET /api/assets/:id', // public asset detail
   'GET /api/assets/categories', // public category list
+  'GET /api/catalog/packs', // public credits list (no bearer)
   'GET /api/health', // health check
   'GET /metrics', // Prometheus scrape
   'GET /', // static dashboard

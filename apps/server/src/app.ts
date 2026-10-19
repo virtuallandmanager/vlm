@@ -22,6 +22,7 @@ import giveawayRoutes from './routes/giveaways.js'
 import mediaRoutes from './routes/media.js'
 import hookRoutes from './routes/hooks.js'
 import assetRoutes from './routes/assets.js'
+import catalogRoutes from './routes/catalog.js'
 import deployRoutes from './routes/deploy.js'
 import commandCenterRoutes from './routes/command-center.js'
 import streamingRoutes from './routes/streaming.js'
@@ -139,6 +140,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(mediaRoutes)
   await app.register(hookRoutes)
   await app.register(assetRoutes)
+  await app.register(catalogRoutes)
   await app.register(deployRoutes)
   await app.register(commandCenterRoutes)
   await app.register(streamingRoutes)

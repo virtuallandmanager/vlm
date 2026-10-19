@@ -8,7 +8,9 @@ import {
   scenes,
   mediaAssets,
   subscriptions,
+  catalogPacks,
 } from '../db/schema.js'
+import { listPacks } from '../catalog/packs.js'
 import { authenticate } from '../middleware/auth.js'
 
 /**
@@ -25,6 +27,21 @@ export default async function adminRoutes(app: FastifyInstance) {
   // All admin routes require authentication + admin role
   app.addHook('preHandler', authenticate)
   app.addHook('preHandler', requireAdmin)
+
+  // ── Catalog packs: switch a pack's models off (hidden from browsing and new links) or on ──
+
+  app.get('/api/admin/catalog/packs', async (_request, reply) => {
+    return reply.send({ packs: await listPacks() })
+  })
+
+  app.patch<{ Params: { id: string }; Body: { enabled?: unknown } }>('/api/admin/catalog/packs/:id', async (request, reply) => {
+    const enabled = request.body?.enabled
+    if (typeof enabled !== 'boolean') return reply.status(400).send({ error: 'enabled must be true or false' })
+    const [row] = await db.update(catalogPacks).set({ enabled }).where(eq(catalogPacks.id, request.params.id)).returning({ id: catalogPacks.id })
+    if (!row) return reply.status(404).send({ error: 'Pack not found' })
+    const [pack] = await listPacks(row.id)
+    return reply.send({ pack })
+  })
 
   // ── GET /api/admin/stats — system-wide statistics ─────────────────────────
 
