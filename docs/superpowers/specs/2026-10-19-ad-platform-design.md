@@ -1,6 +1,6 @@
 # VLM Ad Platform: design
 
-Status: draft for review, 2026-10-19.
+Status: approved by the owner, 2026-10-19.
 Mockup of the buyer path: `.superpowers/brainstorm/43048-1792443491/content/buyer-flow.html` in the release-deploy worktree. It is not committed; this document describes it in full.
 
 ## Intent
@@ -109,7 +109,7 @@ The report has four levels, from broadest to strongest:
 
 The report shows these numbers by space and by day, with unique viewers and click rate.
 
-**The paid view is "on screen" (level 2).** Per-thousand prices and owners' per-view earnings both count on-screen views, with the safeguards below applied (verified wallets, once per ad per day, moving players). It matches the "viewable impression" advertisers pay for on the web: "in scene" would overcharge buyers and "looked at" would underpay owners. The other levels are in the report but don't affect money. *(My recommendation, flagged for the owner to confirm.)* Because it is billing-grade, the on-screen count needs server-side dedupe and a record a dispute can be checked against.
+**The paid view is "on screen" (level 2).** Per-thousand prices and owners' per-view earnings both count on-screen views, with the safeguards below applied (verified wallets, once per ad per day, moving players). It matches the "viewable impression" advertisers pay for on the web: "in scene" would overcharge buyers and "looked at" would underpay owners. The other levels are in the report but don't affect money. *(Confirmed by the owner.)* Because it is billing-grade, the on-screen count needs server-side dedupe and a record a dispute can be checked against.
 
 ### Money
 
@@ -123,7 +123,7 @@ The report shows these numbers by space and by day, with unique viewers and clic
 
 ### Charges and refunds
 
-*(My recommendation, flagged for the owner to confirm.)*
+*(Confirmed by the owner.)*
 
 The buyer is charged up front, when they submit the campaign. Refunds are automatic:
 
@@ -136,7 +136,7 @@ The earnings ledger records delivered views and rental time per space. An owner'
 
 ### Venue bookings come first
 
-*(My recommendation, flagged for the owner to confirm.)*
+*(Confirmed by the owner.)*
 
 VLM already has venue bookings (`venues`, `bookings`, and `access_grants` with a `screens` scope), where an event renter controls a venue's screens.
 
@@ -146,7 +146,7 @@ VLM already has venue bookings (`venues`, `bookings`, and `access_grants` with a
 
 ### Launch gating
 
-*(My recommendation, flagged for the owner to confirm.)*
+*(Confirmed by the owner.)*
 
 - **Landing page:** public from the start.
 - **Checkout:** invite-only at first. An admin lets buyers in, so VLM can sell deals personally while the number of spaces is small.
