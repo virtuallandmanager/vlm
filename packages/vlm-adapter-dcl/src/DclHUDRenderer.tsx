@@ -79,6 +79,8 @@ interface HUDState {
   missingModels: number
   /** The Media Library's Upload view: an upload link (this computer) and its QR (phone), minted on open. */
   upload: UploadViewState
+  /** The Media Library row being renamed, with the draft name. */
+  renaming: { id: string; draft: string } | null
 
   // In-world transform editing (editors); mirrored from DclEditMode.state
   editMode: EditModeHUDState
@@ -132,6 +134,7 @@ const state: HUDState = {
   confirmDelete: null,
   missingModels: 0,
   upload: { open: false, loading: false, error: null, token: null },
+  renaming: null,
   editMode: NO_EDIT_MODE,
 }
 
@@ -789,7 +792,35 @@ const MEDIA_BADGE: Record<HUDMediaStatus, { text: string; color: ReturnType<type
 
 const closeUploadView = () => onSceneAction?.('media_upload_back')
 
+function RenameRow({ asset }: { asset: HUDMediaItem }) {
+  const draft = state.renaming?.draft ?? ''
+  const save = () => onSceneAction?.('media_rename', { assetId: asset.id, name: draft })
+  return (
+    <UiEntity
+      uiTransform={{ width: '100%', height: 34, flexDirection: 'row', alignItems: 'center', padding: { left: 6, right: 4 }, margin: { bottom: 2 } }}
+      uiBackground={{ color: C.bgCard }}
+    >
+      <Input
+        uiTransform={{ width: 196, height: 26 }}
+        uiBackground={{ color: C.bgLight }}
+        color={C.text}
+        placeholderColor={C.textMuted}
+        placeholder={asset.name}
+        fontSize={11}
+        value={draft}
+        onChange={(v) => { if (state.renaming) state.renaming.draft = v }}
+        onSubmit={save}
+      />
+      <UiEntity uiTransform={{ width: 4 }} />
+      <Button label="Save" color={C.accent} onPress={save} width={48} height={24} fontSize={10} />
+      <UiEntity uiTransform={{ width: 4 }} />
+      <Button label="Cancel" onPress={() => { state.renaming = null }} width={52} height={24} fontSize={10} />
+    </UiEntity>
+  )
+}
+
 function MediaRow({ asset }: { asset: HUDMediaItem; key?: string }) {
+  if (state.renaming?.id === asset.id) return <RenameRow asset={asset} />
   const badge = MEDIA_BADGE[asset.status]
   const placeable = asset.status === 'available' || asset.status === 'needs_sync'
   return (
@@ -805,21 +836,26 @@ function MediaRow({ asset }: { asset: HUDMediaItem; key?: string }) {
       }}
       uiBackground={{ color: C.bgCard }}
     >
-      <UiEntity uiTransform={{ flexDirection: 'column', width: 240 }}>
-        <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', width: 240 }}>
+      <UiEntity uiTransform={{ flexDirection: 'column', width: 190 }}>
+        <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', width: 190 }}>
           <Label value={asset.kind === 'model' ? 'GLB' : 'IMG'} fontSize={8}
             color={asset.kind === 'model' ? C.warning : C.textMuted} uiTransform={{ margin: { right: 6 } }} />
-          <Label value={asset.name} fontSize={11} color={C.text} textAlign="middle-left" uiTransform={{ maxWidth: 150 }} />
+          <Label value={asset.name} fontSize={11} color={C.text} textAlign="middle-left" uiTransform={{ maxWidth: 100 }} />
           <Label value={badge.text} fontSize={9} color={badge.color} textAlign="middle-left" uiTransform={{ margin: { left: 6 } }} />
         </UiEntity>
         {asset.error && (
-          <Label value={asset.error} fontSize={9} color={C.danger} textAlign="middle-left" uiTransform={{ width: 240, height: 12 }} />
+          <Label value={asset.error} fontSize={9} color={C.danger} textAlign="middle-left" uiTransform={{ width: 190, height: 12 }} />
         )}
       </UiEntity>
       {placeable && (
-        <Button label="Place" color={C.accent}
-          onPress={() => onSceneAction?.('media_place', { assetId: asset.id })}
-          width={56} height={24} fontSize={10} />
+        <UiEntity uiTransform={{ flexDirection: 'row' }}>
+          <Button label="Rename" onPress={() => { state.renaming = { id: asset.id, draft: asset.name } }}
+            width={52} height={24} fontSize={10} />
+          <UiEntity uiTransform={{ width: 4 }} />
+          <Button label="Place" color={C.accent}
+            onPress={() => onSceneAction?.('media_place', { assetId: asset.id })}
+            width={56} height={24} fontSize={10} />
+        </UiEntity>
       )}
       {asset.status === 'failed' && (
         <Button label="Dismiss"
@@ -1402,6 +1438,10 @@ export class DclHUDRenderer implements HUDRenderer {
   /** Mirrors DclEditMode.state (the bar shows while active). */
   setEditMode(s: EditModeHUDState): void {
     state.editMode = s
+  }
+
+  setRenaming(r: { id: string; draft: string } | null): void {
+    state.renaming = r
   }
 
   setUploadView(v: Partial<UploadViewState>): void {

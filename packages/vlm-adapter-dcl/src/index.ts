@@ -44,6 +44,13 @@ function friendlyEditError(err: unknown): string {
   return 'Something went wrong — try again'
 }
 
+function friendlyRenameError(err: unknown): string {
+  const status = Number(/^HTTP (\d+):/.exec(err instanceof Error ? err.message : String(err))?.[1])
+  if (status === 400) return 'Names need 1-120 characters, without slashes'
+  if (status === 409) return "That file isn't ready yet"
+  return friendlyEditError(err)
+}
+
 const PLACEABLE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 const LAYOUT_TYPES = new Set(['image', 'video', 'model', 'sound'])
 
@@ -417,6 +424,22 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
           }
           if (action === 'media_upload_computer' && uploadUrl) {
             void Promise.resolve(adapter.openUrl(uploadUrl)).catch(() => {})
+          }
+          return
+        }
+
+        if (action === 'media_rename') {
+          if (!edits() || busy) return
+          busy = true
+          try {
+            const { item } = await vlm.httpClient.renameSceneLibraryItem(sceneId, String(data?.assetId), String(data?.name ?? ''))
+            media = applyLibraryChange(media, { action: 'upsert', item })
+            pushMedia()
+            renderer?.setRenaming(null)
+          } catch (err) {
+            renderer?.setEditMessage(friendlyRenameError(err), true)
+          } finally {
+            busy = false
           }
           return
         }

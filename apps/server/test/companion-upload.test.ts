@@ -202,6 +202,55 @@ describe('companion uploads', () => {
   })
 })
 
+describe('renaming library files', () => {
+  let app: Awaited<ReturnType<typeof testApp>>
+  beforeEach(async () => { await resetDb(); app = await testApp() })
+  afterEach(async () => { await app.close() })
+
+  async function setup() {
+    const owner = await createUser()
+    const editor = await createUser({ wallet: '0x00000000000000000000000000000000000000e4' })
+    const viewer = await createUser({ wallet: '0x00000000000000000000000000000000000000e5' })
+    const { scene } = await createScene(owner)
+    await db.insert(sceneRoles).values([
+      { sceneId: scene.id, userId: editor.id, walletAddress: editor.wallet!, role: 'editor' },
+      { sceneId: scene.id, userId: viewer.id, walletAddress: viewer.wallet!, role: 'viewer' },
+    ] as any)
+    const media = async (filename: string, status = 'ready') => {
+      const [m] = await db.insert(mediaAssets).values({ ownerId: owner.id, filename, contentType: 'image/png', sizeBytes: 1, storageKey: 'k', publicUrl: 'https://x/a.png', status }).returning()
+      const [l] = await db.insert(sceneLibrary).values({ sceneId: scene.id, mediaAssetId: m.id, addedBy: owner.id }).returning()
+      return { m, linkId: l.id }
+    }
+    const rename = (user: TestUser, linkId: string, name: unknown) =>
+      app.inject({ method: 'PATCH', url: `/api/scenes/${scene.id}/library/${linkId}`, headers: { authorization: `Bearer ${tokenFor(user)}` }, payload: { name } })
+    return { owner, editor, viewer, scene, media, rename }
+  }
+
+  it("an editor renames a file, keeping its extension", async () => {
+    const s = await setup()
+    const { m, linkId } = await s.media('IMG_2041.png')
+    const res = await s.rename(s.editor, linkId, '  Stage backdrop ')
+    expect(res.statusCode).toBe(200)
+    expect(res.json().item).toMatchObject({ id: linkId, name: 'Stage backdrop.png' })
+    expect((await db.query.mediaAssets.findFirst({ where: eq(mediaAssets.id, m.id) }))!.filename).toBe('Stage backdrop.png')
+    expect((await s.rename(s.editor, linkId, 'Poster.png')).json().item.name).toBe('Poster.png')
+  })
+
+  it('refuses empty, too-long or path-like names', async () => {
+    const s = await setup()
+    const { linkId } = await s.media('a.png')
+    for (const name of ['', '   ', 'x'.repeat(121), 'a/b', 42]) expect((await s.rename(s.editor, linkId, name)).statusCode).toBe(400)
+  })
+
+  it('refuses unfinished uploads and viewers', async () => {
+    const s = await setup()
+    const busy = await s.media('b.png', 'uploading')
+    expect((await s.rename(s.editor, busy.linkId, 'x')).statusCode).toBe(409)
+    const ok = await s.media('c.png')
+    expect((await s.rename(s.viewer, ok.linkId, 'x')).statusCode).toBe(403)
+  })
+})
+
 describe('local storage files', () => {
   it('are served at /uploads even when the server has no dashboard build (local dev)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'vlm-uploads-'))

@@ -104,6 +104,7 @@ const CASES: Case[] = [
   { route: 'POST /api/scenes/:sceneId/library', url: (f) => `/api/scenes/${f.scene.id}/library`, body: (f) => ({ mediaAssetId: f.media.id }) },
   { route: 'POST /api/scenes/:sceneId/library', url: (f) => `/api/scenes/${f.aScene.id}/library`, body: (f) => ({ mediaAssetId: f.media.id }) },
   { route: 'DELETE /api/scenes/:sceneId/library/:id', url: (f) => `/api/scenes/${f.scene.id}/library/${f.libraryItem.id}` },
+  { route: 'PATCH /api/scenes/:sceneId/library/:id', url: (f) => `/api/scenes/${f.scene.id}/library/${f.libraryItem.id}`, body: () => ({ name: 'renamed' }) },
   { route: 'POST /api/scenes/:sceneId/library/upload', url: (f) => `/api/scenes/${f.scene.id}/library/upload`, body: () => ({ filename: 'x.png', contentType: 'image/png', data: 'iVBORw0KGgo=' }) },
   // deploy
   { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.scene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET }) },

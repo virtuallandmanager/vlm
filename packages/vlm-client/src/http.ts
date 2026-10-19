@@ -295,6 +295,13 @@ export class VLMHttpClient {
     })
   }
 
+  async renameSceneLibraryItem(sceneId: string, id: string, name: string): Promise<{ item: SceneLibraryItem }> {
+    return this._fetch(`/api/scenes/${encodeURIComponent(sceneId)}/library/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    })
+  }
+
   async removeFromSceneLibrary(sceneId: string, id: string): Promise<void> {
     await this._fetch(`/api/scenes/${encodeURIComponent(sceneId)}/library/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }

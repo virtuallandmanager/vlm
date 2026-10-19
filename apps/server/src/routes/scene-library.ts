@@ -6,7 +6,7 @@ import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess } from '../auth/permissions.js'
 import { fromParam, isUuid } from '../auth/scene-from.js'
-import { linkToScene, listSceneLibrary, uploadDestination } from '../library/scene-library.js'
+import { getSceneLibraryItem, linkToScene, listSceneLibrary, uploadDestination } from '../library/scene-library.js'
 import { storeMedia, StoreMediaError } from '../media/store.js'
 import { publishLibraryChanged } from '../realtime/bus.js'
 
@@ -57,6 +57,29 @@ export default async function sceneLibraryRoutes(app: FastifyInstance) {
     }
     await publishLibraryChanged(sceneId, id, true)
     return reply.status(204).send()
+  })
+
+  // Rename a file in the library (its stored filename). Editors may rename the scene's own files; a renter's
+  // booking files only by full access. The extension is kept: GLB detection and the stored type key off it.
+  app.patch<{ Params: { sceneId: string; id: string }; Body: { name?: unknown } }>('/api/scenes/:sceneId/library/:id', { config: { scenePass: { sceneFrom: fromParam('sceneId') } } }, async (request, reply) => {
+    const { sceneId, id } = request.params
+    const raw = request.body?.name
+    const trimmed = typeof raw === 'string' ? raw.trim() : ''
+    if (!trimmed || trimmed.length > 120 || /[\\/]/.test(trimmed)) return reply.status(400).send({ error: 'Name must be 1-120 characters, without slashes' })
+    const row = await db.query.sceneLibrary.findFirst({ where: and(eq(sceneLibrary.id, id), eq(sceneLibrary.sceneId, sceneId)) })
+    if (!row) return reply.status(404).send({ error: 'Not found' })
+    const a = await access(request, sceneId)
+    const allowed = isFullAccess(a) || (hasScope(a, 'scene.edit') && row.bookingId === null)
+    if (!allowed) return reply.status(403).send({ error: 'forbidden' })
+    if (!row.mediaAssetId) return reply.status(400).send({ error: 'Catalog models can only be renamed on the dashboard' })
+    const media = await db.query.mediaAssets.findFirst({ where: eq(mediaAssets.id, row.mediaAssetId) })
+    if (!media) return reply.status(404).send({ error: 'Not found' })
+    if (media.status !== 'ready') return reply.status(409).send({ error: "That file isn't ready yet" })
+    const ext = /\.[A-Za-z0-9]{1,5}$/.exec(media.filename)?.[0] ?? ''
+    const filename = ext && !trimmed.toLowerCase().endsWith(ext.toLowerCase()) ? `${trimmed}${ext}` : trimmed
+    await db.update(mediaAssets).set({ filename }).where(eq(mediaAssets.id, media.id))
+    await publishLibraryChanged(sceneId, id)
+    return reply.send({ item: await getSceneLibraryItem(sceneId, id) })
   })
 
   app.post<{ Params: { sceneId: string }; Body: { filename?: string; contentType?: string; data?: string } }>(
