@@ -1,21 +1,85 @@
 @import "tailwindcss";
 
 /*
+ * VLM theme: matte graphite surfaces, cyan reserved for actions, selection and focus.
+ * The dashboard is written with Tailwind's gray-* and blue-* classes; redefining those two scales here restyles
+ * every page at once. blue-600 (filled buttons with white text) maps to a deep cyan that keeps white text at
+ * 5:1; the bright cyan (accent-*) is for the primary call to action, with dark text on it.
+ */
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-gray-50: #f6f7f9;
+  --color-gray-100: #eceef1;
+  --color-gray-200: #d5d9df;
+  --color-gray-300: #b0b6bf;
+  --color-gray-400: #8a919c;
+  --color-gray-500: #646b76;
+  --color-gray-600: #474d57;
+  --color-gray-700: #30353d;
+  --color-gray-800: #1d2128;
+  --color-gray-900: #13161b;
+  --color-gray-950: #0b0d10;
+
+  --color-blue-50: #ecfeff;
+  --color-blue-100: #cffafe;
+  --color-blue-200: #a5f3fc;
+  --color-blue-300: #67e8f9;
+  --color-blue-400: #22d3ee;
+  --color-blue-500: #22d3ee;
+  --color-blue-600: #0e7490;
+  --color-blue-700: #155e75;
+  --color-blue-800: #155e75;
+  --color-blue-900: #164e63;
+  --color-blue-950: #083344;
+
+  --color-accent: #22d3ee;
+  --color-accent-hover: #67e8f9;
+  --color-accent-ink: #062a33;
+}
+
+/* Clipped bottom-right corner: the primary action's angular detail */
+@utility clip-corner {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+}
+
+/* A small cyan notch in a card's top-right corner (the card needs `relative`) */
+@utility corner-notch {
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 12px;
+    height: 12px;
+    background: var(--color-accent);
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
+    pointer-events: none;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/*
  * Analytics chart tokens. The site is dark-only today, so these dark values live on :root;
  * a light theme overrides the same names later. Validated with the dataviz palette checker
- * against the card surface (bg-gray-900, #101828).
+ * against the card surface (bg-gray-900, #13161b).
  */
 :root {
-  --chart-surface: #101828;   /* bg-gray-900 card */
+  --chart-surface: #13161b;   /* bg-gray-900 card */
   --chart-1: #3987e5;         /* series / bars (blue, dark step) */
   --chart-2: #d95926;         /* live positions (orange, dark step) */
   --chart-area-opacity: 0.12;
-  --chart-grid: #1e2939;      /* hairline gridlines (gray-800) */
-  --chart-axis: #364153;      /* baseline (gray-700) */
-  --chart-tile: #1e2939;      /* parcel tile outline */
-  --chart-text: #f3f4f6;      /* primary ink (gray-100) */
-  --chart-text-muted: #99a1af; /* axis labels (gray-400) */
-  --chart-crosshair: #6a7282; /* hover hairline (gray-500) */
+  --chart-grid: #1d2128;      /* hairline gridlines (gray-800) */
+  --chart-axis: #30353d;      /* baseline (gray-700) */
+  --chart-tile: #1d2128;      /* parcel tile outline */
+  --chart-text: #eceef1;      /* primary ink (gray-100) */
+  --chart-text-muted: #8a919c; /* axis labels (gray-400) */
+  --chart-crosshair: #646b76; /* hover hairline (gray-500) */
   /* 6-step sequential heat ramp, low -> high (blue 600 -> 100); low end clears 2:1 on the surface */
   --heat-0: #184f95;
   --heat-1: #256abf;
