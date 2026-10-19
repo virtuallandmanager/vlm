@@ -4,11 +4,12 @@
 import { engine, Entity, Transform, TextShape, Billboard } from '@dcl/sdk/ecs'
 import { Color3, Color4 } from '@dcl/sdk/math'
 import { TransformSession } from 'vlm-core'
-import type { VLM, DraftPayload, Handle, MoveLock, Ray, Selected, TransformMode } from 'vlm-core'
+import type { Axis, VLM, DraftPayload, Handle, MoveLock, Ray, Selected, TransformMode } from 'vlm-core'
 import type { TransformData, Vec3 } from 'vlm-shared'
 import type { DclAdapter } from '../DclAdapter'
 import { Gizmo } from './gizmo.js'
 import { EditInput, type EditHost } from './input.js'
+import { Outline } from './outline.js'
 import { MARKER_SIZE, Picks, entityPosition, follow, type Pick } from './picks.js'
 
 export interface DclEditModeState {
@@ -22,6 +23,8 @@ export interface DclEditModeState {
   prompt: boolean
   /** A Save is waiting for the server: Save / Revert are off and the item can't be dragged. */
   saving: boolean
+  /** The selected item's draft value for the current mode (position, rotation in degrees, or scale), for exact input. */
+  values: Vec3 | null
 }
 
 const NOT_CONNECTED = 'Not connected — your change is still a draft'
@@ -34,6 +37,13 @@ const RESCAN_SECONDS = 1
 const LABEL_GAP = 0.3
 
 const keyOf = (t: TransformData) => JSON.stringify(t)
+const round3 = (n: number) => Math.round(n * 1000) / 1000
+
+function modeValues(mode: TransformMode, t: TransformData | null): Vec3 | null {
+  if (!t) return null
+  const v = mode === 'move' ? t.position : mode === 'rotate' ? t.rotation : t.scale
+  return { x: round3(v.x), y: round3(v.y), z: round3(v.z) }
+}
 
 export class DclEditMode implements EditHost {
   /** Called after any change the HUD shows (see `state`). */
@@ -41,6 +51,7 @@ export class DclEditMode implements EditHost {
   readonly session: TransformSession
 
   private readonly gizmo = new Gizmo()
+  private readonly outline = new Outline()
   private readonly picks = new Picks()
   private readonly input: EditInput
   private _active = false
@@ -65,6 +76,8 @@ export class DclEditMode implements EditHost {
   /** The server refused a draft as forbidden: stop sending them (Save will report the same). */
   private draftsForbidden = false
   private lastDirty = false
+  /** The values the HUD last saw, so drags re-render the exact-input fields only when they change. */
+  private lastValuesKey = ''
   private appliedKey = ''
   private rescanIn = 0
 
@@ -97,6 +110,7 @@ export class DclEditMode implements EditHost {
       message: this.message,
       prompt: this.prompt,
       saving: this.savingSk !== null,
+      values: sel ? modeValues(this.session.mode, this.session.draft) : null,
     }
   }
 
@@ -128,6 +142,7 @@ export class DclEditMode implements EditHost {
     this.prompt = false
     this.message = null
     this.gizmo.clear()
+    this.outline.clear()
     this.picks.clear()
     for (const e of this.labels.values()) engine.removeEntity(e)
     this.labels.clear()
@@ -139,6 +154,21 @@ export class DclEditMode implements EditHost {
     this.input.cancelDrag()
     this.session.setMode(m)
     this.session.setSnap(false)
+    this.applyDraft()
+    this.changed()
+  }
+
+  /** Exact input from the HUD: one axis of the current mode's value. Saved like a drag (Save / Revert). */
+  setValue(axis: Axis, value: number): void {
+    const sel = this.session.selected
+    if (!sel || this.savingSk !== null) return
+    const holder = this.remote.get(sel.sk)?.holderName
+    if (holder) {
+      this.message = `Being moved by ${holder}`
+      return this.changed()
+    }
+    this.input.cancelDrag()
+    if (!this.session.setValue(axis, value)) return
     this.applyDraft()
     this.changed()
   }
@@ -215,7 +245,7 @@ export class DclEditMode implements EditHost {
   }
 
   excludedFromSurface(entity: Entity): boolean {
-    if (this.picks.isHelper(entity) || this.gizmo.owns(entity) || entity === this.selectedEntity) return true
+    if (this.picks.isHelper(entity) || this.gizmo.owns(entity) || this.outline.owns(entity) || entity === this.selectedEntity) return true
     const sel = this.session.selected
     return !!sel && this.picks.skAt(entity) === sel.sk
   }
@@ -276,8 +306,11 @@ export class DclEditMode implements EditHost {
     const sel = this.session.selected
     // While someone else holds the item, the gizmo sits where they have it, not at our stale draft
     const remoteT = sel && !this.session.dirty ? this.remote.get(sel.sk)?.transform : null
-    this.gizmo.update(this.session.mode, this.session.lock, sel ? remoteT ?? this.session.draft : null, sel?.element ?? null)
-    if (this.session.dirty !== this.lastDirty) this.changed()
+    const shown = sel ? remoteT ?? this.session.draft : null
+    this.gizmo.update(this.session.mode, this.session.lock, shown, sel?.element ?? null)
+    this.outline.update(shown, sel?.element ?? null)
+    const vk = JSON.stringify(sel ? modeValues(this.session.mode, this.session.draft) : null)
+    if (this.session.dirty !== this.lastDirty || vk !== this.lastValuesKey) this.changed()
   }
 
   // ── Selection and drafts ──────────────────────────────────────────────
@@ -500,6 +533,8 @@ export class DclEditMode implements EditHost {
 
   private changed(): void {
     this.lastDirty = this.session.dirty
+    const sel = this.session.selected
+    this.lastValuesKey = JSON.stringify(sel ? modeValues(this.session.mode, this.session.draft) : null)
     try {
       this.onChange()
     } catch (err) {

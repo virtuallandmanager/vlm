@@ -649,3 +649,63 @@ describe('TransformSession save / revert / emit', () => {
     expect(session.revert()?.position.x).toBe(7)
   })
 })
+
+describe('TransformSession exact values', () => {
+  it('move sets one position axis, emits a draft and makes the session dirty', () => {
+    const { session, onDraft } = selected()
+    expect(session.setValue('y', 4.5)).toBe(true)
+    expect(session.draft!.position).toEqual(v(1, 4.5, 3))
+    expect(session.dirty).toBe(true)
+    expect(onDraft).toHaveBeenCalledWith({ element: 'model', sk: 'model#1', transform: session.draft })
+  })
+
+  it('rotate sets a rotation axis in degrees', () => {
+    const { session } = selected({}, 'rotate')
+    session.setValue('y', 90)
+    expect(session.draft!.rotation).toEqual(v(0, 90, 0))
+    expect(session.draft!.position).toEqual(v(1, 2, 3))
+  })
+
+  it('resize sets a scale axis, floored at 0.05', () => {
+    const { session } = selected({}, 'resize')
+    session.setValue('x', 2.5)
+    expect(session.draft!.scale).toEqual(v(2.5, 1, 1))
+    session.setValue('z', -3)
+    expect(session.draft!.scale.z).toBe(0.05)
+  })
+
+  it('refuses a value that is not a finite number and changes nothing', () => {
+    const { session, onDraft } = selected()
+    expect(session.setValue('x', NaN)).toBe(false)
+    expect(session.setValue('x', Infinity)).toBe(false)
+    expect(session.draft!.position).toEqual(v(1, 2, 3))
+    expect(onDraft).not.toHaveBeenCalled()
+  })
+
+  it('setting the current value again emits nothing', () => {
+    const { session, onDraft } = selected()
+    expect(session.setValue('x', 1)).toBe(true)
+    expect(onDraft).not.toHaveBeenCalled()
+  })
+
+  it('does nothing without a selection', () => {
+    const { session } = make()
+    expect(session.setValue('x', 1)).toBe(false)
+  })
+
+  it('ends a drag in progress so the next frame does not overwrite the typed value', () => {
+    const { session } = selected()
+    session.beginDrag({ kind: 'body' }, down(1, 10, 3), v(1, 0, 3))
+    session.setValue('x', 7)
+    session.drag(down(5, 10, 5), v(5, 0, 5))
+    expect(session.draft!.position).toEqual(v(7, 2, 3))
+  })
+
+  it('revert undoes a typed value', () => {
+    const { session } = selected()
+    session.setValue('x', 7)
+    session.revert()
+    expect(session.draft!.position).toEqual(v(1, 2, 3))
+    expect(session.dirty).toBe(false)
+  })
+})

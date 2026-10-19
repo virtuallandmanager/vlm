@@ -387,6 +387,9 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
           // Answering the Done prompt completes, then leaves edit mode (DclEditMode.exitAfterPrompt)
           if (action === 'edit_save') editMode.save()
           if (action === 'edit_revert') editMode.revert()
+          if (action === 'edit_value' && ['x', 'y', 'z'].includes(data?.axis) && typeof data?.value === 'number') {
+            editMode.setValue(data.axis, data.value)
+          }
           return
         }
 

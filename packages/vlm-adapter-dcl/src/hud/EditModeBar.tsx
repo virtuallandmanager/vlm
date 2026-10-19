@@ -1,9 +1,10 @@
 // Floating bar for in-world transform editing: mode buttons, the selected item, Move's axis lock, Save / Revert / Done,
-// the held / error message and the "Save or revert first" prompt. Rendered by DclHUDRenderer from its module state.
-import ReactEcs, { UiEntity, Label } from '@dcl/sdk/react-ecs'
+// the held / error message, the "Save or revert first" prompt and the Exact panel (type X / Y / Z for the current mode). Rendered by DclHUDRenderer from its module state.
+import ReactEcs, { UiEntity, Label, Input } from '@dcl/sdk/react-ecs'
 import { Color4 } from '@dcl/sdk/math'
 import { markHudPress } from './press.js'
-import type { MoveLock, TransformMode } from 'vlm-core'
+import type { Axis, MoveLock, TransformMode } from 'vlm-core'
+import type { Vec3 } from 'vlm-shared'
 
 export interface EditModeHUDState {
   active: boolean
@@ -14,10 +15,11 @@ export interface EditModeHUDState {
   message: string | null
   prompt: boolean
   saving: boolean
+  values: Vec3 | null
 }
 
 export const NO_EDIT_MODE: EditModeHUDState = {
-  active: false, mode: 'move', lock: 'free', selectedName: null, dirty: false, message: null, prompt: false, saving: false,
+  active: false, mode: 'move', lock: 'free', selectedName: null, dirty: false, message: null, prompt: false, saving: false, values: null,
 }
 
 const BG = Color4.create(0.06, 0.06, 0.1, 0.96)
@@ -41,6 +43,24 @@ const PROMPT_W = 400
 const PROMPT_H = 70
 const MESSAGE_H = 22
 const BOTTOM = 20
+const EXACT_H = 64
+const AXES: Axis[] = ['x', 'y', 'z']
+const EXACT_TITLE: Record<TransformMode, string> = { move: 'Position (m)', rotate: 'Rotation (degrees)', resize: 'Scale' }
+
+// The Exact panel's state lives here: whether it's open, and text typed but not applied yet (per axis). Typed text is
+// dropped when the selection or mode changes; until then a field shows it instead of the live value.
+let exactOpen = false
+let typed: Partial<Record<Axis, string>> = {}
+let typedFor = ''
+
+const fmt = (n: number) => String(Math.round(n * 1000) / 1000)
+/** A typed number, or null for anything else (empty, "1abc"). */
+export function parseExact(text: string): number | null {
+  const t = text.trim()
+  if (t === '') return null
+  const n = Number(t)
+  return Number.isFinite(n) ? n : null
+}
 
 type Act = (action: string, data?: any) => void
 
@@ -56,8 +76,53 @@ function Btn({ label, onPress, width, color, off }: { label: string; onPress: ()
   )
 }
 
+function ExactPanel({ s, act }: { s: EditModeHUDState; act: Act }) {
+  const values = s.values!
+  const apply = (axis: Axis) => {
+    const text = typed[axis]
+    if (text === undefined) return
+    delete typed[axis]
+    const n = parseExact(text)
+    if (n !== null) act('edit_value', { axis, value: n }) // anything else: the field shows the old value again
+  }
+  return (
+    <UiEntity
+      uiTransform={{ width: BAR_W, height: EXACT_H, margin: { bottom: 4 }, flexDirection: 'column', padding: { left: 12, right: 12, top: 6 } }}
+      uiBackground={{ color: BG }}
+      onMouseDown={markHudPress}
+    >
+      <Label value={`${EXACT_TITLE[s.mode]} — type a value and press Enter`} fontSize={10} color={DIM} textAlign="middle-left" uiTransform={{ height: 18 }} />
+      <UiEntity uiTransform={{ flexDirection: 'row', alignItems: 'center', height: 34 }}>
+        {AXES.map((axis) => (
+          <UiEntity key={axis} uiTransform={{ flexDirection: 'row', alignItems: 'center', margin: { right: 14 } }}>
+            <Label value={axis.toUpperCase()} fontSize={12} color={LOCK_COLORS[axis]} uiTransform={{ width: 16, height: 28 }} />
+            <Input
+              uiTransform={{ width: 120, height: 28 }}
+              uiBackground={{ color: BTN }}
+              color={WHITE}
+              placeholderColor={DIM}
+              placeholder={fmt(values[axis])}
+              fontSize={12}
+              value={typed[axis] ?? fmt(values[axis])}
+              onChange={(v) => { typed[axis] = v }}
+              onSubmit={() => apply(axis)}
+            />
+          </UiEntity>
+        ))}
+        <UiEntity uiTransform={{ flexGrow: 1 }} />
+        <Btn label="Apply" width={64} color={ACCENT} off={s.saving} onPress={() => AXES.forEach(apply)} />
+      </UiEntity>
+    </UiEntity>
+  )
+}
+
 export function EditModeBar({ s, act }: { s: EditModeHUDState; act: Act }) {
   const name = s.selectedName ?? 'this item'
+  const forKey = `${s.selectedName}:${s.mode}`
+  if (forKey !== typedFor) {
+    typedFor = forKey
+    typed = {}
+  }
   const modes: Array<[TransformMode, string]> = [['move', 'Move'], ['rotate', 'Rotate'], ['resize', 'Resize']]
   return (
     <UiEntity
@@ -81,6 +146,7 @@ export function EditModeBar({ s, act }: { s: EditModeHUDState; act: Act }) {
           </UiEntity>
         </UiEntity>
       )}
+      {exactOpen && s.values && <ExactPanel s={s} act={act} />}
       <UiEntity
         uiTransform={{ width: BAR_W, height: BAR_H, flexDirection: 'row', alignItems: 'center', padding: { left: 6, right: 6 } }}
         uiBackground={{ color: BG }}
@@ -93,12 +159,13 @@ export function EditModeBar({ s, act }: { s: EditModeHUDState; act: Act }) {
           value={s.selectedName ?? 'Click an item to select it'}
           fontSize={11}
           color={s.selectedName ? WHITE : DIM}
-          uiTransform={{ width: 150, height: 30, margin: { left: 6, right: 6 } }}
+          uiTransform={{ width: 130, height: 30, margin: { left: 6, right: 6 } }}
         />
         {s.mode === 'move' && (
           <Label value={s.lock === 'free' ? 'Free' : s.lock.toUpperCase()} fontSize={12} color={LOCK_COLORS[s.lock]} uiTransform={{ width: 36, height: 30 }} />
         )}
         <UiEntity uiTransform={{ flexGrow: 1 }} />
+        <Btn label="Exact" width={52} color={exactOpen ? ACCENT : BTN} off={!s.values} onPress={() => { exactOpen = !exactOpen }} />
         <Btn label="Save" width={52} color={ACCENT} off={!s.dirty || s.saving} onPress={() => act('edit_save')} />
         <Btn label="Revert" width={52} color={DANGER} off={!s.dirty || s.saving} onPress={() => act('edit_revert')} />
         <Btn label="Done" width={52} onPress={() => act('edit_exit')} />

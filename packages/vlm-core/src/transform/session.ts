@@ -176,6 +176,25 @@ export class TransformSession {
     }
   }
 
+  /**
+   * Sets one axis of the current mode's value (position in meters, rotation in degrees, scale floored at 0.05), as
+   * typed into the HUD. Ends any drag first so the next frame doesn't overwrite it. False when nothing is selected
+   * or the value isn't a finite number.
+   */
+  setValue(axis: Axis, value: number): boolean {
+    if (!this._draft || !this._selected || !Number.isFinite(value)) return false
+    this.resetDrag()
+    const next = copyTransform(this._draft)
+    if (this._mode === 'move') next.position[axis] = value
+    else if (this._mode === 'rotate') next.rotation[axis] = value
+    else next.scale[axis] = Math.max(MIN_SCALE, value)
+    if (sameTransform(next, this._draft)) return true
+    this._draft = next
+    this.lastEmit = this.now()
+    this.emit()
+    return true
+  }
+
   /** Sends the draft unless the network already has it. */
   private flushIfChanged(): void {
     if (!this.dragState || !this._draft) return
