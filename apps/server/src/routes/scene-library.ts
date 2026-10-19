@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNotNull, or } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { assetLibraryItems, mediaAssets, sceneLibrary } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
@@ -9,6 +9,7 @@ import { fromParam, isUuid } from '../auth/scene-from.js'
 import { getSceneLibraryItem, linkToScene, listSceneLibrary, uploadDestination } from '../library/scene-library.js'
 import { storeMedia, StoreMediaError } from '../media/store.js'
 import { publishLibraryChanged } from '../realtime/bus.js'
+import { PackDisabledError } from '../catalog/visibility.js'
 
 export default async function sceneLibraryRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)
@@ -33,9 +34,20 @@ export default async function sceneLibraryRoutes(app: FastifyInstance) {
     if (!hasScope(await access(request, sceneId), 'scene.edit')) return reply.status(403).send({ error: 'forbidden' })
     const owns = mediaAssetId
       ? await db.query.mediaAssets.findFirst({ where: and(eq(mediaAssets.id, mediaAssetId), eq(mediaAssets.ownerId, request.user.id)) })
-      : await db.query.assetLibraryItems.findFirst({ where: and(eq(assetLibraryItems.id, assetItemId!), eq(assetLibraryItems.uploadedBy, request.user.id)) })
+      : await db.query.assetLibraryItems.findFirst({
+          // Your own upload, or a public catalog model (linkToScene refuses one in a switched-off pack)
+          where: and(
+            eq(assetLibraryItems.id, assetItemId!),
+            or(eq(assetLibraryItems.uploadedBy, request.user.id), and(eq(assetLibraryItems.isPublic, true), isNotNull(assetLibraryItems.packId))),
+          ),
+        })
     if (!owns) return reply.status(403).send({ error: 'forbidden' })
-    return reply.status(201).send({ id: await linkToScene(sceneId, { mediaAssetId, assetItemId }, request.user.id) })
+    try {
+      return reply.status(201).send({ id: await linkToScene(sceneId, { mediaAssetId, assetItemId }, request.user.id) })
+    } catch (err) {
+      if (err instanceof PackDisabledError) return reply.status(409).send({ error: err.code, message: err.message })
+      throw err
+    }
   })
 
   app.delete<{ Params: { sceneId: string; id: string } }>('/api/scenes/:sceneId/library/:id', { config: { scenePass: { sceneFrom: fromParam('sceneId') } } }, async (request, reply) => {

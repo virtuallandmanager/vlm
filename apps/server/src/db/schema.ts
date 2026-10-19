@@ -617,6 +617,19 @@ export const mediaAssetsRelations = relations(mediaAssets, ({ one }) => ({
 
 // ── 3D Asset Library ───────────────────────────────────────────────────────
 
+/** A switchable group of open-source catalog models (one source × artist or collection). */
+export const catalogPacks = pgTable('catalog_packs', {
+  id: text('id').primaryKey(), // slug, e.g. 'last-slice-kirzoz'
+  name: text('name').notNull(),
+  source: text('source').notNull(), // 'dhingia' | 'last-slice' | 'decentraland'
+  license: text('license').notNull(), // 'mit' | 'cc-by-nc-3.0' | 'unstated'
+  attribution: text('attribution').notNull(),
+  sourceUrl: text('source_url').notNull(),
+  // Off: hidden from browsing and new scene-library links; already-linked models keep working
+  enabled: boolean('enabled').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const assetLibraryItems = pgTable('asset_library_items', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
@@ -636,7 +649,16 @@ export const assetLibraryItems = pgTable('asset_library_items', {
   isPublic: boolean('is_public').notNull().default(true),
   uploadedBy: uuid('uploaded_by').references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+  // Catalog models (non-null packId): public, no uploader, never counted toward storage
+  packId: text('pack_id').references(() => catalogPacks.id, { onDelete: 'restrict' }),
+  style: text('style'),
+  venueTags: text('venue_tags').array(),
+  sourceRef: text('source_ref'), // the item's id or path in its source; re-imports upsert on (pack_id, source_ref)
+  contentHash: text('content_hash'), // sha256 of the GLB
+}, (t) => ({
+  packRefUq: uniqueIndex('asset_library_items_pack_ref').on(t.packId, t.sourceRef),
+  contentHashIdx: index('asset_library_items_content_hash_idx').on(t.contentHash),
+}))
 
 export const assetLibraryItemsRelations = relations(assetLibraryItems, ({ one }) => ({
   uploader: one(users, {

@@ -1,5 +1,6 @@
 import { and, eq, inArray, lt, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
+import { PackDisabledError, inDisabledPack } from '../catalog/visibility.js'
 import { assetLibraryItems, bookings, mediaAssets, sceneLibrary, scenes, systemFlags } from '../db/schema.js'
 import type { Actor } from '../auth/actor.js'
 import { publishLibraryChanged } from '../realtime/bus.js'
@@ -99,6 +100,7 @@ export async function linkToScene(
   addedBy: string | null,
   bookingId: string | null = null,
 ): Promise<string> {
+  if (item.assetItemId && (await inDisabledPack(item.assetItemId))) throw new PackDisabledError()
   const values = { sceneId, mediaAssetId: item.mediaAssetId ?? null, assetItemId: item.assetItemId ?? null, addedBy, bookingId }
   const [row] = await db.insert(sceneLibrary).values(values).onConflictDoNothing().returning({ id: sceneLibrary.id })
   if (row) {

@@ -2,6 +2,7 @@
 import { useCallback } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
+import type { CatalogPack } from 'vlm-shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
 /** Read a File as base64 (no `data:…;base64,` prefix) for JSON upload bodies. */
@@ -257,9 +258,12 @@ export function useApi() {
       apiFetch<{ sessions: any[] }>(`/api/streaming/${serverId}/sessions`),
 
     // 3D Asset Library
-    getAssets: (params?: { q?: string; category?: string; tag?: string; maxTriangles?: string; maxFileSize?: string; limit?: string; offset?: string }) => {
+    getAssets: (params?: { q?: string; category?: string; tag?: string; style?: string; venue?: string; pack?: string; maxTriangles?: string; maxFileSize?: string; limit?: string; offset?: string }) => {
       const query = new URLSearchParams()
       if (params?.q) query.set('q', params.q)
+      if (params?.style) query.set('style', params.style)
+      if (params?.venue) query.set('venue', params.venue)
+      if (params?.pack) query.set('pack', params.pack)
       if (params?.category) query.set('category', params.category)
       if (params?.tag) query.set('tag', params.tag)
       if (params?.maxTriangles) query.set('maxTriangles', params.maxTriangles)
@@ -273,6 +277,14 @@ export function useApi() {
     },
     getAsset: (id: string) => apiFetch<{ asset: any }>(`/api/assets/${id}`),
     getAssetCategories: () => apiFetch<{ categories: string[] }>('/api/assets/categories'),
+    // Catalog packs: public list (credits, pack filter); admins switch packs on and off
+    getCatalogPacks: () => apiFetch<{ packs: CatalogPack[] }>('/api/catalog/packs'),
+    getAdminCatalogPacks: () => apiFetch<{ packs: CatalogPack[] }>('/api/admin/catalog/packs'),
+    setCatalogPackEnabled: (id: string, enabled: boolean) =>
+      apiFetch<{ pack: CatalogPack }>(`/api/admin/catalog/packs/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+    /** Links a model you uploaded, or a catalog model, into a scene's library (no storage used for catalog models). */
+    addModelToSceneLibrary: (sceneId: string, assetItemId: string) =>
+      apiFetch<{ id: string }>(`/api/scenes/${sceneId}/library`, { method: 'POST', body: JSON.stringify({ assetItemId }) }),
     uploadAsset: (data: {
       name: string
       description?: string

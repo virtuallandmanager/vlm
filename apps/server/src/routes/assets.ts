@@ -13,7 +13,8 @@ import { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
 import { eq, ilike, and, or, sql, arrayContains } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { assetLibraryItems } from '../db/schema.js'
+import { assetLibraryItems, catalogPacks } from '../db/schema.js'
+import { browsableAsset } from '../catalog/visibility.js'
 import { authenticate } from '../middleware/auth.js'
 import { createStorage } from '../storage/index.js'
 import { classifyUpload, extensionFor } from '../storage/upload-policy.js'
@@ -21,6 +22,8 @@ import { assertStorageQuota } from '../media/quota.js'
 import { StoreMediaError } from '../media/store.js'
 import { verifySessionToken } from '../auth/tokens.js'
 import { generateThumbnail } from '../services/thumbnails.js'
+
+const CATALOG_MODEL = { error: 'catalog_model', message: "Catalog models can't be changed or deleted; switch the pack off in Admin → Catalog packs instead" }
 
 /** Optional bearer: scene-pass, API-key and bad tokens count as anonymous (null). */
 function optionalAccount(authorization: string | undefined) {
@@ -38,6 +41,9 @@ export default async function assetRoutes(app: FastifyInstance) {
       q?: string
       category?: string
       tag?: string
+      style?: string
+      venue?: string
+      pack?: string
       maxTriangles?: string
       maxFileSize?: string
       limit?: string
@@ -71,6 +77,12 @@ export default async function assetRoutes(app: FastifyInstance) {
       conditions.push(arrayContains(assetLibraryItems.tags, [query.tag]))
     }
 
+    // Catalog: switched-off packs are hidden from browsing
+    conditions.push(browsableAsset())
+    if (query.style) conditions.push(eq(assetLibraryItems.style, query.style))
+    if (query.venue) conditions.push(arrayContains(assetLibraryItems.venueTags, [query.venue]))
+    if (query.pack) conditions.push(eq(assetLibraryItems.packId, query.pack))
+
     if (query.maxTriangles) {
       conditions.push(
         sql`${assetLibraryItems.triangleCount} <= ${parseInt(query.maxTriangles)}`,
@@ -86,13 +98,18 @@ export default async function assetRoutes(app: FastifyInstance) {
     const limit = Math.min(parseInt(query.limit || '50'), 100)
     const offset = parseInt(query.offset || '0')
 
-    const items = await db
-      .select()
+    const rows = await db
+      .select({
+        a: assetLibraryItems,
+        pack: { id: catalogPacks.id, name: catalogPacks.name, license: catalogPacks.license, attribution: catalogPacks.attribution },
+      })
       .from(assetLibraryItems)
+      .leftJoin(catalogPacks, eq(catalogPacks.id, assetLibraryItems.packId))
       .where(and(...conditions))
       .limit(limit)
       .offset(offset)
       .orderBy(assetLibraryItems.createdAt)
+    const items = rows.map((r) => ({ ...r.a, pack: r.pack?.id ? r.pack : null }))
 
     const [countResult] = await db
       .select({ count: sql<number>`count(*)` })
@@ -122,7 +139,14 @@ export default async function assetRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'Asset not found' })
     }
 
-    return reply.send({ asset })
+    // Catalog models carry their pack's credit (shown even when the pack is switched off: the model may be in use)
+    const pack = asset.packId
+      ? (await db
+          .select({ id: catalogPacks.id, name: catalogPacks.name, license: catalogPacks.license, attribution: catalogPacks.attribution })
+          .from(catalogPacks)
+          .where(eq(catalogPacks.id, asset.packId)))[0] ?? null
+      : null
+    return reply.send({ asset: { ...asset, pack } })
   })
 
   // ── Upload New Asset ──────────────────────────────────────────────────
@@ -230,6 +254,8 @@ export default async function assetRoutes(app: FastifyInstance) {
       if (existing.uploadedBy !== request.user.id && request.user.role !== 'admin') {
         return reply.status(403).send({ error: 'Forbidden' })
       }
+      // Catalog models are shared by every scene that uses them: they change only through the importer
+      if (existing.packId) return reply.status(409).send(CATALOG_MODEL)
 
       const updates: Record<string, unknown> = {}
       if (body.name !== undefined) updates.name = body.name
@@ -268,6 +294,8 @@ export default async function assetRoutes(app: FastifyInstance) {
       if (existing.uploadedBy !== request.user.id && request.user.role !== 'admin') {
         return reply.status(403).send({ error: 'Forbidden' })
       }
+      // Deleting would break every scene that placed it; switch its pack off instead
+      if (existing.packId) return reply.status(409).send(CATALOG_MODEL)
 
       await storage.delete(existing.storageKey)
       await db.delete(assetLibraryItems).where(eq(assetLibraryItems.id, id))
@@ -281,7 +309,7 @@ export default async function assetRoutes(app: FastifyInstance) {
     const result = await db
       .select({ category: assetLibraryItems.category })
       .from(assetLibraryItems)
-      .where(eq(assetLibraryItems.isPublic, true))
+      .where(and(eq(assetLibraryItems.isPublic, true), browsableAsset()))
       .groupBy(assetLibraryItems.category)
 
     const categories = result

@@ -1,0 +1,258 @@
+[
+  {
+    "id": "dcl-cyberpunk",
+    "name": "Decentraland: Cyberpunk",
+    "source": "decentraland",
+    "license": "unstated",
+    "attribution": "Decentraland Foundation (Creator Hub asset packs)",
+    "sourceUrl": "https://github.com/decentraland/asset-packs"
+  },
+  {
+    "id": "dcl-fantasy",
+    "name": "Decentraland: Fantasy",
+    "source": "decentraland",
+    "license": "unstated",
+    "attribution": "Decentraland Foundation (Creator Hub asset packs)",
+    "sourceUrl": "https://github.com/decentraland/asset-packs"
+  },
+  {
+    "id": "dcl-gallery",
+    "name": "Decentraland: Gallery",
+    "source": "decentraland",
+    "license": "unstated",
+    "attribution": "Decentraland Foundation (Creator Hub asset packs)",
+    "sourceUrl": "https://github.com/decentraland/asset-packs"
+  },
+  {
+    "id": "dcl-genesis-city",
+    "name": "Decentraland: Genesis City",
+    "source": "decentraland",
+    "license": "unstated",
+    "attribution": "Decentraland Foundation (Creator Hub asset packs)",
+    "sourceUrl": "https://github.com/decentraland/asset-packs"
+  },
+  {
+    "id": "dcl-halloween",
+    "name": "Decentraland: Halloween",
+    "source": "decentraland",
+    "license": "unstated",
+    "attribution": "Decentraland Foundation (Creator Hub asset packs)",
+    "sourceUrl": "https://github.com/decentraland/asset-packs"
+  },
+  {
+    "id": "dcl-pirates",
+    "name": "Decentraland: Pirates",
+    "source": "decentraland",
+    "license": "unstated",
+    "attribution": "Decentraland Foundation (Creator Hub asset packs)",
+    "sourceUrl": "https://github.com/decentraland/asset-packs"
+  },
+  {
+    "id": "dcl-sci-fi",
+    "name": "Decentraland: Sci-fi",
+    "source": "decentraland",
+    "license": "unstated",
+    "attribution": "Decentraland Foundation (Creator Hub asset packs)",
+    "sourceUrl": "https://github.com/decentraland/asset-packs"
+  },
+  {
+    "id": "dcl-steampunk",
+    "name": "Decentraland: Steampunk",
+    "source": "decentraland",
+    "license": "unstated",
+    "attribution": "Decentraland Foundation (Creator Hub asset packs)",
+    "sourceUrl": "https://github.com/decentraland/asset-packs"
+  },
+  {
+    "id": "dcl-voxels-pack",
+    "name": "Decentraland: Voxels Pack",
+    "source": "decentraland",
+    "license": "unstated",
+    "attribution": "Decentraland Foundation (Creator Hub asset packs)",
+    "sourceUrl": "https://github.com/decentraland/asset-packs"
+  },
+  {
+    "id": "dcl-western",
+    "name": "Decentraland: Western",
+    "source": "decentraland",
+    "license": "unstated",
+    "attribution": "Decentraland Foundation (Creator Hub asset packs)",
+    "sourceUrl": "https://github.com/decentraland/asset-packs"
+  },
+  {
+    "id": "dcl-year-of-the-pig",
+    "name": "Decentraland: Year of the Pig",
+    "source": "decentraland",
+    "license": "unstated",
+    "attribution": "Decentraland Foundation (Creator Hub asset packs)",
+    "sourceUrl": "https://github.com/decentraland/asset-packs"
+  },
+  {
+    "id": "dcl-builder-scifi",
+    "name": "Decentraland Builder: SciFi",
+    "source": "decentraland",
+    "license": "cc-by-nc-3.0",
+    "attribution": "Decentraland, licensed CC BY-NC 3.0",
+    "sourceUrl": "https://github.com/decentraland/builder-assets"
+  },
+  {
+    "id": "dcl-builder-minitown",
+    "name": "Decentraland Builder: MiniTown",
+    "source": "decentraland",
+    "license": "cc-by-nc-3.0",
+    "attribution": "Decentraland, licensed CC BY-NC 3.0",
+    "sourceUrl": "https://github.com/decentraland/builder-assets"
+  },
+  {
+    "id": "dcl-builder-pirates",
+    "name": "Decentraland Builder: Pirates",
+    "source": "decentraland",
+    "license": "cc-by-nc-3.0",
+    "attribution": "Decentraland, licensed CC BY-NC 3.0",
+    "sourceUrl": "https://github.com/decentraland/builder-assets"
+  },
+  {
+    "id": "dcl-builder-htc",
+    "name": "Decentraland Builder: HTC",
+    "source": "decentraland",
+    "license": "cc-by-nc-3.0",
+    "attribution": "Decentraland, licensed CC BY-NC 3.0",
+    "sourceUrl": "https://github.com/decentraland/builder-assets"
+  },
+  {
+    "id": "dcl-builder-chinese",
+    "name": "Decentraland Builder: Chinese",
+    "source": "decentraland",
+    "license": "cc-by-nc-3.0",
+    "attribution": "Decentraland, licensed CC BY-NC 3.0",
+    "sourceUrl": "https://github.com/decentraland/builder-assets"
+  },
+  {
+    "id": "dcl-builder-fantasy",
+    "name": "Decentraland Builder: Fantasy",
+    "source": "decentraland",
+    "license": "cc-by-nc-3.0",
+    "attribution": "Decentraland, licensed CC BY-NC 3.0",
+    "sourceUrl": "https://github.com/decentraland/builder-assets"
+  },
+  {
+    "id": "dhingia-buildings",
+    "name": "Mr Dhingia: Buildings",
+    "source": "dhingia",
+    "license": "mit",
+    "attribution": "MIT License\n\nCopyright (c) 2022 Mr Dhingia\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
+    "sourceUrl": "https://github.com/MrDhingia/DhingiaBuilds"
+  },
+  {
+    "id": "dhingia-interiors",
+    "name": "Mr Dhingia: Interiors",
+    "source": "dhingia",
+    "license": "mit",
+    "attribution": "MIT License\n\nCopyright (c) 2022 Mr Dhingia\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
+    "sourceUrl": "https://github.com/MrDhingia/DhingiaBuilds"
+  },
+  {
+    "id": "dhingia-dj",
+    "name": "Mr Dhingia: DJ & Club Kit",
+    "source": "dhingia",
+    "license": "mit",
+    "attribution": "MIT License\n\nCopyright (c) 2022 Mr Dhingia\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
+    "sourceUrl": "https://github.com/MrDhingia/DhingiaBuilds"
+  },
+  {
+    "id": "last-slice-iwb-builder",
+    "name": "Last Slice: IWB Builder",
+    "source": "last-slice",
+    "license": "unstated",
+    "attribution": "IWB Builder for the In World Builder by Last Slice",
+    "sourceUrl": "https://github.com/last-slice/dcl-iwb"
+  },
+  {
+    "id": "last-slice-awedjob",
+    "name": "Last Slice: AwedJob",
+    "source": "last-slice",
+    "license": "unstated",
+    "attribution": "AwedJob for the In World Builder by Last Slice",
+    "sourceUrl": "https://github.com/last-slice/dcl-iwb"
+  },
+  {
+    "id": "last-slice-blacknode",
+    "name": "Last Slice: Blacknode",
+    "source": "last-slice",
+    "license": "unstated",
+    "attribution": "Blacknode for the In World Builder by Last Slice",
+    "sourceUrl": "https://github.com/last-slice/dcl-iwb"
+  },
+  {
+    "id": "last-slice-cyclopa",
+    "name": "Last Slice: Cyclopa",
+    "source": "last-slice",
+    "license": "unstated",
+    "attribution": "Cyclopa for the In World Builder by Last Slice",
+    "sourceUrl": "https://github.com/last-slice/dcl-iwb"
+  },
+  {
+    "id": "last-slice-kirzoz",
+    "name": "Last Slice: Kirzoz",
+    "source": "last-slice",
+    "license": "unstated",
+    "attribution": "Kirzoz for the In World Builder by Last Slice",
+    "sourceUrl": "https://github.com/last-slice/dcl-iwb"
+  },
+  {
+    "id": "last-slice-doctordripp-ui",
+    "name": "Last Slice: DOCTORdripp (UI pieces)",
+    "source": "last-slice",
+    "license": "unstated",
+    "attribution": "DOCTORdripp for the In World Builder by Last Slice",
+    "sourceUrl": "https://github.com/last-slice/dcl-iwb"
+  },
+  {
+    "id": "last-slice-doctordripp",
+    "name": "Last Slice: DOCTORdripp",
+    "source": "last-slice",
+    "license": "unstated",
+    "attribution": "DOCTORdripp for the In World Builder by Last Slice",
+    "sourceUrl": "https://github.com/last-slice/dcl-iwb"
+  },
+  {
+    "id": "last-slice-fgr3d",
+    "name": "Last Slice: FGR3D",
+    "source": "last-slice",
+    "license": "unstated",
+    "attribution": "FGR3D for the In World Builder by Last Slice",
+    "sourceUrl": "https://github.com/last-slice/dcl-iwb"
+  },
+  {
+    "id": "last-slice-nikki-fuego",
+    "name": "Last Slice: Nikki Fuego",
+    "source": "last-slice",
+    "license": "unstated",
+    "attribution": "Nikki Fuego for the In World Builder by Last Slice",
+    "sourceUrl": "https://github.com/last-slice/dcl-iwb"
+  },
+  {
+    "id": "last-slice-kj-walker",
+    "name": "Last Slice: KJ Walker",
+    "source": "last-slice",
+    "license": "unstated",
+    "attribution": "KJ Walker for the In World Builder by Last Slice",
+    "sourceUrl": "https://github.com/last-slice/dcl-iwb"
+  },
+  {
+    "id": "last-slice-kj-walker-ui",
+    "name": "Last Slice: KJ Walker (UI pieces)",
+    "source": "last-slice",
+    "license": "unstated",
+    "attribution": "KJ Walker for the In World Builder by Last Slice",
+    "sourceUrl": "https://github.com/last-slice/dcl-iwb"
+  },
+  {
+    "id": "last-slice-nikki-fuego-ui",
+    "name": "Last Slice: Nikki Fuego (UI pieces)",
+    "source": "last-slice",
+    "license": "unstated",
+    "attribution": "Nikki Fuego for the In World Builder by Last Slice",
+    "sourceUrl": "https://github.com/last-slice/dcl-iwb"
+  }
+]

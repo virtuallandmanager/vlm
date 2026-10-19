@@ -66,6 +66,19 @@ if [ -n "$DATABASE_URL" ]; then
         console.log('[vlm-server] scene_library table ensured');
       } catch(e) { console.log('[vlm-server] scene_library:', e.message); }
 
+      // Catalog packs; matches catalogPacks / assetLibraryItems in src/db/schema.ts
+      try {
+        await sql\`CREATE TABLE IF NOT EXISTS catalog_packs (id TEXT PRIMARY KEY, name TEXT NOT NULL, source TEXT NOT NULL, license TEXT NOT NULL, attribution TEXT NOT NULL, source_url TEXT NOT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        await sql\`ALTER TABLE asset_library_items ADD COLUMN IF NOT EXISTS pack_id TEXT REFERENCES catalog_packs(id) ON DELETE RESTRICT\`;
+        await sql\`ALTER TABLE asset_library_items ADD COLUMN IF NOT EXISTS style TEXT\`;
+        await sql\`ALTER TABLE asset_library_items ADD COLUMN IF NOT EXISTS venue_tags TEXT[]\`;
+        await sql\`ALTER TABLE asset_library_items ADD COLUMN IF NOT EXISTS source_ref TEXT\`;
+        await sql\`ALTER TABLE asset_library_items ADD COLUMN IF NOT EXISTS content_hash TEXT\`;
+        await sql\`CREATE UNIQUE INDEX IF NOT EXISTS asset_library_items_pack_ref ON asset_library_items (pack_id, source_ref)\`;
+        await sql\`CREATE INDEX IF NOT EXISTS asset_library_items_content_hash_idx ON asset_library_items (content_hash)\`;
+        console.log('[vlm-server] catalog packs ensured');
+      } catch(e) { console.log('[vlm-server] catalog packs:', e.message); }
+
       // Upload status (two-step companion uploads); matches mediaAssets / uploadTokens in src/db/schema.ts
       try {
         await sql\`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ready'\`;
