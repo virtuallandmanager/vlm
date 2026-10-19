@@ -1,0 +1,188 @@
+From bd0f018a27daadde563f6b757c4e03ecd128d494 Mon Sep 17 00:00:00 2001
+From: VLM <noreply@anthropic.com>
+Date: Mon, 19 Oct 2026 18:10:46 -0400
+Subject: [PATCH] feat(scripts): opt-in WebSocket for app scripts, limited to
+ allowed origins
+
+PUBLIC_SCRIPT_WEBSOCKET_ORIGINS lists the origins scripts may connect to.
+Unset means scripts get no WebSocket (today's behaviour). Scripts receive a
+small wrapper, not the native socket, and an app's sockets close when it is
+torn down.
+---
+ .env.example                        |  4 ++
+ src/core/entities/App.js            | 14 ++++-
+ src/core/extras/scriptWebSockets.js | 93 +++++++++++++++++++++++++++++
+ src/core/systems/Scripts.js         |  2 +-
+ 4 files changed, 111 insertions(+), 2 deletions(-)
+ create mode 100644 src/core/extras/scriptWebSockets.js
+
+diff --git a/.env.example b/.env.example
+index ac6ae2c..74cd5a0 100644
+--- a/.env.example
++++ b/.env.example
+@@ -15,6 +15,10 @@ ADMIN_CODE=
+ # Can be set to 0 to disable saving
+ SAVE_INTERVAL=60
+ 
++# Origins app scripts may open WebSockets to, comma separated (eg wss://api.example.com)
++# Leave blank to give scripts no WebSocket at all
++PUBLIC_SCRIPT_WEBSOCKET_ORIGINS=
++
+ # Whether players should collide with other players
+ PUBLIC_PLAYER_COLLISION=false
+ 
+diff --git a/src/core/entities/App.js b/src/core/entities/App.js
+index 4428e06..2921d77 100644
+--- a/src/core/entities/App.js
++++ b/src/core/entities/App.js
+@@ -11,6 +11,7 @@ import { getRef } from '../nodes/Node'
+ import { Layers } from '../extras/Layers'
+ import { createPlayerProxy } from '../extras/createPlayerProxy'
+ import { serializeError } from '../extras/serializeError'
++import { createScriptWebSockets } from '../extras/scriptWebSockets'
+ 
+ const hotEventNames = ['fixedUpdate', 'update', 'animate', 'lateUpdate']
+ 
+@@ -138,8 +139,16 @@ export class App extends Entity {
+     // (this.mode === Modes.MOVING && !this.resetOnMove && !this.scriptError)
+     if (runScript) {
+       this.abortController = new AbortController()
++      this.webSockets = createScriptWebSockets()
+       try {
+-        this.script.exec(this.getWorldProxy(), this.getAppProxy(), this.fetch, blueprint.props, this.setTimeout)
++        this.script.exec(
++          this.getWorldProxy(),
++          this.getAppProxy(),
++          this.fetch,
++          blueprint.props,
++          this.setTimeout,
++          this.webSockets.WebSocket
++        )
+         this.scriptError = null
+       } catch (err) {
+         this.scriptError = serializeError(err)
+@@ -199,6 +208,9 @@ export class App extends Entity {
+     // abort fetch's etc
+     this.abortController?.abort()
+     this.abortController = null
++    // close websockets
++    this.webSockets?.closeAll()
++    this.webSockets = null
+     // mark dead and re-create hook (timers, async etc)
+     this.deadHook.dead = true
+     this.deadHook = { dead: false }
+diff --git a/src/core/extras/scriptWebSockets.js b/src/core/extras/scriptWebSockets.js
+new file mode 100644
+index 0000000..f7aa360
+--- /dev/null
++++ b/src/core/extras/scriptWebSockets.js
+@@ -0,0 +1,93 @@
++/**
++ * Script WebSockets
++ *
++ * Lets app scripts open WebSocket connections, but only to origins the world
++ * owner allows in PUBLIC_SCRIPT_WEBSOCKET_ORIGINS (comma separated, eg
++ * `wss://api.example.com,wss://live.example.com`). Unset or empty means scripts
++ * get no WebSocket at all, which is the default.
++ *
++ * Scripts receive a small wrapper rather than the native socket (same idea as
++ * the app fetch wrapper), and every socket an app opened is closed when the app
++ * is torn down.
++ */
++
++export function scriptWebSocketOrigins() {
++  const raw = (globalThis.process?.env?.PUBLIC_SCRIPT_WEBSOCKET_ORIGINS || globalThis.env?.PUBLIC_SCRIPT_WEBSOCKET_ORIGINS || '').trim()
++  if (!raw) return []
++  return raw
++    .split(',')
++    .map(s => s.trim())
++    .filter(Boolean)
++    .map(s => new URL(s).origin)
++}
++
++/**
++ * Returns { WebSocket, closeAll } for one app, or { WebSocket: undefined, closeAll } when no origins are allowed.
++ */
++export function createScriptWebSockets(origins = scriptWebSocketOrigins()) {
++  const sockets = new Set()
++  const closeAll = () => {
++    for (const ws of sockets) {
++      try {
++        ws.close()
++      } catch (err) {}
++    }
++    sockets.clear()
++  }
++  if (!origins.length || typeof globalThis.WebSocket !== 'function') {
++    return { WebSocket: undefined, closeAll }
++  }
++  const allowed = new Set(origins)
++  function ScriptWebSocket(url, protocols) {
++    let parsed
++    try {
++      parsed = new URL(url)
++    } catch (err) {
++      throw new Error(`invalid websocket url: ${url}`)
++    }
++    if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
++      throw new Error(`websocket url must start with ws:// or wss://`)
++    }
++    if (!allowed.has(parsed.origin)) {
++      throw new Error(`websocket origin not allowed: ${parsed.origin}`)
++    }
++    const ws = new globalThis.WebSocket(parsed.href, protocols)
++    ws.binaryType = 'arraybuffer'
++    sockets.add(ws)
++    const handlers = { open: null, message: null, close: null, error: null }
++    ws.onopen = () => handlers.open?.({})
++    ws.onmessage = e => handlers.message?.({ data: e.data })
++    ws.onerror = () => handlers.error?.({})
++    ws.onclose = e => {
++      sockets.delete(ws)
++      handlers.close?.({ code: e.code, reason: e.reason, wasClean: e.wasClean })
++    }
++    const wrapper = {
++      send: data => ws.send(data),
++      close: (code, reason) => ws.close(code, reason),
++      get readyState() {
++        return ws.readyState
++      },
++      get url() {
++        return ws.url
++      },
++      get protocol() {
++        return ws.protocol
++      },
++    }
++    for (const name of Object.keys(handlers)) {
++      Object.defineProperty(wrapper, `on${name}`, {
++        get: () => handlers[name],
++        set: fn => {
++          handlers[name] = typeof fn === 'function' ? fn : null
++        },
++      })
++    }
++    return wrapper
++  }
++  ScriptWebSocket.CONNECTING = 0
++  ScriptWebSocket.OPEN = 1
++  ScriptWebSocket.CLOSING = 2
++  ScriptWebSocket.CLOSED = 3
++  return { WebSocket: ScriptWebSocket, closeAll }
++}
+diff --git a/src/core/systems/Scripts.js b/src/core/systems/Scripts.js
+index a508003..5047903 100644
+--- a/src/core/systems/Scripts.js
++++ b/src/core/systems/Scripts.js
+@@ -80,7 +80,7 @@ function wrapRawCode(code) {
+   return `
+   (function() {
+     const shared = {}
+-    return (world, app, fetch, props, setTimeout) => {
++    return (world, app, fetch, props, setTimeout, WebSocket) => {
+       const config = props // deprecated
+       ${code}
+     }
+-- 
+2.41.0
+
