@@ -71,7 +71,7 @@ function toHUDMedia(items: SceneLibraryItem[], missingSrcs: string[]): HUDMediaI
 const toLayoutItem = (el: any): HUDLayoutItem => ({ id: el.id, name: el.name, type: el.type, enabled: el.enabled !== false })
 
 /**
- * Where a placed item goes: 2 m in front of the player on the XZ plane, turned to face them.
+ * Where a placed item goes: 2 m in front of the player on the XZ plane, turned to face them (to the nearest 90°).
  * SDK7 Transforms of root scene entities and of the player are both relative to the scene's base
  * parcel (the analytics probe relies on the same), so this is already the scene-local space that
  * VLM instance positions use (the adapter's setTransform applies them as-is).
@@ -81,7 +81,8 @@ function placementInFrontOfPlayer(kind: 'image' | 'model') {
   const p = t?.position ?? { x: 8, y: 0.9, z: 8 }
   const q = t?.rotation ?? { x: 0, y: 0, z: 0, w: 1 }
   const yaw = Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.x * q.x))
-  const yawDeg = (yaw * 180) / Math.PI
+  // Turned to face the player, squared up to the nearest 90° so placed items line up with the scene and each other
+  const yawDeg = Math.round((yaw * 180) / Math.PI / 90) * 90
   const round = (n: number) => Math.round(n * 100) / 100
   // The player's Transform is about 0.9 m above their feet
   const feet = Math.max(0, p.y - 0.9)
