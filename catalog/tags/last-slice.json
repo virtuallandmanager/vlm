@@ -677,7 +677,7 @@
   "description": "Dark Stage accesory to stand on",
   "author": "Blacknode",
   "style": "Cyberpunk",
-  "category": "Decor",
+  "category": "Structure",
   "venueTags": [
    "club",
    "stage"
@@ -1153,11 +1153,11 @@
   "description": "different from First Aid Kit #1319",
   "author": "Cyclopa",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "park"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-cyclopa",
@@ -1724,11 +1724,11 @@
   "description": "classic round, modern rectangular with sightline",
   "author": "Cyclopa",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "park"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-cyclopa",
@@ -1812,11 +1812,11 @@
   "description": "Aerosol Spray Paint Can",
   "author": "Cyclopa",
   "style": "Modern",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "shop"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-cyclopa",
@@ -3688,11 +3688,11 @@
   "description": "parks and rec",
   "author": "Cyclopa",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "park"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-cyclopa",
@@ -3717,11 +3717,11 @@
   "description": "parks and rec",
   "author": "Cyclopa",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "park"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-cyclopa",
@@ -3862,11 +3862,11 @@
   "description": "parks and rec",
   "author": "Cyclopa",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "park"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-cyclopa",
@@ -4897,13 +4897,13 @@
   "description": "A single black balloon on a string",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -4914,13 +4914,13 @@
   "description": "A single blue balloon on a string",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -4931,13 +4931,13 @@
   "description": "A single brown balloon on a string",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -4948,13 +4948,13 @@
   "description": "Six black balloons grouped together",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -4965,13 +4965,13 @@
   "description": "Six blue balloons grouped together",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -4982,13 +4982,13 @@
   "description": "Six brown balloons grouped together",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -4999,13 +4999,13 @@
   "description": "Six green balloons grouped together",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -5050,13 +5050,13 @@
   "description": "Six orange balloons grouped together",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -5067,13 +5067,13 @@
   "description": "Six purple balloons grouped together",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -5084,13 +5084,13 @@
   "description": "Six red balloons grouped together",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -5101,13 +5101,13 @@
   "description": "Six white balloons grouped together",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -5118,13 +5118,13 @@
   "description": "Six yellow balloons grouped together",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -5135,13 +5135,13 @@
   "description": "A single green balloon on a string",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -5186,13 +5186,13 @@
   "description": "A single orange balloon on a string",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -5203,13 +5203,13 @@
   "description": "A single purple balloon on a string",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -5220,13 +5220,13 @@
   "description": "A single red balloon on a string",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -5237,13 +5237,13 @@
   "description": "A single white balloon on a string",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -5254,13 +5254,13 @@
   "description": "A single yellow balloon on a string",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -6287,13 +6287,13 @@
   "description": "Colorful Beach Umbrella",
   "author": "Cyclopa",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -9344,7 +9344,7 @@
   "description": "Skateboard halfpipe ramp",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -9359,7 +9359,7 @@
   "description": "Skateboard halfpipe ramp",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -9374,7 +9374,7 @@
   "description": "Long skateboard halfpipe ramp with extensions",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -9389,7 +9389,7 @@
   "description": "Long skateboard halfpipe ramp with extensions",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -9404,7 +9404,7 @@
   "description": "Long skateboard halfpipe ramp with extensions",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -9419,7 +9419,7 @@
   "description": "Long skateboard halfpipe ramp with extensions",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -10424,13 +10424,13 @@
   "description": "For brainstorming or visual presentations.",
   "author": "DOCTORdripp",
   "style": null,
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "stage",
    "gallery",
    "office"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-kirzoz",
@@ -10660,12 +10660,12 @@
   "description": "Pull-up bars and parallel bars for bodyweight exercises.",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "park",
    "gym"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-cyclopa",
@@ -10704,11 +10704,11 @@
   "description": "Blue Aluminum Scooter",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -10719,11 +10719,11 @@
   "description": "Green Aluminum Scooter",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -10734,11 +10734,11 @@
   "description": "Pink Aluminum Scooter",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -10749,11 +10749,11 @@
   "description": "Red Aluminum Scooter",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-cyclopa",
@@ -10764,11 +10764,11 @@
   "description": "Screwdriver, cross head",
   "author": "Cyclopa",
   "style": "Modern",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "shop"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-cyclopa",
@@ -10779,11 +10779,11 @@
   "description": "Screwdriver, flat head",
   "author": "Cyclopa",
   "style": "Modern",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "shop"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -10865,11 +10865,11 @@
   "description": "A skateboard deck with grip tape.",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-kirzoz",
@@ -11493,13 +11493,13 @@
   "description": "White long board",
   "author": "DOCTORdripp",
   "style": "Modern",
-  "category": "Other",
+  "category": "Vehicles",
   "venueTags": [
    "club",
    "home",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -11510,13 +11510,13 @@
   "description": "Short board",
   "author": "DOCTORdripp",
   "style": "Modern",
-  "category": "Other",
+  "category": "Vehicles",
   "venueTags": [
    "club",
    "home",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-cyclopa",
@@ -11598,11 +11598,11 @@
   "description": "a metal lever for removing tyres from wheel rims.",
   "author": "Cyclopa",
   "style": "Modern",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "shop"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-kirzoz",
@@ -11948,13 +11948,13 @@
   "description": "For brainstorming or visual presentations.",
   "author": "DOCTORdripp",
   "style": null,
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "stage",
    "gallery",
    "office"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-cyclopa",
@@ -16999,13 +16999,13 @@
   "description": "A green toy bucket to fill with sand at the beach",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -17016,13 +17016,13 @@
   "description": "An orange toy bucket to fill with sand at the beach",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -17033,13 +17033,13 @@
   "description": "A blue beach umbrella standing upright.",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -17050,13 +17050,13 @@
   "description": "A green beach umbrella standing upright.",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -17186,13 +17186,13 @@
   "description": "An orange beach umbrella standing upright.",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -17203,13 +17203,13 @@
   "description": "A pink beach umbrella standing upright.",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -17220,13 +17220,13 @@
   "description": "A purple beach umbrella standing upright.",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -17237,13 +17237,13 @@
   "description": "A red beach umbrella standing upright.",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -17254,13 +17254,13 @@
   "description": "A yellow beach umbrella standing upright.",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "club",
    "park",
    "beach"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-kirzoz",
@@ -21794,7 +21794,7 @@
   "description": "Flatground skateboarding ledge",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Decor",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -21809,11 +21809,11 @@
   "description": "Small flatbar skate rail",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -21824,11 +21824,11 @@
   "description": "A hand rail for grinding",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -21839,11 +21839,11 @@
   "description": "Tall flatbar skate rail",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Other",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -21854,7 +21854,7 @@
   "description": "Skateboard launch kicker ramp",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -21869,7 +21869,7 @@
   "description": "Skateboard launch kicker ramp",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -21884,7 +21884,7 @@
   "description": "Skateboarding ledge",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Decor",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -21899,7 +21899,7 @@
   "description": "Skateboard pyramid ramp",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -21914,7 +21914,7 @@
   "description": "Skateboarding wider pyramid ramp",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -21929,7 +21929,7 @@
   "description": "A medium sized 9 stair set in a pyramid ramp",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -21944,7 +21944,7 @@
   "description": "A medium sized 9 stair set in a pyramid ramp with a handrail",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -21959,7 +21959,7 @@
   "description": "Skateboard quarterpipe ramp",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -21974,7 +21974,7 @@
   "description": "Skateboard quarterpipe ramp",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -21989,7 +21989,7 @@
   "description": "Skateboard quarterpipe ramp",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -22004,7 +22004,7 @@
   "description": "Skateboard quarterpipe ramp",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -22019,7 +22019,7 @@
   "description": "A medium sized 9 stair set",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -22034,7 +22034,7 @@
   "description": "A medium sized 9 stair set",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -22049,7 +22049,7 @@
   "description": "A medium sized 9 stair set with handrail",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -22064,7 +22064,7 @@
   "description": "A medium sized 9 stair set with handrail",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -22079,7 +22079,7 @@
   "description": "Skateboard ramp with hubba ledges",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -22094,7 +22094,7 @@
   "description": "Skateboard ramp with hubba ledges",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -22109,7 +22109,7 @@
   "description": "Vertical wall for wall rides and tricks",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -22124,7 +22124,7 @@
   "description": "Vertical wall for wall rides and tricks",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -22139,7 +22139,7 @@
   "description": "Vertical wall for wall rides and tricks",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -22154,7 +22154,7 @@
   "description": "Vertical wall for wall rides and tricks",
   "author": "DOCTORdripp",
   "style": "Nature",
-  "category": "Structure",
+  "category": "Vehicles",
   "venueTags": [
    "park"
   ],
@@ -22379,11 +22379,11 @@
   "description": "a tool used to provide grip and mechanical advantage in applying torque to turn objects.",
   "author": "Cyclopa",
   "style": "Modern",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [
    "shop"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-doctordripp",
@@ -23502,9 +23502,9 @@
   "name": "Steampunk Balloon",
   "author": "Nikki Fuego",
   "style": "Steampunk",
-  "category": "Other",
+  "category": "Decor",
   "venueTags": [],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "last-slice-nikki-fuego",

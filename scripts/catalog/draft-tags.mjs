@@ -28,7 +28,7 @@ const ls = (p) => (isDir(p) ? readdirSync(p).filter((f) => !f.startsWith(".")) :
 /** First matching rule wins; patterns run over name + caption + tags + source category, lowercased. */
 const CATEGORY_RULES = [
   ['Lighting', /\b(lamps?|lights?|lanterns?|chandeliers?|torch(es)?|candles?|sconces?|bulbs?|neon|spotlights?|streetlights?)\b/],
-  ['Vehicles', /\b(cars?|boats?|ships?|vehicles?|bikes?|motorcycles?|trucks?|spaceships?|airplanes?|planes?|trains?|carts?|rockets?|ufo|submarines?|helicopters?)\b/],
+  ['Vehicles', /\b(cars?|boats?|ships?|vehicles?|bikes?|motorcycles?|trucks?|spaceships?|airplanes?|planes?|trains?|carts?|rockets?|ufo|submarines?|helicopters?|scooters?|skateboards?|surfboards?)\b/],
   ['Characters & Animals', /\b(animals?|bears?|cats?|dogs?|birds?|fish(es)?|horses?|cows?|pigs?|chickens?|ducks?|deer|wolf|wolves|owls?|frogs?|snakes?|characters?|npcs?|avatars?|dragons?|monsters?|skeletons?|wildlife)\b/],
   ['Food & Drink', /\b(food|cakes?|coffee|cups?|mugs?|bottles?|drinks?|pizzas?|burgers?|fruits?|apples?|bananas?|bread|wine|beer|plates?|donuts?|cookies?|ice ?cream|sushi|teapots?|croissants?|cocktails?)\b/],
   ['Tech & Music', /\b(speakers?|dj|turntables?|screens?|tvs?|television|monitors?|computers?|laptops?|arcade|consoles?|guitars?|pianos?|drums?|microphones?|mics?|amps?|amplifiers?|keyboards?|robots?|servers?|phones?|radios?|jukebox(es)?|projectors?)\b/],
@@ -37,8 +37,8 @@ const CATEGORY_RULES = [
   ['Furniture', /\b(chairs?|armchairs?|sofas?|couch(es)?|tables?|desks?|beds?|benches?|stools?|shelf|shelves|cabinets?|seats?|counters?|wardrobes?|dressers?|drawers?|bookcases?|bookshelf|ottomans?|thrones?|hammocks?|loungers?|furniture)\b/],
   ['Plants & Nature', /\b(trees?|bush(es)?|plants?|flowers?|grass|rocks?|boulders?|palms?|cactus|cacti|ferns?|foliage|mushrooms?|logs?|leaves|vines?|hedges?|shrubs?|nature|botanical|stumps?|coral)\b/],
   ['Building', /\b(buildings?|houses?|towers?|castles?|temples?|huts?|cabins?|palaces?|warehouses?|churches?|lighthouses?|mansions?|skyscrapers?|cottages?|pagodas?|shops? building|stores? building|forts?|fortress|barns?|shacks?)\b/],
-  ['Structure', /\b(walls?|floors?|stairs?|staircases?|steps|roofs?|fences?|doors?|windows?|pillars?|columns?|arch(es)?|platforms?|bridges?|tiles?|ground|gates?|railings?|ramps?|beams?|planks?|blocks?|bricks?|terrain|paths?|roads?|structures?)\b/],
-  ['Decor', /\b(decor|decorations?|rugs?|carpets?|vases?|paintings?|clocks?|pots?|crates?|barrels?|box(es)?|statues?|sculptures?|pillows?|cushions?|curtains?|mirrors?|books?|baskets?|trophies|trophy|chests?|ornaments?|fountains?|flags?)\b/],
+  ['Structure', /\b(stages?|walls?|floors?|stairs?|staircases?|steps|roofs?|fences?|doors?|windows?|pillars?|columns?|arch(es)?|platforms?|bridges?|tiles?|ground|gates?|railings?|ramps?|beams?|planks?|blocks?|bricks?|terrain|paths?|roads?|structures?)\b/],
+  ['Decor', /\b(decor|decorations?|rugs?|carpets?|vases?|paintings?|clocks?|pots?|crates?|barrels?|box(es)?|statues?|sculptures?|pillows?|cushions?|curtains?|mirrors?|books?|baskets?|trophies|trophy|chests?|ornaments?|fountains?|flags?|balloons?|umbrellas?|whiteboards?|erasers?|spoons?|tools?|hatchets?|axes|shovels?|screwdrivers?|wrench(es)?|hammers?|tire iron|med ?kits?|compass(es)?|spray cans?|magnifying glass|pull-up bars?)\b/],
 ]
 
 const VENUE_RULES = [
@@ -50,12 +50,12 @@ const VENUE_RULES = [
   ['gallery', /\b(gallery|frames?|paintings?|pedestals?|plinths?|sculptures?|statues?|exhibit|nft)\b/],
   ['museum', /\b(museum|exhibit|statues?|artifacts?|display case|fossils?|monuments?)\b/],
   ['shop', /\b(shop|store|shelf|shelves|mannequins?|racks?|register|display|kiosks?|stalls?|market|commercial)\b/],
-  ['office', /\b(office|desks?|computers?|monitors?|filing|whiteboards?|printers?|laptops?|seminar)\b/],
+  ['office', /\b(office|whiteboards?|desks?|computers?|monitors?|filing|whiteboards?|printers?|laptops?|seminar)\b/],
   ['home', /\b(beds?|sofas?|couch(es)?|kitchen|bath(tub)?|toilets?|fireplaces?|rugs?|home|house|living|bedroom|interior|armchairs?)\b/],
   ['outdoor', /\b(outdoor|trees?|bush(es)?|fences?|benches?|street|rocks?|grass|garden|landscape|terrain)\b/],
   ['park', /\b(park|playground|fountains?|benches?|picnic|parks and recreation|skatepark|recreation)\b/],
-  ['beach', /\b(beach|palms?|umbrellas?|surf|sand|lifeguard|shells?|tropical|paradise|beach club)\b/],
-  ['gym', /\b(gym|dumbbells?|treadmills?|weights?|fitness|yoga|barbells?)\b/],
+  ['beach', /\b(beach|palms?|umbrellas?|surf(boards?)?|sand|lifeguard|shells?|tropical|paradise|beach club)\b/],
+  ['gym', /\b(gym|dumbbells?|treadmills?|weights?|fitness|yoga|barbells?|pull-up bars?)\b/],
 ]
 /** Plain seating and tables fit most indoor venues. */
 const SEATING = /\b(chairs?|tables?|stools?|seats?|benches?|sofas?|couch(es)?)\b/

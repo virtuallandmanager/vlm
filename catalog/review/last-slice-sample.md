@@ -2,51 +2,13 @@
 
 2930 models in 12 packs. Correct anything wrong in catalog/tags/last-slice.json (or tell Claude).
 
-## Unsure (195)
+## Unsure (143)
 
 These got 'Other' or a guessed category.
 
 | Model | Style | Category | Venues | Confidence |
 |---|---|---|---|---|
 | IWB HQ | — | Other | gallery | 0.3 |
-| Med Kit | Nature | Other | park | 0.3 |
-| Compass | Nature | Other | park | 0.3 |
-| Spray Can | Modern | Other | shop | 0.3 |
-| Hatchet | Nature | Other | park | 0.3 |
-| Magnifying Glass | Nature | Other | park | 0.3 |
-| Shovel | Nature | Other | park | 0.3 |
-| Balloon Black | Nature | Other | club, park, beach | 0.3 |
-| Balloon Blue | Nature | Other | club, park, beach | 0.3 |
-| Balloon Brown | Nature | Other | club, park, beach | 0.3 |
-| Balloon Bunch Black | Nature | Other | club, park, beach | 0.3 |
-| Balloon Bunch Blue | Nature | Other | club, park, beach | 0.3 |
-| Balloon Bunch Brown | Nature | Other | club, park, beach | 0.3 |
-| Balloon Bunch Green | Nature | Other | club, park, beach | 0.3 |
-| Balloon Bunch Orange | Nature | Other | club, park, beach | 0.3 |
-| Balloon Bunch Purple | Nature | Other | club, park, beach | 0.3 |
-| Balloon Bunch Red | Nature | Other | club, park, beach | 0.3 |
-| Balloon Bunch White | Nature | Other | club, park, beach | 0.3 |
-| Balloon Bunch Yellow | Nature | Other | club, park, beach | 0.3 |
-| Balloon Green | Nature | Other | club, park, beach | 0.3 |
-| Balloon Orange | Nature | Other | club, park, beach | 0.3 |
-| Balloon Purple | Nature | Other | club, park, beach | 0.3 |
-| Balloon Red | Nature | Other | club, park, beach | 0.3 |
-| Balloon White | Nature | Other | club, park, beach | 0.3 |
-| Balloon Yellow | Nature | Other | club, park, beach | 0.3 |
-| Beach Umbrella | Nature | Other | club, park, beach | 0.3 |
-| Mobile Whiteboard | — | Other | stage, gallery, office | 0.3 |
-| Pull-Up Bars | Nature | Other | park, gym | 0.3 |
-| Scooter Blue | Nature | Other | park | 0.3 |
-| Scooter Green | Nature | Other | park | 0.3 |
-| Scooter Pink | Nature | Other | park | 0.3 |
-| Scooter Red | Nature | Other | park | 0.3 |
-| Screwdriver, + | Modern | Other | shop | 0.3 |
-| Screwdriver, - | Modern | Other | shop | 0.3 |
-| Skateboard Deck | Nature | Other | park | 0.3 |
-| Surfboard - long board | Modern | Other | club, home, beach | 0.3 |
-| Surfboard - short board | Modern | Other | club, home, beach | 0.3 |
-| Tire Iron | Modern | Other | shop | 0.3 |
-| Whiteboard Eraser | — | Other | stage, gallery, office | 0.3 |
 | AntiqueSpoons | Classic | Other | — | 0.3 |
 | AntiqueStool.001 | Classic | Other | — | 0.3 |
 | AntiqueStool.002 | Classic | Other | — | 0.3 |
@@ -110,15 +72,6 @@ These got 'Other' or a guessed category.
 | Beach Toys in a Bucket Orange | Nature | Other | club, park, beach | 0.3 |
 | Beach Toy Rake Pink | Nature | Other | club, park, beach | 0.3 |
 | Beach Toy Rake Red | Nature | Other | club, park, beach | 0.3 |
-| Beach Toy Shovel Blue | Nature | Other | club, park, beach | 0.3 |
-| Beach Toy Shovel Yellow | Nature | Other | club, park, beach | 0.3 |
-| Beach Umbrella Blue | Nature | Other | club, park, beach | 0.3 |
-| Beach Umbrella Green | Nature | Other | club, park, beach | 0.3 |
-| Beach Umbrella Orange | Nature | Other | club, park, beach | 0.3 |
-| Beach Umbrella Pink | Nature | Other | club, park, beach | 0.3 |
-| Beach Umbrella Purple | Nature | Other | club, park, beach | 0.3 |
-| Beach Umbrella Red | Nature | Other | club, park, beach | 0.3 |
-| Beach Umbrella Yellow | Nature | Other | club, park, beach | 0.3 |
 | Dumbbell Medium | Nature | Other | park, gym | 0.3 |
 | Dumbbell Small | Nature | Other | park, gym | 0.3 |
 | Hill Dirt | Fantasy | Other | club | 0.3 |
@@ -144,10 +97,6 @@ These got 'Other' or a guessed category.
 | Portable Barbecue Grill Gold | Nature | Other | club, park, beach | 0.3 |
 | Portable Barbecue Grill Gold Opened | Nature | Other | club, park, beach | 0.3 |
 | Portable Barbecue Grill Opened | Nature | Other | club, park, beach | 0.3 |
-| Skateboard Flatrail | Nature | Other | park | 0.3 |
-| Skateboard Handrail | Nature | Other | park | 0.3 |
-| Skateboard Highrail | Nature | Other | park | 0.3 |
-| Spanner Wrench | Modern | Other | shop | 0.3 |
 | Yoga Mat Blue | Nature | Other | park, gym | 0.3 |
 | Yoga Mat Green | Nature | Other | park, gym | 0.3 |
 | Yoga Mat Grey | Nature | Other | park, gym | 0.3 |
@@ -168,7 +117,6 @@ These got 'Other' or a guessed category.
 | Steampunk Bullet 01 | Steampunk | Other | — | 0.3 |
 | Steampunk Bullet 02 | Steampunk | Other | — | 0.3 |
 | Start Terminal Steampunk | Steampunk | Other | — | 0.3 |
-| Steampunk Balloon | Steampunk | Other | — | 0.3 |
 | Steampunk Checkpoint Zone | Steampunk | Other | — | 0.3 |
 | Steampunk Finish Zone | Steampunk | Other | — | 0.3 |
 | Steampunk Pickup Ammo | Steampunk | Other | — | 0.3 |
@@ -231,7 +179,7 @@ These got 'Other' or a guessed category.
 | Arcade games and pinball machines 1 | Cyberpunk | Tech & Music | — | 1 |
 | Bar Food and Snack Chicken Breading | Modern | Characters & Animals | restaurant, bar, home | 1 |
 | Command Center-like Furniture Chair | Sci-Fi | Furniture | cafe, restaurant, home | 1 |
-| Dance podiums | Cyberpunk | Decor | club, stage | 1 |
+| Dance podiums | Cyberpunk | Structure | club, stage | 1 |
 | Smoking Accesories 0 | Modern | Decor | home | 1 |
 | Smoking Accesories 7 | Modern | Decor | home | 1 |
 | Table Center Pieces 1 | Sci-Fi | Furniture | cafe, restaurant, home | 1 |
@@ -283,10 +231,10 @@ These got 'Other' or a guessed category.
 | Dirt Bike Sand Track Jump Landing | Nature | Vehicles | park, beach | 0.8 |
 | Stage Lights Spotlight Array (black fixture) | — | Lighting | stage, gallery | 1 |
 | Red Velvet Rope - short addon (gold) | — | Decor | gallery | 1 |
-| Beach Umbrella Orange | Nature | Other | club, park, beach | 0.3 |
+| Beach Umbrella Orange | Nature | Decor | club, park, beach | 0.8 |
 | Dirt Bike - 250cc Pink | Nature | Vehicles | park | 0.8 |
 | Continue Sign Blue - left | — | Signage | stage, gallery, office | 0.8 |
-| Skateboard Pyramid Stairset | Nature | Structure | park | 0.8 |
+| Skateboard Pyramid Stairset | Nature | Vehicles | park | 0.8 |
 
 ## last-slice-fgr3d (24): sample
 

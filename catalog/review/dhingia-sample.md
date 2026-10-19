@@ -2,14 +2,12 @@
 
 91 models in 3 packs. Correct anything wrong in catalog/tags/dhingia.json (or tell Claude).
 
-## Unsure (6)
+## Unsure (4)
 
 These got 'Other' or a guessed category.
 
 | Model | Style | Category | Venues | Confidence |
 |---|---|---|---|---|
-| Stage | — | Other | club, stage, gallery | 0.3 |
-| Stage | — | Other | club, stage, gallery | 0.3 |
 | Hex Double Pole | — | Other | club | 0.3 |
 | Hex Single Pole | — | Other | club | 0.3 |
 | Square Double Pole | — | Other | club | 0.3 |

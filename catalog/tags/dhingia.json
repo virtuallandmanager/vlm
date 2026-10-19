@@ -761,13 +761,13 @@
   "description": "Fits a 1x1 parcel area",
   "author": "Mr Dhingia",
   "style": null,
-  "category": "Other",
+  "category": "Structure",
   "venueTags": [
    "club",
    "stage",
    "gallery"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "dhingia-buildings",
@@ -810,13 +810,13 @@
   "description": "Fits a 1x1 parcel area",
   "author": "Mr Dhingia",
   "style": null,
-  "category": "Other",
+  "category": "Structure",
   "venueTags": [
    "club",
    "stage",
    "gallery"
   ],
-  "confidence": 0.3
+  "confidence": 0.8
  },
  {
   "pack": "dhingia-buildings",
