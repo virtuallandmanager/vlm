@@ -13,7 +13,8 @@ import { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
 import { eq, ilike, and, or, sql, arrayContains } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { assetLibraryItems } from '../db/schema.js'
+import { assetLibraryItems, catalogPacks } from '../db/schema.js'
+import { browsableAsset } from '../catalog/visibility.js'
 import { authenticate } from '../middleware/auth.js'
 import { createStorage } from '../storage/index.js'
 import { classifyUpload, extensionFor } from '../storage/upload-policy.js'
@@ -38,6 +39,9 @@ export default async function assetRoutes(app: FastifyInstance) {
       q?: string
       category?: string
       tag?: string
+      style?: string
+      venue?: string
+      pack?: string
       maxTriangles?: string
       maxFileSize?: string
       limit?: string
@@ -71,6 +75,12 @@ export default async function assetRoutes(app: FastifyInstance) {
       conditions.push(arrayContains(assetLibraryItems.tags, [query.tag]))
     }
 
+    // Catalog: switched-off packs are hidden from browsing
+    conditions.push(browsableAsset())
+    if (query.style) conditions.push(eq(assetLibraryItems.style, query.style))
+    if (query.venue) conditions.push(arrayContains(assetLibraryItems.venueTags, [query.venue]))
+    if (query.pack) conditions.push(eq(assetLibraryItems.packId, query.pack))
+
     if (query.maxTriangles) {
       conditions.push(
         sql`${assetLibraryItems.triangleCount} <= ${parseInt(query.maxTriangles)}`,
@@ -86,13 +96,18 @@ export default async function assetRoutes(app: FastifyInstance) {
     const limit = Math.min(parseInt(query.limit || '50'), 100)
     const offset = parseInt(query.offset || '0')
 
-    const items = await db
-      .select()
+    const rows = await db
+      .select({
+        a: assetLibraryItems,
+        pack: { id: catalogPacks.id, name: catalogPacks.name, license: catalogPacks.license, attribution: catalogPacks.attribution },
+      })
       .from(assetLibraryItems)
+      .leftJoin(catalogPacks, eq(catalogPacks.id, assetLibraryItems.packId))
       .where(and(...conditions))
       .limit(limit)
       .offset(offset)
       .orderBy(assetLibraryItems.createdAt)
+    const items = rows.map((r) => ({ ...r.a, pack: r.pack?.id ? r.pack : null }))
 
     const [countResult] = await db
       .select({ count: sql<number>`count(*)` })
@@ -281,7 +296,7 @@ export default async function assetRoutes(app: FastifyInstance) {
     const result = await db
       .select({ category: assetLibraryItems.category })
       .from(assetLibraryItems)
-      .where(eq(assetLibraryItems.isPublic, true))
+      .where(and(eq(assetLibraryItems.isPublic, true), browsableAsset()))
       .groupBy(assetLibraryItems.category)
 
     const categories = result
