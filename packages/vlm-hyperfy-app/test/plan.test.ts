@@ -121,6 +121,54 @@ describe('planScene', () => {
     expect(urls).toEqual({ 'im:a': 'https://el.example/', 'im:b': 'https://inst.example/', 'im:c': null })
   })
 
+  it('an instance click of type NONE falls back to the element click', () => {
+    const s = scene({
+      images: [
+        {
+          sk: 'im',
+          enabled: true,
+          textureSrc: 'https://cdn.example/p.png',
+          clickEvent: { type: 1, externalLink: 'https://el.example/' },
+          instances: [
+            inst('none', { clickEvent: { type: 0, externalLink: '' } }),
+            inst('untyped', { clickEvent: { externalLink: 'https://x.example/' } }),
+            inst('own', { clickEvent: { type: 1, externalLink: 'https://inst.example/' } }),
+          ],
+        },
+      ],
+    })
+    const urls = Object.fromEntries(planScene(s).map((i) => [i.key, i.clickUrl]))
+    expect(urls).toEqual({ 'im:none': 'https://el.example/', 'im:untyped': 'https://el.example/', 'im:own': 'https://inst.example/' })
+  })
+
+  it('plans without the URL global (not a Hyperfy sandbox global)', () => {
+    // Hyperfy's compartment has no URL constructor: read as undefined, and record any read at all.
+    const saved = Object.getOwnPropertyDescriptor(globalThis, 'URL')!
+    let touched = false
+    Object.defineProperty(globalThis, 'URL', {
+      configurable: true,
+      get: () => {
+        touched = true
+        return undefined
+      },
+    })
+    try {
+      const s = scene({
+        images: [
+          { sk: 'q', enabled: true, textureSrc: 'https://cdn.example/a.png?v=2#top', instances: [inst('i')] },
+          { sk: 'gif', enabled: true, textureSrc: 'https://cdn.example/a.gif?x=.png', instances: [inst('i')] },
+        ],
+      })
+      touched = false
+      const keys = planScene(s).map((i) => i.key)
+      const read = touched
+      expect(keys).toEqual(['q:i'])
+      expect(read).toBe(false)
+    } finally {
+      Object.defineProperty(globalThis, 'URL', saved)
+    }
+  })
+
   it('null scene plans nothing', () => {
     expect(planScene(null)).toEqual([])
   })

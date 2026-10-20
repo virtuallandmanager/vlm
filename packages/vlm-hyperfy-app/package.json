@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "node scripts/make-empty-glb.mjs && node scripts/build-hyp.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

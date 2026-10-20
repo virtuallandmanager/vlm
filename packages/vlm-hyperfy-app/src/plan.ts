@@ -17,20 +17,16 @@ export type RenderItem = {
 
 const VIDEO_EXT = ['mp4', 'm3u8']
 const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'webp']
+const CLICK_NONE = 0
 const CLICK_EXTERNAL = 1
 const OFF_IMAGE = 1
 const OFF_PLAYLIST = 2
 
 type Props = Record<string, unknown>
 
-/** Extension of the URL's path, lowercased; '' when there is none. */
+/** Extension of the URL's path, lowercased; '' when there is none. No `URL`: Hyperfy scripts don't have it. */
 function extOf(src: string): string {
-  let path = src
-  try {
-    path = new URL(src).pathname
-  } catch {
-    path = src.split(/[?#]/)[0]
-  }
+  const path = src.split(/[?#]/)[0]
   const m = /\.([a-z0-9]+)$/i.exec(path)
   return m ? m[1].toLowerCase() : ''
 }
@@ -50,6 +46,13 @@ function externalUrl(click: unknown): string | null {
   if (!click || typeof click !== 'object') return null
   const c = click as Props
   return c.type === CLICK_EXTERNAL && typeof c.externalLink === 'string' && c.externalLink ? c.externalLink : null
+}
+
+/** An instance's click applies only when it has a type other than NONE; otherwise the element's does. */
+function clickOf(inst: Props, el: Props): unknown {
+  const own = inst.clickEvent as Props | undefined
+  const set = own && typeof own === 'object' && typeof own.type === 'number' && own.type !== CLICK_NONE
+  return set ? own : el.clickEvent
 }
 
 type Media = { kind: RenderItem['kind']; src: string; loop: boolean } | null
@@ -104,7 +107,7 @@ function planElements(
         width: scale.x,
         height: scale.y,
         transform: toHyperfyTransform({ position: vec(inst.position, 0), rotation: vec(inst.rotation, 0), scale }),
-        clickUrl: externalUrl(inst.clickEvent || el.clickEvent),
+        clickUrl: externalUrl(clickOf(inst, el)),
       })
     }
   }
