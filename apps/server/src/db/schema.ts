@@ -885,6 +885,8 @@ export const hyperfyWorlds = pgTable('hyperfy_worlds', {
   endedAt: timestamp('ended_at', { withTimezone: true }),
   purgeAfter: timestamp('purge_after', { withTimezone: true }),
   purgedAt: timestamp('purged_at', { withTimezone: true }),
+  // Set when a sweep starts destroying an ended world; the row (and its slug) stays until the destroy finishes
+  purgeClaimedAt: timestamp('purge_claimed_at', { withTimezone: true }),
 }, (t) => ({
   sceneIdx: index('hyperfy_worlds_scene_idx').on(t.sceneId),
   slugUq: uniqueIndex('hyperfy_worlds_slug_uq').on(t.slug).where(sql`${t.purgedAt} IS NULL`),

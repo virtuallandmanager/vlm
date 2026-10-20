@@ -4,8 +4,9 @@
  * (or servers) claim each world once.
  */
 
-import { and, eq, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull, lte, or } from 'drizzle-orm'
 import { HOSTED_WORLD_RETENTION_DAYS } from 'vlm-shared'
+import { config } from '../config.js'
 import { db } from '../db/connection.js'
 import { hyperfyWorlds } from '../db/schema.js'
 import { cleanUp, destroyHostedWorld, withDeps, type HostingDeps } from './hosting.js'
@@ -34,42 +35,68 @@ async function endDueWorlds(now: Date, d: SweepDeps): Promise<number> {
     .where(and(eq(hyperfyWorlds.kind, 'hosted'), eq(hyperfyWorlds.status, 'running'), lte(hyperfyWorlds.endsAt, now)))
     .returning({ id: hyperfyWorlds.id, slug: hyperfyWorlds.slug, flyApp: hyperfyWorlds.flyApp })
   for (const w of claimed) {
-    try {
-      if (!w.flyApp) continue
-      for (const m of await d.fly.listMachines(w.flyApp)) await d.fly.stopMachine(w.flyApp, m.id)
-      d.log.info({ worldId: w.id, slug: w.slug }, 'hosted world ended')
-    } catch (err) {
-      // The world is ended either way; a machine left running wakes only on traffic and is removed at purge.
-      d.log.error({ worldId: w.id, slug: w.slug, app: w.flyApp, error: errText(err) }, 'hosted world ended but its machines did not stop')
-    }
+    d.log.info({ worldId: w.id, slug: w.slug }, 'hosted world ended')
+    await quiesce(w, true, d)
   }
+  // An earlier stop may have failed (or a machine been woken); finish the job for ended worlds still running machines.
+  const earlier = await db
+    .select({ id: hyperfyWorlds.id, slug: hyperfyWorlds.slug, flyApp: hyperfyWorlds.flyApp })
+    .from(hyperfyWorlds)
+    .where(and(eq(hyperfyWorlds.kind, 'hosted'), eq(hyperfyWorlds.status, 'ended'), isNull(hyperfyWorlds.purgeClaimedAt), isNotNull(hyperfyWorlds.flyApp)))
+  const claimedIds = new Set(claimed.map((w) => w.id))
+  for (const w of earlier) if (!claimedIds.has(w.id)) await quiesce(w, false, d)
   return claimed.length
+}
+
+/**
+ * Makes an ended world unreachable: autostart off, then stop. A fresh end handles every machine; a later pass only
+ * the ones still running. Failures are logged and left for the next pass; they never stop the sweep for other worlds.
+ */
+async function quiesce(w: { id: string; slug: string | null; flyApp: string | null }, fresh: boolean, d: SweepDeps): Promise<void> {
+  if (!w.flyApp) return
+  try {
+    for (const m of await d.fly.listMachines(w.flyApp)) {
+      const down = m.state === 'stopped' || m.state === 'suspended'
+      if (down && !fresh) continue
+      const env = await d.fly.getMachineEnv(w.flyApp, m.id)
+      await d.fly.updateMachine(w.flyApp, m.id, { image: requireImage(), env, autostart: false })
+      if (!down) await d.fly.stopMachine(w.flyApp, m.id)
+    }
+  } catch (err) {
+    d.log.error({ worldId: w.id, slug: w.slug, app: w.flyApp, error: errText(err) }, 'ended hosted world: machines not stopped; will retry')
+  }
+}
+
+function requireImage(): string {
+  if (!config.hyperfyImage) throw new Error('HYPERFY_IMAGE is not set')
+  return config.hyperfyImage
 }
 
 async function purgeEndedWorlds(now: Date, d: SweepDeps): Promise<number> {
   const retryBefore = new Date(now.getTime() - SWEEP_INTERVAL_MS)
   const due = await db
-    .select({ id: hyperfyWorlds.id, purgedAt: hyperfyWorlds.purgedAt })
+    .select({ id: hyperfyWorlds.id, purgeClaimedAt: hyperfyWorlds.purgeClaimedAt })
     .from(hyperfyWorlds)
     .where(
       and(
         eq(hyperfyWorlds.kind, 'hosted'),
         eq(hyperfyWorlds.status, 'ended'),
         lte(hyperfyWorlds.purgeAfter, now),
-        // A set purgedAt on a row that still exists is a destroy that failed; retry it once it is a sweep old.
-        or(isNull(hyperfyWorlds.purgedAt), lte(hyperfyWorlds.purgedAt, retryBefore)),
+        // A claim on a row that still exists is a destroy that failed; retry it once it is a sweep old.
+        or(isNull(hyperfyWorlds.purgeClaimedAt), lte(hyperfyWorlds.purgeClaimedAt, retryBefore)),
       ),
     )
   let purged = 0
   for (const w of due) {
+    // The claim never sets purgedAt: that would release the slug while the row (and its resources) still exist.
     const [won] = await db
       .update(hyperfyWorlds)
-      .set({ purgedAt: now })
+      .set({ purgeClaimedAt: now })
       .where(
         and(
           eq(hyperfyWorlds.id, w.id),
           eq(hyperfyWorlds.status, 'ended'),
-          w.purgedAt ? eq(hyperfyWorlds.purgedAt, w.purgedAt) : isNull(hyperfyWorlds.purgedAt),
+          w.purgeClaimedAt ? eq(hyperfyWorlds.purgeClaimedAt, w.purgeClaimedAt) : isNull(hyperfyWorlds.purgeClaimedAt),
         ),
       )
       .returning({ id: hyperfyWorlds.id })

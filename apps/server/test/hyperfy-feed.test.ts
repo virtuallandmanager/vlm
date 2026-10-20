@@ -61,6 +61,13 @@ describe('GET /api/hyperfy/feed', () => {
   const subscribers = () => presence.subscriptions[sceneFeedTopic(sceneId)]?.length ?? 0
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+  it('answers 401 invalid_world_key for a world that has ended', async () => {
+    await db.update(hyperfyWorlds).set({ status: 'ended', kind: 'hosted' }).where(eq(hyperfyWorlds.id, worldId))
+    const res = await app.inject({ method: 'GET', url: '/api/hyperfy/feed', headers: { authorization: `Bearer ${key}` } })
+    expect(res.statusCode).toBe(401)
+    expect(res.json()).toEqual({ error: 'invalid_world_key' })
+  })
+
   it('answers at once without since, and when since is stale', async () => {
     const a = await feed()
     expect(a.statusCode).toBe(200)

@@ -450,19 +450,26 @@ export async function restoreHostedWorld(worldId: string, deps?: Partial<Hosting
   const restored = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hyperfy-hosted:${w.ownerId}`}))`)
     const [cur] = await tx.select().from(hyperfyWorlds).where(eq(hyperfyWorlds.id, worldId))
-    if (!cur || cur.purgedAt || cur.status !== 'ended' || !cur.flyApp || !cur.purgeAfter || cur.purgeAfter.getTime() <= Date.now()) {
+    if (!cur || cur.purgedAt || cur.purgeClaimedAt || cur.status !== 'ended' || !cur.flyApp || !cur.purgeAfter || cur.purgeAfter.getTime() <= Date.now()) {
       throw new HostingError('not_restorable', "This world can't be restored")
     }
     await assertFreeSlot(w.ownerId, tx)
     const [updated] = await tx
       .update(hyperfyWorlds)
       .set({ status: 'running', endsAt: null, endedAt: null, purgeAfter: null })
-      .where(eq(hyperfyWorlds.id, worldId))
+      .where(and(eq(hyperfyWorlds.id, worldId), eq(hyperfyWorlds.status, 'ended'), isNull(hyperfyWorlds.purgeClaimedAt)))
       .returning()
+    if (!updated) throw new HostingError('not_restorable', "This world can't be restored")
     return { before: cur, after: updated }
   })
   try {
-    for (const m of await d.fly.listMachines(restored.after.flyApp!)) await d.fly.startMachine(restored.after.flyApp!, m.id)
+    const app = restored.after.flyApp!
+    for (const m of await d.fly.listMachines(app)) {
+      // Ending turned autostart off; turn it back on before the machine can serve again.
+      const env = await d.fly.getMachineEnv(app, m.id)
+      await d.fly.updateMachine(app, m.id, { image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'), env, autostart: true })
+      await d.fly.startMachine(app, m.id)
+    }
   } catch (err) {
     d.log.error({ worldId, slug: w.slug, error: err instanceof Error ? err.message : String(err) }, 'hosted world restore: machine start failed')
     const { endsAt, endedAt, purgeAfter } = restored.before

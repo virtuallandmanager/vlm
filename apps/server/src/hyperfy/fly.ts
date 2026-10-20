@@ -9,7 +9,8 @@ export class FlyError extends Error {
   }
 }
 
-export type WorldMachineSpec = { image: string; env: Record<string, string> }
+/** `autostart` defaults to true; it is turned off for ended worlds so a visit can't wake them. */
+export type WorldMachineSpec = { image: string; env: Record<string, string>; autostart?: boolean }
 
 type FlyOpts = { token: string; org: string; fetch?: typeof fetch; baseUrl?: string; timeoutMs?: number }
 
@@ -27,7 +28,7 @@ function machineBody(m: WorldMachineSpec) {
         protocol: 'tcp',
         internal_port: 3000,
         autostop: 'stop',
-        autostart: true,
+        autostart: m.autostart ?? true,
         min_machines_running: 0,
         ports: [{ port: 80, handlers: ['http'] }, { port: 443, handlers: ['tls', 'http'] }],
       }],

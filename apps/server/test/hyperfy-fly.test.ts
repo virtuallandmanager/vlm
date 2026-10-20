@@ -53,6 +53,12 @@ describe('FlyApi', () => {
     })
   })
 
+  it('a machine spec with autostart false turns autostart off in the service', async () => {
+    const { fn, calls } = fakeFetch(() => ({ body: {} }))
+    await mk(fn).updateMachine('a', 'm1', { image: 'i', env: {}, autostart: false })
+    expect(calls[0].body.config.services[0]).toMatchObject({ autostop: 'stop', autostart: false })
+  })
+
   it('updateMachine, lists, env, stop, start and ip allocation hit the right routes', async () => {
     const { fn, calls } = fakeFetch((c) => {
       if (c.method === 'GET' && c.url.endsWith('/machines')) return { body: [{ id: 'm1', state: 'started', extra: 1 }] }

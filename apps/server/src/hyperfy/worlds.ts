@@ -19,7 +19,8 @@ export function createWorldKey(): { raw: string; hash: string; prefix: string } 
 export async function findWorldByKey(raw: string): Promise<HyperfyWorldRow | null> {
   if (!raw.startsWith(HYPERFY_FEED.keyPrefix)) return null
   const [row] = await db.select().from(hyperfyWorlds).where(eq(hyperfyWorlds.keyHash, hashWorldKey(raw)))
-  return row ?? null
+  // An ended hosted world no longer serves its feed (self-run worlds are always 'running').
+  return row && row.status !== 'ended' ? row : null
 }
 
 export function worldSummary(w: HyperfyWorldRow): HyperfyWorldSummary {
