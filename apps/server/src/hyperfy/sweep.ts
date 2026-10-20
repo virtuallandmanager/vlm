@@ -4,7 +4,7 @@
  * (or servers) claim each world once.
  */
 
-import { and, eq, isNotNull, isNull, lte, or } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull, lte, or, sql } from 'drizzle-orm'
 import { HOSTED_WORLD_RETENTION_DAYS } from 'vlm-shared'
 import { config } from '../config.js'
 import { db } from '../db/connection.js'
@@ -34,36 +34,47 @@ async function endDueWorlds(now: Date, d: SweepDeps): Promise<number> {
     .set({ status: 'ended', endedAt: now, purgeAfter: new Date(now.getTime() + HOSTED_WORLD_RETENTION_DAYS * DAY_MS) })
     .where(and(eq(hyperfyWorlds.kind, 'hosted'), eq(hyperfyWorlds.status, 'running'), lte(hyperfyWorlds.endsAt, now)))
     .returning({ id: hyperfyWorlds.id, slug: hyperfyWorlds.slug, flyApp: hyperfyWorlds.flyApp })
-  for (const w of claimed) {
-    d.log.info({ worldId: w.id, slug: w.slug }, 'hosted world ended')
-    await quiesce(w, true, d)
-  }
-  // An earlier stop may have failed (or a machine been woken); finish the job for ended worlds still running machines.
-  const earlier = await db
-    .select({ id: hyperfyWorlds.id, slug: hyperfyWorlds.slug, flyApp: hyperfyWorlds.flyApp })
+  for (const w of claimed) d.log.info({ worldId: w.id, slug: w.slug }, 'hosted world ended')
+  // Every ended world whose machines aren't yet confirmed down with autostart off: just ended, or an earlier try failed.
+  const pending = await db
+    .select({ id: hyperfyWorlds.id, ownerId: hyperfyWorlds.ownerId, slug: hyperfyWorlds.slug, flyApp: hyperfyWorlds.flyApp })
     .from(hyperfyWorlds)
-    .where(and(eq(hyperfyWorlds.kind, 'hosted'), eq(hyperfyWorlds.status, 'ended'), isNull(hyperfyWorlds.purgeClaimedAt), isNotNull(hyperfyWorlds.flyApp)))
-  const claimedIds = new Set(claimed.map((w) => w.id))
-  for (const w of earlier) if (!claimedIds.has(w.id)) await quiesce(w, false, d)
+    .where(
+      and(
+        eq(hyperfyWorlds.kind, 'hosted'),
+        eq(hyperfyWorlds.status, 'ended'),
+        isNull(hyperfyWorlds.purgeClaimedAt),
+        isNull(hyperfyWorlds.quiescedAt),
+        isNotNull(hyperfyWorlds.flyApp),
+      ),
+    )
+  for (const w of pending) await quiesce(w, now, d)
   return claimed.length
 }
 
 /**
- * Makes an ended world unreachable: autostart off, then stop. A fresh end handles every machine; a later pass only
- * the ones still running. Failures are logged and left for the next pass; they never stop the sweep for other worlds.
+ * Makes an ended world unreachable: every machine gets autostart off, then is stopped if running. Failures are logged
+ * and the world stays pending for the next pass; they never stop the sweep for other worlds. Runs under the owner's
+ * hosted-world lock (as restore and create do) and re-reads the row there, so a restore that landed after the sweep
+ * read it is never undone.
  */
-async function quiesce(w: { id: string; slug: string | null; flyApp: string | null }, fresh: boolean, d: SweepDeps): Promise<void> {
+async function quiesce(w: { id: string; ownerId: string; slug: string | null; flyApp: string | null }, now: Date, d: SweepDeps): Promise<void> {
   if (!w.flyApp) return
+  const app = w.flyApp
   try {
-    for (const m of await d.fly.listMachines(w.flyApp)) {
-      const down = m.state === 'stopped' || m.state === 'suspended'
-      if (down && !fresh) continue
-      const env = await d.fly.getMachineEnv(w.flyApp, m.id)
-      await d.fly.updateMachine(w.flyApp, m.id, { image: requireImage(), env, autostart: false })
-      if (!down) await d.fly.stopMachine(w.flyApp, m.id)
-    }
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hyperfy-hosted:${w.ownerId}`}))`)
+      const [cur] = await tx.select().from(hyperfyWorlds).where(eq(hyperfyWorlds.id, w.id))
+      if (!cur || cur.status !== 'ended' || cur.purgeClaimedAt || cur.quiescedAt) return
+      for (const m of await d.fly.listMachines(app)) {
+        const env = await d.fly.getMachineEnv(app, m.id)
+        await d.fly.updateMachine(app, m.id, { image: requireImage(), env, autostart: false })
+        if (m.state !== 'stopped' && m.state !== 'suspended') await d.fly.stopMachine(app, m.id)
+      }
+      await tx.update(hyperfyWorlds).set({ quiescedAt: now }).where(eq(hyperfyWorlds.id, w.id))
+    })
   } catch (err) {
-    d.log.error({ worldId: w.id, slug: w.slug, app: w.flyApp, error: errText(err) }, 'ended hosted world: machines not stopped; will retry')
+    d.log.error({ worldId: w.id, slug: w.slug, app, error: errText(err) }, 'ended hosted world: machines not stopped; will retry')
   }
 }
 

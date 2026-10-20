@@ -456,7 +456,7 @@ export async function restoreHostedWorld(worldId: string, deps?: Partial<Hosting
     await assertFreeSlot(w.ownerId, tx)
     const [updated] = await tx
       .update(hyperfyWorlds)
-      .set({ status: 'running', endsAt: null, endedAt: null, purgeAfter: null })
+      .set({ status: 'running', endsAt: null, endedAt: null, purgeAfter: null, quiescedAt: null })
       .where(and(eq(hyperfyWorlds.id, worldId), eq(hyperfyWorlds.status, 'ended'), isNull(hyperfyWorlds.purgeClaimedAt)))
       .returning()
     if (!updated) throw new HostingError('not_restorable', "This world can't be restored")
@@ -473,7 +473,8 @@ export async function restoreHostedWorld(worldId: string, deps?: Partial<Hosting
   } catch (err) {
     d.log.error({ worldId, slug: w.slug, error: err instanceof Error ? err.message : String(err) }, 'hosted world restore: machine start failed')
     const { endsAt, endedAt, purgeAfter } = restored.before
-    await db.update(hyperfyWorlds).set({ status: 'ended', endsAt, endedAt, purgeAfter }).where(eq(hyperfyWorlds.id, worldId))
+    // Autostart may be on again, so the sweep must quiesce the world afresh.
+    await db.update(hyperfyWorlds).set({ status: 'ended', endsAt, endedAt, purgeAfter, quiescedAt: null }).where(eq(hyperfyWorlds.id, worldId))
     throw new HostingError('world_update_failed', "The world couldn't be started; try restoring it again")
   }
   d.log.info({ worldId, slug: w.slug }, 'hosted world restored')

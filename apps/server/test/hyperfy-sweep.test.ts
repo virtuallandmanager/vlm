@@ -22,7 +22,8 @@ const CONFIG = {
 const MIN = 60_000
 const DAY = 24 * 60 * MIN
 
-function fakes(opts: { failStop?: Set<string>; failDestroy?: Set<string>; failDrop?: Set<string>; asleep?: Set<string> } = {}) {
+function fakes(opts: { failStop?: Set<string>; failDestroy?: Set<string>; failDrop?: Set<string>; asleep?: Set<string>; failUpdate?: Set<string>; onList?: (app: string) => void } = {}) {
+  let listCalls = 0
   const stopped: string[] = []
   const updates: { app: string; autostart: boolean | undefined; env: Record<string, string>; image: string }[] = []
   const started: string[] = []
@@ -37,9 +38,10 @@ function fakes(opts: { failStop?: Set<string>; failDestroy?: Set<string>; failDr
   }
   const deps: Partial<SweepDeps> = {
     fly: {
-      async listMachines(app: string) { return [{ ...machine(app) }] },
+      async listMachines(app: string) { listCalls++; opts.onList?.(app); return [{ ...machine(app) }] },
       async getMachineEnv() { return { VLM_WORLD_KEY: 'k' } },
       async updateMachine(app: string, _id: string, m: { image: string; env: Record<string, string>; autostart?: boolean }) {
+        if (opts.failUpdate?.has(app) && m.autostart === false) throw new Error('fly down')
         updates.push({ app, autostart: m.autostart, env: m.env, image: m.image })
       },
       async stopMachine(app: string, id: string) {
@@ -68,7 +70,7 @@ function fakes(opts: { failStop?: Set<string>; failDestroy?: Set<string>; failDr
       error: (...a: unknown[]) => { logs.push(JSON.stringify(a)) },
     },
   }
-  return { deps, stopped, updates, started, machines, deletedApps, droppedDbs, deletedFiles, logs }
+  return { deps, listCalls: () => listCalls, stopped, updates, started, machines, deletedApps, droppedDbs, deletedFiles, logs }
 }
 
 describe('hosted world sweep', () => {
@@ -171,6 +173,60 @@ describe('hosted world sweep', () => {
     await sweepHostedWorlds(new Date(later.getTime() + SWEEP_INTERVAL_MS), quiet.deps)
     expect(quiet.updates).toEqual([])
     expect(quiet.stopped).toEqual([])
+  })
+
+  it('a quiesced world is skipped by later sweeps; one whose autostart update failed is retried, stopped machine included', async () => {
+    const w = await insert('calm-world', { endsAt: new Date(now.getTime() - MIN) })
+    const asleep = new Set(['vlm-w-calm-world'])
+    const bad = fakes({ asleep, failUpdate: new Set(['vlm-w-calm-world']) })
+    await sweepHostedWorlds(now, bad.deps)
+    expect((await row(w.id)).quiescedAt).toBeNull()
+
+    const retry = fakes({ asleep })
+    await sweepHostedWorlds(new Date(now.getTime() + SWEEP_INTERVAL_MS), retry.deps)
+    expect(retry.updates.map((u) => u.autostart)).toEqual([false])
+    expect(retry.stopped).toEqual([])
+    expect((await row(w.id)).quiescedAt).not.toBeNull()
+
+    const quiet = fakes({ asleep })
+    await sweepHostedWorlds(new Date(now.getTime() + 2 * SWEEP_INTERVAL_MS), quiet.deps)
+    expect(quiet.listCalls()).toBe(0)
+  })
+
+  it('a restore that lands while the sweep is quiescing waits for it and wins: the world ends up running with autostart on', async () => {
+    const w = await insert('race-back', { endsAt: new Date(now.getTime() - MIN), purgeAfter: new Date(Date.now() + DAY) })
+    let restored: Promise<unknown> | undefined
+    let hooked = false
+    const f = fakes({
+      onList: () => {
+        if (hooked) return
+        hooked = true
+        // The owner restores while the sweep holds the world; restore must queue behind it, not interleave.
+        restored = restoreHostedWorld(w.id, f.deps).catch((e) => e)
+      },
+    })
+    await sweepHostedWorlds(now, f.deps)
+    const outcome = await restored
+    expect(outcome).toMatchObject({ status: 'running' })
+    expect(f.updates.map((u) => u.autostart)).toEqual([false, true])
+    expect(f.machines.get('vlm-w-race-back')!.state).toBe('started')
+    const after = await row(w.id)
+    expect(after.status).toBe('running')
+    expect(after.quiescedAt).toBeNull()
+  })
+
+  it('a world restored before the sweep gets to it is left alone', async () => {
+    const w = await insert('back-first', { endsAt: new Date(now.getTime() - MIN) })
+    const f = fakes()
+    // Another server's sweep ended it, then the owner restored it, between our read and our lock.
+    await db.update(hyperfyWorlds).set({ status: 'ended', endedAt: now, purgeAfter: new Date(Date.now() + DAY) }).where(eq(hyperfyWorlds.id, w.id))
+    await restoreHostedWorld(w.id, f.deps)
+    f.updates.length = 0
+    f.stopped.length = 0
+    await sweepHostedWorlds(now, f.deps)
+    expect(f.updates).toEqual([])
+    expect(f.stopped).toEqual([])
+    expect((await row(w.id)).status).toBe('running')
   })
 
   it('logs an ended world that has no Fly app', async () => {
