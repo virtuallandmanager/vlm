@@ -6,6 +6,7 @@ export enum ElementType {
   NFT = 'nft',
   WIDGET = 'widget',
   CLAIM_POINT = 'claim_point',
+  AD_SPACE = 'ad_space',
 }
 
 export enum ClickEventType {
@@ -32,6 +33,8 @@ export enum VideoSourceType {
   IMAGE = 1,
   PLAYLIST = 2,
   LIVE = 3,
+  ADS = 4,
+  PLAYLIST_ADS = 5,
 }
 
 export enum SoundSourceType {
