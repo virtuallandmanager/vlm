@@ -25,9 +25,19 @@ function adminSql(adminUrl?: string) {
   return postgres(url, { max: 1, onnotice: () => {} })
 }
 
-async function currentDb(sql: postgres.Sql): Promise<string> {
-  const [row] = await sql`SELECT current_database() AS name`
-  return row.name as string
+const MIN_PG_VERSION_NUM = 150000
+
+/** The `public` schema isolation relies on Postgres 15+ defaults (no CREATE for PUBLIC), so older servers are refused. */
+export function assertSupportedPostgres(versionNum: number): void {
+  if (!(versionNum >= MIN_PG_VERSION_NUM)) {
+    throw new Error(`worlds database must run Postgres 15 or newer (server_version_num ${versionNum})`)
+  }
+}
+
+/** postgres.js attaches the failed statement (with the role password) to its errors; keep only message and code. */
+function scrub(err: unknown): Error {
+  const e = err as { message?: string; code?: string }
+  return new Error(`worlds database error${e.code ? ` ${e.code}` : ''}: ${e.message ?? 'unknown'}`)
 }
 
 /** Creates the world's role (LOGIN, random password) and a schema it owns; it can use nothing else. */
@@ -38,16 +48,22 @@ export async function createWorldDatabase(slug: string, adminUrl?: string): Prom
   const password = randomBytes(32).toString('hex')
   const sql = adminSql(adminUrl)
   try {
-    await sql.unsafe(`CREATE ROLE ${q(name)} LOGIN PASSWORD ${lit(password)}`)
+    const [{ v }] = await sql`SELECT current_setting('server_version_num')::int AS v`
+    assertSupportedPostgres(v as number)
+    try {
+      await sql.unsafe(`CREATE ROLE ${q(name)} LOGIN PASSWORD ${lit(password)}`)
+    } catch (err) {
+      throw scrub(err)
+    }
+    let schemaCreated = false
     try {
       await sql.unsafe(`CREATE SCHEMA ${q(name)} AUTHORIZATION ${q(name)}`)
+      schemaCreated = true
       await sql.unsafe(`REVOKE CREATE ON SCHEMA public FROM ${q(name)}`)
-      // Hyperfy boots with CREATE SCHEMA IF NOT EXISTS, which Postgres permission-checks even when the schema exists
-      await sql.unsafe(`GRANT CREATE ON DATABASE ${q(await currentDb(sql))} TO ${q(name)}`)
     } catch (err) {
-      await sql.unsafe(`DROP SCHEMA IF EXISTS ${q(name)} CASCADE`).catch(() => {})
+      if (schemaCreated) await sql.unsafe(`DROP SCHEMA IF EXISTS ${q(name)} CASCADE`).catch(() => {})
       await sql.unsafe(`DROP ROLE IF EXISTS ${q(name)}`).catch(() => {})
-      throw err
+      throw scrub(err)
     }
   } finally {
     await sql.end({ timeout: 5 })
