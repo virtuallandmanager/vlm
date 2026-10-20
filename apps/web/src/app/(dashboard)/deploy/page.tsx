@@ -1,6 +1,9 @@
 'use client'
 import { deployErrorMessage } from '@/lib/deploy'
 import { useApi } from '@/lib/api'
+import { API_URL } from '@/lib/config'
+import { hyperfyErrorMessage, lastSeenLabel, setupSteps } from '@/lib/hyperfy'
+import type { HyperfyWorldSummary } from 'vlm-shared'
 import { useAuth } from '@/lib/auth'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
@@ -58,6 +61,151 @@ function formatDateTime(iso: string | null) {
     dateStyle: 'medium',
     timeStyle: 'short',
   })
+}
+
+// -- Your Hyperfy worlds (self-run; never gated by hosting availability) -------
+
+function HyperfyWorlds({ sceneId }: { sceneId: string }) {
+  const { token } = useAuth()
+  const api = useApi()
+  const [worlds, setWorlds] = useState<HyperfyWorldSummary[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  // The key is shown once, right after create or rotate, and dropped when the scene changes.
+  const [shown, setShown] = useState<{ worldName: string; key: string } | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!token) return
+    setLoading(true)
+    setError('')
+    setShown(null)
+    api.getHyperfyWorlds(sceneId)
+      .then((d) => setWorlds(d.worlds))
+      .catch((err) => { setWorlds([]); setError(hyperfyErrorMessage(err)) })
+      .finally(() => setLoading(false))
+  }, [token, sceneId])
+
+  const connect = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    setBusy(true)
+    setError('')
+    try {
+      const { world, key } = await api.createHyperfyWorld({ sceneId, name: name.trim() })
+      setWorlds((prev) => [...prev, world])
+      setShown({ worldName: world.name, key })
+      setCopied(false)
+      setName('')
+    } catch (err) {
+      setError(hyperfyErrorMessage(err))
+    }
+    setBusy(false)
+  }
+
+  const rotate = async (w: HyperfyWorldSummary) => {
+    if (!confirm(`Make a new key for "${w.name}"? The old key stops working right away.`)) return
+    setBusy(true)
+    setError('')
+    try {
+      const { world, key } = await api.rotateHyperfyWorldKey(w.id)
+      setWorlds((prev) => prev.map((x) => (x.id === world.id ? world : x)))
+      setShown({ worldName: world.name, key })
+      setCopied(false)
+    } catch (err) {
+      setError(hyperfyErrorMessage(err))
+    }
+    setBusy(false)
+  }
+
+  const remove = async (w: HyperfyWorldSummary) => {
+    if (!confirm(`Remove "${w.name}"? The VLM app in that world stops showing this scene.`)) return
+    setBusy(true)
+    setError('')
+    try {
+      await api.deleteHyperfyWorld(w.id)
+      setWorlds((prev) => prev.filter((x) => x.id !== w.id))
+      setShown(null)
+    } catch (err) {
+      setError(hyperfyErrorMessage(err))
+    }
+    setBusy(false)
+  }
+
+  const copyKey = async () => {
+    if (!shown) return
+    try {
+      await navigator.clipboard.writeText(shown.key)
+      setCopied(true)
+    } catch {
+      // clipboard blocked: the key is still visible to select
+    }
+  }
+
+  const now = new Date()
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold">Your Hyperfy worlds</h2>
+        <p className="text-sm text-gray-500">Run your own Hyperfy world? Connect it and this scene shows up there, kept in sync with your edits.</p>
+      </div>
+
+      {error && <p className="rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300" role="alert">{error}</p>}
+
+      {shown && (
+        <div className="space-y-3 rounded-xl border border-cyan-500/40 bg-gray-900 p-5">
+          <p className="text-sm font-medium text-cyan-400">World key for {shown.worldName}</p>
+          <div className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 break-all rounded-lg bg-gray-800 px-3 py-2 text-sm text-white">{shown.key}</code>
+            <button onClick={copyKey} className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-cyan-400 hover:bg-gray-700">{copied ? 'Copied' : 'Copy'}</button>
+          </div>
+          <p className="text-sm text-yellow-400">You won&apos;t see this key again.</p>
+          <a href={`${API_URL}/api/hyperfy/app.hyp`} className="inline-block rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500">Download VLM app (.hyp)</a>
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-gray-300">
+            {setupSteps(API_URL).map((step) => <li key={step}>{step}</li>)}
+          </ol>
+          <button onClick={() => setShown(null)} className="text-sm text-gray-400 hover:text-white">Done</button>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-gray-400">Loading worlds...</p>
+      ) : worlds.length === 0 ? (
+        !error && <p className="rounded-xl border border-gray-800 bg-gray-900 py-6 text-center text-sm text-gray-500">No worlds connected to this scene yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {worlds.map((w) => (
+            <div key={w.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-800 bg-gray-900 px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate font-medium">{w.name}</p>
+                <p className="text-xs text-gray-500">{lastSeenLabel(w.lastSeenAt, now)}</p>
+              </div>
+              <div className="flex gap-3 text-sm">
+                <button disabled={busy} onClick={() => rotate(w)} className="text-cyan-400 hover:text-cyan-300 disabled:opacity-50">New key</button>
+                <button disabled={busy} onClick={() => remove(w)} className="text-red-400 hover:text-red-300 disabled:opacity-50">Remove</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <form onSubmit={connect} className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-800 bg-gray-900 p-4">
+        <div className="min-w-[12rem] flex-1">
+          <label className="block text-xs text-gray-400 mb-1">World name</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={100}
+            placeholder="My Hyperfy world"
+            className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-cyan-500"
+          />
+        </div>
+        <button type="submit" disabled={busy || !name.trim()} className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50">Connect a world</button>
+      </form>
+    </div>
+  )
 }
 
 // -- Main Content -------------------------------------------------------------
@@ -484,6 +632,8 @@ function DeployContent() {
           )}
         </div>
       )}
+
+      {selectedSceneId && <HyperfyWorlds sceneId={selectedSceneId} />}
 
       {/* Deploy Wallets */}
       <div>

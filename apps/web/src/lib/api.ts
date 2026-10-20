@@ -2,7 +2,7 @@
 import { useCallback } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
-import type { CatalogPack } from 'vlm-shared'
+import type { CatalogPack, HyperfyWorldSummary } from 'vlm-shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
 /** Read a File as base64 (no `data:…;base64,` prefix) for JSON upload bodies. */
@@ -247,6 +247,16 @@ export function useApi() {
       const query = lines ? `?lines=${lines}` : ''
       return apiFetch<{ logs: string }>(`/api/deploy/hyperfy/${id}/logs${query}`)
     },
+
+    // Self-run Hyperfy worlds
+    getHyperfyWorlds: (sceneId: string) =>
+      apiFetch<{ worlds: HyperfyWorldSummary[] }>(`/api/hyperfy/worlds?sceneId=${encodeURIComponent(sceneId)}`),
+    createHyperfyWorld: (data: { sceneId: string; name: string }) =>
+      apiFetch<{ world: HyperfyWorldSummary; key: string }>('/api/hyperfy/worlds', { method: 'POST', body: JSON.stringify(data) }),
+    rotateHyperfyWorldKey: (id: string) =>
+      apiFetch<{ world: HyperfyWorldSummary; key: string }>(`/api/hyperfy/worlds/${id}/rotate-key`, { method: 'POST' }),
+    deleteHyperfyWorld: (id: string) =>
+      apiFetch<{ deleted: boolean }>(`/api/hyperfy/worlds/${id}`, { method: 'DELETE' }),
 
     // Streaming
     getStreamingServers: () => apiFetch<{ servers: any[] }>('/api/streaming'),
