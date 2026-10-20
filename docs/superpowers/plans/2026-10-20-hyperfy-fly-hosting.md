@@ -384,3 +384,28 @@ Each external step needs the owner's go-ahead (accounts, spend, DNS):
    - a Pro test account gets a `worlds.vlm.gg` address that works, WebSockets included.
 
 Record the results in the ledger.
+
+### Task 12: Worlds DB admin through Fly job machines (added 2026-10-20, runs before Task 11)
+
+Fly Managed Postgres is reachable only inside Fly's private network, so the VLM server on Railway can't run `createWorldDatabase` and `dropWorldDatabase` against it. The server keeps building the SQL. It then runs that SQL in a short-lived machine inside `vlm-worlds`.
+
+**Files:**
+- Modify: `apps/server/src/hyperfy/worlds-db.ts`. Split it into:
+  - pure statement builders, `createWorldStatements(slug, password)` and `dropWorldStatements(slug)`, each returning `{ sql: string; params?: … }[]`;
+  - a runner. `type WorldDbRunner = (statements) => Promise<void>`, with two implementations. `directRunner(adminUrl)` is today's behaviour and is used by tests and local dev. `flyJobRunner(fly)` is used when `HYPERFY_WORLDS_DB_MODE` is `fly-job`, the default whenever `HYPERFY_INFRA_PROVIDER=fly`.
+
+  Keep the PG15 check, the password scrubbing and the half-way cleanup semantics, with the version check done inside the job.
+- Modify: `apps/server/src/hyperfy/fly.ts`. Add `runJob(app: string, spec: { image: string; env: Record<string, string>; cmd: string[] }, timeoutMs = 120000): Promise<{ exitCode: number }>`. It creates a machine with no services, `restart: { policy: 'no' }` and `auto_destroy: false`. It then calls `GET /v1/apps/{app}/machines/{id}/wait?state=stopped&timeout=…`, reads the exit code from the machine's events, and deletes the machine whatever the outcome.
+- Create: `infra/hyperfy/db-job.mjs`, copied into the image at `/app/vlm/db-job.mjs`. It reads `DB_ADMIN_URL` and base64 JSON `DB_STATEMENTS` from the env, then runs them in one transaction with the `pg` package already in the image's `node_modules`. It exits 0 on success and 1 on failure. It prints only the Postgres error code and message, never the statements.
+- Config: `HYPERFY_DB_JOB_APP` (default `vlm-worlds-db-jobs`) and `HYPERFY_WORLDS_DB_MODE`. Add both to `hyperfyHosting()`'s required set for fly mode.
+- Update `infra/hyperfy/SETUP.md`:
+  - create the `vlm-worlds-db-jobs` app;
+  - `HYPERFY_WORLDS_DATABASE_URL` is the cluster's private admin URL, only used inside job machines;
+  - the Managed Postgres cluster must be in `vlm-worlds`.
+- Test: `apps/server/test/hyperfy-worlds-db.test.ts` (the builders run through `directRunner` against local Postgres, so the existing isolation tests keep their meaning), `apps/server/test/hyperfy-fly.test.ts` (`runJob` against a fake fetch: create body, wait call, exit code, delete always), `infra/hyperfy/test-db-job.mjs` (runs `db-job.mjs` with node against local Postgres: success, then a failing statement exits 1 and prints no statement text).
+
+- [ ] **Step 1: Write the failing tests.**
+- [ ] **Step 2: Run them.** → FAIL.
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run them, then the server suite.** → PASS. Rebuild the image locally (`docker build --platform linux/amd64 -f infra/hyperfy/Dockerfile .`) to confirm `db-job.mjs` and `pg` are present.
+- [ ] **Step 5: Commit.** `feat(server): run worlds DB admin SQL in Fly job machines`.
