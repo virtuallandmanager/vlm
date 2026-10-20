@@ -552,6 +552,15 @@ describe('video screens in ad modes', () => {
     expect(s.showing(s.entityAt(9))).toMatchObject({ kind: 'video', src: 'https://v/p2.mp4' })
   })
 
+  it('playlist + ads with an empty playlist rotates ads like ads mode', async () => {
+    const s = setup([serve({ tv: { ads: [ad('a'), ad('b')] } })])
+    s.sm.handlePresetUpdate({ action: 'init', scenePreset: { videos: [screen('tv', 9, { offType: 5, playlist: [] })] } })
+    await s.host.refresh()
+    expect(s.showing(s.entityAt(9))).toMatchObject({ kind: 'image', src: ad('a').url })
+    s.advance(AD_LIMITS.imageSeconds * 1000)
+    expect(s.showing(s.entityAt(9))).toMatchObject({ kind: 'image', src: ad('b').url })
+  })
+
   it('playlist mode now advances to the next video when one ends', () => {
     const s = setup()
     s.sm.handlePresetUpdate({

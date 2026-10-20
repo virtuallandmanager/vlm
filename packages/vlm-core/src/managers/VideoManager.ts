@@ -180,9 +180,10 @@ export class VideoManager {
         instance.slot = this.makeSlot(instance, config)
         instance.slot.run()
         break
-      case VideoSourceType.PLAYLIST_ADS:
+      case VideoSourceType.PLAYLIST_ADS: // with an empty playlist, just ads (as mode 4)
         instance.slot = this.makeSlot(instance, config)
-        this.playPlaylist(instance, config, token)
+        if (config.playlist.length === 0) instance.slot.run()
+        else this.playPlaylist(instance, config, token)
         break
       case 2: // PLAYLIST
         this.playPlaylist(instance, config, token)
