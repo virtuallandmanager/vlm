@@ -108,6 +108,11 @@ if [ -n "$DATABASE_URL" ]; then
         await sql\`ALTER TYPE element_type ADD VALUE IF NOT EXISTS 'model'\`;
         console.log('[vlm-server] model enum value ensured');
       } catch(e) { console.log('[vlm-server] model enum:', e.message); }
+      // Hyperfy analytics location kind
+      try {
+        await sql\`ALTER TYPE analytics_scene_kind ADD VALUE IF NOT EXISTS 'hyperfy'\`;
+        console.log('[vlm-server] hyperfy analytics kind ensured');
+      } catch(e) { console.log('[vlm-server] hyperfy analytics kind:', e.message); }
       await sql.end();
     })();
   " 2>&1 || echo "[vlm-server] SQL fallback had errors"

@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
-import { HYPERFY_FEED, type HyperfyFeedResponse } from 'vlm-shared'
+import { HYPERFY_FEED, checkHyperfyAnalyticsBatch, type HyperfyFeedResponse } from 'vlm-shared'
 import { db } from '../db/connection.js'
 import { hyperfyWorlds } from '../db/schema.js'
 import { findWorldByKey } from '../hyperfy/worlds.js'
+import { recordHyperfyBatch } from '../hyperfy/analytics.js'
 import { sceneSnapshot } from '../hyperfy/snapshot.js'
 import { onSceneTouched } from '../realtime/bus.js'
 
@@ -15,6 +16,19 @@ export function setFeedHoldMs(ms: number): void {
 }
 
 export default async function hyperfyFeedRoutes(app: FastifyInstance) {
+  app.post(
+    '/api/hyperfy/analytics',
+    { logLevel: 'warn' }, // world-key auth; default rate limit stays
+    async (request, reply) => {
+      const auth = request.headers.authorization
+      const world = auth?.startsWith('Bearer ') ? await findWorldByKey(auth.slice(7)) : null
+      if (!world) return reply.status(401).send({ error: 'invalid_world_key' })
+      const checked = checkHyperfyAnalyticsBatch(request.body)
+      if (!checked.ok) return reply.status(400).send({ error: checked.error })
+      return reply.send(await recordHyperfyBatch(world, checked.batch))
+    },
+  )
+
   app.get<{ Querystring: { since?: string } }>(
     '/api/hyperfy/feed',
     { logLevel: 'warn', config: { rateLimit: false } }, // world-key auth; keep the key-bearing polls out of per-request logs

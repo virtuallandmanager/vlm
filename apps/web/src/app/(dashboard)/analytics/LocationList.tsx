@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { AnalyticsLocation } from '@/lib/analytics/types'
 import { dashboardHref } from '@/lib/analytics/view'
 
-const KIND_LABEL: Record<AnalyticsLocation['kind'], string> = { parcels: 'Genesis City', world: 'World', preview: 'Preview' }
+const KIND_LABEL: Record<AnalyticsLocation['kind'], string> = { parcels: 'Genesis City', world: 'World', preview: 'Preview', hyperfy: 'Hyperfy' }
 
 export const formatDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 
