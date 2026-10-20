@@ -36,7 +36,7 @@ describe('hosted Hyperfy world slots', () => {
     expect(TIER_LIMITS.enterprise.hyperfyInstances).toBe(Infinity)
   })
 
-  it('slots count hosted worlds that exist, including failed, but not ended, purged or self-run', async () => {
+  it('slots count provisioning and running hosted worlds, not failed, ended, purged or self-run', async () => {
     await db.insert(subscriptions).values({ userId: owner.id, tier: 'pro' })
     await addWorld({ kind: 'hosted', slug: 'running-one', status: 'running' })
     await addWorld({ kind: 'hosted', slug: 'provisioning-one', status: 'provisioning' })
@@ -45,7 +45,7 @@ describe('hosted Hyperfy world slots', () => {
     await addWorld({ kind: 'hosted', slug: 'purged-one', status: 'ended', purgedAt: new Date() })
     await addWorld({ kind: 'hosted', slug: 'purged-failed', status: 'failed', purgedAt: new Date() })
     await addWorld({ kind: 'self' })
-    expect(await hostedWorldSlots(owner.id)).toEqual({ used: 3, limit: 3 })
+    expect(await hostedWorldSlots(owner.id)).toEqual({ used: 2, limit: 3 })
 
     const other = await createUser()
     expect(await hostedWorldSlots(other.id)).toEqual({ used: 0, limit: 0 })

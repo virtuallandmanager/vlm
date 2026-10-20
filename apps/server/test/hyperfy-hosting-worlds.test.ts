@@ -18,6 +18,13 @@ import {
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene, type TestUser } from './helpers/factories.js'
 
+/** The custom-endpoint (R2) branch of Hyperfy b4081eb's AssetsS3.parseURI: s3://key:secret@host/bucket/prefix. */
+function hyperfyS3Prefix(uri: string): { bucket: string; prefix: string } {
+  const [, , , rest] = uri.slice(5).match(/^([^:]+):([^@]+)@(.+)$/)!
+  const pathParts = rest.split('/').slice(1)
+  return { bucket: pathParts[0], prefix: pathParts.slice(1).join('/') + (pathParts.length > 1 ? '/' : '') }
+}
+
 const HOSTING_CONFIG = {
   hyperfyInfraProvider: 'fly',
   flyApiToken: 'FlyV1 fm2_token_s3cr3t',
@@ -40,7 +47,7 @@ const deferred = (): Deferred => {
   return { promise, resolve }
 }
 
-function fakes(opts: { failMachine?: Error; healthy?: () => boolean; dbGate?: Promise<void>; onMachine?: () => void } = {}) {
+function fakes(opts: { failMachine?: Error; failApp?: Error; failUpdate?: Error; healthy?: () => boolean; dbGate?: Promise<void>; onMachine?: () => void | Promise<void> } = {}) {
   const calls: string[] = []
   const apps = new Set<string>()
   const machines = new Map<string, { id: string; image: string; env: Record<string, string> }>()
@@ -50,13 +57,17 @@ function fakes(opts: { failMachine?: Error; healthy?: () => boolean; dbGate?: Pr
   const logs: string[] = []
   let t = 0
   const fly: HostingDeps['fly'] = {
-    async createApp(name: string) { calls.push(`createApp ${name}`); apps.add(name) },
+    async createApp(name: string) {
+      calls.push(`createApp ${name}`)
+      if (opts.failApp) throw opts.failApp
+      apps.add(name)
+    },
     async deleteApp(name: string) { calls.push(`deleteApp ${name}`); apps.delete(name); machines.delete(name) },
     async allocatePublicIps(app: string) { calls.push(`allocatePublicIps ${app}`) },
     async allocatePrivateIp(app: string) { calls.push(`allocatePrivateIp ${app}`) },
     async createMachine(app: string, m: WorldMachineSpec) {
       calls.push(`createMachine ${app}`)
-      opts.onMachine?.()
+      await opts.onMachine?.()
       if (opts.failMachine) throw opts.failMachine
       if (!apps.has(app)) throw new Error(`no app ${app}`)
       machines.set(app, { id: `m-${app}`, image: m.image, env: { ...m.env } })
@@ -64,6 +75,7 @@ function fakes(opts: { failMachine?: Error; healthy?: () => boolean; dbGate?: Pr
     },
     async updateMachine(app: string, id: string, m: WorldMachineSpec) {
       calls.push(`updateMachine ${app} ${id}`)
+      if (opts.failUpdate) throw opts.failUpdate
       machines.set(app, { id, image: m.image, env: { ...m.env } })
     },
     async listMachines(app: string) {
@@ -142,7 +154,7 @@ describe('hosted Hyperfy worlds', () => {
       PUBLIC_WS_URL: 'wss://moon-base.worlds.vlm.gg/ws',
       PUBLIC_API_URL: 'https://moon-base.worlds.vlm.gg/api',
       ASSETS: 's3',
-      ASSETS_S3_URI: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/vlm-hyperfy/moon-base/',
+      ASSETS_S3_URI: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/vlm-hyperfy/moon-base',
       ASSETS_BASE_URL: 'https://worlds-cdn.vlm.gg/moon-base',
       DB_URI: 'postgres://world_moon_base:dbpw_moon-base_s3cr3t@worlds-db.flycast:5432/worlds',
       DB_SCHEMA: 'world_moon_base',
@@ -151,10 +163,13 @@ describe('hosted Hyperfy worlds', () => {
       SAVE_INTERVAL: '60',
       CLEAN: 'true',
       PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: 'wss://api.vlm.gg',
+      PUBLIC_MAX_UPLOAD_SIZE: '12',
       VLM_FEED_URL: 'https://api.vlm.gg',
       VLM_WORLD_KEY: expect.stringMatching(/^vlmw_[0-9a-f]{64}$/),
     })
     expect((await findWorldByKey(machine.env.VLM_WORLD_KEY))?.id).toBe(world.id)
+    // Hyperfy keys files under the URI's prefix; the CDN serves them at ASSETS_BASE_URL/<file>.
+    expect(hyperfyS3Prefix(machine.env.ASSETS_S3_URI)).toEqual({ bucket: 'vlm-hyperfy', prefix: 'moon-base/' })
 
     expect(f.logs.length).toBeGreaterThan(0)
     const logText = f.logs.join('\n')
@@ -190,14 +205,14 @@ describe('hosted Hyperfy worlds', () => {
   it('create past the slot limit throws world_limit_reached and creates nothing', async () => {
     await setTier(owner.id, 'creator')
     await db.insert(hyperfyWorlds).values({
-      sceneId, ownerId: owner.id, name: 'Existing', kind: 'hosted', slug: 'existing', status: 'failed', keyHash: 'h1', keyPrefix: 'vlmw_x',
+      sceneId, ownerId: owner.id, name: 'Existing', kind: 'hosted', slug: 'existing', status: 'running', keyHash: 'h1', keyPrefix: 'vlmw_x',
     })
     const f = fakes()
     await expect(createHostedWorld({ ownerId: owner.id, sceneId, name: 'Second', endsAt: null }, f.deps))
       .rejects.toMatchObject({ code: 'world_limit_reached' })
     const free = await createUser()
     await expect(createHostedWorld({ ownerId: free.id, sceneId, name: 'Free', endsAt: null }, f.deps))
-      .rejects.toMatchObject({ code: 'world_limit_reached' })
+      .rejects.toMatchObject({ code: 'world_limit_reached', message: "Your plan doesn't include hosted worlds" })
     expect(await hostedRows(owner.id)).toHaveLength(1)
     expect(await hostedRows(free.id)).toHaveLength(0)
     expect(f.calls).toEqual([])
@@ -258,6 +273,45 @@ describe('hosted Hyperfy worlds', () => {
     expect(f.filesDeleted).toEqual(['doomed'])
   })
 
+  it("a createApp failure (the app name already exists) deletes nothing it didn't make", async () => {
+    await setTier(owner.id, 'pro')
+    const f = fakes({ failApp: new FlyError('Fly POST /apps returned 422: app already exists', 422, '') })
+    const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Taken', endsAt: null }, f.deps)
+    await hostedWorldSettled(world.id)
+    const r = await row(world.id)
+    expect(r.status).toBe('failed')
+    expect(r.errorMessage).toContain('already exists')
+    expect(f.calls.some((x) => x.startsWith('deleteApp'))).toBe(false)
+    expect(f.filesDeleted).toEqual([])
+    expect(f.schemas.size).toBe(0)
+  })
+
+  it('a failed create leaves the slot free for the next create', async () => {
+    await setTier(owner.id, 'creator')
+    const bad = fakes({ failMachine: new FlyError('boom', 500, '') })
+    const first = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'First Try', endsAt: null }, bad.deps)
+    await hostedWorldSettled(first.world.id)
+    expect((await row(first.world.id)).status).toBe('failed')
+    const good = fakes()
+    const second = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Second Try', endsAt: null }, good.deps)
+    await hostedWorldSettled(second.world.id)
+    expect((await row(second.world.id)).status).toBe('running')
+  })
+
+  it('a row deleted elsewhere mid-create leaves no Fly app, schema or files behind', async () => {
+    await setTier(owner.id, 'pro')
+    let worldId = ''
+    const f = fakes({ onMachine: async () => { await db.delete(hyperfyWorlds).where(eq(hyperfyWorlds.id, worldId)) } })
+    const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Orphan', endsAt: null }, f.deps)
+    worldId = world.id
+    await hostedWorldSettled(world.id)
+    expect(await row(world.id)).toBeUndefined()
+    expect(f.calls).toContain('deleteApp vlm-w-orphan')
+    expect(f.apps.size).toBe(0)
+    expect(f.schemas.size).toBe(0)
+    expect(f.filesDeleted).toEqual(['orphan'])
+  })
+
   it('a world that never answers health within 180 s is cleaned up and marked failed', async () => {
     await setTier(owner.id, 'pro')
     const f = fakes({ healthy: () => false })
@@ -314,6 +368,20 @@ describe('hosted Hyperfy worlds', () => {
     expect(await findWorldByKey(before.VLM_WORLD_KEY)).toBeNull()
     expect((await findWorldByKey(key))?.id).toBe(world.id)
     expect((await row(world.id)).keyPrefix).toBe(key.slice(0, 12))
+  })
+
+  it('a rotate whose machine update fails says the key changed and to rotate again', async () => {
+    await setTier(owner.id, 'pro')
+    const f = fakes()
+    const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Flaky', endsAt: null }, f.deps)
+    await hostedWorldSettled(world.id)
+    const failing = fakes({ failUpdate: new FlyError('Fly POST /apps/vlm-w-flaky/machines/m returned 503: busy', 503, '') })
+    failing.machines.set('vlm-w-flaky', f.machines.get('vlm-w-flaky')!)
+    const err = await rotateHostedWorldKey(world.id, failing.deps).catch((e) => e)
+    expect(err).toMatchObject({ code: 'world_update_failed' })
+    expect(err.message).toMatch(/key was changed/i)
+    expect(err.message).toMatch(/rotate .*again/i)
+    expect(err.message).not.toContain('vlmw_')
   })
 
   it('switching scene updates the row only', async () => {

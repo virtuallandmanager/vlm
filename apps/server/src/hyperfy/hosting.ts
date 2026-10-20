@@ -35,7 +35,7 @@ export type HostingDeps = {
   log: Log
 }
 
-export type HostingErrorCode = 'world_limit_reached' | 'world_not_found' | 'world_not_running'
+export type HostingErrorCode = 'world_limit_reached' | 'world_not_found' | 'world_not_running' | 'world_update_failed'
 
 export class HostingError extends Error {
   code: HostingErrorCode
@@ -179,7 +179,10 @@ export async function createHostedWorld(
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hyperfy-hosted:${input.ownerId}`}))`)
         const { used, limit } = await hostedWorldSlots(input.ownerId, tx)
         if (used >= (config.allFeaturesUnlocked ? Infinity : limit)) {
-          throw new HostingError('world_limit_reached', `You've used all ${limit} of your hosted worlds`)
+          throw new HostingError(
+            'world_limit_reached',
+            limit === 0 ? "Your plan doesn't include hosted worlds" : `You've used all ${limit} of your hosted worlds`,
+          )
         }
         const slug = await freeSlug(tx, base)
         const [inserted] = await tx
@@ -238,32 +241,43 @@ async function finishCreate(
   const check = () => {
     if (signal.aborted) throw new Cancelled()
   }
-  let dbCreated = false
+  // Cleanup removes only what this create made: never an app that already existed under the name.
+  const made = { database: false, app: false, files: false }
   try {
     const { dbUri, schema } = await d.createWorldDatabase(slug)
-    dbCreated = true
+    made.database = true
     hidden.push(dbUri, safeUrlPassword(dbUri))
     check()
     await d.fly.createApp(app)
+    made.app = true
     check()
     if (address.endsWith('.fly.dev')) await d.fly.allocatePublicIps(app)
     else await d.fly.allocatePrivateIp(app)
     check()
     const env = worldEnv({ slug, address, dbUri, schema, ...secrets })
     hidden.push(env.JWT_SECRET, env.ASSETS_S3_URI)
+    // Once a machine may exist (even if this call fails or times out), it may have written under the prefix.
+    made.files = true
     await d.fly.createMachine(app, { image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'), env })
     d.log.info(ctx, 'hosted world machine created, waiting for health')
     await waitForHealth(address, d, signal)
-    await db
+    const updated = await db
       .update(hyperfyWorlds)
       .set({ status: 'running', errorMessage: null })
       .where(and(eq(hyperfyWorlds.id, world.id), eq(hyperfyWorlds.status, 'provisioning')))
+      .returning({ id: hyperfyWorlds.id })
+    if (!updated.length) {
+      // Destroyed (or settled) elsewhere while we ran; don't leave a billed app behind.
+      d.log.warn(ctx, 'hosted world row gone or no longer provisioning; removing what this create made')
+      await cleanUp(world, d, made)
+      return
+    }
     d.log.info(ctx, 'hosted world running')
   } catch (err) {
     hidden.push(config.hyperfyAssetsS3Uri ?? '', config.flyApiToken ?? '')
     const message = redact(err instanceof Error ? err.message : String(err), hidden).slice(0, 500)
     d.log.error({ ...ctx, error: message }, 'hosted world provisioning failed')
-    await cleanUp(world, d, { dropDatabase: dbCreated })
+    await cleanUp(world, d, made)
     await db
       .update(hyperfyWorlds)
       .set({ status: 'failed', errorMessage: message })
@@ -281,7 +295,8 @@ function worldEnv(w: { slug: string; address: string; dbUri: string; schema: str
     PUBLIC_WS_URL: `wss://${w.address}/ws`,
     PUBLIC_API_URL: `https://${w.address}/api`,
     ASSETS: 's3',
-    ASSETS_S3_URI: `${assetsUri}/${w.slug}/`,
+    // No trailing slash: Hyperfy's AssetsS3 appends one, so `<slug>/` would key files under `<slug>//`.
+    ASSETS_S3_URI: `${assetsUri}/${w.slug}`,
     ASSETS_BASE_URL: `${assetsBase}/${w.slug}`,
     DB_URI: w.dbUri,
     DB_SCHEMA: w.schema,
@@ -290,6 +305,7 @@ function worldEnv(w: { slug: string; address: string; dbUri: string; schema: str
     SAVE_INTERVAL: '60',
     CLEAN: 'true',
     PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: 'wss://api.vlm.gg',
+    PUBLIC_MAX_UPLOAD_SIZE: '12', // MB; Hyperfy refuses to boot without it
     VLM_FEED_URL: config.publicUrl,
     VLM_WORLD_KEY: w.worldKey,
   }
@@ -312,14 +328,13 @@ async function waitForHealth(address: string, d: HostingDeps, signal: AbortSigna
   }
 }
 
-/** Removes whatever a world has on Fly, in the worlds database and in the bucket. Each step is safe to repeat. */
-async function cleanUp(world: HyperfyWorldRow, d: HostingDeps, opts: { dropDatabase: boolean }): Promise<void> {
+/** Removes what a create made on Fly, in the worlds database and in the bucket. Each step is safe to repeat. */
+async function cleanUp(world: HyperfyWorldRow, d: HostingDeps, made: { database: boolean; app: boolean; files: boolean }): Promise<void> {
   const slug = world.slug!
-  const steps: [string, () => Promise<unknown>][] = [
-    ['delete fly app', () => d.fly.deleteApp(world.flyApp ?? flyAppName(slug))],
-    ...(opts.dropDatabase ? [['drop world database', () => d.dropWorldDatabase(slug)] as [string, () => Promise<unknown>]] : []),
-    ['delete world files', () => d.deleteWorldFiles(slug)],
-  ]
+  const steps: [string, () => Promise<unknown>][] = []
+  if (made.app) steps.push(['delete fly app', () => d.fly.deleteApp(world.flyApp ?? flyAppName(slug))])
+  if (made.database) steps.push(['drop world database', () => d.dropWorldDatabase(slug)])
+  if (made.files) steps.push(['delete world files', () => d.deleteWorldFiles(slug)])
   for (const [what, step] of steps) {
     await step().catch((e) => d.log.error({ worldId: world.id, slug, error: e instanceof Error ? e.message : String(e) }, `cleanup: could not ${what}`))
   }
@@ -392,10 +407,18 @@ export async function rotateHostedWorldKey(worldId: string, deps?: Partial<Hosti
   const env = await d.fly.getMachineEnv(w.flyApp, machine.id)
   const key = createWorldKey()
   await db.update(hyperfyWorlds).set({ keyHash: key.hash, keyPrefix: key.prefix }).where(eq(hyperfyWorlds.id, worldId))
-  await d.fly.updateMachine(w.flyApp, machine.id, {
-    image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'),
-    env: { ...env, VLM_WORLD_KEY: key.raw },
-  })
+  try {
+    await d.fly.updateMachine(w.flyApp, machine.id, {
+      image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'),
+      env: { ...env, VLM_WORLD_KEY: key.raw },
+    })
+  } catch (err) {
+    d.log.error({ worldId, slug: w.slug, error: err instanceof Error ? err.message : String(err) }, 'hosted world key rotation: machine update failed')
+    throw new HostingError(
+      'world_update_failed',
+      "The world key was changed but the world couldn't be updated with it; rotate the key again",
+    )
+  }
   d.log.info({ worldId, slug: w.slug }, 'hosted world key rotated')
   return { key: key.raw }
 }
