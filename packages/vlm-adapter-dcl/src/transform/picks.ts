@@ -105,7 +105,7 @@ export class Picks {
 
   private add(sk: string, element: ElementKind, entity: Entity): void {
     const p: Pick = { sk, element, entity, how: 'self', helper: null }
-    if (element === 'image' || element === 'video') {
+    if (element === 'image' || element === 'video' || element === 'ad_space') {
       if (MeshCollider.has(entity)) this.addChildPlane(p)
       else MeshCollider.setPlane(entity, ColliderLayer.CL_POINTER)
     } else if (element === 'model') {

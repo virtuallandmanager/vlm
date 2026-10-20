@@ -28,7 +28,7 @@ interface ElementManager {
   upsert?(elementData: any): void
 }
 
-const EDITABLE: Selected['element'][] = ['image', 'video', 'model', 'sound']
+const EDITABLE: Selected['element'][] = ['image', 'video', 'model', 'sound', 'ad_space']
 
 export class SceneManager {
   private managers: Record<string, ElementManager>
@@ -123,7 +123,7 @@ export class SceneManager {
     return null
   }
 
-  /** Every instance of the four element types that has a live entity (visible ones). */
+  /** Every instance of the editable element types that has a live entity (visible ones). */
   listEditable(): (Selected & { entity: EntityHandle })[] {
     const out: (Selected & { entity: EntityHandle })[] = []
     for (const element of EDITABLE) {

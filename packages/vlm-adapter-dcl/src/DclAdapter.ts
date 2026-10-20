@@ -12,8 +12,12 @@ import {
   InputAction,
   PointerEvents,
   pointerEventsSystem,
+  TextShape,
+  VideoEvent,
+  videoEventsSystem,
+  VideoState as DclVideoState,
 } from '@dcl/sdk/ecs'
-import { Vector3, Quaternion, Color3 } from '@dcl/sdk/math'
+import { Vector3, Quaternion, Color3, Color4 } from '@dcl/sdk/math'
 import type {
   VLMPlatformAdapter,
   PlatformCapabilities,
@@ -32,12 +36,20 @@ import type {
   PointerOptions,
   PointerCallback,
   Vec3,
+  Quat,
 } from 'vlm-shared'
 import { localModelFile } from 'vlm-shared'
 
 export class DclAdapter implements VLMPlatformAdapter {
   // Video player entities -- DCL uses a separate entity for the VideoPlayer component
   private videoPlayerEntities: Map<number, Entity> = new Map()
+
+  // Video end callbacks by display entity. `ended` is true while the video sits at its end, so one playback fires once.
+  private videoEndWatchers: Map<number, { cb: () => void; ended: boolean }> = new Map()
+  private videoEndSystemAdded = false
+
+  // Entities with hover handlers registered; a destroyed entity is dropped so its callbacks never fire.
+  private hoverEntities: Set<number> = new Set()
 
   // Files deployed with this scene (lowercased path -> path as deployed), from getSceneInformation().content.
   // Decentraland can't load GLBs from URLs, so VLM-hosted models must be synced into models/vlm/.
@@ -224,6 +236,8 @@ export class DclAdapter implements VLMPlatformAdapter {
   }
 
   destroyEntity(handle: EntityHandle): void {
+    this.hoverEntities.delete(handle as number)
+    this.videoEndWatchers.delete(handle as number)
     engine.removeEntity(handle as Entity)
     // Clean up associated video player entity
     const vpEntity = this.videoPlayerEntities.get(handle as number)
@@ -383,6 +397,47 @@ export class DclAdapter implements VLMPlatformAdapter {
     return 0 // VideoState.NONE
   }
 
+  onVideoEnded(entity: EntityHandle, cb: () => void): void {
+    // A video already sitting at its end must not fire for the new callback; it re-arms once playback leaves the end.
+    const vpEntity = this.videoPlayerEntities.get(entity as number)
+    const ended = !!vpEntity && this.isVideoAtEnd(vpEntity) === true
+    this.videoEndWatchers.set(entity as number, { cb, ended })
+    if (this.videoEndSystemAdded) return
+    this.videoEndSystemAdded = true
+    engine.addSystem(() => {
+      for (const [handle, watcher] of this.videoEndWatchers) {
+        const vp = this.videoPlayerEntities.get(handle)
+        if (!vp) continue
+        const atEnd = this.isVideoAtEnd(vp)
+        if (atEnd === null) continue
+        if (!atEnd) {
+          watcher.ended = false
+        } else if (!watcher.ended) {
+          watcher.ended = true
+          try {
+            watcher.cb()
+          } catch (err) {
+            console.error('[VLM] video end callback failed', err)
+          }
+        }
+      }
+    })
+  }
+
+  /** True when the video is paused at its end, false while it is in any other state, null when its state is unknown. */
+  private isVideoAtEnd(vpEntity: Entity): boolean | null {
+    try {
+      if (!VideoEvent.has(vpEntity)) return null
+      const ev = videoEventsSystem.getVideoState(vpEntity)
+      if (!ev) return null
+      return (
+        ev.state === DclVideoState.VS_PAUSED && ev.videoLength > 0 && ev.currentOffset >= ev.videoLength - 0.5
+      )
+    } catch {
+      return null
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Audio
   // ---------------------------------------------------------------------------
@@ -466,13 +521,46 @@ export class DclAdapter implements VLMPlatformAdapter {
   }
 
   removePointerEvents(entity: EntityHandle): void {
+    this.hoverEntities.delete(entity as number)
     try {
       if (PointerEvents.has(entity as Entity)) {
         pointerEventsSystem.removeOnPointerDown(entity as Entity)
+        pointerEventsSystem.removeOnPointerHoverEnter(entity as Entity)
+        pointerEventsSystem.removeOnPointerHoverLeave(entity as Entity)
       }
     } catch {
       // Entity may not have pointer events
     }
+  }
+
+  onPointerHover(entity: EntityHandle, onEnter: () => void, onLeave: () => void, maxDistance: number): void {
+    this.hoverEntities.add(entity as number)
+    const opts = { button: InputAction.IA_POINTER, maxDistance, showFeedback: false }
+    pointerEventsSystem.onPointerHoverEnter({ entity: entity as Entity, opts }, () => {
+      if (this.hoverEntities.has(entity as number)) onEnter()
+    })
+    pointerEventsSystem.onPointerHoverLeave({ entity: entity as Entity, opts }, () => {
+      if (this.hoverEntities.has(entity as number)) onLeave()
+    })
+  }
+
+  getCameraPose(): { position: Vec3; rotation: Quat } | null {
+    const t = Transform.getOrNull(engine.CameraEntity)
+    if (!t) return null
+    return {
+      position: { x: t.position.x, y: t.position.y, z: t.position.z },
+      rotation: { x: t.rotation.x, y: t.rotation.y, z: t.rotation.z, w: t.rotation.w },
+    }
+  }
+
+  setText(entity: EntityHandle, text: string, opts: { fontSize: number }): void {
+    TextShape.createOrReplace(entity as Entity, {
+      text,
+      fontSize: opts.fontSize,
+      textColor: Color4.White(),
+      outlineWidth: 0.1,
+      outlineColor: Color4.Black(),
+    })
   }
 
   // ---------------------------------------------------------------------------

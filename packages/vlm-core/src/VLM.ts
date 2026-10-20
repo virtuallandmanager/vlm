@@ -334,7 +334,7 @@ export class VLM {
       const d = message as { sk: string; saved: boolean }
       if (!d?.sk) return
       if (!d.saved) {
-        for (const e of ['image', 'video', 'model', 'sound'] as const) this.sceneManager.restoreTransform(e, d.sk)
+        for (const e of ['image', 'video', 'model', 'sound', 'ad_space'] as const) this.sceneManager.restoreTransform(e, d.sk)
       }
       this.events.emit('transform_draft_end', d)
     })

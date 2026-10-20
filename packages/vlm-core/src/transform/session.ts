@@ -29,7 +29,7 @@ export type Handle =
   | { kind: 'ring'; axis: Axis }
   | { kind: 'uniform' }
   | { kind: 'stretch'; axis: Axis }
-export type ElementKind = 'image' | 'video' | 'model' | 'sound'
+export type ElementKind = 'image' | 'video' | 'model' | 'sound' | 'ad_space'
 export type Selected = { element: ElementKind; sk: string; name: string; transform: TransformData }
 export type DraftPayload = { element: ElementKind; sk: string; transform: TransformData }
 

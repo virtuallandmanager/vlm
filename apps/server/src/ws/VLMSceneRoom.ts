@@ -42,7 +42,7 @@ interface ClientMeta {
   sceneId: string
 }
 
-const DRAFT_ELEMENTS = new Set(['image', 'video', 'model', 'sound'])
+const DRAFT_ELEMENTS = new Set(['image', 'video', 'model', 'sound', 'ad_space'])
 const isVec3 = (v: any) => !!v && typeof v === 'object' && ['x', 'y', 'z'].every((k) => Number.isFinite(v[k]) && typeof v[k] === 'number')
 function isValidDraft(m: any) {
   return !!m && DRAFT_ELEMENTS.has(m.element) && isVec3(m.position) && isVec3(m.rotation) && isVec3(m.scale)
