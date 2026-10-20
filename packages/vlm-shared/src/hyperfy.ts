@@ -38,15 +38,25 @@ export interface HyperfyFeedResponse {
   scene: SerializedScene | null
 }
 
+/** How long a hosted world's data, slug and key are kept after it ends, before the sweep purges it. */
+export const HOSTED_WORLD_RETENTION_DAYS = 30
+
 export interface HyperfyWorldSummary {
   id: string
   sceneId: string
   name: string
-  kind: 'self'
+  kind: 'self' | 'hosted'
+  /** Hostname of a hosted world; null for self-run worlds. */
+  address: string | null
+  status: 'provisioning' | 'running' | 'failed' | 'ended'
+  errorMessage: string | null
   /** First 12 characters of the world key, to tell keys apart; never the whole key. */
   keyPrefix: string
   createdAt: string
   lastSeenAt: string | null
+  endsAt: string | null
+  endedAt: string | null
+  purgeAfter: string | null
 }
 
 export type HyperfyVisitEventType = 'enter' | 'leave' | 'pos'

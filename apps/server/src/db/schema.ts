@@ -874,8 +874,20 @@ export const hyperfyWorlds = pgTable('hyperfy_worlds', {
   keyPrefix: text('key_prefix').notNull(), // first 12 chars, for display
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // Hosted (Fly) worlds only; self-run rows leave these null and stay 'running'
+  slug: text('slug'),
+  address: text('address'),
+  flyApp: text('fly_app'),
+  status: text('status').notNull().default('running'), // provisioning | running | failed | ended
+  errorMessage: text('error_message'),
+  adminCodeEnc: text('admin_code_enc'),
+  endsAt: timestamp('ends_at', { withTimezone: true }),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+  purgeAfter: timestamp('purge_after', { withTimezone: true }),
+  purgedAt: timestamp('purged_at', { withTimezone: true }),
 }, (t) => ({
   sceneIdx: index('hyperfy_worlds_scene_idx').on(t.sceneId),
+  slugUq: uniqueIndex('hyperfy_worlds_slug_uq').on(t.slug).where(sql`${t.purgedAt} IS NULL`),
 }))
 
 // ── Password Reset Tokens ───────────────────────────────────────────────────

@@ -82,7 +82,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     storageBytes: 50 * 1024 * 1024 * 1024, // 50 GB
     deploymentsPerMonth: 50,
     customAssetUploads: 500,
-    hyperfyInstances: 5,
+    hyperfyInstances: 3,
     streamMinutes: 5000,
     apiKeys: 5,
     analyticsRetentionDays: 90,
@@ -96,7 +96,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     storageBytes: 500 * 1024 * 1024 * 1024, // 500 GB
     deploymentsPerMonth: Infinity,
     customAssetUploads: Infinity,
-    hyperfyInstances: Infinity,
+    hyperfyInstances: 10,
     streamMinutes: Infinity,
     apiKeys: Infinity,
     analyticsRetentionDays: 365,

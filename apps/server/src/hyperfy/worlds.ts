@@ -27,9 +27,15 @@ export function worldSummary(w: HyperfyWorldRow): HyperfyWorldSummary {
     id: w.id,
     sceneId: w.sceneId,
     name: w.name,
-    kind: 'self',
+    kind: w.kind === 'hosted' ? 'hosted' : 'self',
+    address: w.address,
+    status: w.status as HyperfyWorldSummary['status'],
+    errorMessage: w.errorMessage,
     keyPrefix: w.keyPrefix,
     createdAt: w.createdAt.toISOString(),
     lastSeenAt: w.lastSeenAt ? w.lastSeenAt.toISOString() : null,
+    endsAt: w.endsAt ? w.endsAt.toISOString() : null,
+    endedAt: w.endedAt ? w.endedAt.toISOString() : null,
+    purgeAfter: w.purgeAfter ? w.purgeAfter.toISOString() : null,
   }
 }
