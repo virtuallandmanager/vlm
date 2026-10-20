@@ -23,7 +23,7 @@ type Log = { info(...a: unknown[]): void; warn(...a: unknown[]): void; error(...
 export type HostingDeps = {
   fly: Pick<
     FlyApi,
-    'createApp' | 'deleteApp' | 'allocatePublicIps' | 'allocatePrivateIp' | 'createMachine' | 'updateMachine' | 'listMachines' | 'getMachineEnv'
+    'createApp' | 'deleteApp' | 'allocatePublicIps' | 'allocatePrivateIp' | 'createMachine' | 'updateMachine' | 'listMachines' | 'getMachineEnv' | 'startMachine'
   >
   createWorldDatabase: (slug: string) => Promise<{ dbUri: string; schema: string }>
   dropWorldDatabase: (slug: string) => Promise<void>
@@ -35,14 +35,17 @@ export type HostingDeps = {
   log: Log
 }
 
-export type HostingErrorCode = 'world_limit_reached' | 'world_not_found' | 'world_not_running' | 'world_update_failed'
+export type HostingErrorCode = 'world_limit_reached' | 'world_not_found' | 'world_not_running' | 'world_update_failed' | 'not_restorable'
 
 export class HostingError extends Error {
   code: HostingErrorCode
-  constructor(code: HostingErrorCode, message: string = code) {
+  /** Set on `world_limit_reached`. */
+  slots?: { used: number; limit: number }
+  constructor(code: HostingErrorCode, message: string = code, slots?: { used: number; limit: number }) {
     super(message)
     this.name = 'HostingError'
     this.code = code
+    this.slots = slots
   }
 }
 
@@ -66,6 +69,7 @@ function defaultDeps(): HostingDeps {
       updateMachine: (...a) => lazyFly().updateMachine(...a),
       listMachines: (...a) => lazyFly().listMachines(...a),
       getMachineEnv: (...a) => lazyFly().getMachineEnv(...a),
+      startMachine: (...a) => lazyFly().startMachine(...a),
     },
     createWorldDatabase: (slug) => createWorldDatabase(slug),
     dropWorldDatabase: (slug) => dropWorldDatabase(slug),
@@ -182,6 +186,7 @@ export async function createHostedWorld(
           throw new HostingError(
             'world_limit_reached',
             limit === 0 ? "Your plan doesn't include hosted worlds" : `You've used all ${limit} of your hosted worlds`,
+            { used, limit },
           )
         }
         const slug = await freeSlug(tx, base)
@@ -427,4 +432,40 @@ export async function revealAdminCode(worldId: string): Promise<string> {
   const w = await hostedWorld(worldId)
   if (!w.adminCodeEnc) throw new HostingError('world_not_found', 'the world has no admin code')
   return decryptAdminCode(w.adminCodeEnc)
+}
+
+/**
+ * Brings an ended world back within its retention window, if its owner has a free slot: claims the slot (status
+ * `running`, end dates cleared), then starts the machines. If they won't start the world goes back to `ended`.
+ */
+export async function restoreHostedWorld(worldId: string, deps?: Partial<HostingDeps>): Promise<HyperfyWorldRow> {
+  const d = withDeps(deps)
+  const w = await hostedWorld(worldId)
+  const restored = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hyperfy-hosted:${w.ownerId}`}))`)
+    const [cur] = await tx.select().from(hyperfyWorlds).where(eq(hyperfyWorlds.id, worldId))
+    if (!cur || cur.purgedAt || cur.status !== 'ended' || !cur.flyApp || !cur.purgeAfter || cur.purgeAfter.getTime() <= Date.now()) {
+      throw new HostingError('not_restorable', "This world can't be restored")
+    }
+    const { used, limit } = await hostedWorldSlots(w.ownerId, tx)
+    if (used >= (config.allFeaturesUnlocked ? Infinity : limit)) {
+      throw new HostingError('world_limit_reached', limit === 0 ? "Your plan doesn't include hosted worlds" : `You've used all ${limit} of your hosted worlds`, { used, limit })
+    }
+    const [updated] = await tx
+      .update(hyperfyWorlds)
+      .set({ status: 'running', endsAt: null, endedAt: null, purgeAfter: null })
+      .where(eq(hyperfyWorlds.id, worldId))
+      .returning()
+    return { before: cur, after: updated }
+  })
+  try {
+    for (const m of await d.fly.listMachines(restored.after.flyApp!)) await d.fly.startMachine(restored.after.flyApp!, m.id)
+  } catch (err) {
+    d.log.error({ worldId, slug: w.slug, error: err instanceof Error ? err.message : String(err) }, 'hosted world restore: machine start failed')
+    const { endsAt, endedAt, purgeAfter } = restored.before
+    await db.update(hyperfyWorlds).set({ status: 'ended', endsAt, endedAt, purgeAfter }).where(eq(hyperfyWorlds.id, worldId))
+    throw new HostingError('world_update_failed', "The world couldn't be started; try restoring it again")
+  }
+  d.log.info({ worldId, slug: w.slug }, 'hosted world restored')
+  return restored.after
 }
