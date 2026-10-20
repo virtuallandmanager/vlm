@@ -25,6 +25,7 @@ const PUBLIC_EXACT = [
   'POST /api/setup/status', // DCL signed fetch (location setup status)
   'GET /api/setup/scene', // public: VLM scene for a set-up location (guest content-only connect)
   'GET /api/setup/models', // public: model list for a set-up location
+  'GET /api/hyperfy/feed', // world-key auth
   'POST /api/ingest', // DCL signed fetch / ingest key
   'POST /api/analytics/claims/check-signed', // DCL signed fetch
   'POST /api/streaming/authorize', // media server callback, shared secret

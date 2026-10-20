@@ -308,6 +308,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
     }
 
     await db.delete(scenes).where(eq(scenes.id, sceneId))
+    await publishSceneTouched(sceneId) // wake waiting Hyperfy feed polls so they get 404 now
     return reply.status(204).send()
   })
 
