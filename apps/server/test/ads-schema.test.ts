@@ -37,7 +37,7 @@ describe('ad spaces schema and plumbing', () => {
     expect(scopesForElementChange('ad_space', ['shape'], [])).toContain('screens')
   })
 
-  it('ad_events allows one row per ad, level, day and viewer', async () => {
+  it('ad_events allows one row per ad, element, level, day and viewer', async () => {
     const owner = await createUser()
     const { scene } = await createScene(owner)
     const [ad] = await db.insert(ads).values({ name: 'House', kind: 'house', clickUrl: 'https://vlm.gg' }).returning()
@@ -47,7 +47,9 @@ describe('ad spaces schema and plumbing', () => {
     }
     await db.insert(adEvents).values(row).onConflictDoNothing()
     await db.insert(adEvents).values(row).onConflictDoNothing()
+    // the same viewer, ad, level and day on another space is another row
+    await db.insert(adEvents).values({ ...row, elementId: crypto.randomUUID() }).onConflictDoNothing()
     const rows = await db.select().from(adEvents).where(eq(adEvents.adId, ad.id))
-    expect(rows).toHaveLength(1)
+    expect(rows).toHaveLength(2)
   })
 })

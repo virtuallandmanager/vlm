@@ -130,7 +130,7 @@ describe('admin ads routes', () => {
     expect(by[defaultShape.id].shape).toBe('16:9')
   })
 
-  it('report splits verified and unverified counts by day and by space', async () => {
+  it('report splits verified and unverified counts by day and by space; totals count each viewer once per day', async () => {
     const { scene, preset } = await createScene(admin, 'Ship')
     const e1 = await createElement(preset.id, { type: 'ad_space', properties: { shape: '1:1' } })
     const e2 = await createElement(preset.id, { type: 'ad_space', properties: { shape: '1:1' } })
@@ -145,6 +145,7 @@ describe('admin ads routes', () => {
       ev(e1.id, 'scene', '2026-10-19', 'w:b', true),
       ev(e1.id, 'look', '2026-10-19', 'w:b', true, 5000),
       ev(e2.id, 'scene', '2026-10-19', 'w:a', true),
+      ev(e2.id, 'scene', '2026-10-19', 'w:b', true), // w:b saw it on both spaces that day
       ev(e2.id, 'scene', '2026-10-19', 'u:g1', false),
       ev(e2.id, 'click', '2026-10-19', 'u:g1', false),
       ev(e2.id, 'look', '2026-10-19', 'u:g1', false, 90000),
@@ -161,7 +162,7 @@ describe('admin ads routes', () => {
     expect(r.bySpace).toHaveLength(2)
     const by = Object.fromEntries(r.bySpace.map((s: any) => [s.elementId, s]))
     expect(by[e1.id]).toEqual({ elementId: e1.id, sceneName: 'Ship', scene: 2, screen: 1, look: 2, click: 1, unverified: zero })
-    expect(by[e2.id]).toMatchObject({ scene: 1, unverified: { scene: 1, screen: 0, look: 1, click: 1 } })
+    expect(by[e2.id]).toMatchObject({ scene: 2, unverified: { scene: 1, screen: 0, look: 1, click: 1 } })
     expect(r.avgLookMs).toBe(4000)
 
     const empty = await mkAd()

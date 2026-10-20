@@ -15,11 +15,13 @@ function add(c: LevelCounts, level: string, verified: boolean, n: number) {
   else c.unverified[level as AdLevel] += n
 }
 
-/** Per-ad numbers. Events are already one per wallet (or guest session) per level per day, so a row is one view. */
+/**
+ * Per-ad numbers. Events are one per wallet (or guest session) per space per level per day: each space counts
+ * its own rows, while totals and days count each viewer once per level per day across spaces.
+ */
 export async function adReport(adId: string): Promise<AdReport> {
-  const rows = await db
+  const spaceRows = await db
     .select({
-      day: adEvents.day,
       elementId: adEvents.elementId,
       sceneName: scenes.name,
       level: adEvents.level,
@@ -29,15 +31,27 @@ export async function adReport(adId: string): Promise<AdReport> {
     .from(adEvents)
     .innerJoin(scenes, eq(scenes.id, adEvents.sceneId))
     .where(eq(adEvents.adId, adId))
-    .groupBy(adEvents.day, adEvents.elementId, scenes.name, adEvents.level, adEvents.verified)
+    .groupBy(adEvents.elementId, scenes.name, adEvents.level, adEvents.verified)
+  const dayRows = await db
+    .select({
+      day: adEvents.day,
+      level: adEvents.level,
+      verified: adEvents.verified,
+      n: sql<number>`count(distinct ${adEvents.viewerKey})::int`,
+    })
+    .from(adEvents)
+    .where(eq(adEvents.adId, adId))
+    .groupBy(adEvents.day, adEvents.level, adEvents.verified)
 
   const totals = emptyCounts()
   const byDay = new Map<string, LevelCounts>()
   const bySpace = new Map<string, { sceneName: string; counts: LevelCounts }>()
-  for (const r of rows) {
+  for (const r of dayRows) {
     add(totals, r.level, r.verified, r.n)
     if (!byDay.has(r.day)) byDay.set(r.day, emptyCounts())
     add(byDay.get(r.day)!, r.level, r.verified, r.n)
+  }
+  for (const r of spaceRows) {
     if (!bySpace.has(r.elementId)) bySpace.set(r.elementId, { sceneName: r.sceneName, counts: emptyCounts() })
     add(bySpace.get(r.elementId)!.counts, r.level, r.verified, r.n)
   }

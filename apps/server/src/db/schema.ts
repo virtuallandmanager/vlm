@@ -1179,7 +1179,7 @@ export const adEvents = pgTable(
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
   },
   (t) => ({
-    onePerViewer: uniqueIndex('ad_events_unique_view').on(t.adId, t.level, t.day, t.viewerKey),
+    onePerViewer: uniqueIndex('ad_events_unique_space_view').on(t.adId, t.elementId, t.level, t.day, t.viewerKey),
     byAdDay: index('ad_events_ad_day_idx').on(t.adId, t.day),
   }),
 )

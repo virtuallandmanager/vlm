@@ -31,7 +31,7 @@ export async function elementsInScene(sceneId: string, ids: string[]): Promise<S
 }
 
 /**
- * Store ad events for a scene, once per viewer per ad per level per UTC day. Events for elements outside
+ * Store ad events for a scene, once per viewer per ad per space per level per UTC day. Events for elements outside
  * the scene, or for an ad not selectable on that element (ignoring booking pauses), are dropped.
  * Returns how many rows were inserted.
  */
@@ -70,7 +70,7 @@ export async function recordAdEvents(
   const inserted = await db
     .insert(adEvents)
     .values(rows)
-    .onConflictDoNothing({ target: [adEvents.adId, adEvents.level, adEvents.day, adEvents.viewerKey] })
+    .onConflictDoNothing({ target: [adEvents.adId, adEvents.elementId, adEvents.level, adEvents.day, adEvents.viewerKey] })
     .returning({ id: adEvents.id })
   return inserted.length
 }

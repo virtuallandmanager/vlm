@@ -136,6 +136,27 @@ describe('/api/ads/serve and /api/ads/events', () => {
     expect(rows.every((r) => r.viewerKey === `w:${first.wallet}` && r.verified === true && r.house === false && r.day === today)).toBe(true)
   })
 
+  it('the same ad on two spaces counts once per wallet on each space', async () => {
+    const { preset } = await boundScene()
+    const a = await createElement(preset.id, { type: 'ad_space', properties: { shape: '1:1', formats: 'both' } })
+    const b = await createElement(preset.id, { type: 'ad_space', properties: { shape: '1:1', formats: 'both' } })
+    const p = await mkAd('partner')
+    await db.insert(adPlacements).values([{ adId: p.ad.id, elementId: a.id }, { adId: p.ad.id, elementId: b.id }])
+    const batch = {
+      v: 1,
+      sessionId: 'sess-1',
+      events: [
+        { adId: p.ad.id, elementId: a.id, level: 'screen', t: 1 },
+        { adId: p.ad.id, elementId: b.id, level: 'screen', t: 2 },
+        { adId: p.ad.id, elementId: b.id, level: 'screen', t: 3 },
+      ],
+    }
+    const { res } = await signed('/api/ads/events', batch)
+    expect(res.json()).toEqual({ accepted: 2 })
+    const rows = await db.select().from(adEvents)
+    expect(rows.map((r) => r.elementId).sort()).toEqual([a.id, b.id].sort())
+  })
+
   it('guest and unsigned-wallet viewers are stored as unverified with a session key', async () => {
     const { scene, preset } = await boundScene()
     const el = await createElement(preset.id, { type: 'ad_space', properties: { shape: '1:1', formats: 'both' } })
