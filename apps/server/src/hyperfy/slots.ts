@@ -1,11 +1,13 @@
 import { and, count, eq, isNull, notInArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { hyperfyWorlds } from '../db/schema.js'
+import { config } from '../config.js'
 import { getSubscription, TIER_LIMITS } from '../integrations/stripe.js'
 
 /**
  * A user's hosted-world slots. Hosted worlds that are provisioning or running count; failed worlds (already cleaned
- * up), ended, purged and self-run worlds don't. Pass a transaction to count inside it.
+ * up), ended, purged and self-run worlds don't. Pass a transaction to count inside it. `limit` is the effective one:
+ * Infinity when every feature is unlocked (self-hosted), else the tier's.
  */
 export async function hostedWorldSlots(userId: string, executor: Pick<typeof db, 'select'> = db): Promise<{ used: number; limit: number }> {
   const [{ used }] = await executor
@@ -20,5 +22,5 @@ export async function hostedWorldSlots(userId: string, executor: Pick<typeof db,
       ),
     )
   const { tier } = await getSubscription(userId)
-  return { used, limit: TIER_LIMITS[tier].hyperfyInstances }
+  return { used, limit: config.allFeaturesUnlocked ? Infinity : TIER_LIMITS[tier].hyperfyInstances }
 }

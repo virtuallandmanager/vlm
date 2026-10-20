@@ -18,7 +18,7 @@ import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq, ne } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { hyperfyWorlds } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
@@ -173,7 +173,15 @@ export default async function hyperfyWorldRoutes(app: FastifyInstance) {
         if (found.kind === 'hosted') await switchHostedWorldScene(found.id, body.sceneId)
         else await db.update(hyperfyWorlds).set({ sceneId: body.sceneId }).where(eq(hyperfyWorlds.id, found.id))
       }
-      if (endsAt !== undefined) await db.update(hyperfyWorlds).set({ endsAt }).where(eq(hyperfyWorlds.id, found.id))
+      if (endsAt !== undefined) {
+        // Not an ended world: the sweep may have ended it since the check above.
+        const updated = await db
+          .update(hyperfyWorlds)
+          .set({ endsAt })
+          .where(and(eq(hyperfyWorlds.id, found.id), ne(hyperfyWorlds.status, 'ended')))
+          .returning({ id: hyperfyWorlds.id })
+        if (!updated.length) return reply.status(409).send({ error: 'already_ended', message: 'This world has ended; restore it instead' })
+      }
       const [world] = await db.select().from(hyperfyWorlds).where(eq(hyperfyWorlds.id, found.id))
       return { world: worldSummary(world) }
     },

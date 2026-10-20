@@ -161,6 +161,18 @@ export function hostedWorldSettled(worldId: string): Promise<void> {
   return inFlight.get(worldId)?.promise ?? Promise.resolve()
 }
 
+/** Throws `world_limit_reached` (with used and limit) unless the owner has a free hosted-world slot. Call inside the owner's lock. */
+async function assertFreeSlot(ownerId: string, executor: Parameters<typeof hostedWorldSlots>[1]): Promise<void> {
+  const { used, limit } = await hostedWorldSlots(ownerId, executor)
+  if (used >= limit) {
+    throw new HostingError(
+      'world_limit_reached',
+      limit === 0 ? "Your plan doesn't include hosted worlds" : `You've used all ${limit} of your hosted worlds`,
+      { used, limit },
+    )
+  }
+}
+
 // ── Create ─────────────────────────────────────────────────────────────────
 
 export async function createHostedWorld(
@@ -181,14 +193,7 @@ export async function createHostedWorld(
       row = await db.transaction(async (tx) => {
         // One create at a time per owner, so two can't both take the last slot.
         await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hyperfy-hosted:${input.ownerId}`}))`)
-        const { used, limit } = await hostedWorldSlots(input.ownerId, tx)
-        if (used >= (config.allFeaturesUnlocked ? Infinity : limit)) {
-          throw new HostingError(
-            'world_limit_reached',
-            limit === 0 ? "Your plan doesn't include hosted worlds" : `You've used all ${limit} of your hosted worlds`,
-            { used, limit },
-          )
-        }
+        await assertFreeSlot(input.ownerId, tx)
         const slug = await freeSlug(tx, base)
         const [inserted] = await tx
           .insert(hyperfyWorlds)
@@ -447,10 +452,7 @@ export async function restoreHostedWorld(worldId: string, deps?: Partial<Hosting
     if (!cur || cur.purgedAt || cur.status !== 'ended' || !cur.flyApp || !cur.purgeAfter || cur.purgeAfter.getTime() <= Date.now()) {
       throw new HostingError('not_restorable', "This world can't be restored")
     }
-    const { used, limit } = await hostedWorldSlots(w.ownerId, tx)
-    if (used >= (config.allFeaturesUnlocked ? Infinity : limit)) {
-      throw new HostingError('world_limit_reached', limit === 0 ? "Your plan doesn't include hosted worlds" : `You've used all ${limit} of your hosted worlds`, { used, limit })
-    }
+    await assertFreeSlot(w.ownerId, tx)
     const [updated] = await tx
       .update(hyperfyWorlds)
       .set({ status: 'running', endsAt: null, endedAt: null, purgeAfter: null })

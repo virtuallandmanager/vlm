@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import { hyperfyWorlds, subscriptions } from '../src/db/schema.js'
+import { config } from '../src/config.js'
 import { TIER_LIMITS } from '../src/integrations/stripe.js'
 import { hostedWorldSlots } from '../src/hyperfy/slots.js'
 import { worldSummary } from '../src/hyperfy/worlds.js'
@@ -12,7 +13,11 @@ describe('hosted Hyperfy world slots', () => {
   let owner: TestUser
   let sceneId: string
 
+  const unlocked = config.allFeaturesUnlocked
+  afterEach(() => { config.allFeaturesUnlocked = unlocked })
+
   beforeEach(async () => {
+    config.allFeaturesUnlocked = false
     await resetDb()
     owner = await createUser()
     sceneId = (await createScene(owner, 'World')).scene.id
@@ -27,6 +32,12 @@ describe('hosted Hyperfy world slots', () => {
       .returning()
       .then((r) => r[0])
   }
+
+  it('the limit is Infinity when all features are unlocked (R2)', async () => {
+    await db.insert(subscriptions).values({ userId: owner.id, tier: 'creator' })
+    config.allFeaturesUnlocked = true
+    expect(await hostedWorldSlots(owner.id)).toEqual({ used: 0, limit: Infinity })
+  })
 
   it('TIER_LIMITS hyperfyInstances are 0, 1, 3, 10 and Infinity', () => {
     expect(TIER_LIMITS.free.hyperfyInstances).toBe(0)

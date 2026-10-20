@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { HYPERFY_FEED } from 'vlm-shared'
 import { db } from '../src/db/connection.js'
-import { hyperfyWorlds, subscriptions } from '../src/db/schema.js'
+import { hyperfyWorlds, subscriptions, sceneCollaborators } from '../src/db/schema.js'
 import { worldDbName } from '../src/hyperfy/worlds-db.js'
 import type { HostingDeps } from '../src/hyperfy/hosting.js'
 import { config } from '../src/config.js'
@@ -12,13 +12,17 @@ import { resetDb } from './helpers/db.js'
 import { testApp, createUser, createScene, tokenFor, type TestUser } from './helpers/factories.js'
 
 // Route calls go to the real hosting module, with Fly, the worlds DB, the bucket and the health check faked.
-const fake = vi.hoisted(() => ({ deps: {} as Partial<HostingDeps> }))
+const fake = vi.hoisted(() => ({ deps: {} as Partial<HostingDeps>, onSwitch: undefined as undefined | (() => Promise<void>) }))
 vi.mock('../src/hyperfy/hosting.js', async (orig) => {
   const m = await orig<typeof import('../src/hyperfy/hosting.js')>()
   return {
     ...m,
     createHostedWorld: (i: Parameters<typeof m.createHostedWorld>[0]) => m.createHostedWorld(i, fake.deps),
     destroyHostedWorld: (id: string) => m.destroyHostedWorld(id, fake.deps),
+    switchHostedWorldScene: async (id: string, sceneId: string) => {
+      await m.switchHostedWorldScene(id, sceneId)
+      await fake.onSwitch?.()
+    },
     rotateHostedWorldKey: (id: string) => m.rotateHostedWorldKey(id, fake.deps),
     restoreHostedWorld: (id: string) => m.restoreHostedWorld(id, fake.deps),
   }
@@ -40,11 +44,12 @@ const HOSTING_CONFIG = {
 
 function installFakes(opts: { failStart?: boolean; failUpdate?: boolean } = {}) {
   const started: string[] = []
+  const destroyed: string[] = []
   const machines = new Map<string, { id: string; env: Record<string, string> }>()
   fake.deps = {
     fly: {
       async createApp() {},
-      async deleteApp(name: string) { machines.delete(name) },
+      async deleteApp(name: string) { destroyed.push(`deleteApp ${name}`); machines.delete(name) },
       async allocatePublicIps() {},
       async allocatePrivateIp() {},
       async createMachine(app: string, m: any) { machines.set(app, { id: `m-${app}`, env: { ...m.env } }); return { id: `m-${app}` } },
@@ -57,13 +62,13 @@ function installFakes(opts: { failStart?: boolean; failUpdate?: boolean } = {}) 
       async startMachine(app: string, id: string) { if (opts.failStart) throw new Error('fly down'); started.push(`${app}/${id}`) },
     },
     async createWorldDatabase(slug: string) { return { dbUri: 'postgres://x', schema: worldDbName(slug) } },
-    async dropWorldDatabase() {},
-    async deleteWorldFiles() { return 0 },
+    async dropWorldDatabase(slug: string) { destroyed.push(`dropWorldDatabase ${slug}`) },
+    async deleteWorldFiles(slug: string) { destroyed.push(`deleteWorldFiles ${slug}`); return 0 },
     fetch: (async () => new Response('', { status: 200 })) as unknown as typeof fetch,
     sleep: async () => { await new Promise((r) => setImmediate(r)) },
     log: { info() {}, warn() {}, error() {} },
   }
-  return { started }
+  return { started, destroyed }
 }
 
 describe('connect-your-own Hyperfy world', () => {
@@ -229,6 +234,7 @@ describe('hosted Hyperfy world routes', () => {
     installFakes()
   })
   afterEach(async () => {
+    fake.onSwitch = undefined
     for (const [k, v] of Object.entries(saved)) (config as any)[k] = v
     await app.close()
   })
@@ -279,8 +285,8 @@ describe('hosted Hyperfy world routes', () => {
     expect((await call(owner, 'GET', '/api/hyperfy/slots')).json()).toEqual({ used: 1, limit: 1, hostingAvailable: true })
     ;(config as any).allFeaturesUnlocked = true
     ;(config as any).hyperfyInfraProvider = undefined
-    const unlimited = (await call(owner, 'GET', '/api/hyperfy/slots')).json()
-    expect(unlimited.hostingAvailable).toBe(false)
+    expect((await call(owner, 'GET', '/api/hyperfy/slots')).json()).toEqual({ used: 1, limit: null, hostingAvailable: false })
+    ;(config as any).allFeaturesUnlocked = false
     const ent = await createUser()
     await db.insert(subscriptions).values({ userId: ent.id, tier: 'enterprise' })
     expect((await call(ent, 'GET', '/api/hyperfy/slots')).json()).toMatchObject({ used: 0, limit: null })
@@ -341,7 +347,6 @@ describe('hosted Hyperfy world routes', () => {
     expect(started).toEqual([`vlm-w-${(await row(world.id)).slug}/m-vlm-w-${(await row(world.id)).slug}`])
 
     // The slot is taken again by the restored world, so a second ended world can't come back.
-    await db.update(subscriptions).set({ tier: 'creator' })
     const other = await db
       .insert(hyperfyWorlds)
       .values({ sceneId, ownerId: owner.id, name: 'Old', kind: 'hosted', keyHash: 'old-hash', keyPrefix: 'vlmw_old', slug: 'old-world', flyApp: 'vlm-w-old-world', address: 'x', status: 'ended', endedAt: new Date(), purgeAfter: new Date(Date.now() + 86_400_000) })
@@ -386,10 +391,42 @@ describe('hosted Hyperfy world routes', () => {
   })
 
   it('delete on a hosted world destroys it', async () => {
+    const { destroyed } = installFakes()
     const { world } = (await create()).json()
     await settled(world.id)
+    const { slug } = await row(world.id)
     expect((await call(owner, 'DELETE', `/api/hyperfy/worlds/${world.id}`)).json()).toEqual({ deleted: true })
     expect(await row(world.id)).toBeUndefined()
+    expect(destroyed).toEqual([`deleteApp vlm-w-${slug}`, `dropWorldDatabase ${slug}`, `deleteWorldFiles ${slug}`])
+  })
+
+  it('PATCH with endsAt is 409 already_ended, and writes nothing, if the sweep ends the world between the check and the write', async () => {
+    const { world } = (await create()).json()
+    await settled(world.id)
+    const second = (await createScene(owner, 'Second')).scene.id
+    fake.onSwitch = () => makeEnded(world.id, new Date(Date.now() + 86_400_000)).then(() => undefined)
+    const res = await call(owner, 'PATCH', `/api/hyperfy/worlds/${world.id}`, { sceneId: second, endsAt: new Date(Date.now() + 86_400_000).toISOString() })
+    expect(res.statusCode).toBe(409)
+    expect(res.json().error).toBe('already_ended')
+    const after = await row(world.id)
+    expect(after.status).toBe('ended')
+    expect(after.endsAt!.getTime()).toBeLessThan(Date.now())
+  })
+
+  it('a partial-access collaborator gets 404 on admin-code, and cannot PATCH a scene they only partly access', async () => {
+    const { world } = (await create()).json()
+    await settled(world.id)
+    const editor = await createUser()
+    await db.insert(sceneCollaborators).values({ sceneId, userId: editor.id, role: 'editor' })
+    expect((await call(editor, 'POST', `/api/hyperfy/worlds/${world.id}/admin-code`)).statusCode).toBe(404)
+    expect((await call(editor, 'PATCH', `/api/hyperfy/worlds/${world.id}`, { endsAt: null })).statusCode).toBe(404)
+
+    const stranger = await createUser()
+    const partial = (await createScene(stranger, 'Partial')).scene.id
+    await db.insert(sceneCollaborators).values({ sceneId: partial, userId: owner.id, role: 'editor' })
+    const res = await call(owner, 'PATCH', `/api/hyperfy/worlds/${world.id}`, { sceneId: partial })
+    expect(res.statusCode).toBe(404)
+    expect((await row(world.id)).sceneId).toBe(sceneId)
   })
 
   it('another user gets 404 on every :id route', async () => {
@@ -412,8 +449,8 @@ describe('hosted Hyperfy world routes', () => {
   it('GET /api/deploy/platforms still reports hyperfy hosting availability', async () => {
     const on = await call(owner, 'GET', '/api/deploy/platforms')
     expect(on.statusCode).toBe(200)
-    expect(on.body).toContain('hyperfy')
+    expect(on.json().platforms.hyperfy).toBe(true)
     ;(config as any).hyperfyInfraProvider = undefined
-    expect((await call(owner, 'GET', '/api/deploy/platforms')).body).not.toBe(on.body)
+    expect((await call(owner, 'GET', '/api/deploy/platforms')).json().platforms.hyperfy).toBe(false)
   })
 })
