@@ -23,7 +23,7 @@ export default async function hyperfyFeedRoutes(app: FastifyInstance) {
       const auth = request.headers.authorization
       const world = auth?.startsWith('Bearer ') ? await findWorldByKey(auth.slice(7)) : null
       if (!world) return reply.status(401).send({ error: 'invalid_world_key' })
-      const checked = checkHyperfyAnalyticsBatch(request.body)
+      const checked = checkHyperfyAnalyticsBatch(request.body, Date.now())
       if (!checked.ok) return reply.status(400).send({ error: checked.error })
       return reply.send(await recordHyperfyBatch(world, checked.batch))
     },

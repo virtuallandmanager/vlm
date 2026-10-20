@@ -67,14 +67,21 @@ export interface HyperfyAnalyticsBatch {
 
 export type HyperfyAnalyticsCheck = { ok: true; batch: HyperfyAnalyticsBatch } | { ok: false; error: string }
 
-export const HYPERFY_ANALYTICS_LIMITS = { maxBatchEvents: 200, maxPlayerIdLength: 100 } as const
+export const HYPERFY_ANALYTICS_LIMITS = {
+  maxBatchEvents: 200,
+  maxPlayerIdLength: 100,
+  /** How far an event's t may be behind the server's clock (a world that was offline for a while). */
+  maxPastMs: 24 * 3600_000,
+  /** How far an event's t may be ahead of the server's clock (clock skew). */
+  maxFutureMs: 60_000,
+} as const
 
 const EVENT_TYPES: ReadonlySet<string> = new Set<HyperfyVisitEventType>(['enter', 'leave', 'pos'])
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
-export function checkHyperfyAnalyticsBatch(body: unknown): HyperfyAnalyticsCheck {
+export function checkHyperfyAnalyticsBatch(body: unknown, nowMs: number): HyperfyAnalyticsCheck {
   if (!isObj(body)) return { ok: false, error: 'batch must be an object' }
   if (body.v !== 1) return { ok: false, error: 'v must be 1' }
   const max = HYPERFY_ANALYTICS_LIMITS.maxBatchEvents
@@ -89,6 +96,9 @@ export function checkHyperfyAnalyticsBatch(body: unknown): HyperfyAnalyticsCheck
       return { ok: false, error: `playerId must be a string of 1-${HYPERFY_ANALYTICS_LIMITS.maxPlayerIdLength} characters` }
     }
     if (!isNum(e.t)) return { ok: false, error: 'event.t must be a number' }
+    if (e.t < nowMs - HYPERFY_ANALYTICS_LIMITS.maxPastMs || e.t > nowMs + HYPERFY_ANALYTICS_LIMITS.maxFutureMs) {
+      return { ok: false, error: 'event.t must be within the last 24 hours and at most 60 seconds ahead' }
+    }
     const hasCoords = e.x !== undefined || e.y !== undefined || e.z !== undefined
     if (e.type === 'pos') {
       if (!isNum(e.x) || !isNum(e.y) || !isNum(e.z)) return { ok: false, error: 'pos events need numeric x, y and z' }

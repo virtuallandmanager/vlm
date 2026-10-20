@@ -95,6 +95,9 @@ describe('POST /api/hyperfy/analytics', () => {
   it('rejects an invalid batch', async () => {
     const res = await post({ v: 1, events: [{ type: 'dance', playerId: 'p1', t: T }] })
     expect(res.statusCode).toBe(400)
+    const stale = await post({ v: 1, events: [{ type: 'enter', playerId: 'p1', t: Date.now() - 25 * 3600_000 }] })
+    expect(stale.statusCode).toBe(400)
+    expect(stale.json().error).toMatch(/event\.t/)
     expect(await db.select().from(analyticsSessions)).toHaveLength(0)
   })
 })
