@@ -42,7 +42,7 @@ describe('connect-your-own Hyperfy world', () => {
     expect(res.statusCode).toBe(201)
     const { world, key } = res.json()
     expect(key).toMatch(/^vlmw_[0-9a-f]{64}$/)
-    expect(world).toMatchObject({ sceneId, name: 'My world', kind: 'self', lastSeenAt: null })
+    expect(world).toMatchObject({ sceneId, name: 'My world', kind: 'self', lastSeenAt: null, keyPrefix: key.slice(0, 12) })
     expect(JSON.stringify(world)).not.toContain(key)
     const [row] = await db.select().from(hyperfyWorlds)
     expect(row.keyHash).toBe(createHash('sha256').update(key).digest('hex'))
@@ -61,6 +61,8 @@ describe('connect-your-own Hyperfy world', () => {
     expect(next).toMatch(new RegExp(`^${HYPERFY_FEED.keyPrefix}[0-9a-f]{64}$`))
     expect(next).not.toBe(key)
     expect(rotated.json().world.id).toBe(world.id)
+    expect(rotated.json().world.keyPrefix).toBe(next.slice(0, 12))
+    expect(rotated.json().world.keyPrefix).not.toBe(world.keyPrefix)
     expect(await findWorldByKey(key)).toBeNull()
     expect((await findWorldByKey(next))?.id).toBe(world.id)
   })
@@ -73,6 +75,7 @@ describe('connect-your-own Hyperfy world', () => {
     expect(res.body).not.toContain(key)
     expect(res.body).not.toContain('keyHash')
     expect(res.json().worlds[0].key).toBeUndefined()
+    expect(res.json().worlds[0].keyPrefix).toBe(key.slice(0, 12))
   })
 
   it("another user can't list, rotate or delete it", async () => {

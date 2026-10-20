@@ -28,6 +28,7 @@ export function worldSummary(w: HyperfyWorldRow): HyperfyWorldSummary {
     sceneId: w.sceneId,
     name: w.name,
     kind: 'self',
+    keyPrefix: w.keyPrefix,
     createdAt: w.createdAt.toISOString(),
     lastSeenAt: w.lastSeenAt ? w.lastSeenAt.toISOString() : null,
   }

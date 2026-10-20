@@ -11,7 +11,7 @@ export function lastSeenLabel(iso: string | null, now: Date): string {
   if (age < 2 * MIN) return 'Connected just now'
   if (age < HOUR) return `Last seen ${Math.floor(age / MIN)} min ago`
   if (age < DAY) return `Last seen ${Math.floor(age / HOUR)} h ago`
-  return `Last seen ${then.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+  return `Last seen ${then.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`
 }
 
 export function setupSteps(feedUrl: string): string[] {

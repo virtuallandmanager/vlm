@@ -180,7 +180,7 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
             <div key={w.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-800 bg-gray-900 px-4 py-3">
               <div className="min-w-0">
                 <p className="truncate font-medium">{w.name}</p>
-                <p className="text-xs text-gray-500">{lastSeenLabel(w.lastSeenAt, now)}</p>
+                <p className="text-xs text-gray-500">Key {w.keyPrefix}… · {lastSeenLabel(w.lastSeenAt, now)}</p>
               </div>
               <div className="flex gap-3 text-sm">
                 <button disabled={busy} onClick={() => rotate(w)} className="text-cyan-400 hover:text-cyan-300 disabled:opacity-50">New key</button>

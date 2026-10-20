@@ -19,7 +19,7 @@ describe('lastSeenLabel', () => {
     expect(lastSeenLabel(ago(3 * 3_600_000), now)).toBe('Last seen 3 h ago')
   })
   it('uses the date after a day', () => {
-    expect(lastSeenLabel('2026-10-18T09:00:00Z', now)).toBe('Last seen Oct 18')
+    expect(lastSeenLabel('2026-10-18T12:00:00Z', now)).toBe('Last seen Oct 18')
   })
 })
 

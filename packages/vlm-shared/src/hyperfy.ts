@@ -43,6 +43,8 @@ export interface HyperfyWorldSummary {
   sceneId: string
   name: string
   kind: 'self'
+  /** First 12 characters of the world key, to tell keys apart; never the whole key. */
+  keyPrefix: string
   createdAt: string
   lastSeenAt: string | null
 }
