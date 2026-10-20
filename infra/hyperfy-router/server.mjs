@@ -44,11 +44,21 @@ export function createRouter(domain, opts = {}) {
       pipeline(ures, res, () => {})
     })
     up.on('error', () => {
-      if (!res.headersSent) { res.writeHead(502, { 'content-type': 'text/plain' }); res.end('Bad gateway') }
-      else res.destroy()
+      if (res.headersSent) return res.destroy()
+      const fail = () => {
+        if (res.headersSent || res.destroyed) return
+        res.writeHead(502, { 'content-type': 'text/plain', connection: 'close' })
+        res.end('Bad gateway')
+      }
+      // Drain the rest of the body before answering, so the client isn't cut off mid-upload and the 502 gets delivered.
+      req.unpipe(up)
+      if (req.readableEnded) return fail()
+      req.once('end', fail)
+      req.once('close', fail)
+      req.resume()
     })
     res.on('close', () => up.destroy())
-    pipeline(req, up, () => {})
+    req.pipe(up)
   }
 
   const server = createServer((req, res) => {
