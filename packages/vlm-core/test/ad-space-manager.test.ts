@@ -172,6 +172,68 @@ describe('AdSpaceManager', () => {
     expect(s.showing(s.entityAt(2))).toMatchObject({ kind: 'image', src: 'https://img/fb.png' })
   })
 
+  it('enabling a live stream through a preset update stops video ads', async () => {
+    const s = setup([serve({ both: { ads: [ad('v1', 'video'), ad('i1')] } })])
+    s.sm.handlePresetUpdate({
+      action: 'init',
+      scenePreset: { videos: [screen('tv', 9, { isLive: true, enableLiveStream: false })], adSpaces: [space('both', 1)] },
+    })
+    await s.host.refresh()
+    expect(s.showing(s.entityAt(1))).toMatchObject({ kind: 'video' })
+
+    s.sm.handlePresetUpdate({ action: 'update', element: 'video', elementData: { sk: 'tv', enableLiveStream: true } })
+    expect(s.sm.isStreamLive()).toBe(true)
+    expect(s.showing(s.entityAt(1))).toMatchObject({ kind: 'image', src: ad('i1').url })
+  })
+
+  it('deleting the live screen brings video ads back at once', async () => {
+    const s = setup([serve({ vonly: { ads: [ad('v2', 'video')] } })])
+    s.sm.handlePresetUpdate({ action: 'init', scenePreset: { videos: [screen('tv', 9)], adSpaces: [space('vonly', 2, { formats: 'video' })] } })
+    await s.host.refresh()
+    s.sm.handleVideoStatus({ elementId: 'tv', status: 'live' })
+    expect(s.hasPlane(s.entityAt(2))).toBe(false)
+
+    s.sm.handlePresetUpdate({ action: 'delete', element: 'video', id: 'tv' })
+    expect(s.sm.isStreamLive()).toBe(false)
+    expect(s.showing(s.entityAt(2))).toMatchObject({ kind: 'video', src: ad('v2', 'video').url })
+  })
+
+  it('a disabled screen does not count as a live stream', async () => {
+    const s = setup([serve({ vonly: { ads: [ad('v2', 'video')] } })])
+    s.sm.handlePresetUpdate({ action: 'init', scenePreset: { videos: [screen('tv', 9)], adSpaces: [space('vonly', 2, { formats: 'video' })] } })
+    await s.host.refresh()
+    s.sm.handleVideoStatus({ elementId: 'tv', status: 'live' })
+    s.sm.handlePresetUpdate({ action: 'update', element: 'video', elementData: { sk: 'tv', enabled: false } })
+    expect(s.sm.isStreamLive()).toBe(false)
+    expect(s.showing(s.entityAt(2))).toMatchObject({ kind: 'video', src: ad('v2', 'video').url })
+  })
+
+  it('a preset change never leaves a video ad playing while a stream is live', async () => {
+    const s = setup([serve({ ads: { ads: [ad('v1', 'video'), ad('i1')] } })])
+    s.sm.handlePresetUpdate({ action: 'init', scenePreset: { videos: [screen('ads', 8, { offType: 4 })] } })
+    await s.host.refresh()
+    expect(s.showing(s.entityAt(8))).toMatchObject({ kind: 'video' })
+
+    // the ads-mode screen comes before the live screen in the new preset
+    s.sm.handlePresetChange({ scenePreset: { videos: [screen('ads', 8, { offType: 4 }), screen('tv', 9, { isLive: true })] } })
+    expect(s.sm.isStreamLive()).toBe(true)
+    expect(s.showing(s.entityAt(8))).toMatchObject({ kind: 'image', src: ad('i1').url })
+  })
+
+  it('a video ad that never reports its end gives up its slot after two minutes', async () => {
+    const s = setup([serve({ a: { ads: [ad('v', 'video')] } })])
+    s.sm.handlePresetUpdate({ action: 'init', scenePreset: { adSpaces: [space('a', 1, { formats: 'video' })] } })
+    await s.host.refresh()
+    expect(s.adapter.createVideoPlayer).toHaveBeenCalledTimes(1)
+    s.advance(120_000 - 1)
+    expect(s.adapter.createVideoPlayer).toHaveBeenCalledTimes(1)
+    s.advance(1)
+    // finished and released: the next pick gets a slot again
+    expect(s.adapter.createVideoPlayer).toHaveBeenCalledTimes(2)
+    expect(s.host.videoSlot()).toBe(true) // one of two in use
+    expect(s.host.videoSlot()).toBe(false)
+  })
+
   it('serve failure shows fallback and retries on next refresh', async () => {
     const s = setup([null, serve({ s1: { ads: [ad('i1')] } })])
     s.sm.handlePresetUpdate({ action: 'init', scenePreset: { adSpaces: [space('s1', 1, { fallbackImageSrc: 'https://img/fallback.png' })] } })
@@ -357,6 +419,19 @@ describe('video screens in ad modes', () => {
     expect(s.showing(s.entityAt(9))).toMatchObject({ kind: 'image', src: ad('i1').url })
     s.advance(AD_LIMITS.imageSeconds * 1000)
     expect(s.showing(s.entityAt(9))).toMatchObject({ kind: 'video', src: 'https://v/p1.mp4' })
+  })
+
+  it('playlist + ads resumes the playlist when a video ad never reports its end', async () => {
+    const s = setup([serve({ tv: { ads: [ad('va', 'video')] } })])
+    s.sm.handlePresetUpdate({
+      action: 'init',
+      scenePreset: { videos: [screen('tv', 9, { offType: 5, playlist: ['https://v/p1.mp4', 'https://v/p2.mp4'] })] },
+    })
+    await s.host.refresh()
+    s.end(s.entityAt(9))
+    expect(s.showing(s.entityAt(9))).toMatchObject({ src: ad('va', 'video').url })
+    s.advance(120_000)
+    expect(s.showing(s.entityAt(9))).toMatchObject({ kind: 'video', src: 'https://v/p2.mp4' })
   })
 
   it('playlist + ads with no ad to show continues the playlist', async () => {

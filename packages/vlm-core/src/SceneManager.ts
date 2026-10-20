@@ -55,7 +55,14 @@ export class SceneManager {
     return (this.managers.video as VideoManager).isStreamLive()
   }
 
+  /** Any edit can start or end a live stream (live fields, enabled, create, delete); an init always rechecks. */
   handlePresetUpdate(message: any): void {
+    const wasLive = this.isStreamLive()
+    this.applyPresetUpdate(message)
+    if (message.action === 'init' || this.isStreamLive() !== wasLive) this.streamChanged()
+  }
+
+  private applyPresetUpdate(message: any): void {
     switch (message.action) {
       case 'init':
         this.initPreset(message.scenePreset)
@@ -150,13 +157,19 @@ export class SceneManager {
     if (message.scenePreset) {
       this.initPreset(message.scenePreset)
     }
+    // Screens are created in preset order: an ads-mode screen may have started a video ad before the live screen existed
+    this.streamChanged()
   }
 
   handleVideoStatus(message: any): void {
     const videoManager = this.managers.video as VideoManager
     videoManager.updateLiveStatus(message.elementId, message.status, message.url)
-    // Any stream going live or ending changes what every ad space and ads-mode screen may play
-    videoManager.streamChanged()
+    this.streamChanged()
+  }
+
+  /** What every ad space and ads-mode screen may play depends on whether any stream is live. */
+  private streamChanged(): void {
+    ;(this.managers.video as VideoManager).streamChanged()
     ;(this.managers.ad_space as AdSpaceManager).streamChanged()
   }
 

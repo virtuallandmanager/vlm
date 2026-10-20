@@ -15,6 +15,9 @@ export interface AdSlotSpec {
   emission?: number
 }
 
+/** Longest a video ad may hold its slot when the platform never reports its end (e.g. it failed to load). */
+const MAX_VIDEO_AD_MS = 120_000
+
 /** Inset of the "Ad" label from the plane's top-left corner, in metres. */
 const LABEL_INSET_M = 0.1
 
@@ -98,6 +101,7 @@ export class AdSlot {
       this.adapter.onVideoEnded!(entity, () => {
         if (this.current?.item === item) this.finish()
       })
+      this.setDeadline(this.host!.now() + MAX_VIDEO_AD_MS)
     } else {
       this.adapter.setMaterial(entity, { textureSrc: item.url, emission: this.spec.emission })
       this.setDeadline(this.host!.now() + (durationMs(item) ?? 0))

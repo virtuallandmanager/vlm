@@ -58,7 +58,7 @@ export class VideoManager {
   /** True when any screen has a live, enabled stream (video ads stop scene-wide). */
   isStreamLive(): boolean {
     for (const c of this.configs.values()) {
-      if (c.isLive && c.enableLiveStream && c.liveSrc) return true
+      if (c.enabled && c.isLive && c.enableLiveStream && c.liveSrc) return true
     }
     return false
   }
