@@ -9,6 +9,9 @@
  * Self-run worlds never consult hyperfyHosting() and don't count toward TIER_LIMITS.
  */
 
+import { readFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { asc, eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
@@ -18,6 +21,9 @@ import { requireFeature } from '../middleware/feature-gate.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess, isFullAccess } from '../auth/permissions.js'
 import { createWorldKey, worldSummary, type HyperfyWorldRow } from '../hyperfy/worlds.js'
+
+// Same depth from src/routes (dev, tests) and dist/routes (Docker): apps/server/<src|dist>/routes -> repo root.
+const APP_HYP = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../packages/vlm-hyperfy-app/dist/vlm.hyp')
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MAX_NAME = 100
@@ -35,6 +41,21 @@ async function worldForCaller(request: FastifyRequest, id: string): Promise<Hype
 
 export default async function hyperfyWorldRoutes(app: FastifyInstance) {
   const preHandler = [authenticate, requireFeature('deployment')]
+
+  // Public: the built VLM app, to drop into a Hyperfy world. Read per request so a rebuilt file is served without a restart.
+  app.get('/api/hyperfy/app.hyp', async (request, reply) => {
+    let file: Buffer
+    try {
+      file = await readFile(APP_HYP)
+    } catch (err) {
+      request.log.error({ err, path: APP_HYP }, 'hyperfy app.hyp is missing; run the vlm-hyperfy-app build')
+      return reply.code(503).send({ error: 'app_unavailable' })
+    }
+    return reply
+      .header('Content-Type', 'application/octet-stream')
+      .header('Content-Disposition', 'attachment; filename="vlm.hyp"')
+      .send(file)
+  })
 
   app.post<{ Body: { sceneId?: string; name?: string } }>('/api/hyperfy/worlds', { preHandler }, async (request, reply) => {
     const sceneId = String(request.body?.sceneId ?? '')

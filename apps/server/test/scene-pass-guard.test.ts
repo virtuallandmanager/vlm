@@ -27,6 +27,7 @@ const PUBLIC_EXACT = [
   'GET /api/setup/models', // public: model list for a set-up location
   'GET /api/hyperfy/feed', // world-key auth
   'POST /api/hyperfy/analytics', // world-key auth
+  'GET /api/hyperfy/app.hyp', // public: the built VLM Hyperfy app download
   'POST /api/ingest', // DCL signed fetch / ingest key
   'POST /api/analytics/claims/check-signed', // DCL signed fetch
   'POST /api/streaming/authorize', // media server callback, shared secret
