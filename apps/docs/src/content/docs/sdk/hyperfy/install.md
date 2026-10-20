@@ -73,7 +73,7 @@ Creating a world shows its **admin code** once. In the world's chat, type `/admi
 
 The end date is optional. Until it passes you can move it with **Edit end date**, or choose **Make permanent** to clear it. On the end date the world stops, its address stops answering and it no longer counts against your limit.
 
-VLM keeps an ended world's data, address and key for 30 days. Choose **Restore** on its row to bring it back, as long as you have a free hosted world. After 30 days the world is deleted for good.
+VLM keeps an ended world's data, address and key for 30 days. Choose **Restore** on its row to bring it back, as long as you have a free hosted world. A restored world has no end date, so it stays until you set a new one. After 30 days the world is deleted for good.
 
 ### Destroying a world
 

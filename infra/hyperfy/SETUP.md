@@ -49,7 +49,7 @@ World files (models, images, uploads) live in R2 under the prefix `<slug>/`, and
 
    Give it without a trailing slash and without a world name. The server appends `/<slug>` for each world. URL-encode the key or secret if they contain special characters.
 3. In the bucket's settings, add a public **custom domain** for the CDN, for example `worlds-cdn.vlm.gg`. Its origin, `https://worlds-cdn.vlm.gg`, becomes `HYPERFY_ASSETS_BASE_URL` (no trailing slash; the server appends `/<slug>`).
-4. Add a **CORS rule** on the bucket: allow `GET` (and `HEAD`) from the origins `https://*.worlds.vlm.gg` and `https://vlm-w-*.fly.dev`. If R2 doesn't accept wildcards inside origins, use `*` for `GET` and `HEAD` instead. The files are public anyway.
+4. Add a **CORS rule** on the bucket: allow `GET` and `HEAD` from `*` (the files are public anyway). If you'd rather restrict it, list explicit origins instead, `https://*.worlds.vlm.gg` and `https://vlm-w-*.fly.dev`, if R2 accepts wildcards inside origins.
 
 ## 4. DNS and the router certificate
 
@@ -101,7 +101,7 @@ infra/hyperfy/build.sh
 
 Build the VLM app first so `packages/vlm-hyperfy-app/dist/vlm.hyp` exists and is committed (the script refuses to run with uncommitted changes in `infra/hyperfy` or that `dist`, so the tag matches what is in the image). It builds for `linux/amd64`, pushes `registry.fly.io/vlm-hyperfy-image:<git-sha>` and prints that tag. That tag is `HYPERFY_IMAGE`.
 
-New worlds use the current `HYPERFY_IMAGE`. Existing worlds keep their image until their next key rotation, which restarts them on the current one.
+New worlds use the current `HYPERFY_IMAGE`. Existing worlds keep their image until their next key rotation or restore, either of which moves them to the current one.
 
 ## 7. Railway variables
 
@@ -126,7 +126,7 @@ railway variables -s vlm-server --set "HYPERFY_INFRA_PROVIDER=fly" --set "FLY_WO
 
 Enter the secret values in the Railway dashboard instead if you don't want them in your shell history.
 
-Also add every one of these ten names to the `env` of `vlm-server` in `.railway/railway.ts`, each as `NAME: preserve()`. `railway config apply` deletes any variable that file doesn't list, so unlisted ones would vanish on the next apply. Run `railway config plan` before any apply.
+Also add every one of these ten names, plus `HYPERFY_DB_JOB_APP` and `HYPERFY_WORLDS_DB_MODE` (see the Postgres notes) to the `env` of `vlm-server` in `.railway/railway.ts`, each as `NAME: preserve()`. `railway config apply` deletes any variable that file doesn't list, so unlisted ones would vanish on the next apply. Run `railway config plan` before any apply.
 
 Deploy the server (and only this way):
 
