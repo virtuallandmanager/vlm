@@ -1,6 +1,6 @@
 # Hyperfy Worlds: design
 
-Status: draft for review, 2026-10-19.
+Status: approved by the owner, 2026-10-19.
 
 ## Intent
 
