@@ -10,3 +10,4 @@ export * from './venues.js';
 export * from './analytics.js';
 export * from './models.js';
 export * from './catalog.js';
+export * from './hyperfy.js';
