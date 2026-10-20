@@ -43,7 +43,7 @@
 - **Long-poll only in project 1.** The WebSocket transport comes with hosted worlds in project 2. Colyseus' transport owns the HTTP server's upgrades today, and only hosted worlds have the patched `WebSocket`.
 - **Coordinates.** VLM (Decentraland) is left-handed: Y up, +Z forward. Hyperfy (three.js) is right-handed: Y up, +Z toward the viewer. Mapping:
   - position `(x, y, z)` → `(x, y, -z)`;
-  - rotation in degrees `(rx, ry, rz)` → radians `(-rx, -ry, rz)`, order `'XYZ'`;
+  - rotation in degrees `(rx, ry, rz)` → radians `(-rx, -ry, rz)`, order `'YXZ'`. Decentraland builds rotations yaw, then pitch, then roll (`Quaternion.fromEulerDegrees` is `fromRotationYawPitchRoll`), which is three.js order `'YXZ'`. With `'XYZ'`, single-axis turns still match but combined ones don't;
   - scale is unchanged.
 - **Scale: VLM's size is the base, and the app root converts.** A VLM scale is an absolute size: an image or screen is a 1 m plane times its scale, and a model is its GLB size times its scale. The app builds every node at that size, as a child of the app's root, so a node's local transform is always the VLM value (mapped as above).
   - **Conversion:** what a visitor sees is the root's transform × the node's local transform. The root's transform is wherever, and at whatever size, the world owner placed the VLM app. A freshly placed app at scale 1 shows the scene at its exact VLM size. Scaling the app to 2 shows it twice as big in that world.
@@ -232,7 +232,7 @@
 
 **Interfaces:**
 - Produces:
-  - `toHyperfyTransform(t: { position: Vec3; rotation: Vec3; scale: Vec3 }): { position: [number, number, number]; rotation: [number, number, number]; scale: [number, number, number] }`. It applies the mapping in "Decisions" (rotation in radians, order XYZ).
+  - `toHyperfyTransform(t: { position: Vec3; rotation: Vec3; scale: Vec3 }): { position: [number, number, number]; rotation: [number, number, number]; scale: [number, number, number] }`. It applies the mapping in "Decisions" (rotation in radians, order YXZ).
   - `type RenderItem = { key: string; kind: 'video' | 'image' | 'model' | 'audio'; src: string; loop: boolean; volume: number; width: number; height: number; transform: ReturnType<typeof toHyperfyTransform>; clickUrl: string | null }`. `key` is `${elementId}:${instanceId}`. For video, image and model, `src` is the URL to show.
   - `planScene(scene: SerializedScene | null): RenderItem[]`, applying the per-type rules and skips in "Decisions", for enabled elements and instances only.
   - `diffPlans(prev: RenderItem[], next: RenderItem[]): { add: RenderItem[]; remove: string[]; update: RenderItem[] }`. `update` covers items whose key exists in both but whose fields differ.
@@ -243,6 +243,7 @@
     - `rotation degrees become radians with x and y negated`;
     - `scale is unchanged`;
     - `a 90° yaw in VLM faces the same way after mapping` (forward vector check);
+    - `a combined rotation (20, 135, -10) keeps forward, up and right pointing the same way` (build the VLM rotation as yaw·pitch·roll, the way Decentraland's `fromEulerDegrees` does, compare against a three.js `Euler(..., 'YXZ')` from the mapped values, with z mirrored on the direction vectors);
   - plan:
     - `live video shows liveSrc`;
     - `playlist mode shows the first playlist item looped`;
