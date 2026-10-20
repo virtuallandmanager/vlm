@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import { eq } from 'drizzle-orm'
 import { HYPERFY_FEED } from 'vlm-shared'
@@ -6,7 +6,8 @@ import { db } from '../src/db/connection.js'
 import { hyperfyWorlds, scenes } from '../src/db/schema.js'
 import { initBus, sceneFeedTopic } from '../src/realtime/bus.js'
 import { createWorldKey } from '../src/hyperfy/worlds.js'
-import { setFeedHoldMs } from '../src/routes/hyperfy-feed.js'
+import { FEED_LIMIT, setFeedHoldMs, setFeedLimiter } from '../src/routes/hyperfy-feed.js'
+import { TokenBucketLimiter } from '../src/analytics/limiter.js'
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene, createElement, tokenFor, testApp, type TestUser } from './helpers/factories.js'
 
@@ -26,6 +27,7 @@ describe('GET /api/hyperfy/feed', () => {
     await resetDb()
     presence = new LocalPresence()
     initBus(presence)
+    setFeedLimiter(new TokenBucketLimiter())
     app = await testApp()
     owner = await createUser()
     const { scene, preset } = await createScene(owner, 'World')
@@ -39,6 +41,7 @@ describe('GET /api/hyperfy/feed', () => {
   })
   afterEach(async () => {
     setFeedHoldMs(HYPERFY_FEED.holdMs)
+    vi.restoreAllMocks()
     await app.close()
   })
 
@@ -84,13 +87,81 @@ describe('GET /api/hyperfy/feed', () => {
   })
 
   it('a poll that started before two quick edits returns the latest version', async () => {
+    setFeedHoldMs(1500)
     const { version } = (await feed()).json()
     const held = feed(version)
     await sleep(100)
     await Promise.all([edit('https://x/b.png'), edit('https://x/c.png')])
     const res = await held
+    expect(res.statusCode).toBe(200)
+    expect(res.json().version).not.toBe(version)
+    // The held poll may carry either edit; the next poll must then reach the latest at once, never hold on an old one.
     const latest = (await feed()).json()
-    expect(res.json().version).toBe(latest.version)
+    const started = Date.now()
+    const next = await feed(res.json().version)
+    if (res.json().version === latest.version) {
+      // Already latest: the follow-up holds until the (short) hold ends and answers the same version.
+      expect(next.json().version).toBe(latest.version)
+    } else {
+      expect(Date.now() - started).toBeLessThan(500)
+      expect(next.json().version).toBe(latest.version)
+    }
+    expect(next.json().scene.images[0].textureSrc ?? JSON.stringify(next.json().scene)).toBe(latest.scene.images[0].textureSrc ?? JSON.stringify(latest.scene))
+  })
+
+  it('a touch that lands while the poll is subscribing is not lost', async () => {
+    setFeedHoldMs(3000)
+    const { version } = (await feed()).json()
+    const subscribe = presence.subscribe.bind(presence)
+    let fired = false
+    presence.subscribe = async (topic: string, cb: (d: unknown) => void) => {
+      // Edit (and publish its touch) before this subscription is in place.
+      if (!fired && topic === sceneFeedTopic(sceneId)) {
+        fired = true
+        expect((await edit('https://x/b.png')).statusCode).toBe(200)
+      }
+      return subscribe(topic, cb)
+    }
+    const started = Date.now()
+    const res = await feed(version)
+    expect(fired).toBe(true)
+    expect(Date.now() - started).toBeLessThan(1500)
+    expect(res.json().version).not.toBe(version)
+  })
+
+  it('a failed subscribe answers 500 at once instead of holding', async () => {
+    setFeedHoldMs(3000)
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { version } = (await feed()).json()
+    presence.subscribe = () => Promise.reject(new Error('presence down'))
+    const started = Date.now()
+    const res = await feed(version)
+    expect(res.statusCode).toBe(500)
+    expect(res.json()).toEqual({ error: 'feed_failed' })
+    expect(Date.now() - started).toBeLessThan(1000)
+    errors.mockRestore()
+  })
+
+  it('a failed unsubscribe is logged, not thrown', async () => {
+    setFeedHoldMs(200)
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { version } = (await feed()).json()
+    presence.unsubscribe = () => Promise.reject(new Error('presence down'))
+    const res = await feed(version)
+    expect(res.statusCode).toBe(200)
+    await sleep(20)
+    expect(errors).toHaveBeenCalled()
+    expect((await feed()).statusCode).toBe(200)
+  })
+
+  it('a burst of polls from one IP gets 429, bad keys included', async () => {
+    const codes: number[] = []
+    for (let i = 0; i < FEED_LIMIT.capacity + 5; i++) codes.push((await feed(undefined, i % 2 ? key : 'vlmw_nope')).statusCode)
+    expect(codes.slice(0, FEED_LIMIT.capacity).every((c) => c === 200 || c === 401)).toBe(true)
+    expect(codes[codes.length - 1]).toBe(429)
+    const over = await feed(undefined, 'vlmw_nope')
+    expect(over.statusCode).toBe(429)
+    expect(over.json().retryAfter).toBeGreaterThan(0)
   })
 
   it('answers unchanged after the hold', async () => {

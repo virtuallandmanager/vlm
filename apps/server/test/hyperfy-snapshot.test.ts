@@ -14,22 +14,22 @@ const URL_A = 'https://live.vlm.gg/streams/ka/playlist.m3u8'
 describe('hyperfy scene snapshot and scene-touched signal', () => {
   let gs: Awaited<ReturnType<typeof startGameServer>>
   let app: Awaited<ReturnType<typeof testApp>>
-  const unsubs: (() => void)[] = []
+  const unsubs: (() => Promise<void>)[] = []
   beforeEach(async () => {
     await resetDb()
     gs = await startGameServer()
     app = await testApp()
   })
   afterEach(async () => {
-    while (unsubs.length) unsubs.pop()!()
+    while (unsubs.length) await unsubs.pop()!()
     delete process.env.STREAMING_WEBHOOK_KEY
     await app.close()
     await gs.stop()
   })
 
-  function watch(sceneId: string) {
+  async function watch(sceneId: string) {
     const counter = { n: 0 }
-    unsubs.push(onSceneTouched(sceneId, () => counter.n++))
+    unsubs.push(await onSceneTouched(sceneId, () => counter.n++))
     return counter
   }
   const until = async (fn: () => boolean, ms = 3000) => {
@@ -66,8 +66,8 @@ describe('hyperfy scene snapshot and scene-touched signal', () => {
     const el = await createElement(preset.id, { type: 'image', name: 'Pic', properties: { textureSrc: 'https://x/a.png' } })
     const [other] = await db.insert(scenePresets).values({ sceneId: scene.id, name: 'Other' }).returning()
     const otherScene = await createScene(host)
-    const seen = watch(scene.id)
-    const unrelated = watch(otherScene.scene.id)
+    const seen = await watch(scene.id)
+    const unrelated = await watch(otherScene.scene.id)
 
     await app.inject({ method: 'PUT', url: `/api/elements/${el.id}`, headers, payload: { name: 'Renamed' } })
     await until(() => seen.n === 1)
@@ -98,8 +98,8 @@ describe('hyperfy scene snapshot and scene-touched signal', () => {
     const notUsing = await createScene(host)
     await createElement(notUsing.preset.id, { type: 'video', name: 'Screen', properties: { liveSrc: 'https://other/x.m3u8', playlist: [] } })
     const before = (await sceneSnapshot(using.scene.id))!.version
-    const hit = watch(using.scene.id)
-    const miss = watch(notUsing.scene.id)
+    const hit = await watch(using.scene.id)
+    const miss = await watch(notUsing.scene.id)
 
     const res = await app.inject({ method: 'POST', url: '/api/streaming/webhook', headers: { 'x-webhook-key': 'k' }, payload: { streamKey: 'ka', status: 'live' } })
     expect(res.statusCode).toBe(200)

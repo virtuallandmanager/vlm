@@ -7,8 +7,18 @@ import { findWorldByKey } from '../hyperfy/worlds.js'
 import { recordHyperfyBatch } from '../hyperfy/analytics.js'
 import { sceneSnapshot } from '../hyperfy/snapshot.js'
 import { onSceneTouched } from '../realtime/bus.js'
+import { TokenBucketLimiter } from '../analytics/limiter.js'
 
 let holdMs: number = HYPERFY_FEED.holdMs
+
+// Per IP, checked before the key: a world polls about 3 times a minute, plus bursts on edits and errors.
+export const FEED_LIMIT = { capacity: 120, refillPerSec: 2 }
+let limiter = new TokenBucketLimiter()
+
+/** Test hook. */
+export function setFeedLimiter(l: TokenBucketLimiter): void {
+  limiter = l
+}
 
 /** Test hook. */
 export function setFeedHoldMs(ms: number): void {
@@ -31,8 +41,11 @@ export default async function hyperfyFeedRoutes(app: FastifyInstance) {
 
   app.get<{ Querystring: { since?: string } }>(
     '/api/hyperfy/feed',
-    { logLevel: 'warn', config: { rateLimit: false } }, // world-key auth; keep the key-bearing polls out of per-request logs
+    // World-key auth with its own per-IP limit (bad keys included); keep the key-bearing polls out of per-request logs.
+    { logLevel: 'warn', config: { rateLimit: false } },
     async (request, reply) => {
+      const limit = limiter.take(`ip:${request.ip}`, 1, FEED_LIMIT.capacity, FEED_LIMIT.refillPerSec)
+      if (!limit.ok) return reply.status(429).send({ error: 'rate_limited', retryAfter: Math.ceil(limit.retryAfterMs / 1000) })
       const auth = request.headers.authorization
       const world = auth?.startsWith('Bearer ') ? await findWorldByKey(auth.slice(7)) : null
       if (!world) return reply.status(401).send({ error: 'invalid_world_key' })
@@ -51,9 +64,45 @@ export default async function hyperfyFeedRoutes(app: FastifyInstance) {
       }
       const send = (r: { body?: HyperfyFeedResponse }) =>
         r.body ? reply.send(r.body) : reply.status(404).send({ error: 'scene_not_found' })
+      if (!since) return send(await answer())
 
-      const first = await answer()
-      if (first.done) return send(first)
+      // Listen for the client leaving first, then subscribe before the first read, so a touch landing after
+      // that read can't be missed.
+      let closed = false
+      let onClose = () => {
+        closed = true
+      }
+      const closeListener = () => onClose()
+      request.raw.on('close', closeListener)
+      let onTouch = () => {}
+      let unsubscribe: () => Promise<void>
+      try {
+        unsubscribe = await onSceneTouched(sceneId, () => onTouch())
+      } catch (err) {
+        request.raw.off('close', closeListener)
+        request.log.error(err)
+        return reply.status(500).send({ error: 'feed_failed' })
+      }
+      let touched = false
+      onTouch = () => {
+        touched = true
+      }
+      const release = () => {
+        request.raw.off('close', closeListener)
+        void unsubscribe()
+      }
+
+      let first: Awaited<ReturnType<typeof answer>>
+      try {
+        first = await answer()
+      } catch (err) {
+        release()
+        throw err
+      }
+      if (first.done || closed) {
+        release()
+        return closed ? undefined : send(first)
+      }
 
       // Hold. Resolves once, whichever of touch / timeout / client close comes first.
       return new Promise<void>((resolve) => {
@@ -64,8 +113,7 @@ export default async function hyperfyFeedRoutes(app: FastifyInstance) {
           if (finished) return
           finished = true
           clearTimeout(timer)
-          unsubscribe()
-          request.raw.off('close', onClose)
+          release()
           Promise.resolve(fn()).finally(resolve)
         }
         const check = async () => {
@@ -93,9 +141,10 @@ export default async function hyperfyFeedRoutes(app: FastifyInstance) {
             return reply.status(500).send({ error: 'feed_failed' })
           })
         }, holdMs)
-        const unsubscribe = onSceneTouched(sceneId, () => void check())
-        const onClose = () => finish(() => undefined)
-        request.raw.on('close', onClose)
+        onTouch = () => void check()
+        onClose = () => finish(() => undefined)
+        // A touch during the first read may have come after it read the scene: read once more.
+        if (touched) void check()
       })
     },
   )

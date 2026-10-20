@@ -40,7 +40,9 @@ async function worldForCaller(request: FastifyRequest, id: string): Promise<Hype
 }
 
 export default async function hyperfyWorldRoutes(app: FastifyInstance) {
-  const preHandler = [authenticate, requireFeature('deployment')]
+  // Only connecting needs a plan that can deploy; an owner who downgrades can still list, rotate a leaked key or remove a world.
+  const createPreHandler = [authenticate, requireFeature('deployment')]
+  const preHandler = [authenticate]
 
   // Public: the built VLM app, to drop into a Hyperfy world. Read per request so a rebuilt file is served without a restart.
   app.get('/api/hyperfy/app.hyp', async (request, reply) => {
@@ -57,7 +59,7 @@ export default async function hyperfyWorldRoutes(app: FastifyInstance) {
       .send(file)
   })
 
-  app.post<{ Body: { sceneId?: string; name?: string } }>('/api/hyperfy/worlds', { preHandler }, async (request, reply) => {
+  app.post<{ Body: { sceneId?: string; name?: string } }>('/api/hyperfy/worlds', { preHandler: createPreHandler }, async (request, reply) => {
     const sceneId = String(request.body?.sceneId ?? '')
     const name = String(request.body?.name ?? '').trim()
     if (!name || name.length > MAX_NAME) return reply.status(400).send({ error: 'name is required (up to 100 characters)' })

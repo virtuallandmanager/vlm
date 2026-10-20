@@ -53,15 +53,22 @@ export async function publishSceneTouched(sceneId: string): Promise<void> {
   }
 }
 
-/** Call `cb` whenever the scene is touched, on any server. Returns the unsubscribe. */
-export function onSceneTouched(sceneId: string, cb: () => void): () => void {
+/**
+ * Call `cb` whenever the scene is touched, on any server. Resolves once the subscription is in place (a
+ * rejection means it isn't), with the unsubscribe, which never throws.
+ */
+export async function onSceneTouched(sceneId: string, cb: () => void): Promise<() => Promise<void>> {
   const p = presence
-  if (!p) return () => {}
+  if (!p) return async () => {}
   const topic = sceneFeedTopic(sceneId)
   const handler = () => cb()
-  p.subscribe(topic, handler)
-  return () => {
-    p.unsubscribe(topic, handler)
+  await p.subscribe(topic, handler)
+  return async () => {
+    try {
+      await p.unsubscribe(topic, handler)
+    } catch (err) {
+      console.error('[bus] scene touch unsubscribe failed:', err)
+    }
   }
 }
 

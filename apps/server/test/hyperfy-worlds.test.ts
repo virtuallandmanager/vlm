@@ -108,6 +108,19 @@ describe('connect-your-own Hyperfy world', () => {
     expect(await db.select().from(hyperfyWorlds)).toHaveLength(0)
   })
 
+  it('a free-plan owner can still list, rotate and delete a world', async () => {
+    const { world } = (await connect()).json()
+    config.allFeaturesUnlocked = false
+    const list = await call(owner, 'GET', `/api/hyperfy/worlds?sceneId=${sceneId}`)
+    expect(list.statusCode).toBe(200)
+    expect(list.json().worlds.map((w: { id: string }) => w.id)).toEqual([world.id])
+    const rotated = await call(owner, 'POST', `/api/hyperfy/worlds/${world.id}/rotate-key`)
+    expect(rotated.statusCode).toBe(200)
+    expect(rotated.json().key).toMatch(/^vlmw_/)
+    expect((await call(owner, 'DELETE', `/api/hyperfy/worlds/${world.id}`)).json()).toEqual({ deleted: true })
+    expect(await db.select().from(hyperfyWorlds)).toHaveLength(0)
+  })
+
   it('validates the body', async () => {
     expect((await call(owner, 'POST', '/api/hyperfy/worlds', { sceneId, name: '  ' })).statusCode).toBe(400)
     expect((await call(owner, 'POST', '/api/hyperfy/worlds', { sceneId: 'nope', name: 'x' })).statusCode).toBe(404)
