@@ -12,7 +12,7 @@ The VLM SDK is split into layered packages:
 | `vlm-core` | `VLM` class, `SceneManager`, element managers (Video, Image, Mesh, Sound) |
 | `vlm-hud` | In-world management HUD (optional) |
 | `vlm-adapter-dcl` | Decentraland SDK 7 adapter |
-| `vlm-adapter-hyperfy` | Hyperfy adapter (React JSX) |
+| `vlm-hyperfy-app` | VLM app for self-run Hyperfy worlds (see [Hyperfy Setup](/sdk/hyperfy/install)) |
 
 ## How It Works
 

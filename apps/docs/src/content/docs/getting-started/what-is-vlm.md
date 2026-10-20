@@ -32,7 +32,7 @@ VLM provides:
 ```
 Web Dashboard ──→ VLM API (Fastify + Colyseus) ──→ Platform Adapters
                        │                              ├── Decentraland (SDK 7)
-                       │                              ├── Hyperfy (React JSX)
+                       │                              ├── Hyperfy (VLM app)
                        ├── PostgreSQL                 └── Second Life (HTTP hooks)
                        ├── Redis (optional)
                        └── Streaming Server (RTMP → HLS)

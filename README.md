@@ -27,7 +27,7 @@ Web Dashboard (Next.js)  ──REST/WSS──▶  VLM API Server (Fastify + Coly
 In-World SDKs + HUD  ──Colyseus WSS──────────┘
   ├── vlm-core (platform-agnostic logic)
   ├── vlm-adapter-dcl (Decentraland)
-  └── vlm-adapter-hyperfy (Hyperfy)
+  └── vlm-hyperfy-app (Hyperfy)
 ```
 
 ## Monorepo Structure
@@ -43,7 +43,7 @@ In-World SDKs + HUD  ──Colyseus WSS──────────┘
 | `packages/vlm-client` | HTTP + WebSocket client SDK |
 | `packages/vlm-hud` | In-world management HUD (spatial UI overlay) |
 | `packages/vlm-adapter-dcl` | Decentraland adapter |
-| `packages/vlm-adapter-hyperfy` | Hyperfy adapter |
+| `packages/vlm-hyperfy-app` | VLM app (`.hyp`) for self-run Hyperfy worlds |
 
 ## Quick Start
 

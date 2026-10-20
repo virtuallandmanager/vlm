@@ -42,7 +42,7 @@ vlm-core (business logic) → adapter.createEntity()
                            → adapter.createVideoPlayer(entity, options)
                                     ↓
                            DclAdapter: engine.addEntity(), Transform.create(), VideoPlayer.create()
-                           HyperfyAdapter: EntityStore.createEntity() → React <video> JSX
+                           Hyperfy: the VLM app builds a <video> node from the scene feed
 ```
 
 The adapter never makes decisions about _what_ to render — it only knows _how_ to render what vlm-core tells it to.

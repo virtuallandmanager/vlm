@@ -21,7 +21,6 @@ COPY packages/vlm-core/package.json packages/vlm-core/
 COPY packages/vlm-client/package.json packages/vlm-client/
 COPY packages/vlm-hud/package.json packages/vlm-hud/
 COPY packages/vlm-adapter-dcl/package.json packages/vlm-adapter-dcl/
-COPY packages/vlm-adapter-hyperfy/package.json packages/vlm-adapter-hyperfy/
 COPY packages/vlm-hyperfy-app/package.json packages/vlm-hyperfy-app/
 
 RUN pnpm install --frozen-lockfile
