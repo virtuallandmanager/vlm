@@ -11,6 +11,7 @@ import authRoutes from './routes/auth.js'
 import walletAuthRoutes from './routes/wallet-auth.js'
 import authHandoffRoutes from './routes/auth-handoff.js'
 import setupRoutes from './routes/setup.js'
+import adRoutes from './routes/ads.js'
 import { analyticsClaimSignedRoutes } from './routes/analytics-claims.js'
 import analyticsReadRoutes from './routes/analytics-read.js'
 import sceneRoutes from './routes/scenes.js'
@@ -125,6 +126,11 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     await scope.register(authRoutes)
     await scope.register(walletAuthRoutes)
     await scope.register(authHandoffRoutes)
+  })
+  // Ad serve/events are DCL signed fetches: the signed body hash is checked against request.rawBody
+  await app.register(async (scope) => {
+    withRawJson(scope)
+    await scope.register(adRoutes)
   })
   await app.register(sceneRoutes)
   await app.register(sceneRoleRoutes)

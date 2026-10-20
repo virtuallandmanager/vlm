@@ -27,6 +27,8 @@ const PUBLIC_EXACT = [
   'GET /api/setup/models', // public: model list for a set-up location
   'POST /api/ingest', // DCL signed fetch / ingest key
   'POST /api/analytics/claims/check-signed', // DCL signed fetch
+  'POST /api/ads/serve', // DCL signed fetch (ads for the signed scene's spaces)
+  'POST /api/ads/events', // DCL signed fetch (ad views from the signed scene)
   'POST /api/streaming/authorize', // media server callback, shared secret
   'GET /api/streaming/live-keys', // media server callback, shared secret
   'POST /api/streaming/webhook', // media server callback, shared secret
