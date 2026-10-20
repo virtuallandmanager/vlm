@@ -2,7 +2,7 @@
 
 Status: agreed with the owner in conversation, 2026-10-20.
 Mockup: `.superpowers/brainstorm/66058-1792536831/content/page-a-full.html` in the main checkout (not committed). This document describes it in full.
-Related: `2026-10-19-ad-platform-design.md` on `feature/ad-platform-design` (the ad platform, including the separate `vlm.gg/advertise` page).
+Related: `2026-10-19-ad-platform-design.md` (the ad platform, including the separate `vlm.gg/advertise` page).
 
 ## Intent
 
@@ -31,7 +31,7 @@ The page sends advertisers on to the ad platform and doesn't try to sell ads its
 ## Anti-goals
 
 - **Claims VLM can't back up.** No traffic numbers, prices, customer logos or testimonials until there is real data. Production has two VLM scenes and very little traffic.
-- **Shipping ahead of the ad platform.** The owner decided the page goes live together with the ad platform, not before it, so the ad sections describe ad features as live. VLM has no users yet, so there's no audience to mislead in between.
+- **Promising ad features that don't exist yet.** The page launches with ad platform step 1 as it is on `main` (owner's decision): ad spaces in scenes, the four measurement levels, and ads that VLM places by hand from the admin page. Steps 2–4 (the review queue and per-space ad settings, self-serve buying at `/advertise`, Stripe payouts and the 90% split) don't exist yet, and the page doesn't promise them. Each section's copy gets updated as its step ships.
 - **Breaking sign-in.** Existing links to `/?next=…` (for example from the in-world HUD and auth handoff) must still end with the user signed in and at their destination.
 
 ## Audience decisions (from the conversation)
@@ -45,8 +45,8 @@ The look is the dashboard's graphite-and-cyan theme (merged to `main` from `feat
 
 1. **Nav.** VLM logo; links to Features (anchor), Advertise, Docs; a "Sign in" button; a cyan "Get started" button that opens registration.
 2. **Two doors.** Two cards side by side; they stack on narrow screens, with the advertiser card first.
-   - **Advertiser card**: wider, cyan border and tint. Tag "For brands & creators". Headline "Put your brand where people actually hang out in the metaverse". Body: image and video ads on screens and billboards in live Decentraland scenes; every ad reviewed; pay only for real views; no wallet or Decentraland account needed. Large cyan "Advertise with VLM →" button. Small previews of the four ad shapes (16:9, 1:1, 9:16, 2:5).
-   - **Builder card**: tag "For builders & venue owners". Headline "Run every scene you own from one dashboard". Body: change screens, streams and events live without redeploying; turn screens into ad spaces and keep 90% of what brands pay. Outline button "Start building, it's free", which opens registration.
+   - **Advertiser card**: wider, cyan border and tint. Tag "For brands & creators". Headline "Put your brand where people actually hang out in the metaverse". Body: image and video ads on screens and billboards in live Decentraland scenes. Advertising is in early access: VLM sets up each campaign with you and reports what it delivered. No wallet or Decentraland account needed. Large cyan "Advertise with VLM →" button, which opens the early-access form. Small previews of the four ad shapes (16:9, 1:1, 9:16, 2:5).
+   - **Builder card**: tag "For builders & venue owners". Headline "Run every scene you own from one dashboard". Body: change screens, streams and events live without redeploying; turn screens into ad spaces and earn from the campaigns VLM places in them. Outline button "Start building, it's free", which opens registration.
 3. **Features** (anchor target for the nav). Heading "Everything your scene needs, live". Six tiles:
    - Live scene control: edit videos, images, models and sounds from the dashboard; visitors see it in milliseconds.
    - Live streaming: stream from OBS to every screen in the scene; late arrivals join live.
@@ -56,8 +56,8 @@ The look is the dashboard's graphite-and-cyan theme (merged to `main` from `feat
    - One dashboard, many worlds: Decentraland and Hyperfy, together from the command center.
    - Below the tiles, one line: media hosting · one-click deploy · teams & roles · API keys · self-hosting.
    - Hyperfy hosting, in-world upload, the model catalog and the analytics dashboard are all on `main` and can be named in the tiles or the line.
-4. **"Your scene can pay you"** band, for owners. Turn any VLM screen into an ad space or place a billboard; choose family-friendly only, allow all, or approve each ad; ads pause during live streams and venue bookings. Three stat tiles: "90% of ad revenue goes to you", "You decide which ads show", "Muted video ads, with frequency caps".
-5. **"Ads that prove they were seen"**, for advertisers. Four tiles for the measurement levels: in scene, on screen (highlighted: "this is what you pay for"), looked at, clicked. A second "Advertise with VLM →" button, with the note "Counted from verified wallets only, once per day."
+4. **"Your scene can pay you"** band, for owners. Turn any VLM screen into an ad space (ads, or your playlist with ads between) or place a standalone billboard; ads step aside while you're streaming live; empty slots show VLM's own house ads, never a blank panel. Earnings from campaigns VLM places in your scene are paid to you. Three tiles: "Any screen becomes an ad space", "Ads never interrupt your stream", "Muted video ads, labelled and capped". No percentage and no per-space ad settings until steps 4 and 2 ship. *(My call: the 90% split and the owner's family-friendly / allow all / approve setting don't exist yet.)*
+5. **"Ads that prove they were seen"**, for advertisers. Four tiles for the measurement levels: in scene, on screen (highlighted: "this is what you pay for"), looked at, clicked. A second "Advertise with VLM →" button, with the note "Counted from verified wallets only, once per day." These levels are live in step 1.
 6. **Closing bar.** "Ready to build? Free plan, no card needed." Sign in and Get started buttons.
 7. **Footer.** Docs · Advertise · Discord · Privacy (the docs site's privacy page). No Terms link: no Terms page exists yet. *(My call.)*
 
@@ -65,9 +65,9 @@ All copy above is a first draft, taken mostly from the ad platform design's word
 
 ## The "Advertise with VLM" button
 
-Its target depends on whether `vlm.gg/advertise` exists yet.
+At launch the button opens an early-access form (owner's decision): `/advertise` is part of ad step 3, which hasn't been started.
 
-- **Until `/advertise` exists:** the button opens an early-access form (agreed with the owner). The ad design makes checkout invite-only at first, with an admin letting buyers in, so the list feeds that directly.
+- **Early-access form:** The ad design makes checkout invite-only at first, with an admin letting buyers in, so the list feeds that directly.
   - Fields: email (required), name, company or project, website, and a free-text "What would you like to advertise?".
   - A short line under the form: VLM will only use this to contact them about advertising, with a link to the privacy page. Store the time they submitted it as their consent. *(My call.)*
   - On submit: a thank-you message saying VLM will be in touch.
