@@ -1,13 +1,15 @@
-From 00344cec479734b204d759e3379c5ce14e79241c Mon Sep 17 00:00:00 2001
-From: VLM <noreply@anthropic.com>
-Date: Mon, 19 Oct 2026 18:10:46 -0400
-Subject: [PATCH] feat(scripts): opt-in WebSocket for app scripts, limited to
- allowed origins
+From 9c9e618c71071e4a97e868c40f5b2014ff94709d Mon Sep 17 00:00:00 2001
+From: Steven Williams <stevenwritescode@gmail.com>
+Date: Mon, 19 Oct 2026 20:08:42 -0400
+Subject: [PATCH 1/2] feat(scripts): opt-in WebSocket for app scripts, limited
+ to allowed origins
 
 PUBLIC_SCRIPT_WEBSOCKET_ORIGINS lists the origins scripts may connect to.
 Unset means scripts get no WebSocket (today's behaviour). Scripts receive a
 small wrapper, not the native socket, and an app's sockets close when it is
 torn down.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 ---
  .env.example                        |  4 ++
  docs/scripting/Networking.md        | 19 ++++++
@@ -18,10 +20,10 @@ torn down.
  create mode 100644 src/core/extras/scriptWebSockets.js
 
 diff --git a/.env.example b/.env.example
-index ac6ae2c..74cd5a0 100644
+index a00dc6f..f435b53 100644
 --- a/.env.example
 +++ b/.env.example
-@@ -15,6 +15,10 @@ ADMIN_CODE=
+@@ -16,6 +16,10 @@ ADMIN_CODE=
  # Can be set to 0 to disable saving
  SAVE_INTERVAL=60
  
@@ -211,6 +213,77 @@ index a508003..5047903 100644
        const config = props // deprecated
        ${code}
      }
+-- 
+2.41.0
+
+
+From cee496ae9b17298218f78a2dba37734ecdfe1d0d Mon Sep 17 00:00:00 2001
+From: Steven Williams <stevenwritescode@gmail.com>
+Date: Tue, 20 Oct 2026 11:03:47 -0400
+Subject: [PATCH 2/2] fix(scripts): fire close when a script WebSocket fails to
+ connect on the server
+
+Node's WebSocket reports a failed connection with only an error event and
+leaves the socket CONNECTING, where browsers follow the error with close. A
+server script that reconnects from onclose (the usual pattern) then stopped
+retrying for good. The wrapper now closes a socket that errors before it
+opened, once, so scripts see the same events on the server and on clients.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018ds2NZXw5KLxDpVm9B3ABD
+---
+ src/core/extras/scriptWebSockets.js | 29 +++++++++++++++++++++++------
+ 1 file changed, 23 insertions(+), 6 deletions(-)
+
+diff --git a/src/core/extras/scriptWebSockets.js b/src/core/extras/scriptWebSockets.js
+index f7aa360..4b37cdf 100644
+--- a/src/core/extras/scriptWebSockets.js
++++ b/src/core/extras/scriptWebSockets.js
+@@ -12,7 +12,11 @@
+  */
+ 
+ export function scriptWebSocketOrigins() {
+-  const raw = (globalThis.process?.env?.PUBLIC_SCRIPT_WEBSOCKET_ORIGINS || globalThis.env?.PUBLIC_SCRIPT_WEBSOCKET_ORIGINS || '').trim()
++  const raw = (
++    globalThis.process?.env?.PUBLIC_SCRIPT_WEBSOCKET_ORIGINS ||
++    globalThis.env?.PUBLIC_SCRIPT_WEBSOCKET_ORIGINS ||
++    ''
++  ).trim()
+   if (!raw) return []
+   return raw
+     .split(',')
+@@ -55,13 +59,26 @@ export function createScriptWebSockets(origins = scriptWebSocketOrigins()) {
+     ws.binaryType = 'arraybuffer'
+     sockets.add(ws)
+     const handlers = { open: null, message: null, close: null, error: null }
+-    ws.onopen = () => handlers.open?.({})
+-    ws.onmessage = e => handlers.message?.({ data: e.data })
+-    ws.onerror = () => handlers.error?.({})
+-    ws.onclose = e => {
++    let opened = false
++    let closed = false
++    const finish = e => {
++      if (closed) return
++      closed = true
+       sockets.delete(ws)
+-      handlers.close?.({ code: e.code, reason: e.reason, wasClean: e.wasClean })
++      handlers.close?.({ code: e?.code ?? 1006, reason: e?.reason ?? '', wasClean: e?.wasClean ?? false })
++    }
++    ws.onopen = () => {
++      opened = true
++      handlers.open?.({})
++    }
++    ws.onmessage = e => handlers.message?.({ data: e.data })
++    ws.onerror = () => {
++      handlers.error?.({})
++      // Node's WebSocket reports a failed connection with an error event only, where browsers follow it with
++      // close: close it here too so scripts see the same events on the server and on clients.
++      if (!opened) queueMicrotask(() => finish())
+     }
++    ws.onclose = e => finish(e)
+     const wrapper = {
+       send: data => ws.send(data),
+       close: (code, reason) => ws.close(code, reason),
 -- 
 2.41.0
 

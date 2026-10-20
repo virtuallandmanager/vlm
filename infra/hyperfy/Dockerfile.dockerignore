@@ -1,0 +1,4 @@
+# The image needs only the patches and the built VLM app from the repo root context.
+*
+!infra/hyperfy/patches/
+!packages/vlm-hyperfy-app/dist/vlm.hyp
