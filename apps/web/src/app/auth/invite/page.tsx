@@ -97,7 +97,7 @@ function InviteHandler() {
             Log in or create an account to accept this invite. The invite will be applied automatically after you sign in.
           </p>
           <a
-            href="/"
+            href="/signin/"
             className="inline-block rounded-lg bg-blue-600 px-6 py-2 text-white hover:bg-blue-700"
           >
             Go to login
@@ -111,7 +111,7 @@ function InviteHandler() {
     <div className="flex min-h-screen items-center justify-center">
       <div className="w-full max-w-md rounded-xl bg-gray-900 p-8 text-center">
         <p className="mb-4 text-red-400">{error || 'Something went wrong.'}</p>
-        <a href="/" className="text-blue-400 hover:underline">Back to login</a>
+        <a href="/signin/" className="text-blue-400 hover:underline">Back to login</a>
       </div>
     </div>
   )

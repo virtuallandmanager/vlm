@@ -30,7 +30,7 @@ describe('runHandoff', () => {
     const { calls, d } = deps(410)
     expect(await runHandoff(d)).toBe('fallback')
     expect(d.saveSession).not.toHaveBeenCalled()
-    expect(calls.at(-1)).toBe(`go:/?next=${encodeURIComponent('/analytics/?scene=abc')}`)
+    expect(calls.at(-1)).toBe(`go:/signin/?next=${encodeURIComponent('/analytics/?scene=abc')}`)
   })
   it('an off-site next is ignored', async () => {
     const { d } = deps(200)
@@ -44,7 +44,7 @@ describe('runHandoff', () => {
     expect(await runHandoff(d)).toBe('fallback')
     expect(d.exchange).not.toHaveBeenCalled()
     expect(calls[0]).toBe('replace:/auth/handoff/')
-    expect(calls.at(-1)).toBe('go:/?next=%2Fanalytics%2F')
+    expect(calls.at(-1)).toBe('go:/signin/?next=%2Fanalytics%2F')
   })
 })
 

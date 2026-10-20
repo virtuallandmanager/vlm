@@ -16,7 +16,7 @@ function ResetPasswordForm() {
       <div className="flex min-h-screen items-center justify-center">
         <div className="w-full max-w-md rounded-xl bg-gray-900 p-8 text-center">
           <p className="mb-4 text-red-400">Invalid or missing reset token.</p>
-          <a href="/" className="text-blue-400 hover:underline">Back to login</a>
+          <a href="/signin/" className="text-blue-400 hover:underline">Back to login</a>
         </div>
       </div>
     )
@@ -29,7 +29,7 @@ function ResetPasswordForm() {
           <h2 className="mb-4 text-xl font-semibold text-white">Password reset successful</h2>
           <p className="mb-6 text-gray-400">Your password has been updated. You can now log in with your new password.</p>
           <a
-            href="/"
+            href="/signin/"
             className="inline-block rounded-lg bg-blue-600 px-6 py-2 text-white hover:bg-blue-700"
           >
             Go to login

@@ -4,6 +4,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { useApi } from '@/lib/api'
 import { scenePassAllows } from '@/lib/session'
+import { signinPath } from '@/lib/landing-route'
 import Link from 'next/link'
 import {
   BroadcastIcon, CalendarIcon, ChartIcon, CubeIcon, GearIcon, GiftIcon, HomeIcon, LayersIcon, LogoutIcon, MediaIcon,
@@ -53,14 +54,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (!loading && !user) {
       const here = window.location.pathname + window.location.search
-      router.push(`/?next=${encodeURIComponent(here)}`)
+      router.push(signinPath(here))
     }
   }, [user, loading, router])
 
   // A scene pass may only open its own scene's analytics; anything else goes to sign-in.
   useEffect(() => {
     if (!loading && user && scenePass && !scenePassAllows(window.location.pathname, window.location.search, scenePass)) {
-      router.push('/?next=' + encodeURIComponent(window.location.pathname + window.location.search))
+      router.push(signinPath(window.location.pathname + window.location.search))
     }
   }, [user, loading, scenePass, pathname, router])
 
@@ -121,7 +122,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <main className="min-w-0 flex-1 px-4 py-5 md:px-10 md:py-8">
         {scenePass && (
           <div className="mb-4 rounded-lg border border-gray-800 bg-gray-900 px-4 py-2 text-sm text-gray-300">
-            Signed in from {sceneTitle} — <Link className="underline" href={`/?next=${encodeURIComponent(here)}`} onClick={logout}>sign in for full access</Link>
+            Signed in from {sceneTitle} — <Link className="underline" href={signinPath(here)} onClick={logout}>sign in for full access</Link>
           </div>
         )}
         {children}

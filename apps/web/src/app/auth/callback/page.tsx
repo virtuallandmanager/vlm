@@ -46,7 +46,7 @@ function CallbackHandler() {
       <div className="flex min-h-screen items-center justify-center">
         <div className="w-full max-w-md rounded-xl bg-gray-900 p-8 text-center">
           <p className="mb-4 text-red-400">{error}</p>
-          <a href="/" className="text-blue-400 hover:underline">
+          <a href="/signin/" className="text-blue-400 hover:underline">
             Back to login
           </a>
         </div>

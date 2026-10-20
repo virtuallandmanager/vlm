@@ -1,3 +1,4 @@
+import { signinPath } from './landing-route'
 import { safeNextPath } from './next-path'
 import { readSession } from './session'
 
@@ -53,6 +54,6 @@ export async function runHandoff(d: HandoffDeps): Promise<'signed-in' | 'fallbac
       /* network error → normal sign-in */
     }
   }
-  d.go(`/?next=${encodeURIComponent(next)}`)
+  d.go(signinPath(next))
   return 'fallback'
 }
