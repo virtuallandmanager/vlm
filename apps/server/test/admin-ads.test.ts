@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { db } from '../src/db/connection.js'
-import { ads, adCreatives, adEvents, mediaAssets } from '../src/db/schema.js'
+import { ads, adCreatives, adEvents, mediaAssets, sceneElements, scenePresets } from '../src/db/schema.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, createScene, createElement, tokenFor } from './helpers/factories.js'
 
@@ -128,6 +128,20 @@ describe('admin ads routes', () => {
     expect(by[space.id]).toMatchObject({ sceneName: 'Ship', name: 'Banner', type: 'ad_space', shape: '2:5' })
     expect(by[screen.id]).toMatchObject({ type: 'video', shape: '1:1' })
     expect(by[defaultShape.id].shape).toBe('16:9')
+  })
+
+  it('spaces leaves out booking clones and names each preset, marking the active one', async () => {
+    const { scene, preset } = await createScene(admin, 'Ship')
+    const live = await createElement(preset.id, { type: 'ad_space', name: 'Banner', properties: { shape: '1:1', formats: 'both' } })
+    const [other] = await db.insert(scenePresets).values({ sceneId: scene.id, name: 'Night' }).returning()
+    const night = await createElement(other.id, { type: 'ad_space', name: 'Banner', properties: { shape: '1:1', formats: 'both' } })
+    const [booking] = await db.insert(scenePresets).values({ sceneId: scene.id, name: 'Booking' }).returning()
+    await db.insert(sceneElements).values({ presetId: booking.id, type: 'ad_space', name: 'Banner', properties: { shape: '1:1', formats: 'both' }, clonedFromId: live.id })
+    const spaces = (await call('GET', '/api/admin/ads/spaces')).json().spaces
+    expect(spaces.map((s: any) => s.elementId).sort()).toEqual([live.id, night.id].sort())
+    const by = Object.fromEntries(spaces.map((s: any) => [s.elementId, s]))
+    expect(by[live.id]).toMatchObject({ presetName: 'Default', activePreset: true })
+    expect(by[night.id]).toMatchObject({ presetName: 'Night', activePreset: false })
   })
 
   it('report splits verified and unverified counts by day and by space; totals count each viewer once per day', async () => {

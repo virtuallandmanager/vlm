@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { AD_SHAPES, VideoSourceType } from 'vlm-shared'
-import type { AdShape, AdminAd } from 'vlm-shared'
+import type { AdShape, AdminAd, AdminAdSpace } from 'vlm-shared'
 import { db } from '../db/connection.js'
 import { ads, adCreatives, adPlacements, mediaAssets, sceneElements, scenePresets, scenes } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
@@ -74,16 +74,23 @@ export default async function adminAdsRoutes(app: FastifyInstance) {
   // Registered before the :id routes; the static segment wins either way
   app.get('/api/admin/ads/spaces', async (_request, reply) => {
     const rows = await db
-      .select({ id: sceneElements.id, name: sceneElements.name, type: sceneElements.type, properties: sceneElements.properties, sceneId: scenes.id, sceneName: scenes.name })
+      .select({
+        id: sceneElements.id, name: sceneElements.name, type: sceneElements.type, properties: sceneElements.properties,
+        sceneId: scenes.id, sceneName: scenes.name, presetId: scenePresets.id, presetName: scenePresets.name, activePresetId: scenes.activePresetId,
+      })
       .from(sceneElements)
       .innerJoin(scenePresets, eq(scenePresets.id, sceneElements.presetId))
       .innerJoin(scenes, eq(scenes.id, scenePresets.sceneId))
-      .where(inArray(sceneElements.type, ['ad_space', 'video']))
-      .orderBy(asc(scenes.name), asc(sceneElements.name))
-    const spaces = rows.filter(isAdCapable).map((r) => {
+      // booking clones take their original's placements, so only originals are listed
+      .where(and(inArray(sceneElements.type, ['ad_space', 'video']), isNull(sceneElements.clonedFromId)))
+      .orderBy(asc(scenes.name), asc(scenePresets.name), asc(sceneElements.name))
+    const spaces: AdminAdSpace[] = rows.filter(isAdCapable).map((r) => {
       const p = (r.properties ?? {}) as Record<string, unknown>
       const raw = r.type === 'ad_space' ? p.shape : p.adShape
-      return { elementId: r.id, sceneId: r.sceneId, sceneName: r.sceneName, name: r.name, type: r.type, shape: isShape(raw) ? raw : r.type === 'video' ? '16:9' : null }
+      return {
+        elementId: r.id, sceneId: r.sceneId, sceneName: r.sceneName, presetName: r.presetName, activePreset: r.presetId === r.activePresetId,
+        name: r.name, type: r.type as AdminAdSpace['type'], shape: isShape(raw) ? raw : r.type === 'video' ? '16:9' : null,
+      }
     })
     return reply.send({ spaces })
   })

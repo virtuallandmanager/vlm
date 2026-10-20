@@ -108,6 +108,19 @@ export interface AdminAd {
   placements: string[]
 }
 
+/** An element an ad can be placed on. `shape` is null for an ad space whose stored shape is invalid. */
+export interface AdminAdSpace {
+  elementId: string
+  sceneId: string
+  sceneName: string
+  presetName: string
+  /** Whether the element's preset is the scene's active preset. */
+  activePreset: boolean
+  name: string
+  type: 'ad_space' | 'video'
+  shape: AdShape | null
+}
+
 export type LevelCounts = Record<AdLevel, number> & { unverified: Record<AdLevel, number> }
 
 export interface AdReport {

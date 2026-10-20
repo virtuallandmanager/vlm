@@ -263,8 +263,12 @@ function Placements({ ad, spaces, onChange }: { ad: AdminAd; spaces: AdminAdSpac
   const [error, setError] = useState<string | null>(null)
   const dirty = selected.size !== ad.placements.length || ad.placements.some((id) => !selected.has(id))
 
-  const byScene = new Map<string, AdminAdSpace[]>()
-  for (const s of spaces) byScene.set(s.sceneName, [...(byScene.get(s.sceneName) ?? []), s])
+  // one group per scene preset, e.g. "Ship · Default (active)"
+  const byPreset = new Map<string, AdminAdSpace[]>()
+  for (const s of spaces) {
+    const group = `${s.sceneName} · ${s.presetName}${s.activePreset ? ' (active)' : ''}`
+    byPreset.set(group, [...(byPreset.get(group) ?? []), s])
+  }
   const covered = new Set(ad.creatives.map((c) => c.shape))
 
   const toggle = (id: string) => setSelected((prev) => {
@@ -293,9 +297,9 @@ function Placements({ ad, spaces, onChange }: { ad: AdminAd; spaces: AdminAdSpac
         <p className="text-sm text-gray-500">No ad spaces exist yet. Add an Ad space in a scene, or switch a video screen to Ads.</p>
       ) : (
         <div className="max-h-72 space-y-3 overflow-y-auto rounded-lg border border-gray-800 p-3">
-          {[...byScene].map(([sceneName, list]) => (
-            <div key={sceneName}>
-              <p className="mb-1 text-xs text-gray-500">{sceneName}</p>
+          {[...byPreset].map(([group, list]) => (
+            <div key={group}>
+              <p className="mb-1 text-xs text-gray-500">{group}</p>
               {list.map((s) => (
                 <label key={s.elementId} className="flex items-center gap-2 py-0.5 text-sm">
                   <input type="checkbox" checked={selected.has(s.elementId)} onChange={() => toggle(s.elementId)} className="accent-blue-500" />

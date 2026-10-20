@@ -2,7 +2,7 @@
 import { useCallback } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
-import type { AdminAd, AdReport, AdShape, CatalogPack } from 'vlm-shared'
+import type { AdminAd, AdminAdSpace, AdReport, AdShape, CatalogPack } from 'vlm-shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
 /** Read a File as base64 (no `data:…;base64,` prefix) for JSON upload bodies. */
@@ -25,15 +25,7 @@ export function mediaContentType(file: File): string {
   return file.name.toLowerCase().endsWith('.glb') ? 'model/gltf-binary' : 'application/octet-stream'
 }
 
-/** An element an ad can be placed on. `shape` is null for an ad space whose stored shape is invalid. */
-export interface AdminAdSpace {
-  elementId: string
-  sceneId: string
-  sceneName: string
-  name: string
-  type: 'ad_space' | 'video'
-  shape: AdShape | null
-}
+export type { AdminAdSpace } from 'vlm-shared'
 
 export const MEDIA_UPLOAD_RULES = 'Only PNG, JPG, WebP, GIF (≤ 10 MB), GLB (≤ 50 MB) or MP4/WebM video (≤ 70 MB)'
 
