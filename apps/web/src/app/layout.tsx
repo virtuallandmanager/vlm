@@ -8,7 +8,7 @@ const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mo
 
 export const metadata: Metadata = {
   title: 'VLM — Virtual Land Manager',
-  description: 'Manage your metaverse scenes',
+  description: 'Run your metaverse scenes from one dashboard, and advertise on screens and billboards in live Decentraland scenes.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

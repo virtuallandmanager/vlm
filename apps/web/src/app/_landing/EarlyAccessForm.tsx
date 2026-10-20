@@ -55,7 +55,7 @@ export function EarlyAccessForm({ open, onClose }: { open: boolean; onClose: () 
         onClick={(e) => e.stopPropagation()}
       >
         <button type="button" onClick={onClose} aria-label="Close" className="absolute right-4 top-4 text-gray-500 hover:text-white">✕</button>
-        <p className="mb-2 text-xs font-bold uppercase tracking-widest text-blue-300">Early access</p>
+        <p className="mb-2 text-sm font-medium text-blue-300">Early access</p>
         <h2 id="early-access-title" className="mb-2 text-2xl font-bold">Advertise with VLM</h2>
         {done ? (
           <>
