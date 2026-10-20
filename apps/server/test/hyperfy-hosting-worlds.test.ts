@@ -140,6 +140,7 @@ describe('hosted Hyperfy worlds', () => {
   })
 
   it('create inserts provisioning, then running after health, with the exact env (no secrets in logs)', async () => {
+    ;(config as any).publicUrl = 'https://api.staging.vlm.gg'
     await setTier(owner.id, 'pro')
     const gate = deferred()
     const f = fakes({ dbGate: gate.promise })
@@ -169,9 +170,9 @@ describe('hosted Hyperfy worlds', () => {
       ADMIN_CODE: adminCode,
       SAVE_INTERVAL: '60',
       CLEAN: 'true',
-      PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: 'wss://api.vlm.gg',
+      PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: 'wss://api.staging.vlm.gg',
       PUBLIC_MAX_UPLOAD_SIZE: '12',
-      VLM_FEED_URL: 'https://api.vlm.gg',
+      VLM_FEED_URL: 'https://api.staging.vlm.gg',
       VLM_WORLD_KEY: expect.stringMatching(/^vlmw_[0-9a-f]{64}$/),
     })
     expect((await findWorldByKey(machine.env.VLM_WORLD_KEY))?.id).toBe(world.id)
@@ -390,6 +391,15 @@ describe('hosted Hyperfy worlds', () => {
     expect(f.filesDeleted).toEqual(['done'])
   })
 
+  it('script WebSocket origins follow the server URL: http becomes ws', async () => {
+    ;(config as any).publicUrl = 'http://localhost:3010'
+    await setTier(owner.id, 'creator')
+    const f = fakes()
+    const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Local', endsAt: null }, f.deps)
+    await hostedWorldSettled(world.id)
+    expect(f.machines.get('vlm-w-local')!.env.PUBLIC_SCRIPT_WEBSOCKET_ORIGINS).toBe('ws://localhost:3010')
+  })
+
   it('rotate updates the machine env and old key stops working', async () => {
     await setTier(owner.id, 'pro')
     const f = fakes()
@@ -418,6 +428,47 @@ describe('hosted Hyperfy worlds', () => {
     expect(err.message).toMatch(/key was changed/i)
     expect(err.message).toMatch(/rotate .*again/i)
     expect(err.message).not.toContain('vlmw_')
+  })
+
+  it("a rotate's failed machine update is logged without the world's secrets", async () => {
+    await setTier(owner.id, 'pro')
+    const f = fakes()
+    const { world, adminCode } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Leaky', endsAt: null }, f.deps)
+    await hostedWorldSettled(world.id)
+    const env = { ...f.machines.get('vlm-w-leaky')!.env }
+    let sentKey = ''
+    // Fly can echo the machine config back in its error.
+    f.deps.fly!.updateMachine = async (_app: string, _id: string, m: WorldMachineSpec) => {
+      sentKey = m.env.VLM_WORLD_KEY
+      throw new FlyError(`Fly POST returned 422: invalid config ${JSON.stringify(m.env)}`, 422, '')
+    }
+    f.logs.length = 0
+    await expect(rotateHostedWorldKey(world.id, f.deps)).rejects.toMatchObject({ code: 'world_update_failed' })
+    const logText = f.logs.join('\n')
+    expect(logText).toContain('machine update failed')
+    expect(logText).toContain('[redacted]')
+    for (const secret of [sentKey, env.VLM_WORLD_KEY, env.DB_URI, 'dbpw_leaky_s3cr3t', env.JWT_SECRET, adminCode, 'r2s3cr3t']) {
+      expect(secret.length).toBeGreaterThan(5)
+      expect(logText).not.toContain(secret)
+    }
+  })
+
+  it("a rotate doesn't turn autostart back on for a world that ended meanwhile", async () => {
+    await setTier(owner.id, 'pro')
+    const f = fakes()
+    const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Racing', endsAt: null }, f.deps)
+    await hostedWorldSettled(world.id)
+    const keyHash = (await row(world.id)).keyHash
+    const realGetEnv = f.deps.fly!.getMachineEnv
+    // The sweep ends and quiesces the world after rotate read it as running.
+    f.deps.fly!.getMachineEnv = async (app: string, id: string) => {
+      await db.update(hyperfyWorlds).set({ status: 'ended', endedAt: new Date(), quiescedAt: new Date() }).where(eq(hyperfyWorlds.id, world.id))
+      return realGetEnv(app, id)
+    }
+    f.calls.length = 0
+    await expect(rotateHostedWorldKey(world.id, f.deps)).rejects.toMatchObject({ code: 'world_not_running' })
+    expect(f.calls.filter((c) => c.startsWith('updateMachine'))).toEqual([])
+    expect((await row(world.id)).keyHash).toBe(keyHash)
   })
 
   it('switching scene updates the row only', async () => {

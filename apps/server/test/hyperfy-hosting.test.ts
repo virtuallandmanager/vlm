@@ -59,6 +59,24 @@ describe('Hyperfy hosting availability', () => {
     expect(hyperfyHosting().available).toBe(false)
   })
 
+  it('checks the shape of the worlds DB URL template and the secret key, not just that they are set', () => {
+    configure(HOSTING)
+    expect(hyperfyHosting().available).toBe(true)
+    configure({ ...HOSTING, hyperfyWorldsDbUrlTemplate: 'postgresql://{user}:{password}@h:5432/db' })
+    expect(hyperfyHosting().available).toBe(true)
+    // Hyperfy falls back to SQLite on the machine's throwaway disk when DB_URI isn't postgres.
+    for (const bad of ['mysql://{user}:{password}@h/db', 'h/db', 'postgres://{user}@h/db', 'postgres://admin:{password}@h/db', 'postgres://user:pw@h/db']) {
+      configure({ ...HOSTING, hyperfyWorldsDbUrlTemplate: bad })
+      expect(hyperfyHosting().available, bad).toBe(false)
+    }
+    for (const bad of ['ab'.repeat(31), 'ab'.repeat(33), 'zz'.repeat(32), 'secret']) {
+      configure({ ...HOSTING, hyperfySecretKey: bad })
+      expect(hyperfyHosting().available, bad).toBe(false)
+    }
+    configure({ ...HOSTING, hyperfySecretKey: 'AB'.repeat(32) })
+    expect(hyperfyHosting().available).toBe(true)
+  })
+
   it('needs HYPERFY_WORLDS_DATABASE_URL only in direct mode (in fly-job mode the admin URL is a secret of the jobs app)', () => {
     const saved = (config as any).hyperfyWorldsDbMode
     try {

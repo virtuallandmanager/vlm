@@ -324,7 +324,8 @@ function worldEnv(w: { slug: string; address: string; dbUri: string; schema: str
     ADMIN_CODE: w.adminCode,
     SAVE_INTERVAL: '60',
     CLEAN: 'true',
-    PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: 'wss://api.vlm.gg',
+    // For a later WebSocket feed: this server's origin, https → wss, http → ws.
+    PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: new URL(config.publicUrl).origin.replace(/^http/, 'ws'),
     PUBLIC_MAX_UPLOAD_SIZE: '12', // MB; Hyperfy refuses to boot without it
     VLM_FEED_URL: config.publicUrl,
     VLM_WORLD_KEY: w.worldKey,
@@ -468,23 +469,37 @@ export async function switchHostedWorldScene(worldId: string, sceneId: string): 
   if (!updated.length) throw new HostingError('world_not_found')
 }
 
-/** New key: stores its hash and swaps only VLM_WORLD_KEY in the machine's env (the update restarts the machine). */
+/**
+ * New key: stores its hash and swaps only VLM_WORLD_KEY in the machine's env (the update restarts the machine). The
+ * update runs under the owner's hosted-world lock with the world re-read as `running`, so a world the sweep ended
+ * meanwhile never gets autostart turned back on by it.
+ */
 export async function rotateHostedWorldKey(worldId: string, deps?: Partial<HostingDeps>): Promise<{ key: string }> {
   const d = withDeps(deps)
   const w = await hostedWorld(worldId)
   if (w.status !== 'running' || !w.flyApp) throw new HostingError('world_not_running')
-  const [machine] = await d.fly.listMachines(w.flyApp)
+  const app = w.flyApp
+  const [machine] = await d.fly.listMachines(app)
   if (!machine) throw new HostingError('world_not_running', 'the world has no machine')
-  const env = await d.fly.getMachineEnv(w.flyApp, machine.id)
+  const env = await d.fly.getMachineEnv(app, machine.id)
   const key = createWorldKey()
-  await db.update(hyperfyWorlds).set({ keyHash: key.hash, keyPrefix: key.prefix }).where(eq(hyperfyWorlds.id, worldId))
-  try {
-    await d.fly.updateMachine(w.flyApp, machine.id, {
-      image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'),
-      env: { ...env, VLM_WORLD_KEY: key.raw },
-    })
-  } catch (err) {
-    d.log.error({ worldId, slug: w.slug, error: err instanceof Error ? err.message : String(err) }, 'hosted world key rotation: machine update failed')
+  const updateError = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hyperfy-hosted:${w.ownerId}`}))`)
+    const [cur] = await tx.select({ status: hyperfyWorlds.status }).from(hyperfyWorlds).where(eq(hyperfyWorlds.id, worldId))
+    if (cur?.status !== 'running') throw new HostingError('world_not_running')
+    // Stored before the update: a machine update that fails may still have applied.
+    await tx.update(hyperfyWorlds).set({ keyHash: key.hash, keyPrefix: key.prefix }).where(eq(hyperfyWorlds.id, worldId))
+    try {
+      await d.fly.updateMachine(app, machine.id, { image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'), env: { ...env, VLM_WORLD_KEY: key.raw } })
+      return null
+    } catch (err) {
+      return err
+    }
+  })
+  if (updateError) {
+    const hidden = [key.raw, ...secretEnvValues(env), config.hyperfyAssetsS3Uri ?? '', config.flyApiToken ?? '']
+    const message = redact(updateError instanceof Error ? updateError.message : String(updateError), hidden).slice(0, 500)
+    d.log.error({ worldId, slug: w.slug, error: message }, 'hosted world key rotation: machine update failed')
     throw new HostingError(
       'world_update_failed',
       "The world key was changed but the world couldn't be updated with it; rotate the key again",
@@ -492,6 +507,12 @@ export async function rotateHostedWorldKey(worldId: string, deps?: Partial<Hosti
   }
   d.log.info({ worldId, slug: w.slug }, 'hosted world key rotated')
   return { key: key.raw }
+}
+
+/** The secrets in a world machine's env, for redact(). */
+function secretEnvValues(env: Record<string, string>): string[] {
+  const values = ['VLM_WORLD_KEY', 'ADMIN_CODE', 'JWT_SECRET', 'DB_URI', 'ASSETS_S3_URI'].map((k) => env[k] ?? '')
+  return [...values, safeUrlPassword(env.DB_URI ?? '')]
 }
 
 export async function revealAdminCode(worldId: string): Promise<string> {

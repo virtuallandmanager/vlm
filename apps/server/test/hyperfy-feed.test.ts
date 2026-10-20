@@ -68,6 +68,13 @@ describe('GET /api/hyperfy/feed', () => {
     expect(res.json()).toEqual({ error: 'invalid_world_key' })
   })
 
+  it('answers 401 invalid_world_key for a hosted world that failed (its cleanup may have partly failed)', async () => {
+    await db.update(hyperfyWorlds).set({ status: 'failed', kind: 'hosted' }).where(eq(hyperfyWorlds.id, worldId))
+    const res = await app.inject({ method: 'GET', url: '/api/hyperfy/feed', headers: { authorization: `Bearer ${key}` } })
+    expect(res.statusCode).toBe(401)
+    expect(res.json()).toEqual({ error: 'invalid_world_key' })
+  })
+
   it('answers at once without since, and when since is stale', async () => {
     const a = await feed()
     expect(a.statusCode).toBe(200)
