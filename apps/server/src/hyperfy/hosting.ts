@@ -23,7 +23,7 @@ type Log = { info(...a: unknown[]): void; warn(...a: unknown[]): void; error(...
 export type HostingDeps = {
   fly: Pick<
     FlyApi,
-    'createApp' | 'deleteApp' | 'allocatePublicIps' | 'allocatePrivateIp' | 'createMachine' | 'updateMachine' | 'listMachines' | 'getMachineEnv' | 'startMachine'
+    'createApp' | 'deleteApp' | 'allocatePublicIps' | 'allocatePrivateIp' | 'createMachine' | 'updateMachine' | 'listMachines' | 'getMachineEnv' | 'startMachine' | 'stopMachine'
   >
   createWorldDatabase: (slug: string) => Promise<{ dbUri: string; schema: string }>
   dropWorldDatabase: (slug: string) => Promise<void>
@@ -70,6 +70,7 @@ function defaultDeps(): HostingDeps {
       listMachines: (...a) => lazyFly().listMachines(...a),
       getMachineEnv: (...a) => lazyFly().getMachineEnv(...a),
       startMachine: (...a) => lazyFly().startMachine(...a),
+      stopMachine: (...a) => lazyFly().stopMachine(...a),
     },
     createWorldDatabase: (slug) => createWorldDatabase(slug),
     dropWorldDatabase: (slug) => dropWorldDatabase(slug),
@@ -85,7 +86,7 @@ function defaultDeps(): HostingDeps {
   }
 }
 
-const withDeps = (deps?: Partial<HostingDeps>): HostingDeps => ({ ...defaultDeps(), ...deps })
+export const withDeps = (deps?: Partial<HostingDeps>): HostingDeps => ({ ...defaultDeps(), ...deps })
 
 // ── Admin code encryption (AES-256-GCM, as services/dcl/deployer.ts; keyed by HYPERFY_SECRET_KEY) ──
 
@@ -339,7 +340,7 @@ async function waitForHealth(address: string, d: HostingDeps, signal: AbortSigna
 }
 
 /** Removes what a create made on Fly, in the worlds database and in the bucket. Each step is safe to repeat. */
-async function cleanUp(world: HyperfyWorldRow, d: HostingDeps, made: { database: boolean; app: boolean; files: boolean }): Promise<void> {
+export async function cleanUp(world: HyperfyWorldRow, d: HostingDeps, made: { database: boolean; app: boolean; files: boolean }): Promise<void> {
   const slug = world.slug!
   const steps: [string, () => Promise<unknown>][] = []
   if (made.app) steps.push(['delete fly app', () => d.fly.deleteApp(world.flyApp ?? flyAppName(slug))])

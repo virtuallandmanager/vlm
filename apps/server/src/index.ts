@@ -9,6 +9,8 @@ import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
 import { runMigrations } from './db/migrate.js'
 import { buildApp } from './app.js'
 import { startLifecycleSweep } from './venues/lifecycle.js'
+import { startHostedWorldSweep, SWEEP_INTERVAL_MS } from './hyperfy/sweep.js'
+import { hyperfyHosting } from './services/hyperfy/infrastructure.js'
 import { startAnalyticsJobs } from './analytics/jobs.js'
 import { initBus } from './realtime/bus.js'
 
@@ -73,6 +75,10 @@ async function main() {
   console.log(`[vlm-server] Platform hook crons started`)
   startLifecycleSweep(config.lifecycleSweepMs)
   console.log(`[vlm-server] Venue lifecycle sweep every ${config.lifecycleSweepMs}ms`)
+  if (hyperfyHosting().available) {
+    startHostedWorldSweep(SWEEP_INTERVAL_MS)
+    console.log(`[vlm-server] Hosted Hyperfy world sweep every ${SWEEP_INTERVAL_MS}ms`)
+  }
   startAnalyticsJobs()
   console.log('[vlm-server] Analytics jobs started')
 

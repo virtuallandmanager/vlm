@@ -83,6 +83,8 @@ function fakes(opts: { failMachine?: Error; failApp?: Error; failUpdate?: Error;
       return m ? [{ id: m.id, state: 'started' }] : []
     },
     async getMachineEnv(app: string) { return { ...machines.get(app)!.env } },
+    async startMachine() {},
+    async stopMachine() {},
   }
   const deps: Partial<HostingDeps> = {
     fly,
