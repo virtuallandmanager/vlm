@@ -4,7 +4,7 @@ import {
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
   sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
-  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds,
 } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { createVenue, createBooking, addGrant } from '../src/venues/service.js'
@@ -64,13 +64,14 @@ async function fixtures() {
   const [hook] = await db.insert(platformCallbacks).values({ sceneId: scene.id, platform: 'secondlife', callbackUrl: 'https://1.1.1.1/cb' }).returning()
   const location = await createAnalyticsScene({ claimedByUserId: b.id, claimStatus: 'active' })
   await createSetup(location.id, scene.id)
+  const [world] = await db.insert(hyperfyWorlds).values({ sceneId: scene.id, ownerId: b.id, name: 'B world', keyHash: 'b-world-hash', keyPrefix: 'vlmw_b' }).returning()
   const [bKey] = await db.insert(apiKeys).values({ userId: b.id, name: 'B key', keyHash: 'b-hash', keyPrefix: 'vlm_k1_b' }).returning()
 
   const aScene = (await createScene(a, 'A scene')).scene
   const [aEvent] = await db.insert(events).values({ ownerId: a.id, name: 'A event' }).returning()
   return {
     a, b, collaborator, scene, preset, element, instance, roleWallet, wallet, dcl, hyperfy, stream, event, giveaway, item,
-    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, aScene, aEvent,
+    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, world, aScene, aEvent,
   }
 }
 type F = Awaited<ReturnType<typeof fixtures>>
@@ -132,6 +133,8 @@ const CASES: Case[] = [
   { route: 'POST /api/command-center/:eventId/broadcast', url: (f) => `/api/command-center/${f.event.id}/broadcast`, body: () => ({ action: { type: 'pwned' } }) },
   // streaming
   { route: 'POST /api/streaming/provision', url: () => '/api/streaming/provision', body: (f) => ({ name: 'pwned', sceneId: f.scene.id }) },
+  { route: 'POST /api/hyperfy/worlds/:id/rotate-key', url: (f) => `/api/hyperfy/worlds/${f.world.id}/rotate-key` },
+  { route: 'DELETE /api/hyperfy/worlds/:id', url: (f) => `/api/hyperfy/worlds/${f.world.id}` },
   { route: 'GET /api/streaming/:id', url: (f) => `/api/streaming/${f.stream.id}` },
   { route: 'DELETE /api/streaming/:id', url: (f) => `/api/streaming/${f.stream.id}` },
   { route: 'GET /api/streaming/:id/sessions', url: (f) => `/api/streaming/${f.stream.id}/sessions` },
@@ -200,7 +203,7 @@ const TABLES = [
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
   sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
-  uploadTokens, platformCallbacks, analyticsScenes, locationSetups,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds,
 ]
 async function snapshot(f: F) {
   const all = await Promise.all(TABLES.map((t) => db.select().from(t as any)))

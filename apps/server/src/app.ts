@@ -30,6 +30,7 @@ import billingRoutes from './routes/billing.js'
 import companionUploadRoutes from './routes/companion-upload.js'
 import organizationRoutes from './routes/organizations.js'
 import apiKeyRoutes from './routes/api-keys.js'
+import hyperfyWorldRoutes from './routes/hyperfy-worlds.js'
 import adminRoutes from './routes/admin.js'
 import venueRoutes from './routes/venues.js'
 import ingestRoutes from './routes/ingest.js'
@@ -152,6 +153,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(companionUploadRoutes)
   await app.register(organizationRoutes)
   await app.register(apiKeyRoutes)
+  await app.register(hyperfyWorldRoutes)
   await app.register(adminRoutes)
   await app.register(venueRoutes)
   await app.register(ingestRoutes)

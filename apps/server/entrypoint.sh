@@ -79,6 +79,13 @@ if [ -n "$DATABASE_URL" ]; then
         console.log('[vlm-server] catalog packs ensured');
       } catch(e) { console.log('[vlm-server] catalog packs:', e.message); }
 
+      // Hyperfy worlds; matches hyperfyWorlds in src/db/schema.ts
+      try {
+        await sql\`CREATE TABLE IF NOT EXISTS hyperfy_worlds (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), scene_id UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE, owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'self', key_hash TEXT NOT NULL UNIQUE, key_prefix TEXT NOT NULL, last_seen_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        await sql\`CREATE INDEX IF NOT EXISTS hyperfy_worlds_scene_idx ON hyperfy_worlds (scene_id)\`;
+        console.log('[vlm-server] hyperfy worlds ensured');
+      } catch(e) { console.log('[vlm-server] hyperfy worlds:', e.message); }
+
       // Upload status (two-step companion uploads); matches mediaAssets / uploadTokens in src/db/schema.ts
       try {
         await sql\`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ready'\`;

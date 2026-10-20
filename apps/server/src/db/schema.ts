@@ -862,6 +862,22 @@ export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
   }),
 }))
 
+// ── Hyperfy Worlds (self-run, connected with a world key) ───────────────────
+
+export const hyperfyWorlds = pgTable('hyperfy_worlds', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sceneId: uuid('scene_id').notNull().references(() => scenes.id, { onDelete: 'cascade' }),
+  ownerId: uuid('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  kind: text('kind').notNull().default('self'),
+  keyHash: text('key_hash').notNull().unique(), // SHA-256 hash of the world key
+  keyPrefix: text('key_prefix').notNull(), // first 12 chars, for display
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  sceneIdx: index('hyperfy_worlds_scene_idx').on(t.sceneId),
+}))
+
 // ── Password Reset Tokens ───────────────────────────────────────────────────
 
 export const passwordResetTokens = pgTable('password_reset_tokens', {
