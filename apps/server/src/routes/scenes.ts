@@ -58,7 +58,7 @@ interface CreateSceneBody {
 }
 
 interface CreateElementBody {
-  type: 'image' | 'video' | 'nft' | 'sound' | 'widget' | 'model' | 'custom'
+  type: 'image' | 'video' | 'nft' | 'sound' | 'widget' | 'model' | 'custom' | 'ad_space'
   name: string
   enabled?: boolean
   customId?: string

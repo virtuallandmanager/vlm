@@ -79,6 +79,18 @@ if [ -n "$DATABASE_URL" ]; then
         console.log('[vlm-server] catalog packs ensured');
       } catch(e) { console.log('[vlm-server] catalog packs:', e.message); }
 
+      // Ads; matches ads / adCreatives / adPlacements / adEvents in src/db/schema.ts
+      try {
+        await sql\`ALTER TYPE element_type ADD VALUE IF NOT EXISTS 'ad_space'\`;
+        await sql\`CREATE TABLE IF NOT EXISTS ads (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL, kind TEXT NOT NULL, click_url TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', starts_at TIMESTAMPTZ, ends_at TIMESTAMPTZ, created_by UUID REFERENCES users(id) ON DELETE SET NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        await sql\`CREATE TABLE IF NOT EXISTS ad_creatives (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), ad_id UUID NOT NULL REFERENCES ads(id) ON DELETE CASCADE, shape TEXT NOT NULL, kind TEXT NOT NULL, media_asset_id UUID REFERENCES media_assets(id) ON DELETE SET NULL, url TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        await sql\`CREATE TABLE IF NOT EXISTS ad_placements (ad_id UUID NOT NULL REFERENCES ads(id) ON DELETE CASCADE, element_id UUID NOT NULL REFERENCES scene_elements(id) ON DELETE CASCADE, PRIMARY KEY (ad_id, element_id))\`;
+        await sql\`CREATE TABLE IF NOT EXISTS ad_events (id BIGSERIAL PRIMARY KEY, ad_id UUID NOT NULL REFERENCES ads(id) ON DELETE CASCADE, element_id UUID NOT NULL, scene_id UUID NOT NULL REFERENCES scenes(id) ON DELETE CASCADE, level TEXT NOT NULL, day DATE NOT NULL, viewer_key TEXT NOT NULL, verified BOOLEAN NOT NULL, house BOOLEAN NOT NULL, dwell_ms INTEGER, occurred_at TIMESTAMPTZ NOT NULL)\`;
+        await sql\`CREATE UNIQUE INDEX IF NOT EXISTS ad_events_unique_view ON ad_events (ad_id, level, day, viewer_key)\`;
+        await sql\`CREATE INDEX IF NOT EXISTS ad_events_ad_day_idx ON ad_events (ad_id, day)\`;
+        console.log('[vlm-server] ads ensured');
+      } catch(e) { console.log('[vlm-server] ads:', e.message); }
+
       // Upload status (two-step companion uploads); matches mediaAssets / uploadTokens in src/db/schema.ts
       try {
         await sql\`ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ready'\`;

@@ -33,6 +33,7 @@ export const elementTypeEnum = pgEnum('element_type', [
   'widget',
   'custom',
   'model',
+  'ad_space',
 ])
 
 export const orgRoleEnum = pgEnum('org_role', ['owner', 'admin', 'member'])
@@ -1124,3 +1125,61 @@ export const systemFlags = pgTable('system_flags', {
   key: text('key').primaryKey(),
   setAt: timestamp('set_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+// ── Ads ──────────────────────────────────────────────────────────────────────
+// Ad spaces are scene elements (type 'ad_space'); ads are placed on them and measured by adEvents.
+
+export const ads = pgTable('ads', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  kind: text('kind').$type<'house' | 'partner'>().notNull(),
+  clickUrl: text('click_url').notNull(),
+  status: text('status').$type<'active' | 'paused'>().notNull().default('active'),
+  startsAt: timestamp('starts_at', { withTimezone: true }),
+  endsAt: timestamp('ends_at', { withTimezone: true }),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const adCreatives = pgTable('ad_creatives', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  adId: uuid('ad_id').notNull().references(() => ads.id, { onDelete: 'cascade' }),
+  shape: text('shape').notNull(), // '16:9' | '1:1' | '9:16' | '2:5'
+  kind: text('kind').$type<'image' | 'video'>().notNull(),
+  mediaAssetId: uuid('media_asset_id').references(() => mediaAssets.id, { onDelete: 'set null' }),
+  url: text('url').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const adPlacements = pgTable(
+  'ad_placements',
+  {
+    adId: uuid('ad_id').notNull().references(() => ads.id, { onDelete: 'cascade' }),
+    elementId: uuid('element_id').notNull().references(() => sceneElements.id, { onDelete: 'cascade' }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.adId, t.elementId] }),
+  }),
+)
+
+export const adEvents = pgTable(
+  'ad_events',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    adId: uuid('ad_id').notNull().references(() => ads.id, { onDelete: 'cascade' }),
+    elementId: uuid('element_id').notNull(),
+    sceneId: uuid('scene_id').notNull().references(() => scenes.id, { onDelete: 'cascade' }),
+    level: text('level').notNull(),
+    day: date('day', { mode: 'string' }).notNull(),
+    viewerKey: text('viewer_key').notNull(), // 'w:<wallet>' or 'u:<sessionId>'
+    verified: boolean('verified').notNull(),
+    house: boolean('house').notNull(),
+    dwellMs: integer('dwell_ms'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    onePerViewer: uniqueIndex('ad_events_unique_view').on(t.adId, t.level, t.day, t.viewerKey),
+    byAdDay: index('ad_events_ad_day_idx').on(t.adId, t.day),
+  }),
+)

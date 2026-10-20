@@ -547,7 +547,7 @@ export class VLMSceneRoom extends Room {
       // Always send init even if there's no scene — client needs this to unblock
       client.send('scene_preset_update', {
         action: 'init',
-        scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [] },
+        scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [], adSpaces: [] },
         sceneSettings: [],
       })
       return
@@ -563,7 +563,7 @@ export class VLMSceneRoom extends Room {
         // Still send init with empty preset so client doesn't hang
         client.send('scene_preset_update', {
           action: 'init',
-          scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [] },
+          scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [], adSpaces: [] },
           sceneSettings: [],
         })
         return
@@ -582,7 +582,7 @@ export class VLMSceneRoom extends Room {
         console.log(`[VLMSceneRoom] Active preset not found: ${scene.activePresetId}`)
         client.send('scene_preset_update', {
           action: 'init',
-          scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [] },
+          scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [], adSpaces: [] },
           sceneSettings: [],
         })
         return
@@ -606,7 +606,7 @@ export class VLMSceneRoom extends Room {
       // Send empty init so client doesn't hang
       client.send('scene_preset_update', {
         action: 'init',
-        scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [] },
+        scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [], adSpaces: [] },
         sceneSettings: [],
       })
     }
