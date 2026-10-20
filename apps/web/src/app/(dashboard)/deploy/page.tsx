@@ -2,7 +2,7 @@
 import { deployErrorMessage } from '@/lib/deploy'
 import { useApi } from '@/lib/api'
 import { API_URL } from '@/lib/config'
-import { hyperfyErrorMessage, lastSeenLabel, setupSteps } from '@/lib/hyperfy'
+import { hyperfyErrorMessage, lastSeenLabel, removeWorldPrompt, setupSteps } from '@/lib/hyperfy'
 import type { HyperfyWorldSummary } from 'vlm-shared'
 import { useAuth } from '@/lib/auth'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -121,7 +121,7 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
   }
 
   const remove = async (w: HyperfyWorldSummary) => {
-    if (!confirm(`Remove "${w.name}"? The VLM app in that world stops showing this scene.`)) return
+    if (!confirm(removeWorldPrompt(w.name))) return
     setBusy(true)
     setError('')
     try {

@@ -17,10 +17,15 @@ export function lastSeenLabel(iso: string | null, now: Date): string {
 export function setupSteps(feedUrl: string): string[] {
   return [
     'Download the VLM app and drag vlm.hyp into your Hyperfy world.',
-    "Open the app's settings and paste your world key into World key.",
-    `Leave Feed URL as ${feedUrl} unless VLM support tells you otherwise.`,
+    "Open the app's settings and paste your world key into VLM world key.",
+    `Leave VLM feed URL as ${feedUrl} unless VLM support tells you otherwise.`,
     'Your scene appears within a few seconds and follows your edits.',
   ]
+}
+
+/** Removing a world only stops the feed; the world keeps showing its last scene. */
+export function removeWorldPrompt(name: string): string {
+  return `Remove "${name}"? The VLM app in that world stops receiving updates from VLM.`
 }
 
 export function hyperfyErrorMessage(err: unknown): string {

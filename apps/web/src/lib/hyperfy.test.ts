@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { lastSeenLabel, setupSteps, hyperfyErrorMessage } from './hyperfy'
+import { lastSeenLabel, setupSteps, hyperfyErrorMessage, removeWorldPrompt } from './hyperfy'
 
 const now = new Date('2026-10-20T12:00:00Z')
 const ago = (ms: number) => new Date(now.getTime() - ms).toISOString()
@@ -27,10 +27,16 @@ describe('setupSteps', () => {
   it('gives the four steps with the feed url', () => {
     expect(setupSteps('https://api.vlm.gg')).toEqual([
       'Download the VLM app and drag vlm.hyp into your Hyperfy world.',
-      "Open the app's settings and paste your world key into World key.",
-      'Leave Feed URL as https://api.vlm.gg unless VLM support tells you otherwise.',
+      "Open the app's settings and paste your world key into VLM world key.",
+      'Leave VLM feed URL as https://api.vlm.gg unless VLM support tells you otherwise.',
       'Your scene appears within a few seconds and follows your edits.',
     ])
+  })
+})
+
+describe('removeWorldPrompt', () => {
+  it('says the world keeps its last scene but stops receiving updates', () => {
+    expect(removeWorldPrompt('Gallery')).toBe('Remove "Gallery"? The VLM app in that world stops receiving updates from VLM.')
   })
 })
 

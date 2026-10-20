@@ -22,8 +22,8 @@ Each connected world is listed with its name, the start of its key and when it w
 ## Install the app
 
 1. Drag `vlm.hyp` into your Hyperfy world.
-2. Open the app's settings and paste the key into **World key**.
-3. Leave **Feed URL** as `https://api.vlm.gg`.
+2. Open the app's settings and paste the key into **VLM world key**.
+3. Leave **VLM feed URL** as `https://api.vlm.gg`.
 
 The scene appears within a few seconds, and later edits show up in about a second.
 
