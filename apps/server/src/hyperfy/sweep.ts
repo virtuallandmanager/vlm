@@ -1,6 +1,6 @@
 /**
  * The hosted-worlds sweep: ends temporary worlds at their end date, purges ended worlds after the retention window,
- * and fails worlds stuck in provisioning. Every transition is a conditional UPDATE … RETURNING, so concurrent sweeps
+ * fails worlds stuck in provisioning, and reaps worlds DB job machines left behind. Every transition is a conditional UPDATE … RETURNING, so concurrent sweeps
  * (or servers) claim each world once.
  */
 
@@ -9,6 +9,8 @@ import { HOSTED_WORLD_RETENTION_DAYS } from 'vlm-shared'
 import { config } from '../config.js'
 import { db } from '../db/connection.js'
 import { hyperfyWorlds } from '../db/schema.js'
+import { worldsDbMode } from '../services/hyperfy/infrastructure.js'
+import { JOB_MACHINE_PREFIX } from './fly.js'
 import { cleanUp, destroyHostedWorld, withDeps, type HostingDeps } from './hosting.js'
 
 export type SweepDeps = HostingDeps
@@ -17,6 +19,8 @@ export const SWEEP_INTERVAL_MS = 5 * 60_000
 /** The health wait is 180 s; a create still `provisioning` after this has been lost (e.g. the server restarted). */
 const STUCK_AFTER_MS = 10 * 60_000
 const DAY_MS = 24 * 60 * 60_000
+/** Jobs time out after 120 s and delete their machine; one still there after this was left behind. */
+const ORPHAN_JOB_AFTER_MS = 10 * 60_000
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -25,6 +29,7 @@ export async function sweepHostedWorlds(now: Date, deps?: Partial<SweepDeps>): P
   const ended = await endDueWorlds(now, d)
   const purged = await purgeEndedWorlds(now, d)
   const stuck = await failStuckWorlds(now, d)
+  await reapJobMachines(now, d)
   return { ended, purged, stuck }
 }
 
@@ -140,6 +145,34 @@ async function failStuckWorlds(now: Date, d: SweepDeps): Promise<number> {
     await cleanUp(w, d, { database: true, app: true, files: true })
   }
   return claimed.length
+}
+
+/**
+ * Force-deletes worlds DB job machines that are no longer running and are older than ORPHAN_JOB_AFTER_MS: a delete
+ * that failed, or a create whose response was lost. Their config holds the statements (and so a role password).
+ * Logs only machine ids.
+ */
+async function reapJobMachines(now: Date, d: SweepDeps): Promise<void> {
+  if (worldsDbMode() !== 'fly-job' || !config.hyperfyDbJobApp) return
+  const app = config.hyperfyDbJobApp
+  let machines: { id: string; state: string; name?: string; createdAt?: string }[]
+  try {
+    machines = await d.fly.listMachines(app)
+  } catch (err) {
+    d.log.error({ app, error: errText(err) }, 'could not list worlds DB job machines; will retry')
+    return
+  }
+  const cutoff = now.getTime() - ORPHAN_JOB_AFTER_MS
+  for (const m of machines) {
+    const created = m.createdAt ? Date.parse(m.createdAt) : NaN
+    if (!m.name?.startsWith(JOB_MACHINE_PREFIX) || m.state === 'started' || m.state === 'starting' || !(created <= cutoff)) continue
+    try {
+      await d.fly.deleteMachine(app, m.id)
+      d.log.info({ app, machineId: m.id }, 'deleted a left-behind worlds DB job machine')
+    } catch (err) {
+      d.log.error({ app, machineId: m.id, error: errText(err) }, 'could not delete a left-behind worlds DB job machine; will retry')
+    }
+  }
 }
 
 export function startHostedWorldSweep(intervalMs: number): () => void {

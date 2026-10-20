@@ -3,7 +3,7 @@ import postgres from 'postgres'
 import { config } from '../src/config.js'
 import {
   createWorldDatabase, dropWorldDatabase, worldDbName, createWorldStatements, dropWorldStatements, postgresVersionCheck,
-  directRunner, flyJobRunner, type WorldDbStatement,
+  directRunner, flyJobRunner, WorldDbJobFailed, type WorldDbStatement,
 } from '../src/hyperfy/worlds-db.js'
 
 const ADMIN_URL = process.env.DATABASE_URL!
@@ -63,9 +63,18 @@ describe('worlds database', () => {
     await expect(w.unsafe(`CREATE TABLE public.x (id int)`)).rejects.toThrow(/permission denied/)
   })
 
-  it('creating the same world twice is an error', async () => {
+  it('creating the same world twice is an error, known to have rolled back', async () => {
     await createWorldDatabase(slugA, direct)
-    await expect(createWorldDatabase(slugA, direct)).rejects.toThrow()
+    const err = await createWorldDatabase(slugA, direct).catch((e) => e)
+    expect(err).toBeInstanceOf(WorldDbJobFailed)
+    expect(err.message).toMatch(/^creating the world database failed: .*42710/)
+  })
+
+  it("a connection failure is not WorldDbJobFailed: the outcome isn't known", async () => {
+    const err = await createWorldDatabase(slugA, directRunner('postgres://nobody:nopw@127.0.0.1:9/x')).catch((e) => e)
+    expect(err).toBeInstanceOf(Error)
+    expect(err).not.toBeInstanceOf(WorldDbJobFailed)
+    expect(err.message).toMatch(/^creating the world database failed/)
   })
 
   it('a failed create does not leak the password in its error', async () => {
@@ -151,30 +160,43 @@ describe('worlds database', () => {
 })
 
 describe('worlds database through Fly job machines', () => {
-  const opts = { app: 'vlm-worlds-db-jobs', image: 'registry.fly.io/vlm-hyperfy-image:abc', adminUrl: 'postgres://admin:adminpw_x@worlds-db.flycast/postgres' }
+  const opts = { app: 'vlm-worlds-db-jobs', image: 'registry.fly.io/vlm-hyperfy-image:abc' }
 
-  it('runs the statements in a job machine, passed as base64 JSON in its env', async () => {
+  it('runs the statements in a job machine, passed as base64 JSON in its env; the admin URL is the app secret, never sent', async () => {
+    const savedUrl = (config as any).hyperfyWorldsDatabaseUrl
+    ;(config as any).hyperfyWorldsDatabaseUrl = 'postgres://admin:adminpw_x@worlds-db.flycast/postgres'
     const runJob = vi.fn(async () => ({ exitCode: 0 }))
     const stmts = createWorldStatements(slugA, 'pw_job_1')
-    await flyJobRunner({ runJob }, opts)(stmts)
+    await flyJobRunner({ runJob }, opts)(stmts).finally(() => { (config as any).hyperfyWorldsDatabaseUrl = savedUrl })
     expect(runJob).toHaveBeenCalledTimes(1)
     const [app, spec] = runJob.mock.calls[0] as unknown as [string, { image: string; env: Record<string, string>; cmd: string[] }]
     expect(app).toBe('vlm-worlds-db-jobs')
     expect(spec.image).toBe(opts.image)
     expect(spec.cmd).toEqual(['node', '/app/vlm/db-job.mjs'])
-    expect(Object.keys(spec.env).sort()).toEqual(['DB_ADMIN_URL', 'DB_STATEMENTS'])
-    expect(spec.env.DB_ADMIN_URL).toBe(opts.adminUrl)
+    expect(Object.keys(spec.env)).toEqual(['DB_STATEMENTS'])
+    expect(JSON.stringify(spec)).not.toContain('adminpw_x')
     expect(JSON.parse(Buffer.from(spec.env.DB_STATEMENTS, 'base64').toString('utf8'))).toEqual(stmts)
   })
 
-  it('a job that exits non-zero fails with its exit code and no SQL or password', async () => {
+  it('a job that exits 1 (a statement failed and was rolled back) is WorldDbJobFailed, with no SQL or password', async () => {
     const runJob = vi.fn(async () => ({ exitCode: 1 }))
     const err = await flyJobRunner({ runJob }, opts)(createWorldStatements(slugA, 'pw_job_2')).catch((e) => e)
-    expect(err).toBeInstanceOf(Error)
+    expect(err).toBeInstanceOf(WorldDbJobFailed)
     expect(err.message).toMatch(/exit code 1/)
     expect(err.message).toContain('vlm-worlds-db-jobs')
     const dump = JSON.stringify(Object.getOwnPropertyNames(err).map((k) => String((err as any)[k])))
     for (const hidden of ['pw_job_2', 'adminpw_x', 'CREATE', 'PASSWORD']) expect(dump).not.toContain(hidden)
+  })
+
+  it('any other exit code is a plain error: the outcome is unknown', async () => {
+    for (const exitCode of [2, 137]) {
+      const runJob = vi.fn(async () => ({ exitCode }))
+      const err = await flyJobRunner({ runJob }, opts)(createWorldStatements(slugA, 'pw_job_3')).catch((e) => e)
+      expect(err).toBeInstanceOf(Error)
+      expect(err).not.toBeInstanceOf(WorldDbJobFailed)
+      expect(err.message).toContain(`exit code ${exitCode}`)
+      expect(err.message).not.toContain('pw_job_3')
+    }
   })
 
   it('Fly errors from the job pass through', async () => {
@@ -185,6 +207,7 @@ describe('worlds database through Fly job machines', () => {
   it('create and drop say which one failed', async () => {
     const runJob = vi.fn(async () => ({ exitCode: 1 }))
     await expect(createWorldDatabase(slugA, flyJobRunner({ runJob }, opts))).rejects.toThrow(/^creating the world database failed: .*exit code 1/)
+    await expect(createWorldDatabase(slugA, flyJobRunner({ runJob }, opts))).rejects.toBeInstanceOf(WorldDbJobFailed)
     await expect(dropWorldDatabase(slugA, flyJobRunner({ runJob }, opts))).rejects.toThrow(/^dropping the world database failed: .*exit code 1/)
   })
 

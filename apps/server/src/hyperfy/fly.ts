@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto'
+
 export class FlyError extends Error {
   status: number
   body: string
@@ -12,6 +14,9 @@ export class FlyError extends Error {
 /** `autostart` defaults to true; it is turned off for ended worlds so a visit can't wake them. */
 export type WorldMachineSpec = { image: string; env: Record<string, string>; autostart?: boolean }
 
+/** Name prefix of runJob machines, so the sweep can recognise and reap ones left behind. */
+export const JOB_MACHINE_PREFIX = 'db-job-'
+
 /** A one-shot machine: runs `cmd` in `image` and stops. */
 export type JobSpec = { image: string; env: Record<string, string>; cmd: string[] }
 
@@ -24,6 +29,7 @@ const MAX_WAIT_S = 60
 
 function jobBody(j: JobSpec) {
   return {
+    name: `${JOB_MACHINE_PREFIX}${randomBytes(6).toString('hex')}`,
     region: REGION,
     config: {
       image: j.image,
@@ -162,9 +168,14 @@ export class FlyApi {
     await this.request('POST', `/apps/${encodeURIComponent(app)}/machines/${encodeURIComponent(id)}`, machineBody(m))
   }
 
-  async listMachines(app: string): Promise<{ id: string; state: string }[]> {
-    const r = await this.json<{ id: string; state: string }[]>('GET', `/apps/${encodeURIComponent(app)}/machines`)
-    return r.map((x) => ({ id: x.id, state: x.state }))
+  async listMachines(app: string): Promise<{ id: string; state: string; name?: string; createdAt?: string }[]> {
+    const r = await this.json<{ id: string; state: string; name?: string; created_at?: string }[]>('GET', `/apps/${encodeURIComponent(app)}/machines`)
+    return r.map((x) => ({ id: x.id, state: x.state, name: x.name, createdAt: x.created_at }))
+  }
+
+  /** Force-deletes a machine (stopping it if needed); one already gone counts as done. */
+  async deleteMachine(app: string, id: string): Promise<void> {
+    await this.request('DELETE', `/apps/${encodeURIComponent(app)}/machines/${encodeURIComponent(id)}?force=true`, undefined, [404])
   }
 
   async getMachineEnv(app: string, id: string): Promise<Record<string, string>> {
@@ -182,7 +193,7 @@ export class FlyApi {
 
   /**
    * Runs a one-shot machine (no services, never restarted) and returns its exit code once it stops. The machine is
-   * deleted afterwards whatever happened; a failed delete leaves a stopped machine behind but doesn't change the result.
+   * deleted afterwards whatever happened; a failed delete doesn't change the result, and the sweep reaps the machine.
    */
   async runJob(app: string, spec: JobSpec, timeoutMs = 120_000): Promise<{ exitCode: number }> {
     const base = `/apps/${encodeURIComponent(app)}/machines`
@@ -203,7 +214,7 @@ export class FlyApi {
       if (exitCode === undefined) throw new FlyError(`Fly job machine ${id} in ${app} stopped without an exit code`, 0, '')
       return { exitCode }
     } finally {
-      await this.request('DELETE', `${machine}?force=true`, undefined, [404]).catch(() => {})
+      await this.deleteMachine(app, id).catch(() => {})
     }
   }
 }

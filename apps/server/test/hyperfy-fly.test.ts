@@ -67,7 +67,7 @@ describe('FlyApi', () => {
     })
     const api = mk(fn)
     await api.updateMachine('a', 'm1', { image: 'i', env: {} })
-    expect(await api.listMachines('a')).toEqual([{ id: 'm1', state: 'started' }])
+    expect(await api.listMachines('a')).toEqual([{ id: 'm1', state: 'started', name: undefined, createdAt: undefined }])
     expect(await api.getMachineEnv('a', 'm1')).toEqual({ K: 'v' })
     await api.stopMachine('a', 'm1')
     await api.startMachine('a', 'm1')
@@ -164,6 +164,22 @@ describe('FlyApi', () => {
     expect(err.message).toMatch(/not JSON/)
   })
 
+  it('listMachines returns name and created_at; deleteMachine force-deletes and treats 404 as done', async () => {
+    const { fn, calls } = fakeFetch((c) => {
+      if (c.method === 'GET') return { body: [{ id: 'm1', state: 'stopped', name: 'db-job-abc', created_at: '2026-10-20T10:00:00Z' }] }
+      if (c.url.includes('/gone')) return { status: 404, body: { error: 'not found' } }
+      return { body: { ok: true } }
+    })
+    const api = mk(fn)
+    expect(await api.listMachines('j')).toEqual([{ id: 'm1', state: 'stopped', name: 'db-job-abc', createdAt: '2026-10-20T10:00:00Z' }])
+    await api.deleteMachine('j', 'm1')
+    await api.deleteMachine('j', 'gone')
+    expect(calls.slice(1).map((c) => `${c.method} ${c.url}`)).toEqual([
+      'DELETE https://api.machines.dev/v1/apps/j/machines/m1?force=true',
+      'DELETE https://api.machines.dev/v1/apps/j/machines/gone?force=true',
+    ])
+  })
+
   describe('runJob', () => {
     const JOB = { image: 'img:9', env: { DB_STATEMENTS: 'c2VjcmV0' }, cmd: ['node', '/app/vlm/db-job.mjs'] }
     const exitEvents = (code: number) => [
@@ -188,6 +204,7 @@ describe('FlyApi', () => {
         'DELETE /machines/j1?force=true',
       ])
       expect(calls[0].body).toEqual({
+        name: expect.stringMatching(/^db-job-[0-9a-f]{12}$/),
         region: 'iad',
         config: {
           image: 'img:9',

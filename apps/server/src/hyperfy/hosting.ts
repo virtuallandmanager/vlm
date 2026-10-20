@@ -15,7 +15,7 @@ import { getSubscription } from '../integrations/stripe.js'
 import { FlyApi } from './fly.js'
 import { hostedWorldSlots } from './slots.js'
 import { deleteWorldFiles } from './worlds-bucket.js'
-import { createWorldDatabase, dropWorldDatabase } from './worlds-db.js'
+import { createWorldDatabase, dropWorldDatabase, WorldDbJobFailed } from './worlds-db.js'
 import { createWorldKey, worldSummary, type HyperfyWorldRow } from './worlds.js'
 
 type Log = { info(...a: unknown[]): void; warn(...a: unknown[]): void; error(...a: unknown[]): void }
@@ -23,7 +23,8 @@ type Log = { info(...a: unknown[]): void; warn(...a: unknown[]): void; error(...
 export type HostingDeps = {
   fly: Pick<
     FlyApi,
-    'createApp' | 'deleteApp' | 'allocatePublicIps' | 'allocatePrivateIp' | 'createMachine' | 'updateMachine' | 'listMachines' | 'getMachineEnv' | 'startMachine' | 'stopMachine'
+    | 'createApp' | 'deleteApp' | 'allocatePublicIps' | 'allocatePrivateIp' | 'createMachine' | 'updateMachine' | 'listMachines'
+    | 'getMachineEnv' | 'startMachine' | 'stopMachine' | 'deleteMachine'
   >
   createWorldDatabase: (slug: string) => Promise<{ dbUri: string; schema: string }>
   dropWorldDatabase: (slug: string) => Promise<void>
@@ -71,6 +72,7 @@ function defaultDeps(): HostingDeps {
       getMachineEnv: (...a) => lazyFly().getMachineEnv(...a),
       startMachine: (...a) => lazyFly().startMachine(...a),
       stopMachine: (...a) => lazyFly().stopMachine(...a),
+      deleteMachine: (...a) => lazyFly().deleteMachine(...a),
     },
     createWorldDatabase: (slug) => createWorldDatabase(slug),
     dropWorldDatabase: (slug) => dropWorldDatabase(slug),
@@ -255,7 +257,12 @@ async function finishCreate(
   // Cleanup removes only what this create made: never an app that already existed under the name.
   const made = { database: false, app: false, files: false }
   try {
-    const { dbUri, schema } = await d.createWorldDatabase(slug)
+    const { dbUri, schema } = await d.createWorldDatabase(slug).catch((err) => {
+      // Only a batch known to have rolled back made nothing (and its role may be another world's); after any other
+      // failure the role and schema may exist, and dropping is safe to repeat.
+      if (!(err instanceof WorldDbJobFailed)) made.database = true
+      throw err
+    })
     made.database = true
     hidden.push(dbUri, safeUrlPassword(dbUri))
     check()

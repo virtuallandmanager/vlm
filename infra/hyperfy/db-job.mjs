@@ -2,13 +2,15 @@
 // Postgres is reachable. The server starts it as a one-shot machine of the world image (/app/vlm/db-job.mjs) with:
 //   DB_ADMIN_URL   the cluster's admin URL
 //   DB_STATEMENTS  base64 JSON [{ sql, params? }], run in order in one transaction
-// Exits 0 when every statement committed, 1 otherwise. The statements can hold a role password, so on failure this
-// prints only which statement failed and Postgres's code and message, never the SQL or its params.
+// Exits 0 when every statement committed; 1 when nothing was changed (bad input, no connection, or a statement failed
+// and the transaction rolled back); 2 when COMMIT failed, so the outcome is unknown. The statements can hold a role
+// password, so on failure this prints only which statement failed and Postgres's code and message, never the SQL or
+// its params.
 import pg from 'pg'
 
-function fail(line) {
+function fail(line, code = 1) {
   console.error(line)
-  process.exit(1)
+  process.exit(code)
 }
 
 let statements
@@ -26,6 +28,7 @@ const client = new pg.Client({ connectionString: process.env.DB_ADMIN_URL, conne
 // Keep an idle-connection error from becoming an unhandled event; the failing query reports it.
 client.on('error', () => {})
 let index = -1
+let committing = false
 try {
   await client.connect()
   await client.query('BEGIN')
@@ -34,13 +37,14 @@ try {
     await client.query(s.sql, s.params ?? [])
   }
   index = -1
+  committing = true
   await client.query('COMMIT')
   console.log(`worlds database job: ${statements.length} statements committed`)
 } catch (err) {
   await client.query('ROLLBACK').catch(() => {})
-  const where = index >= 0 ? ` (statement ${index + 1} of ${statements.length})` : ''
+  const where = committing ? ' at commit' : index >= 0 ? ` (statement ${index + 1} of ${statements.length})` : ''
   const code = typeof err?.code === 'string' ? ` ${err.code}` : ''
   await client.end().catch(() => {})
-  fail(`worlds database error${where}${code}: ${err?.message ?? 'unknown'}`)
+  fail(`worlds database error${where}${code}: ${err?.message ?? 'unknown'}`, committing ? 2 : 1)
 }
 await client.end()

@@ -4,7 +4,7 @@ import { db } from '../src/db/connection.js'
 import { hyperfyWorlds, subscriptions } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { FlyError, type WorldMachineSpec } from '../src/hyperfy/fly.js'
-import { worldDbName } from '../src/hyperfy/worlds-db.js'
+import { worldDbName, WorldDbJobFailed } from '../src/hyperfy/worlds-db.js'
 import { findWorldByKey } from '../src/hyperfy/worlds.js'
 import {
   createHostedWorld,
@@ -47,7 +47,7 @@ const deferred = (): Deferred => {
   return { promise, resolve }
 }
 
-function fakes(opts: { failMachine?: Error; failApp?: Error; failUpdate?: Error; healthy?: () => boolean; dbGate?: Promise<void>; onMachine?: () => void | Promise<void> } = {}) {
+function fakes(opts: { failDb?: Error; failMachine?: Error; failApp?: Error; failUpdate?: Error; healthy?: () => boolean; dbGate?: Promise<void>; onMachine?: () => void | Promise<void> } = {}) {
   const calls: string[] = []
   const apps = new Set<string>()
   const machines = new Map<string, { id: string; image: string; env: Record<string, string> }>()
@@ -91,10 +91,15 @@ function fakes(opts: { failMachine?: Error; failApp?: Error; failUpdate?: Error;
     async createWorldDatabase(slug: string) {
       if (opts.dbGate) await opts.dbGate
       const schema = worldDbName(slug)
+      // A job that timed out or whose machine call failed may still have committed.
+      if (opts.failDb) {
+        if (!(opts.failDb instanceof WorldDbJobFailed)) schemas.add(schema)
+        throw opts.failDb
+      }
       schemas.add(schema)
       return { dbUri: `postgres://${schema}:dbpw_${slug}_s3cr3t@worlds-db.flycast:5432/worlds`, schema }
     },
-    async dropWorldDatabase(slug: string) { schemas.delete(worldDbName(slug)) },
+    async dropWorldDatabase(slug: string) { calls.push(`dropWorldDatabase ${slug}`); schemas.delete(worldDbName(slug)) },
     async deleteWorldFiles(slug: string) { filesDeleted.push(slug); return 0 },
     fetch: (async (url: string) => {
       healthUrls.push(String(url))
@@ -273,6 +278,35 @@ describe('hosted Hyperfy worlds', () => {
     expect(f.apps.size).toBe(0)
     expect(f.schemas.size).toBe(0)
     expect(f.filesDeleted).toEqual(['doomed'])
+  })
+
+  it('a world database create with an unknown outcome (Fly error or job timeout) is dropped, and the world fails', async () => {
+    await setTier(owner.id, 'pro')
+    for (const [name, failDb] of [
+      ['Lost Job', new FlyError('Fly GET /apps/vlm-worlds-db-jobs/machines/j1/wait?state=stopped&timeout=60 returned 500: boom', 500, '')],
+      ['Slow Job', new FlyError('Fly job machine j2 in vlm-worlds-db-jobs did not finish within 120 s', 0, '')],
+    ] as const) {
+      const f = fakes({ failDb })
+      const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name, endsAt: null }, f.deps)
+      await hostedWorldSettled(world.id)
+      const r = await row(world.id)
+      expect(r.status).toBe('failed')
+      expect(f.calls).toContain(`dropWorldDatabase ${r.slug}`)
+      expect(f.schemas.size).toBe(0)
+      expect(f.calls.some((x) => x.startsWith('createApp'))).toBe(false)
+      await destroyHostedWorld(world.id, f.deps)
+    }
+  })
+
+  it('a world database job that failed and rolled back is not dropped (it may be another world\'s)', async () => {
+    await setTier(owner.id, 'pro')
+    const f = fakes({ failDb: new WorldDbJobFailed('creating the world database failed: worlds database job failed with exit code 1') })
+    const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Rolled Back', endsAt: null }, f.deps)
+    await hostedWorldSettled(world.id)
+    const r = await row(world.id)
+    expect(r.status).toBe('failed')
+    expect(r.errorMessage).toContain('exit code 1')
+    expect(f.calls.some((x) => x.startsWith('dropWorldDatabase'))).toBe(false)
   })
 
   it("a createApp failure (the app name already exists) deletes nothing it didn't make", async () => {

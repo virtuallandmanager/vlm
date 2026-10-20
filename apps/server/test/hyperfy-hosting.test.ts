@@ -51,12 +51,27 @@ describe('Hyperfy hosting availability', () => {
     configure(HOSTING)
     expect(hyperfyHosting()).toEqual({ available: true, provider: 'fly' })
     for (const k of Object.keys(HOSTING) as (keyof typeof HOSTING)[]) {
+      if (k === 'hyperfyWorldsDatabaseUrl') continue
       configure({ ...HOSTING, [k]: undefined })
       expect(hyperfyHosting().available, k).toBe(false)
     }
     configure({ ...HOSTING, hyperfyInfraProvider: 'docker' })
     expect(hyperfyHosting().available).toBe(false)
+  })
 
+  it('needs HYPERFY_WORLDS_DATABASE_URL only in direct mode (in fly-job mode the admin URL is a secret of the jobs app)', () => {
+    const saved = (config as any).hyperfyWorldsDbMode
+    try {
+      configure({ ...HOSTING, hyperfyWorldsDatabaseUrl: undefined })
+      ;(config as any).hyperfyWorldsDbMode = undefined
+      expect(hyperfyHosting().available).toBe(true)
+      ;(config as any).hyperfyWorldsDbMode = 'direct'
+      expect(hyperfyHosting().available).toBe(false)
+      configure(HOSTING)
+      expect(hyperfyHosting().available).toBe(true)
+    } finally {
+      ;(config as any).hyperfyWorldsDbMode = saved
+    }
   })
 
   it('needs a valid worlds DB mode, and the job app in fly-job mode (the default on fly)', () => {

@@ -31,8 +31,22 @@ const q = (ident: string) => `"${ident.replace(/"/g, '""')}"`
 const lit = (s: string) => `'${s.replace(/'/g, "''")}'`
 
 export type WorldDbStatement = { sql: string; params?: (string | number | boolean | null)[] }
-/** Runs the statements in one transaction, in order; rejects with an error that carries no SQL text or params. */
+/**
+ * Runs the statements in one transaction, in order; rejects with an error that carries no SQL text or params:
+ * WorldDbJobFailed when the batch is known to have rolled back, any other error when the outcome is unknown.
+ */
 export type WorldDbRunner = (statements: WorldDbStatement[]) => Promise<void>
+
+/**
+ * A batch that failed on one of its statements and was rolled back, so it changed nothing: a job that exited 1, or a
+ * statement error in directRunner. Any other failure (Fly errors, timeouts, a lost COMMIT) may have committed.
+ */
+export class WorldDbJobFailed extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'WorldDbJobFailed'
+  }
+}
 
 const MIN_PG_VERSION_NUM = 150000
 
@@ -79,10 +93,9 @@ export function dropWorldStatements(slug: string): WorldDbStatement[] {
  * Postgres errors (and postgres.js, which attaches the failed statement) can carry the role password; keep only the
  * statement's position, the code and the message. db-job.mjs prints the same line.
  */
-function scrub(err: unknown, at?: { index: number; count: number }): Error {
+function scrub(err: unknown, where = ''): string {
   const e = err as { message?: string; code?: string }
-  const where = at ? ` (statement ${at.index + 1} of ${at.count})` : ''
-  return new Error(`worlds database error${where}${e.code ? ` ${e.code}` : ''}: ${e.message ?? 'unknown'}`)
+  return `worlds database error${where}${e.code ? ` ${e.code}` : ''}: ${e.message ?? 'unknown'}`
 }
 
 /** Runs the statements from this process, in one transaction, against the admin URL. */
@@ -98,7 +111,12 @@ export function directRunner(adminUrl: string): WorldDbRunner {
         }
       })
     } catch (err) {
-      throw scrub(err, index >= 0 && index < statements.length ? { index, count: statements.length } : undefined)
+      // A server error on a statement aborts the transaction before COMMIT; anything else (connection, COMMIT) is unknown.
+      const onStatement = index >= 0 && index < statements.length
+      if (onStatement && (err as Error)?.name === 'PostgresError') {
+        throw new WorldDbJobFailed(scrub(err, ` (statement ${index + 1} of ${statements.length})`))
+      }
+      throw new Error(scrub(err, index === statements.length ? ' at commit' : ''))
     } finally {
       await sql.end({ timeout: 5 })
     }
@@ -108,26 +126,20 @@ export function directRunner(adminUrl: string): WorldDbRunner {
 export const DB_JOB_CMD = ['node', '/app/vlm/db-job.mjs']
 
 /**
- * Runs the statements in a one-shot machine of the DB job app, inside Fly's private network. The statements (which may
- * hold a role password) travel only in the machine's env as base64 JSON; the job prints only the Postgres error, to the
- * machine's logs, and the Machines API gives back only the exit code.
+ * Runs the statements in a one-shot machine of the DB job app, inside Fly's private network. The admin URL is the jobs
+ * app's Fly secret `DB_ADMIN_URL`, never sent from here. The statements (which may hold a role password) travel only in
+ * the machine's env as base64 JSON; the job prints only the Postgres error, to the machine's logs, and the Machines API
+ * gives back only the exit code: 1 means a statement failed and the batch rolled back, anything else is unknown.
  */
-export function flyJobRunner(
-  fly: Pick<FlyApi, 'runJob'>,
-  opts?: { app?: string; image?: string; adminUrl?: string },
-): WorldDbRunner {
+export function flyJobRunner(fly: Pick<FlyApi, 'runJob'>, opts?: { app?: string; image?: string }): WorldDbRunner {
   return async (statements) => {
     const app = required(opts?.app ?? config.hyperfyDbJobApp, 'HYPERFY_DB_JOB_APP')
     const image = required(opts?.image ?? config.hyperfyImage, 'HYPERFY_IMAGE')
-    const adminUrl = required(opts?.adminUrl ?? config.hyperfyWorldsDatabaseUrl, 'HYPERFY_WORLDS_DATABASE_URL')
-    const env = {
-      DB_ADMIN_URL: adminUrl,
-      DB_STATEMENTS: Buffer.from(JSON.stringify(statements), 'utf8').toString('base64'),
-    }
+    const env = { DB_STATEMENTS: Buffer.from(JSON.stringify(statements), 'utf8').toString('base64') }
     const { exitCode } = await fly.runJob(app, { image, env, cmd: DB_JOB_CMD })
-    if (exitCode !== 0) {
-      throw new Error(`worlds database job failed with exit code ${exitCode} (its Postgres error is in the logs of Fly app ${app})`)
-    }
+    if (exitCode === 0) return
+    const message = `worlds database job failed with exit code ${exitCode} (its Postgres error is in the logs of Fly app ${app})`
+    throw exitCode === 1 ? new WorldDbJobFailed(message) : new Error(`${message}; the outcome is unknown`)
   }
 }
 
@@ -149,7 +161,11 @@ export function worldDbRunner(): WorldDbRunner {
   }
 }
 
-const labelled = (label: string, err: unknown) => new Error(`${label} failed: ${err instanceof Error ? err.message : String(err)}`)
+/** Prefixes the step; a WorldDbJobFailed stays one, so callers still know nothing was changed. */
+const labelled = (label: string, err: unknown) => {
+  const message = `${label} failed: ${err instanceof Error ? err.message : String(err)}`
+  return err instanceof WorldDbJobFailed ? new WorldDbJobFailed(message) : new Error(message)
+}
 
 /** Creates the world's role (LOGIN, random password) and a schema it owns; it can use nothing else. */
 export async function createWorldDatabase(slug: string, runner: WorldDbRunner = worldDbRunner()): Promise<{ dbUri: string; schema: string }> {

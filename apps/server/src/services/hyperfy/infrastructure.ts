@@ -18,14 +18,14 @@ export function hyperfyHosting(): { available: boolean; provider: string } {
     config.flyApiToken,
     config.flyWorldsOrg,
     config.hyperfyImage,
-    config.hyperfyWorldsDatabaseUrl,
     config.hyperfyWorldsDbUrlTemplate,
     config.hyperfyAssetsS3Uri,
     config.hyperfyAssetsBaseUrl,
     config.hyperfyRouterDomain,
     config.hyperfySecretKey,
     worldsDbMode(),
-    worldsDbMode() !== 'fly-job' || config.hyperfyDbJobApp,
+    // In fly-job mode the admin URL is a Fly secret of the jobs app; only direct mode connects with it from here.
+    worldsDbMode() === 'fly-job' ? config.hyperfyDbJobApp : config.hyperfyWorldsDatabaseUrl,
   ]
   return { available: provider === 'fly' && required.every(Boolean), provider }
 }

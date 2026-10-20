@@ -320,4 +320,89 @@ describe('hosted world sweep', () => {
     expect(f.deletedFiles).toEqual(['slow-world'])
     expect(await hostedWorldSlots(owner.id)).toMatchObject({ used: 1 })
   })
+
+  describe('orphaned DB job machines', () => {
+    const JOBS = 'vlm-worlds-db-jobs'
+    const ago = (ms: number) => new Date(now.getTime() - ms).toISOString()
+    const jobMachines = [
+      { id: 'old-stopped', state: 'stopped', name: 'db-job-aaa', createdAt: ago(11 * MIN) },
+      { id: 'old-created', state: 'created', name: 'db-job-bbb', createdAt: ago(60 * MIN) },
+      { id: 'old-failed-delete', state: 'stopped', name: 'db-job-ccc', createdAt: ago(30 * MIN) },
+      { id: 'old-started', state: 'started', name: 'db-job-ddd', createdAt: ago(30 * MIN) },
+      { id: 'old-starting', state: 'starting', name: 'db-job-eee', createdAt: ago(30 * MIN) },
+      { id: 'young-stopped', state: 'stopped', name: 'db-job-fff', createdAt: ago(5 * MIN) },
+      { id: 'no-date', state: 'stopped', name: 'db-job-ggg' },
+      { id: 'not-a-job', state: 'stopped', name: 'something-else', createdAt: ago(60 * MIN) },
+    ]
+
+    const withJobs = (f: ReturnType<typeof fakes>) => {
+      const deleted: string[] = []
+      const listed: string[] = []
+      const fly = f.deps.fly as any
+      const listWorld = fly.listMachines
+      fly.listMachines = async (app: string) => {
+        listed.push(app)
+        return app === JOBS ? jobMachines.map((m) => ({ ...m })) : listWorld(app)
+      }
+      fly.deleteMachine = async (app: string, id: string) => {
+        if (id === 'old-failed-delete') throw new Error('fly down')
+        deleted.push(`${app}/${id}`)
+      }
+      return { deleted, listed }
+    }
+
+    it('in fly-job mode the sweep force-deletes stopped job machines older than 10 minutes, logging only ids', async () => {
+      const savedMode = (config as any).hyperfyWorldsDbMode
+      const savedApp = (config as any).hyperfyDbJobApp
+      ;(config as any).hyperfyWorldsDbMode = 'fly-job'
+      ;(config as any).hyperfyDbJobApp = JOBS
+      try {
+        const f = fakes()
+        const { deleted } = withJobs(f)
+        expect(await sweepHostedWorlds(now, f.deps)).toEqual({ ended: 0, purged: 0, stuck: 0 })
+        expect(deleted).toEqual([`${JOBS}/old-stopped`, `${JOBS}/old-created`])
+        const logText = f.logs.join('\n')
+        expect(logText).toContain('old-stopped')
+        expect(logText).toContain('old-failed-delete')
+        expect(logText).not.toMatch(/PASSWORD|DB_STATEMENTS/)
+      } finally {
+        ;(config as any).hyperfyWorldsDbMode = savedMode
+        ;(config as any).hyperfyDbJobApp = savedApp
+      }
+    })
+
+    it('a failure listing the jobs app is logged and does not stop the sweep', async () => {
+      const savedMode = (config as any).hyperfyWorldsDbMode
+      ;(config as any).hyperfyWorldsDbMode = 'fly-job'
+      try {
+        const due = await insert('due-reap', { endsAt: new Date(now.getTime() - MIN) })
+        const f = fakes()
+        const fly = f.deps.fly as any
+        const listWorld = fly.listMachines
+        fly.listMachines = async (app: string) => {
+          if (app === (config as any).hyperfyDbJobApp) throw new Error('fly down')
+          return listWorld(app)
+        }
+        expect(await sweepHostedWorlds(now, f.deps)).toEqual({ ended: 1, purged: 0, stuck: 0 })
+        expect((await row(due.id)).status).toBe('ended')
+        expect(f.logs.join('\n')).toMatch(/job machines/)
+      } finally {
+        ;(config as any).hyperfyWorldsDbMode = savedMode
+      }
+    })
+
+    it('in direct mode the jobs app is not touched', async () => {
+      const savedMode = (config as any).hyperfyWorldsDbMode
+      ;(config as any).hyperfyWorldsDbMode = 'direct'
+      try {
+        const f = fakes()
+        const { deleted, listed } = withJobs(f)
+        await sweepHostedWorlds(now, f.deps)
+        expect(listed).not.toContain(JOBS)
+        expect(deleted).toEqual([])
+      } finally {
+        ;(config as any).hyperfyWorldsDbMode = savedMode
+      }
+    })
+  })
 })

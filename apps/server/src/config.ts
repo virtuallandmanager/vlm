@@ -105,9 +105,10 @@ export const config = {
   flyApiToken: env('FLY_API_TOKEN'), // scoped to the worlds org only
   flyWorldsOrg: env('FLY_WORLDS_ORG'),
   hyperfyImage: env('HYPERFY_IMAGE'), // registry.fly.io/vlm-hyperfy-image:<git-sha>
-  hyperfyWorldsDatabaseUrl: env('HYPERFY_WORLDS_DATABASE_URL'), // admin URL: creates and drops world roles/schemas
-  // How that SQL runs: `fly-job` (default on fly; in a one-shot machine of HYPERFY_DB_JOB_APP, inside Fly's private
-  // network) or `direct` (from this server). Resolved by worldsDbMode().
+  // How world roles/schemas are created and dropped: `fly-job` (default on fly; in a one-shot machine of
+  // HYPERFY_DB_JOB_APP, inside Fly's private network, with the admin URL as that app's secret DB_ADMIN_URL) or `direct`
+  // (from this server, with HYPERFY_WORLDS_DATABASE_URL). Resolved by worldsDbMode().
+  hyperfyWorldsDatabaseUrl: env('HYPERFY_WORLDS_DATABASE_URL'), // admin URL, direct mode only
   hyperfyWorldsDbMode: env('HYPERFY_WORLDS_DB_MODE'),
   hyperfyDbJobApp: env('HYPERFY_DB_JOB_APP') ?? 'vlm-worlds-db-jobs',
   hyperfyWorldsDbUrlTemplate: env('HYPERFY_WORLDS_DB_URL_TEMPLATE'), // what worlds connect with; {user} and {password}

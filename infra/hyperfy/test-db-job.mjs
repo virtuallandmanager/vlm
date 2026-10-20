@@ -83,6 +83,14 @@ try {
   const version = runJob([{ sql: `DO $$ BEGIN IF current_setting('server_version_num')::int < 9990000 THEN RAISE EXCEPTION 'worlds database must run Postgres 999 or newer'; END IF; END $$` }])
   check('a raised error is printed', version.code === 1 && /P0001/.test(version.out) && /Postgres 999 or newer/.test(version.out), version.out)
 
+  // A deferred unique constraint fails at COMMIT: the job can't tell a refused COMMIT from a lost one, so it exits 2.
+  const atCommit = runJob([
+    { sql: `CREATE TEMP TABLE dbjob_${suffix} (id int UNIQUE DEFERRABLE INITIALLY DEFERRED)` },
+    { sql: `INSERT INTO dbjob_${suffix} VALUES (1), (1)` },
+  ])
+  check('a failure at COMMIT exits 2 (outcome unknown)', atCommit.code === 2 && /23505/.test(atCommit.out) && /at commit/.test(atCommit.out), `exit ${atCommit.code}: ${atCommit.out}`)
+  check('a failure at COMMIT prints no statement text', !/CREATE|INSERT/.test(atCommit.out), atCommit.out)
+
   const noEnv = runJob([], { DB_STATEMENTS: '' })
   check('missing statements exits 1', noEnv.code === 1, noEnv.out)
   const badUrl = runJob(create, { DB_ADMIN_URL: `postgres://nobody:${SECRET}@127.0.0.1:9/x` })
