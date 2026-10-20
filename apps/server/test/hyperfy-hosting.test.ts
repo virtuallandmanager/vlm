@@ -6,89 +6,95 @@ import { hyperfyHosting } from '../src/services/hyperfy/infrastructure.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, createScene, tokenFor, type TestUser } from './helpers/factories.js'
 
-// With no Hyperfy hosting configured, the dev stub used to report a fake localhost world as deployed.
+const HOSTING = {
+  hyperfyInfraProvider: 'fly',
+  flyApiToken: 'FlyV1 x',
+  flyWorldsOrg: 'vlm-worlds',
+  hyperfyImage: 'registry.fly.io/vlm-hyperfy-image:abc',
+  hyperfyWorldsDatabaseUrl: 'postgres://a:b@h/db',
+  hyperfyWorldsDbUrlTemplate: 'postgres://{user}:{password}@h/db',
+  hyperfyAssetsS3Uri: 's3://k:s@acct.r2.cloudflarestorage.com/vlm-hyperfy',
+  hyperfyAssetsBaseUrl: 'https://worlds-cdn.vlm.gg',
+  hyperfyRouterDomain: 'worlds.vlm.gg',
+  hyperfySecretKey: 'ab'.repeat(32),
+}
+
+// Hosted worlds run on Fly only, and only once every variable they need is set; there is no local stand-in.
 describe('Hyperfy hosting availability', () => {
   let app: Awaited<ReturnType<typeof testApp>>
   let owner: TestUser
   let sceneId: string
-  const mode = config.mode
-  const saved = { provider: process.env.HYPERFY_INFRA_PROVIDER, token: process.env.FLY_API_TOKEN }
+  const saved: Record<string, unknown> = {}
+
+  const configure = (values: Partial<Record<keyof typeof HOSTING, string | undefined>>) => {
+    for (const [k, v] of Object.entries(values)) (config as any)[k] = v
+  }
 
   beforeEach(async () => {
     await resetDb()
     app = await testApp()
     owner = await createUser()
     sceneId = (await createScene(owner, 'World')).scene.id
-    delete process.env.HYPERFY_INFRA_PROVIDER
-    delete process.env.FLY_API_TOKEN
+    for (const k of [...Object.keys(HOSTING), 'mode']) saved[k] = (config as any)[k]
+    configure(Object.fromEntries(Object.keys(HOSTING).map((k) => [k, undefined])))
   })
   afterEach(async () => {
-    ;(config as any).mode = mode
-    process.env.HYPERFY_INFRA_PROVIDER = saved.provider
-    process.env.FLY_API_TOKEN = saved.token
-    if (saved.provider === undefined) delete process.env.HYPERFY_INFRA_PROVIDER
-    if (saved.token === undefined) delete process.env.FLY_API_TOKEN
+    for (const [k, v] of Object.entries(saved)) (config as any)[k] = v
     await app.close()
   })
 
   const call = (method: 'GET' | 'POST', url: string, payload?: unknown) =>
     app.inject({ method, url, headers: { authorization: `Bearer ${tokenFor(owner)}` }, payload: payload as any })
 
-  it('the local stub is never available in cloud mode', () => {
-    ;(config as any).mode = 'cloud'
-    expect(hyperfyHosting()).toEqual({ available: false, provider: 'local' })
-  })
-
-  it('fly is available only with an API token', () => {
-    ;(config as any).mode = 'cloud'
-    process.env.HYPERFY_INFRA_PROVIDER = 'fly'
+  it('is available only with provider fly and every hosting variable set', () => {
     expect(hyperfyHosting().available).toBe(false)
-    process.env.FLY_API_TOKEN = 'x'
+    configure(HOSTING)
     expect(hyperfyHosting()).toEqual({ available: true, provider: 'fly' })
+    for (const k of Object.keys(HOSTING) as (keyof typeof HOSTING)[]) {
+      configure({ ...HOSTING, [k]: undefined })
+      expect(hyperfyHosting().available, k).toBe(false)
+    }
+    configure({ ...HOSTING, hyperfyInfraProvider: 'docker' })
+    expect(hyperfyHosting().available).toBe(false)
   })
 
-  it('the local stub stays available for single-mode development', () => {
-    ;(config as any).mode = 'single'
-    expect(hyperfyHosting().available).toBe(true)
+  it('is never available without Fly, in any mode', () => {
+    for (const mode of ['single', 'scalable', 'cloud']) {
+      ;(config as any).mode = mode
+      expect(hyperfyHosting().available).toBe(false)
+    }
   })
 
-  it('in cloud mode with no hosting, both provision routes refuse with 503 and record nothing', async () => {
-    ;(config as any).mode = 'cloud'
-    const viaDeploy = await call('POST', '/api/deploy', { sceneId, platform: 'hyperfy', deploymentType: 'instance', target: { name: 'w' } })
-    expect(viaDeploy.statusCode).toBe(503)
-    expect(viaDeploy.json().error).toBe('hyperfy_hosting_unavailable')
-    const viaProvision = await call('POST', '/api/deploy/hyperfy/provision', { sceneId, name: 'w' })
-    expect(viaProvision.statusCode).toBe(503)
+  it('POST /api/deploy no longer provisions Hyperfy worlds, and records nothing', async () => {
+    configure(HOSTING)
+    const res = await call('POST', '/api/deploy', { sceneId, platform: 'hyperfy', deploymentType: 'instance', target: { name: 'w' } })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toBe('hyperfy_use_worlds')
     expect(await db.select().from(sceneDeployments)).toHaveLength(0)
   })
 
-  const fakeWorld = async () => (await db.insert(sceneDeployments).values({
-    sceneId, platform: 'hyperfy', deploymentType: 'instance', status: 'failed', deployedBy: owner.id,
-    infrastructureId: 'local-w-4000', target: { name: 'w', slug: 'w', instanceUrl: 'http://localhost:4000', provider: 'local', adminCode: 'secret' },
-  }).returning())[0]
-
-  it('destroy, by deployment id, removes a world that was never really created', async () => {
-    ;(config as any).mode = 'cloud'
-    const dep = await fakeWorld()
-    const res = await call('POST', `/api/deploy/hyperfy/${dep.id}/destroy`)
-    expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ destroyed: true })
-    expect(await db.select().from(sceneDeployments)).toHaveLength(0)
+  it('the old /api/deploy/hyperfy routes are gone', async () => {
+    const res = await call('POST', '/api/deploy/hyperfy/provision', { sceneId, name: 'w' })
+    expect(res.statusCode).toBe(404)
+    const routes = ((app as any).registeredRoutes as Array<{ url: string }>).map((r) => r.url)
+    expect(routes.filter((u) => u.startsWith('/api/deploy/hyperfy'))).toEqual([])
   })
 
-  it('redeploying a Hyperfy world is refused while hosting is unavailable, and creates nothing', async () => {
-    ;(config as any).mode = 'cloud'
-    const dep = await fakeWorld()
+  it('an old Hyperfy deployment is not redeployed, and nothing is created', async () => {
+    configure(HOSTING)
+    const [dep] = await db.insert(sceneDeployments).values({
+      sceneId, platform: 'hyperfy', deploymentType: 'instance', status: 'failed', deployedBy: owner.id,
+      target: { name: 'w', slug: 'w', instanceUrl: 'http://localhost:4000', provider: 'local', adminCode: 'secret' },
+    }).returning()
     const res = await call('POST', `/api/deploy/${dep.id}/redeploy`)
-    expect(res.statusCode).toBe(503)
-    expect(res.json().error).toBe('hyperfy_hosting_unavailable')
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toBe('hyperfy_use_worlds')
     expect(await db.select().from(sceneDeployments)).toHaveLength(1)
   })
 
   it('GET /api/deploy/platforms says whether Hyperfy can be deployed', async () => {
-    ;(config as any).mode = 'cloud'
     expect((await call('GET', '/api/deploy/platforms')).json()).toEqual({ platforms: { decentraland: true, hyperfy: false } })
-    ;(config as any).mode = 'single'
+    configure(HOSTING)
     expect((await call('GET', '/api/deploy/platforms')).json().platforms.hyperfy).toBe(true)
   })
 })

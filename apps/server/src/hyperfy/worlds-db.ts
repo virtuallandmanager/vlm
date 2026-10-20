@@ -1,5 +1,6 @@
 import postgres from 'postgres'
 import { randomBytes } from 'node:crypto'
+import { config } from '../config.js'
 
 const SLUG_RE = /^[a-z0-9-]{3,30}$/
 
@@ -20,7 +21,7 @@ const q = (ident: string) => `"${ident.replace(/"/g, '""')}"`
 const lit = (s: string) => `'${s.replace(/'/g, "''")}'`
 
 function adminSql(adminUrl?: string) {
-  const url = adminUrl ?? process.env.HYPERFY_WORLDS_DATABASE_URL
+  const url = adminUrl ?? config.hyperfyWorldsDatabaseUrl
   if (!url) throw new Error('HYPERFY_WORLDS_DATABASE_URL is not set')
   return postgres(url, { max: 1, onnotice: () => {} })
 }
@@ -43,7 +44,7 @@ function scrub(err: unknown): Error {
 /** Creates the world's role (LOGIN, random password) and a schema it owns; it can use nothing else. */
 export async function createWorldDatabase(slug: string, adminUrl?: string): Promise<{ dbUri: string; schema: string }> {
   const name = worldDbName(slug)
-  const template = process.env.HYPERFY_WORLDS_DB_URL_TEMPLATE
+  const template = config.hyperfyWorldsDbUrlTemplate
   if (!template) throw new Error('HYPERFY_WORLDS_DB_URL_TEMPLATE is not set')
   const password = randomBytes(32).toString('hex')
   const sql = adminSql(adminUrl)

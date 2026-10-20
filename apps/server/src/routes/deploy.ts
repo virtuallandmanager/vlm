@@ -22,7 +22,6 @@ import {
 } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { requireFeature } from '../middleware/feature-gate.js'
-import { HyperfyProvisioner } from '../services/hyperfy/provisioner.js'
 import { hyperfyHosting } from '../services/hyperfy/infrastructure.js'
 import { executeDCLDeploy } from '../services/dcl/deployer.js'
 import { actorFromClaims } from '../auth/actor.js'
@@ -50,6 +49,8 @@ export async function deploymentForCaller(
   const ok = need === 'manage' ? isFullAccess(access) : hasScope(access, 'scene.edit')
   return ok ? deployment : null
 }
+
+const HYPERFY_USE_WORLDS = { error: 'hyperfy_use_worlds', message: 'Hyperfy worlds are created and managed at /api/hyperfy/worlds' }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -107,25 +108,8 @@ export default async function deployRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: 'invalid_content_server' })
       }
 
-      // Hyperfy: use the provisioner for end-to-end deployment
-      if (body.platform === 'hyperfy') {
-        if (!hyperfyHosting().available) return reply.status(503).send({ error: 'hyperfy_hosting_unavailable', message: "Hyperfy hosting isn't set up on this server yet" })
-        const provisioner = new HyperfyProvisioner()
-        try {
-          const result = await provisioner.provision({
-            sceneId: body.sceneId,
-            name: (body.target as any).name || scene.name,
-            region: (body.target as any).region,
-            deployedBy: request.user.id,
-          })
-          return reply.status(201).send({ deployment: result })
-        } catch (err) {
-          return reply.status(500).send({
-            error: 'Hyperfy provisioning failed',
-            message: err instanceof Error ? err.message : String(err),
-          })
-        }
-      }
+      // Hosted Hyperfy worlds have their own routes and lifecycle.
+      if (body.platform === 'hyperfy') return reply.status(400).send(HYPERFY_USE_WORLDS)
 
       // Other platforms: create record for async processing
       const [deployment] = await db
@@ -232,9 +216,7 @@ export default async function deployRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: 'Deployment not found' })
       }
 
-      if (original.platform === 'hyperfy' && !hyperfyHosting().available) {
-        return reply.status(503).send({ error: 'hyperfy_hosting_unavailable', message: "Hyperfy hosting isn't set up on this server yet" })
-      }
+      if (original.platform === 'hyperfy') return reply.status(400).send(HYPERFY_USE_WORLDS)
 
       if (original.platform === 'decentraland' && !(await validContentServer(original.target as Record<string, unknown>))) {
         return reply.status(400).send({ error: 'invalid_content_server' })
@@ -346,121 +328,6 @@ export default async function deployRoutes(app: FastifyInstance) {
   app.get('/api/deploy/platforms', { preHandler: [authenticate] }, async () => ({
     platforms: { decentraland: true, hyperfy: hyperfyHosting().available },
   }))
-
-  // ── Hyperfy-Specific Routes ─────────────────────────────────────────
-
-  /** Provision a new Hyperfy world (convenience endpoint). */
-  app.post(
-    '/api/deploy/hyperfy/provision',
-    { preHandler: [authenticate, requireFeature('deployment')] },
-    async (request, reply) => {
-      const body = request.body as {
-        sceneId: string
-        name: string
-        region?: string
-      }
-
-      if (!body.sceneId || !body.name) {
-        return reply.status(400).send({
-          error: 'Missing required fields: sceneId, name',
-        })
-      }
-
-      const scene = await db.query.scenes.findFirst({
-        where: eq(scenes.id, body.sceneId),
-      })
-
-      if (!scene) {
-        return reply.status(404).send({ error: 'Scene not found' })
-      }
-
-      const access = await getSceneAccess(actorFromClaims(request.user), body.sceneId)
-      if (access.level === 'none') return reply.status(404).send({ error: 'Scene not found' })
-      if (!isFullAccess(access)) return reply.status(403).send({ error: 'Forbidden' })
-      if (!hyperfyHosting().available) return reply.status(503).send({ error: 'hyperfy_hosting_unavailable', message: "Hyperfy hosting isn't set up on this server yet" })
-
-      const provisioner = new HyperfyProvisioner()
-      try {
-        const result = await provisioner.provision({
-          sceneId: body.sceneId,
-          name: body.name,
-          region: body.region,
-          deployedBy: request.user.id,
-        })
-        return reply.status(201).send(result)
-      } catch (err) {
-        return reply.status(500).send({
-          error: 'Hyperfy provisioning failed',
-          message: err instanceof Error ? err.message : String(err),
-        })
-      }
-    },
-  )
-
-  /** Destroy a running Hyperfy world instance. */
-  app.post(
-    '/api/deploy/hyperfy/:id/destroy',
-    { preHandler: [authenticate] },
-    async (request, reply) => {
-      const { id } = request.params as { id: string }
-
-      if (!(await deploymentForCaller(request, id, 'manage'))) {
-        return reply.status(404).send({ error: 'Deployment not found' })
-      }
-
-      const provisioner = new HyperfyProvisioner()
-      try {
-        await provisioner.destroy(id)
-        return reply.send({ destroyed: true })
-      } catch (err) {
-        return reply.status(500).send({
-          error: 'Destroy failed',
-          message: err instanceof Error ? err.message : String(err),
-        })
-      }
-    },
-  )
-
-  /** Get live instance status from the infrastructure provider. */
-  app.get(
-    '/api/deploy/hyperfy/:id/status',
-    { preHandler: [authenticate] },
-    async (request, reply) => {
-      const { id } = request.params as { id: string }
-
-      if (!(await deploymentForCaller(request, id, 'read'))) {
-        return reply.status(404).send({ error: 'Deployment not found' })
-      }
-
-      const provisioner = new HyperfyProvisioner()
-      const status = await provisioner.getInstanceStatus(id)
-
-      if (!status) {
-        return reply.status(404).send({ error: 'Instance not found or not running' })
-      }
-
-      return reply.send({ instance: status })
-    },
-  )
-
-  /** Get logs from a running Hyperfy instance. */
-  app.get(
-    '/api/deploy/hyperfy/:id/logs',
-    { preHandler: [authenticate] },
-    async (request, reply) => {
-      const { id } = request.params as { id: string }
-      const query = request.query as { lines?: string }
-
-      if (!(await deploymentForCaller(request, id, 'manage'))) {
-        return reply.status(404).send({ error: 'Deployment not found' })
-      }
-
-      const provisioner = new HyperfyProvisioner()
-      const logs = await provisioner.getLogs(id, parseInt(query.lines || '100'))
-
-      return reply.send({ logs })
-    },
-  )
 }
 
 // Re-export sql for use in route

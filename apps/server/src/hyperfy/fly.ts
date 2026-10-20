@@ -11,9 +11,10 @@ export class FlyError extends Error {
 
 export type WorldMachineSpec = { image: string; env: Record<string, string> }
 
-type FlyOpts = { token: string; org: string; fetch?: typeof fetch; baseUrl?: string }
+type FlyOpts = { token: string; org: string; fetch?: typeof fetch; baseUrl?: string; timeoutMs?: number }
 
 const REGION = 'iad'
+const REQUEST_TIMEOUT_MS = 30_000
 
 function machineBody(m: WorldMachineSpec) {
   return {
@@ -39,12 +40,14 @@ export class FlyApi {
   private org: string
   private fetchFn: typeof fetch
   private baseUrl: string
+  private timeoutMs: number
 
   constructor(opts: FlyOpts) {
     this.token = opts.token
     this.org = opts.org
     this.fetchFn = opts.fetch ?? fetch
     this.baseUrl = (opts.baseUrl ?? 'https://api.machines.dev/v1').replace(/\/+$/, '')
+    this.timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS
   }
 
   private scrub(s: string): string {
@@ -61,8 +64,12 @@ export class FlyApi {
           ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(this.timeoutMs),
       })
     } catch (e) {
+      if ((e as Error)?.name === 'TimeoutError') {
+        throw new FlyError(`Fly ${method} ${path} timed out after ${this.timeoutMs / 1000} s`, 0, '')
+      }
       const msg = this.scrub(e instanceof Error ? e.message : String(e))
       throw new FlyError(`Fly ${method} ${path} failed: ${msg}`, 0, '')
     }
@@ -77,8 +84,12 @@ export class FlyApi {
   }
 
   private async json<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const { text } = await this.request(method, path, body)
-    return JSON.parse(text) as T
+    const { status, text } = await this.request(method, path, body)
+    try {
+      return JSON.parse(text) as T
+    } catch {
+      throw new FlyError(`Fly ${method} ${path} returned ${status} with a body that is not JSON`, status, text.slice(0, 500))
+    }
   }
 
   async createApp(name: string): Promise<void> {
@@ -93,6 +104,11 @@ export class FlyApi {
     for (const type of ['shared_v4', 'v6']) {
       await this.request('POST', `/apps/${encodeURIComponent(app)}/ip_assignments`, { type })
     }
+  }
+
+  /** One private IPv6 (Flycast) address, which the worlds router proxies large requests to. */
+  async allocatePrivateIp(app: string): Promise<void> {
+    await this.request('POST', `/apps/${encodeURIComponent(app)}/ip_assignments`, { type: 'private_v6' })
   }
 
   async createMachine(app: string, m: WorldMachineSpec): Promise<{ id: string }> {

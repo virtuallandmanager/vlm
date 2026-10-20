@@ -15,7 +15,7 @@ describe('connect-your-own Hyperfy world', () => {
   let sceneId: string
   const mode = config.mode
   const unlocked = config.allFeaturesUnlocked
-  const saved = { provider: process.env.HYPERFY_INFRA_PROVIDER, token: process.env.FLY_API_TOKEN }
+  const saved = { provider: config.hyperfyInfraProvider, token: config.flyApiToken }
 
   beforeEach(async () => {
     await resetDb()
@@ -26,10 +26,8 @@ describe('connect-your-own Hyperfy world', () => {
   afterEach(async () => {
     ;(config as any).mode = mode
     config.allFeaturesUnlocked = unlocked
-    process.env.HYPERFY_INFRA_PROVIDER = saved.provider
-    process.env.FLY_API_TOKEN = saved.token
-    if (saved.provider === undefined) delete process.env.HYPERFY_INFRA_PROVIDER
-    if (saved.token === undefined) delete process.env.FLY_API_TOKEN
+    ;(config as any).hyperfyInfraProvider = saved.provider
+    ;(config as any).flyApiToken = saved.token
     await app.close()
   })
 
@@ -93,8 +91,8 @@ describe('connect-your-own Hyperfy world', () => {
 
   it('connecting works while Hyperfy hosting is unavailable (cloud mode)', async () => {
     ;(config as any).mode = 'cloud'
-    delete process.env.HYPERFY_INFRA_PROVIDER
-    delete process.env.FLY_API_TOKEN
+    ;(config as any).hyperfyInfraProvider = undefined
+    ;(config as any).flyApiToken = undefined
     const res = await connect()
     expect(res.statusCode).toBe(201)
     expect(res.json().key).toMatch(/^vlmw_/)

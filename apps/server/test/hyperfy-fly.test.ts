@@ -113,4 +113,48 @@ describe('FlyApi', () => {
     const err2 = await mk(down).createApp('x').catch((e) => e)
     expect(err2.message).not.toContain('fm2_secret')
   })
+
+  it('allocatePrivateIp asks for one private_v6 (Flycast) address', async () => {
+    const { fn, calls } = fakeFetch(() => ({ body: {} }))
+    await mk(fn).allocatePrivateIp('vlm-w-moon')
+    expect(calls.map((c) => [c.method, c.url, c.body])).toEqual([
+      ['POST', 'https://api.machines.dev/v1/apps/vlm-w-moon/ip_assignments', { type: 'private_v6' }],
+    ])
+  })
+
+  it('a request that takes longer than the timeout becomes FlyError status 0', async () => {
+    const hang = (async (_url: string, init: any) =>
+      new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(init.signal.reason))
+      })) as unknown as typeof fetch
+    const api = new FlyApi({ token: 'FlyV1 fm2_secret', org: 'vlm-worlds', fetch: hang, timeoutMs: 20 })
+    const err = await api.createApp('slow').catch((e) => e)
+    expect(err).toBeInstanceOf(FlyError)
+    expect(err.status).toBe(0)
+    expect(err.message).toMatch(/timed out/)
+  })
+
+  it('the default timeout is 30 s', async () => {
+    let signal: AbortSignal | undefined
+    const { fn } = fakeFetch(() => ({ status: 201 }))
+    const spy = (async (url: string, init: any) => { signal = init.signal; return fn(url, init) }) as unknown as typeof fetch
+    const realTimeout = AbortSignal.timeout
+    const seen: number[] = []
+    AbortSignal.timeout = (ms: number) => { seen.push(ms); return realTimeout.call(AbortSignal, ms) }
+    try {
+      await mk(spy).createApp('x')
+    } finally {
+      AbortSignal.timeout = realTimeout
+    }
+    expect(signal).toBeInstanceOf(AbortSignal)
+    expect(seen).toEqual([30_000])
+  })
+
+  it('a 2xx body that is not JSON becomes FlyError', async () => {
+    const { fn } = fakeFetch(() => ({ status: 200, body: '<html>maintenance</html>' }))
+    const err = await mk(fn).createMachine('a', { image: 'i', env: {} }).catch((e) => e)
+    expect(err).toBeInstanceOf(FlyError)
+    expect(err.status).toBe(200)
+    expect(err.message).toMatch(/not JSON/)
+  })
 })

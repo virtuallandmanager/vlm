@@ -110,15 +110,11 @@ const CASES: Case[] = [
   // deploy
   { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.scene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET }) },
   { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.aScene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET, walletId: f.wallet.id }) },
-  { route: 'POST /api/deploy/hyperfy/provision', url: () => '/api/deploy/hyperfy/provision', body: (f) => ({ sceneId: f.scene.id, name: 'pwned' }) },
   { route: 'GET /api/deploy/:id', url: (f) => `/api/deploy/${f.dcl.id}` },
   { route: 'GET /api/deploy/scene/:sceneId', url: (f) => `/api/deploy/scene/${f.scene.id}` },
   { route: 'POST /api/deploy/:id/cancel', url: (f) => `/api/deploy/${f.dcl.id}/cancel` },
   { route: 'POST /api/deploy/:id/redeploy', url: (f) => `/api/deploy/${f.dcl.id}/redeploy` },
   { route: 'DELETE /api/deploy/wallets/:id', url: (f) => `/api/deploy/wallets/${f.wallet.id}` },
-  { route: 'POST /api/deploy/hyperfy/:id/destroy', url: (f) => `/api/deploy/hyperfy/${f.hyperfy.id}/destroy` },
-  { route: 'GET /api/deploy/hyperfy/:id/status', url: (f) => `/api/deploy/hyperfy/${f.hyperfy.id}/status` },
-  { route: 'GET /api/deploy/hyperfy/:id/logs', url: (f) => `/api/deploy/hyperfy/${f.hyperfy.id}/logs` },
   // events and command center
   { route: 'GET /api/events/:eventId', url: (f) => `/api/events/${f.event.id}` },
   { route: 'PUT /api/events/:eventId', url: (f) => `/api/events/${f.event.id}`, body: () => ({ name: 'pwned' }) },

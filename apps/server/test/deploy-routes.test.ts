@@ -83,10 +83,6 @@ describe('deploy routes authorization', () => {
       ['GET', `/api/deploy/scene/${bScene}`],
       ['POST', `/api/deploy/${bDcl}/cancel`],
       ['POST', `/api/deploy/${bDcl}/redeploy`],
-      ['POST', `/api/deploy/hyperfy/${bHyperfy}/destroy`],
-      ['GET', `/api/deploy/hyperfy/${bHyperfy}/status`],
-      ['GET', `/api/deploy/hyperfy/${bHyperfy}/logs`],
-      ['POST', '/api/deploy/hyperfy/provision', { sceneId: bScene, name: 'x' }],
     ]
     for (const [m, url, payload] of calls) {
       const res = await call(a, m as 'GET' | 'POST', url, payload)

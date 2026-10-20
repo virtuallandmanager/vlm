@@ -5,10 +5,10 @@ import { getSubscription, TIER_LIMITS } from '../integrations/stripe.js'
 
 /**
  * A user's hosted-world slots. Every hosted world that isn't purged counts (provisioning, running, failed);
- * ended worlds and self-run worlds don't.
+ * ended worlds and self-run worlds don't. Pass a transaction to count inside it.
  */
-export async function hostedWorldSlots(userId: string): Promise<{ used: number; limit: number }> {
-  const [{ used }] = await db
+export async function hostedWorldSlots(userId: string, executor: Pick<typeof db, 'select'> = db): Promise<{ used: number; limit: number }> {
+  const [{ used }] = await executor
     .select({ used: count() })
     .from(hyperfyWorlds)
     .where(

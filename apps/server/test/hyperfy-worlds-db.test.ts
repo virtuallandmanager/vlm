@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest'
 import postgres from 'postgres'
+import { config } from '../src/config.js'
 import { createWorldDatabase, dropWorldDatabase, worldDbName, assertSupportedPostgres } from '../src/hyperfy/worlds-db.js'
 
 const ADMIN_URL = process.env.DATABASE_URL!
@@ -18,7 +19,7 @@ function connect(url: string) {
 
 beforeAll(() => {
   const u = new URL(ADMIN_URL)
-  process.env.HYPERFY_WORLDS_DB_URL_TEMPLATE =
+  ;(config as any).hyperfyWorldsDbUrlTemplate =
     `postgres://{user}:{password}@${u.host}${u.pathname}`
   admin = postgres(ADMIN_URL, { max: 1, onnotice: () => {} })
 })

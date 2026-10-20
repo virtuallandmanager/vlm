@@ -99,6 +99,19 @@ export const config = {
   // ── Streaming ───────────────────────────────────────────────────────────
   streamingEnabled: env('ENABLE_STREAMING') === 'true' || mode === 'cloud',
 
+  // ── Hosted Hyperfy worlds (Fly) ─────────────────────────────────────────
+  // Offered only when the provider is `fly` and every value below is set (see hyperfyHosting()).
+  hyperfyInfraProvider: env('HYPERFY_INFRA_PROVIDER'),
+  flyApiToken: env('FLY_API_TOKEN'), // scoped to the worlds org only
+  flyWorldsOrg: env('FLY_WORLDS_ORG'),
+  hyperfyImage: env('HYPERFY_IMAGE'), // registry.fly.io/vlm-hyperfy-image:<git-sha>
+  hyperfyWorldsDatabaseUrl: env('HYPERFY_WORLDS_DATABASE_URL'), // admin URL: creates and drops world roles/schemas
+  hyperfyWorldsDbUrlTemplate: env('HYPERFY_WORLDS_DB_URL_TEMPLATE'), // what worlds connect with; {user} and {password}
+  hyperfyAssetsS3Uri: env('HYPERFY_ASSETS_S3_URI'), // s3://<key>:<secret>@<account>.r2.cloudflarestorage.com/<bucket>
+  hyperfyAssetsBaseUrl: env('HYPERFY_ASSETS_BASE_URL'), // the bucket's CDN origin
+  hyperfyRouterDomain: env('HYPERFY_ROUTER_DOMAIN'), // worlds.vlm.gg
+  hyperfySecretKey: env('HYPERFY_SECRET_KEY'), // 32-byte hex, encrypts admin codes
+
   // ── Metrics ─────────────────────────────────────────────────────────────
   metricsEnabled: env('ENABLE_METRICS') === 'true' || mode !== 'single',
 

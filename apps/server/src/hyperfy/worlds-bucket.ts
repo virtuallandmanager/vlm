@@ -1,4 +1,5 @@
 import { S3Client, ListObjectsV2Command, DeleteObjectsCommand } from '@aws-sdk/client-s3'
+import { config } from '../config.js'
 import { assertWorldSlug } from './worlds-db.js'
 
 export type S3Like = {
@@ -9,7 +10,7 @@ export type S3Like = {
 const DELETE_BATCH = 1000
 
 /** S3Like over the worlds R2 bucket, from HYPERFY_ASSETS_S3_URI (s3://<key>:<secret>@<account>.r2.cloudflarestorage.com/<bucket>). */
-export function r2S3Like(uri = process.env.HYPERFY_ASSETS_S3_URI): S3Like {
+export function r2S3Like(uri = config.hyperfyAssetsS3Uri): S3Like {
   if (!uri) throw new Error('HYPERFY_ASSETS_S3_URI is not set')
   const u = new URL(uri)
   const bucket = u.pathname.replace(/^\/+|\/+$/g, '')
