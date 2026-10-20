@@ -129,3 +129,26 @@ export interface AdReport {
   bySpace: ({ elementId: string; sceneName: string } & LevelCounts)[]
   avgLookMs: number | null
 }
+
+/** Body of the public early-access form. `nickname` is a honeypot: real visitors never fill it. */
+export interface AdvertiserLeadInput {
+  email: string
+  name?: string
+  company?: string
+  website?: string
+  message?: string
+  consent: true
+  nickname?: string
+}
+
+export interface AdminAdvertiserLead {
+  id: string
+  email: string
+  name: string | null
+  company: string | null
+  website: string | null
+  message: string | null
+  consentAt: string
+  createdAt: string
+  updatedAt: string
+}

@@ -1216,3 +1216,16 @@ export const adEvents = pgTable(
     byAdDay: index('ad_events_ad_day_idx').on(t.adId, t.day),
   }),
 )
+
+/** Advertisers who asked for early access from the landing page. One row per email (lowercased); a resubmit updates it. */
+export const advertiserLeads = pgTable('advertiser_leads', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: text('email').notNull().unique(),
+  name: text('name'),
+  company: text('company'),
+  website: text('website'),
+  message: text('message'),
+  consentAt: timestamp('consent_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})

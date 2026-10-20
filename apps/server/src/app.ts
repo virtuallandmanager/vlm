@@ -35,6 +35,7 @@ import hyperfyWorldRoutes from './routes/hyperfy-worlds.js'
 import hyperfyFeedRoutes from './routes/hyperfy-feed.js'
 import adminRoutes from './routes/admin.js'
 import adminAdsRoutes from './routes/admin-ads.js'
+import advertiserLeadRoutes from './routes/advertiser-leads.js'
 import venueRoutes from './routes/venues.js'
 import ingestRoutes from './routes/ingest.js'
 import { db } from './db/connection.js'
@@ -165,6 +166,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(hyperfyFeedRoutes)
   await app.register(adminRoutes)
   await app.register(adminAdsRoutes)
+  await app.register(advertiserLeadRoutes)
   await app.register(venueRoutes)
   await app.register(ingestRoutes)
 
