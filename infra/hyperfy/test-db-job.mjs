@@ -1,5 +1,6 @@
 // Test for the worlds DB job (infra/hyperfy/db-job.mjs): runs it with node against the local Postgres, the way a Fly job
-// machine runs it, and checks that statements commit together, and that a failure rolls back, exits 1 and prints no SQL.
+// machine runs it, and checks that statements commit together, that a failure rolls back, exits 1 and prints no SQL, and
+// that nothing after COMMIT can turn a committed batch into exit 1.
 //
 //   node infra/hyperfy/test-db-job.mjs <hyperfy-src-dir>
 //
@@ -7,7 +8,7 @@
 // `npm ci` done (its node_modules is linked in beside a copy of the job). Uses TEST_DATABASE_URL, default as in
 // apps/server/vitest.config.ts.
 import { spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -32,8 +33,16 @@ const suffix = Math.random().toString(36).slice(2, 8)
 const role = `world_dbjob_${suffix}`
 const SECRET = `pw_dbjob_${suffix}`
 
-function runJob(statements, env = {}) {
-  const r = spawnSync(process.execPath, [path.join(work, 'db-job.mjs')], {
+// Preloads that break the job after COMMIT: pg's client.end() rejects, or the success line throws.
+const preload = (name, body) => {
+  writeFileSync(path.join(work, name), `import { createRequire } from 'node:module'\nconst require = createRequire(import.meta.url)\n${body}\n`)
+  return ['--import', `./${name}`]
+}
+const endRejects = preload('end-rejects.mjs', `require('pg').Client.prototype.end = function () { return Promise.reject(new Error('end failed')) }`)
+const logThrows = preload('log-throws.mjs', `console.log = () => { throw new Error('EPIPE') }`)
+
+function runJob(statements, env = {}, nodeArgs = []) {
+  const r = spawnSync(process.execPath, [...nodeArgs, path.join(work, 'db-job.mjs')], {
     cwd: work,
     env: {
       PATH: process.env.PATH,
@@ -90,6 +99,15 @@ try {
   ])
   check('a failure at COMMIT exits 2 (outcome unknown)', atCommit.code === 2 && /23505/.test(atCommit.out) && /at commit/.test(atCommit.out), `exit ${atCommit.code}: ${atCommit.out}`)
   check('a failure at COMMIT prints no statement text', !/CREATE|INSERT/.test(atCommit.out), atCommit.out)
+
+  // After COMMIT the batch is in: nothing that goes wrong then may exit 1, which the server reads as "rolled back".
+  for (const [what, args] of [['client.end() rejects', endRejects], ['printing the success line throws', logThrows]]) {
+    await admin.query(`DROP SCHEMA IF EXISTS "${role}" CASCADE`)
+    await admin.query(`DROP ROLE IF EXISTS "${role}"`)
+    const late = runJob(create, {}, args)
+    check(`after COMMIT, ${what}: still exits 0`, late.code === 0, `exit ${late.code}: ${late.out}`)
+    check(`after COMMIT, ${what}: the batch is committed`, JSON.stringify(await exists()) === '{"role":true,"schema":true}')
+  }
 
   const noEnv = runJob([], { DB_STATEMENTS: '' })
   check('missing statements exits 1', noEnv.code === 1, noEnv.out)

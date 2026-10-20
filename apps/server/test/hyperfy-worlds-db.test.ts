@@ -99,7 +99,7 @@ describe('worlds database', () => {
     // The local server is 15+, so stand in for an old one by asking for a newer version than it has.
     const err = await direct([postgresVersionCheck(990000), ...createWorldStatements(slugA, 'pw').slice(1)]).catch((e) => e)
     expect(err.message).toMatch(/worlds database must run Postgres 99 or newer/)
-    expect(err.message).toMatch(/statement 1 of 4/)
+    expect(err.message).toMatch(/statement 1 of 5/)
     expect(postgresVersionCheck().sql).toMatch(/Postgres 15 or newer/)
     expect(await admin`SELECT 1 FROM pg_roles WHERE rolname = ${worldDbName(slugA)}`).toHaveLength(0)
   })
@@ -108,7 +108,7 @@ describe('worlds database', () => {
     const name = worldDbName(slugA)
     const failing: WorldDbStatement = { sql: 'SELECT 1 / 0' }
     const err = await direct([...createWorldStatements(slugA, 'pw_hidden_123'), failing]).catch((e) => e)
-    expect(err.message).toMatch(/statement 5 of 5/)
+    expect(err.message).toMatch(/statement 6 of 6/)
     expect(err.message).toMatch(/22012/)
     expect(err.message).not.toContain('pw_hidden_123')
     expect(err.message).not.toContain('SELECT')
@@ -154,6 +154,65 @@ describe('worlds database', () => {
     await admin.unsafe(`CREATE TABLE "${schema}".t (id int)`)
     await dropWorldDatabase(slugA, direct)
     await dropWorldDatabase(slugA, direct)
+    expect(await admin`SELECT 1 FROM pg_namespace WHERE nspname = ${schema}`).toHaveLength(0)
+    expect(await admin`SELECT 1 FROM pg_roles WHERE rolname = ${schema}`).toHaveLength(0)
+  })
+})
+
+describe('worlds database with a non-superuser admin (CREATEROLE only, as on Fly Managed Postgres)', () => {
+  const adminRole = `t3_admin_${suffix}`
+  const adminPw = `t3_admin_pw_${suffix}`
+  let asAdmin: ReturnType<typeof directRunner>
+
+  beforeAll(async () => {
+    await admin.unsafe(`CREATE ROLE "${adminRole}" LOGIN CREATEROLE PASSWORD '${adminPw}'`)
+    // Creating schemas needs CREATE on the database, which the cluster's admin user has on its database.
+    await admin.unsafe(`GRANT CREATE ON DATABASE "${new URL(ADMIN_URL).pathname.slice(1)}" TO "${adminRole}"`)
+    const u = new URL(ADMIN_URL)
+    u.username = adminRole
+    u.password = adminPw
+    asAdmin = directRunner(u.toString())
+  })
+
+  afterAll(async () => {
+    for (const s of [slugA, slugB]) await dropWorldDatabase(s, direct).catch(() => {})
+    await admin.unsafe(`DROP OWNED BY "${adminRole}"`).catch(() => {})
+    await admin.unsafe(`DROP ROLE IF EXISTS "${adminRole}"`)
+  })
+
+  it('creates worlds that stay isolated, and drops them, twice is fine', async () => {
+    expect((await admin`SELECT rolsuper FROM pg_roles WHERE rolname = ${adminRole}`)[0].rolsuper).toBe(false)
+    const a = await createWorldDatabase(slugA, asAdmin)
+    const b = await createWorldDatabase(slugB, asAdmin)
+    const wa = connect(a.dbUri)
+    await wa.unsafe(`CREATE TABLE "${a.schema}".things (id int)`)
+    await wa.unsafe(`INSERT INTO "${a.schema}".things VALUES (1)`)
+    expect(await wa.unsafe(`SELECT id FROM "${a.schema}".things`)).toHaveLength(1)
+    const wb = connect(b.dbUri)
+    await wb.unsafe(`CREATE TABLE "${b.schema}".secret (id int)`)
+    await expect(wa.unsafe(`SELECT * FROM "${b.schema}".secret`)).rejects.toThrow(/permission denied/)
+    await expect(wa.unsafe(`CREATE TABLE "${b.schema}".x (id int)`)).rejects.toThrow(/permission denied/)
+    await expect(wa.unsafe(`CREATE TABLE public.x (id int)`)).rejects.toThrow(/permission denied/)
+    await expect(wa.unsafe(`CREATE SCHEMA some_other_name`)).rejects.toThrow(/permission denied/)
+    for (const c of clients.splice(0)) await c.end({ timeout: 1 })
+
+    await dropWorldDatabase(slugA, asAdmin)
+    await dropWorldDatabase(slugA, asAdmin)
+    await dropWorldDatabase(slugB, asAdmin)
+    for (const name of [a.schema, b.schema]) {
+      expect(await admin`SELECT 1 FROM pg_namespace WHERE nspname = ${name}`).toHaveLength(0)
+      expect(await admin`SELECT 1 FROM pg_roles WHERE rolname = ${name}`).toHaveLength(0)
+    }
+  })
+
+  it("drops a world whose role the admin isn't a member of yet (created before the admin granted itself membership)", async () => {
+    const { schema } = await createWorldDatabase(slugA, direct)
+    await admin.unsafe(`CREATE TABLE "${schema}".t (id int)`)
+    await admin.unsafe(`ALTER TABLE "${schema}".t OWNER TO "${schema}"`)
+    // As if a superuser made it: the admin got ADMIN OPTION on the role (as CREATEROLE does) but no membership.
+    await admin.unsafe(`REVOKE "${schema}" FROM CURRENT_USER`).catch(() => {})
+    await admin.unsafe(`GRANT "${schema}" TO "${adminRole}" WITH ADMIN OPTION, INHERIT FALSE, SET FALSE`)
+    await dropWorldDatabase(slugA, asAdmin)
     expect(await admin`SELECT 1 FROM pg_namespace WHERE nspname = ${schema}`).toHaveLength(0)
     expect(await admin`SELECT 1 FROM pg_roles WHERE rolname = ${schema}`).toHaveLength(0)
   })

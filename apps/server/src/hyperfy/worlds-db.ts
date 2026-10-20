@@ -2,9 +2,9 @@
  * Worlds database admin: each world gets a role and a schema of the same name that it alone can use.
  *
  * The SQL is built here and run by a WorldDbRunner, always as one transaction with the Postgres version check first, so a
- * failure leaves nothing behind. On Fly the worlds database is reachable only inside Fly's private network, so
- * `flyJobRunner` runs the statements in a one-shot machine (infra/hyperfy/db-job.mjs in the world image); `directRunner`
- * runs the same statements from this process, for tests, local dev and `HYPERFY_WORLDS_DB_MODE=direct`.
+ * statement that fails rolls the whole batch back. On Fly the worlds database is reachable only inside Fly's private
+ * network, so `flyJobRunner` runs the statements in a one-shot machine (infra/hyperfy/db-job.mjs in the world image);
+ * `directRunner` runs the same statements from this process, for tests, local dev and `HYPERFY_WORLDS_DB_MODE=direct`.
  */
 import postgres from 'postgres'
 import { randomBytes } from 'node:crypto'
@@ -64,28 +64,36 @@ export function postgresVersionCheck(minVersionNum = MIN_PG_VERSION_NUM): WorldD
   }
 }
 
-/** The role (LOGIN, the given password) and a schema it owns; it can use nothing else. */
+/**
+ * The role (LOGIN, the given password) and a schema it owns; it can use nothing else. The admin needs only CREATEROLE
+ * (and CREATE on the database), not superuser: on Postgres 16+ a CREATEROLE admin gets ADMIN OPTION on the roles it
+ * creates but not membership, and `CREATE SCHEMA … AUTHORIZATION` needs the admin to be able to SET ROLE to the owner,
+ * so it grants itself the new role first (harmless on 15, where CREATEROLE could already do this).
+ */
 export function createWorldStatements(slug: string, password: string): WorldDbStatement[] {
   const name = worldDbName(slug)
   return [
     postgresVersionCheck(),
     { sql: `CREATE ROLE ${q(name)} LOGIN PASSWORD ${lit(password)}` },
+    { sql: `GRANT ${q(name)} TO CURRENT_USER` },
     { sql: `CREATE SCHEMA ${q(name)} AUTHORIZATION ${q(name)}` },
     { sql: `REVOKE CREATE ON SCHEMA public FROM ${q(name)}` },
   ]
 }
 
-/** Drops the world's schema (CASCADE) and its role if there is one; safe to run again. */
+/**
+ * Drops the world's schema (CASCADE) and its role if there is one; safe to run again. A non-superuser admin must be a
+ * member of the role to drop what it owns, so it grants itself membership first (its CREATEROLE ADMIN OPTION allows it).
+ */
 export function dropWorldStatements(slug: string): WorldDbStatement[] {
   const name = worldDbName(slug)
+  const ifRole = (body: string) =>
+    `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = ${lit(name)}) THEN ${body} END IF; END $$`
   return [
     postgresVersionCheck(),
+    { sql: ifRole(`EXECUTE ${lit(`GRANT ${q(name)} TO CURRENT_USER`)};`) },
     { sql: `DROP SCHEMA IF EXISTS ${q(name)} CASCADE` },
-    {
-      sql:
-        `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = ${lit(name)}) THEN ` +
-        `EXECUTE ${lit(`DROP OWNED BY ${q(name)}`)}; EXECUTE ${lit(`DROP ROLE ${q(name)}`)}; END IF; END $$`,
-    },
+    { sql: ifRole(`EXECUTE ${lit(`DROP OWNED BY ${q(name)}`)}; EXECUTE ${lit(`DROP ROLE ${q(name)}`)};`) },
   ]
 }
 

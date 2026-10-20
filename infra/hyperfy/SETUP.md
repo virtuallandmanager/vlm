@@ -38,11 +38,13 @@ Every world gets a schema `world_<slug>` and a Postgres role of the same name th
 
 Managed Postgres is reachable only inside Fly's private network, so the VLM server (on Railway) never connects to it. It
 builds the SQL for a world's role and schema and runs it in a one-shot machine of `vlm-worlds-db-jobs`, using the world
-image (`node /app/vlm/db-job.mjs`). Each create or drop runs as one transaction, so a failure leaves nothing behind.
+image (`node /app/vlm/db-job.mjs`). Each create or drop runs as one transaction. The job exits 0 when it committed, 1
+when a statement failed and the whole batch rolled back (nothing changed), and 2 when COMMIT itself failed, so the outcome
+is unknown. After exit 2 (or a Fly error or timeout) VLM drops the world's role and schema to be safe.
 
 1. Create a Managed Postgres cluster **in the org `vlm-worlds`** (the job machines and worlds reach it only over that org's private network), region `iad`, plan **Basic** (about $38 per month, see fly.io/docs/mpg). It must be **Postgres 15 or newer**: the server refuses older versions with `worlds database must run Postgres 15 or newer`.
 2. From the cluster's page take two connection strings:
-   - **Admin URL**: the cluster's **private** address with its admin user, which can create and drop roles and schemas. It is stored only as a Fly secret of the jobs app, which Fly injects into every job machine; the VLM server never sees it:
+   - **Admin URL**: the cluster's **private** address with its admin user, which can create and drop roles and schemas. That user needs `CREATEROLE` and `CREATE` on the database, not superuser (Managed Postgres doesn't hand out superuser). On Postgres 16+ a `CREATEROLE` user isn't a member of the roles it creates, and `CREATE SCHEMA … AUTHORIZATION` needs it to be, so VLM's statements grant the admin each world's role (`GRANT … TO CURRENT_USER`) before creating the world's schema, and again before dropping it. It is stored only as a Fly secret of the jobs app, which Fly injects into every job machine; the VLM server never sees it:
 
      ```sh
      fly secrets set -a vlm-worlds-db-jobs DB_ADMIN_URL='<admin url>'

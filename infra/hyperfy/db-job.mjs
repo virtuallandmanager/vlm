@@ -2,8 +2,8 @@
 // Postgres is reachable. The server starts it as a one-shot machine of the world image (/app/vlm/db-job.mjs) with:
 //   DB_ADMIN_URL   the cluster's admin URL
 //   DB_STATEMENTS  base64 JSON [{ sql, params? }], run in order in one transaction
-// Exits 0 when every statement committed; 1 when nothing was changed (bad input, no connection, or a statement failed
-// and the transaction rolled back); 2 when COMMIT failed, so the outcome is unknown. The statements can hold a role
+// Exits 0 when every statement committed (even if something fails afterwards); 1 when nothing was changed (bad input, no
+// connection, or a statement failed and the transaction rolled back); 2 when COMMIT failed, so the outcome is unknown. The statements can hold a role
 // password, so on failure this prints only which statement failed and Postgres's code and message, never the SQL or
 // its params.
 import pg from 'pg'
@@ -29,6 +29,13 @@ const client = new pg.Client({ connectionString: process.env.DB_ADMIN_URL, conne
 client.on('error', () => {})
 let index = -1
 let committing = false
+let committed = false
+// Anything unexpected still reports the batch's real outcome: once COMMIT has returned, exit 1 ("rolled back") would be
+// a lie. Only the error's code is printed; its message could quote a statement.
+process.on('uncaughtException', (err) => {
+  console.error(`worlds database job: unexpected error${typeof err?.code === 'string' ? ` ${err.code}` : ''}`)
+  process.exit(committed ? 0 : committing ? 2 : 1)
+})
 try {
   await client.connect()
   await client.query('BEGIN')
@@ -39,7 +46,7 @@ try {
   index = -1
   committing = true
   await client.query('COMMIT')
-  console.log(`worlds database job: ${statements.length} statements committed`)
+  committed = true
 } catch (err) {
   await client.query('ROLLBACK').catch(() => {})
   const where = committing ? ' at commit' : index >= 0 ? ` (statement ${index + 1} of ${statements.length})` : ''
@@ -47,4 +54,7 @@ try {
   await client.end().catch(() => {})
   fail(`worlds database error${where}${code}: ${err?.message ?? 'unknown'}`, committing ? 2 : 1)
 }
-await client.end()
+// Committed: from here on the job exits 0 whatever happens (see the uncaughtException handler above).
+console.log(`worlds database job: ${statements.length} statements committed`)
+await client.end().catch(() => {})
+process.exit(0)
