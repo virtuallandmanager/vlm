@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { HYPERFY_FEED } from 'vlm-shared'
 import { db } from '../src/db/connection.js'
-import { hyperfyWorlds, subscriptions, sceneCollaborators } from '../src/db/schema.js'
+import bcrypt from 'bcryptjs'
+import { hyperfyWorlds, subscriptions, sceneCollaborators, scenes, users, userAuthMethods, organizations } from '../src/db/schema.js'
 import { worldDbName } from '../src/hyperfy/worlds-db.js'
 import type { HostingDeps } from '../src/hyperfy/hosting.js'
 import { config } from '../src/config.js'
@@ -19,6 +20,7 @@ vi.mock('../src/hyperfy/hosting.js', async (orig) => {
     ...m,
     createHostedWorld: (i: Parameters<typeof m.createHostedWorld>[0]) => m.createHostedWorld(i, fake.deps),
     destroyHostedWorld: (id: string) => m.destroyHostedWorld(id, fake.deps),
+    hostedWorldsBlockingDelete: (scope: Parameters<typeof m.hostedWorldsBlockingDelete>[0]) => m.hostedWorldsBlockingDelete(scope, fake.deps),
     switchHostedWorldScene: async (id: string, sceneId: string) => {
       await m.switchHostedWorldScene(id, sceneId)
       await fake.onSwitch?.()
@@ -42,14 +44,18 @@ const HOSTING_CONFIG = {
   publicUrl: 'https://api.vlm.gg',
 }
 
-function installFakes(opts: { failStart?: boolean; failUpdate?: boolean } = {}) {
+function installFakes(opts: { failStart?: boolean; failUpdate?: boolean; failDeleteApp?: boolean } = {}) {
   const started: string[] = []
   const destroyed: string[] = []
   const machines = new Map<string, { id: string; env: Record<string, string> }>()
   fake.deps = {
     fly: {
       async createApp() {},
-      async deleteApp(name: string) { destroyed.push(`deleteApp ${name}`); machines.delete(name) },
+      async deleteApp(name: string) {
+        if (opts.failDeleteApp) throw new Error('fly down')
+        destroyed.push(`deleteApp ${name}`)
+        machines.delete(name)
+      },
       async allocatePublicIps() {},
       async allocatePrivateIp() {},
       async createMachine(app: string, m: any) { machines.set(app, { id: `m-${app}`, env: { ...m.env } }); return { id: `m-${app}` } },
@@ -452,5 +458,94 @@ describe('hosted Hyperfy world routes', () => {
     expect(on.json().platforms.hyperfy).toBe(true)
     ;(config as any).hyperfyInfraProvider = undefined
     expect((await call(owner, 'GET', '/api/deploy/platforms')).json().platforms.hyperfy).toBe(false)
+  })
+  describe('deleting what a hosted world belongs to destroys the world first', () => {
+    const hostedRunning = async (scene = sceneId) => {
+      const { world } = (await create(owner, {}, scene)).json()
+      await settled(world.id)
+      return row(world.id)
+    }
+    const destroyedAll = (slug: string) => [`deleteApp vlm-w-${slug}`, `dropWorldDatabase ${slug}`, `deleteWorldFiles ${slug}`]
+    const sceneRow = async (id: string) => (await db.select().from(scenes).where(eq(scenes.id, id)))[0]
+    const userRow = async (id: string) => (await db.select().from(users).where(eq(users.id, id)))[0]
+
+    it("deleting a scene with a running hosted world removes the world's Fly app, database and files, then the scene", async () => {
+      const w = await hostedRunning()
+      const { destroyed } = installFakes()
+      const res = await call(owner, 'DELETE', `/api/scenes/${sceneId}`)
+      expect(res.statusCode).toBe(204)
+      expect(destroyed).toEqual(destroyedAll(w.slug!))
+      expect(await sceneRow(sceneId)).toBeUndefined()
+      expect(await row(w.id)).toBeUndefined()
+    })
+
+    it('a failing destroy blocks the scene delete with 409 hosted_world_destroy_failed, and nothing is deleted', async () => {
+      const w = await hostedRunning()
+      const self = (await call(owner, 'POST', '/api/hyperfy/worlds', { sceneId, name: 'Mine' })).json().world
+      installFakes({ failDeleteApp: true })
+      const res = await call(owner, 'DELETE', `/api/scenes/${sceneId}`)
+      expect(res.statusCode).toBe(409)
+      expect(res.json().error).toBe('hosted_world_destroy_failed')
+      expect(res.body).not.toContain('fly down')
+      expect(await sceneRow(sceneId)).toBeDefined()
+      expect(await row(w.id)).toBeDefined()
+      expect(await row(self.id)).toBeDefined()
+      // Retrying once Fly answers again works.
+      installFakes()
+      expect((await call(owner, 'DELETE', `/api/scenes/${sceneId}`)).statusCode).toBe(204)
+    })
+
+    it('deleting the account destroys hosted worlds the user owns and hosted worlds on their scenes; a failing destroy is 409', async () => {
+      await db.insert(userAuthMethods).values({ userId: owner.id, type: 'email', identifier: owner.email!, credentialHash: await bcrypt.hash('pw-1234', 4) })
+      const mine = await hostedRunning()
+      // Someone else's hosted world on the owner's scene goes with the scene.
+      const guest = await createUser()
+      await db.insert(subscriptions).values({ userId: guest.id, tier: 'creator' })
+      const hosting = await vi.importActual<typeof import('../src/hyperfy/hosting.js')>('../src/hyperfy/hosting.js')
+      const theirs = (await hosting.createHostedWorld({ ownerId: guest.id, sceneId, name: 'Guest World', endsAt: null }, fake.deps)).world
+      await settled(theirs.id)
+      const theirSlug = (await row(theirs.id)).slug!
+
+      installFakes({ failDeleteApp: true })
+      const blocked = await call(owner, 'DELETE', '/api/auth/account', { password: 'pw-1234' })
+      expect(blocked.statusCode).toBe(409)
+      expect(blocked.json().error).toBe('hosted_world_destroy_failed')
+      expect(await userRow(owner.id)).toBeDefined()
+      expect(await row(mine.id)).toBeDefined()
+
+      const { destroyed } = installFakes()
+      expect((await call(owner, 'DELETE', '/api/auth/account', { password: 'pw-1234' })).statusCode).toBe(204)
+      expect([...destroyed].sort()).toEqual([...destroyedAll(mine.slug!), ...destroyedAll(theirSlug)].sort())
+      expect(await userRow(owner.id)).toBeUndefined()
+      expect(await db.select().from(hyperfyWorlds)).toHaveLength(0)
+    })
+
+    it("an admin deleting a user destroys the user's hosted worlds first; a failing destroy is 409", async () => {
+      const admin = await createUser({ role: 'admin' })
+      const w = await hostedRunning()
+      installFakes({ failDeleteApp: true })
+      const blocked = await call(admin, 'DELETE', `/api/admin/users/${owner.id}`)
+      expect(blocked.statusCode).toBe(409)
+      expect(blocked.json().error).toBe('hosted_world_destroy_failed')
+      expect(await userRow(owner.id)).toBeDefined()
+      const { destroyed } = installFakes()
+      expect((await call(admin, 'DELETE', `/api/admin/users/${owner.id}`)).statusCode).toBe(204)
+      expect(destroyed).toEqual(destroyedAll(w.slug!))
+      expect(await userRow(owner.id)).toBeUndefined()
+    })
+
+    it("an admin deleting an organization destroys hosted worlds on the org's scenes first; a failing destroy is 409", async () => {
+      const admin = await createUser({ role: 'admin' })
+      const [org] = await db.insert(organizations).values({ name: 'Org', slug: `org-${Date.now()}`, billingOwnerId: owner.id }).returning()
+      await db.update(scenes).set({ orgId: org.id }).where(eq(scenes.id, sceneId))
+      const w = await hostedRunning()
+      installFakes({ failDeleteApp: true })
+      expect((await call(admin, 'DELETE', `/api/admin/orgs/${org.id}`)).statusCode).toBe(409)
+      expect(await sceneRow(sceneId)).toBeDefined()
+      const { destroyed } = installFakes()
+      expect((await call(admin, 'DELETE', `/api/admin/orgs/${org.id}`)).statusCode).toBe(204)
+      expect(destroyed).toEqual(destroyedAll(w.slug!))
+      expect(await sceneRow(sceneId)).toBeUndefined()
+    })
   })
 })

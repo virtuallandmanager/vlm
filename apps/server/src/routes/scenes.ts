@@ -19,6 +19,7 @@ import { publishElementChanged, publishSceneTouched } from '../realtime/bus.js'
 import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 import { serializeSingleElement } from '../services/scene-serializer.js'
 import { getSubscription } from '../integrations/stripe.js'
+import { hostedWorldsBlockingDelete } from '../hyperfy/hosting.js'
 import { boundScene, fromElement, fromInstance, fromParam, fromPreset, isScenePass } from '../auth/scene-from.js'
 
 type ElementChange = Parameters<typeof publishElementChanged>[0]
@@ -307,6 +308,9 @@ export default async function sceneRoutes(app: FastifyInstance) {
       return reply.status(403).send({ error: 'Forbidden' })
     }
 
+    // Hosted worlds' rows would cascade away with it, leaving their Fly app, database and files running untracked.
+    const blocked = await hostedWorldsBlockingDelete({ sceneId })
+    if (blocked) return reply.status(409).send(blocked)
     await db.delete(scenes).where(eq(scenes.id, sceneId))
     await publishSceneTouched(sceneId) // wake waiting Hyperfy feed polls so they get 404 now
     return reply.status(204).send()

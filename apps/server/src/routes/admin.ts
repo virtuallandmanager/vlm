@@ -11,6 +11,7 @@ import {
   catalogPacks,
 } from '../db/schema.js'
 import { listPacks } from '../catalog/packs.js'
+import { hostedWorldsBlockingDelete } from '../hyperfy/hosting.js'
 import { authenticate } from '../middleware/auth.js'
 
 /**
@@ -196,6 +197,9 @@ export default async function adminRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'User not found' })
     }
 
+    // Hosted worlds' rows would cascade away with it, leaving their Fly app, database and files running untracked.
+    const blocked = await hostedWorldsBlockingDelete({ userId })
+    if (blocked) return reply.status(409).send(blocked)
     await db.delete(users).where(eq(users.id, userId))
     return reply.status(204).send()
   })
@@ -250,6 +254,9 @@ export default async function adminRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'Organization not found' })
     }
 
+    // Hosted worlds' rows would cascade away with it, leaving their Fly app, database and files running untracked.
+    const blocked = await hostedWorldsBlockingDelete({ orgId })
+    if (blocked) return reply.status(409).send(blocked)
     await db.delete(organizations).where(eq(organizations.id, orgId))
     return reply.status(204).send()
   })

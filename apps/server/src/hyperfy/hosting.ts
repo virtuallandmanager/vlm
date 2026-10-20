@@ -6,11 +6,11 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm'
 import type { HyperfyWorldSummary } from 'vlm-shared'
 import { config } from '../config.js'
 import { db } from '../db/connection.js'
-import { hyperfyWorlds } from '../db/schema.js'
+import { hyperfyWorlds, scenes } from '../db/schema.js'
 import { getSubscription } from '../integrations/stripe.js'
 import { FlyApi } from './fly.js'
 import { hostedWorldSlots } from './slots.js'
@@ -36,7 +36,9 @@ export type HostingDeps = {
   log: Log
 }
 
-export type HostingErrorCode = 'world_limit_reached' | 'world_not_found' | 'world_not_running' | 'world_update_failed' | 'not_restorable'
+export type HostingErrorCode =
+  | 'world_limit_reached' | 'world_not_found' | 'world_not_running' | 'world_update_failed' | 'not_restorable'
+  | 'hosted_world_destroy_failed'
 
 export class HostingError extends Error {
   code: HostingErrorCode
@@ -403,6 +405,57 @@ export async function destroyHostedWorld(worldId: string, deps?: Partial<Hosting
   await d.deleteWorldFiles(slug)
   await db.delete(hyperfyWorlds).where(eq(hyperfyWorlds.id, worldId))
   d.log.info({ worldId, slug }, 'hosted world destroyed')
+}
+
+/** What a delete would cascade hosted-world rows away with. */
+export type HostedWorldScope = { sceneId: string } | { userId: string } | { orgId: string }
+
+/**
+ * Destroys every hosted world that deleting the scene, user or organization would cascade away: the rows would go,
+ * but the Fly app, database and files would keep running untracked. Tries them all, then throws
+ * `hosted_world_destroy_failed` if any failed, so the caller refuses the delete and it can be retried.
+ */
+export async function destroyHostedWorldsFor(scope: HostedWorldScope, deps?: Partial<HostingDeps>): Promise<void> {
+  const d = withDeps(deps)
+  const scenesWhere = (cond: SQL) => inArray(hyperfyWorlds.sceneId, db.select({ id: scenes.id }).from(scenes).where(cond))
+  const covered =
+    'sceneId' in scope ? eq(hyperfyWorlds.sceneId, scope.sceneId)
+    : 'userId' in scope ? or(eq(hyperfyWorlds.ownerId, scope.userId), scenesWhere(eq(scenes.ownerId, scope.userId)))!
+    : scenesWhere(eq(scenes.orgId, scope.orgId))
+  const worlds = await db
+    .select({ id: hyperfyWorlds.id, slug: hyperfyWorlds.slug })
+    .from(hyperfyWorlds)
+    .where(and(eq(hyperfyWorlds.kind, 'hosted'), isNull(hyperfyWorlds.purgedAt), covered))
+  let failed = 0
+  for (const w of worlds) {
+    try {
+      await destroyHostedWorld(w.id, d)
+    } catch (err) {
+      if (err instanceof HostingError && err.code === 'world_not_found') continue // destroyed meanwhile
+      failed++
+      d.log.error({ worldId: w.id, slug: w.slug, error: err instanceof Error ? err.message : String(err) }, 'hosted world destroy before delete failed')
+    }
+  }
+  if (failed) {
+    throw new HostingError(
+      'hosted_world_destroy_failed',
+      `${failed} hosted world${failed === 1 ? '' : 's'} couldn't be shut down, so nothing was deleted; try again`,
+    )
+  }
+}
+
+/** For the routes that delete a scene, user or org: null once its hosted worlds are destroyed, else the 409 body. */
+export async function hostedWorldsBlockingDelete(
+  scope: HostedWorldScope,
+  deps?: Partial<HostingDeps>,
+): Promise<{ error: string; message: string } | null> {
+  try {
+    await destroyHostedWorldsFor(scope, deps)
+    return null
+  } catch (err) {
+    if (err instanceof HostingError) return { error: err.code, message: err.message }
+    throw err
+  }
 }
 
 /** The feed follows the world key's scene, so the machine needs no change. */

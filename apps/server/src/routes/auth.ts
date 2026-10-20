@@ -15,6 +15,7 @@ import { verifyDclSceneRequest, hasDclAuthHeaders } from '../middleware/dcl-auth
 import { bindSceneRequest, type SceneBinding } from '../auth/scene-binding.js'
 import type { SessionClaims } from '../auth/tokens.js'
 import { issueScenePass, sceneClaims } from '../auth/scene-pass.js'
+import { hostedWorldsBlockingDelete } from '../hyperfy/hosting.js'
 
 interface RegisterBody {
   email: string
@@ -804,6 +805,9 @@ export default async function authRoutes(app: FastifyInstance) {
         return reply.status(401).send({ error: 'Incorrect password' })
       }
 
+      // Hosted worlds' rows would cascade away with it, leaving their Fly app, database and files running untracked.
+      const blocked = await hostedWorldsBlockingDelete({ userId: request.user.id })
+      if (blocked) return reply.status(409).send(blocked)
       // Delete user — cascading deletes handle related data
       await db.delete(users).where(eq(users.id, request.user.id))
 
