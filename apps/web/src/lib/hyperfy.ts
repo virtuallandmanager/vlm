@@ -1,4 +1,5 @@
-// Copy and helpers for "Connect your own Hyperfy world" on the deploy page.
+// Copy and helpers for "Your Hyperfy worlds" (self-run and hosted) on the deploy page.
+import type { HyperfyWorldSummary } from 'vlm-shared'
 
 const MIN = 60_000
 const HOUR = 60 * MIN
@@ -28,9 +29,52 @@ export function removeWorldPrompt(name: string): string {
   return `Remove "${name}"? The VLM app in that world stops receiving updates from VLM.`
 }
 
+export const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+/** The status line of a hosted world's row. */
+export function worldStatusLabel(w: HyperfyWorldSummary, now: Date): string {
+  if (w.status === 'provisioning') return 'Setting up…'
+  if (w.status === 'running') return 'Live'
+  if (w.status === 'failed') return w.errorMessage ? `Failed: ${w.errorMessage}` : 'Failed'
+  if (w.purgeAfter && new Date(w.purgeAfter).getTime() > now.getTime()) return `Ended. Restorable until ${shortDate(w.purgeAfter)}`
+  return 'Ended'
+}
+
+/** `limit` is Infinity on an unlimited plan. */
+export function slotLine(used: number, limit: number): string {
+  const worlds = used === 1 ? 'hosted world' : 'hosted worlds'
+  return Number.isFinite(limit) ? `${used} of ${limit} hosted worlds` : `${used} ${worlds}`
+}
+
+/** Destroying a hosted world deletes it for good, unlike an ended one. */
+export function destroyWorldPrompt(name: string): string {
+  return `Destroy "${name}"? The world and everything built in it are deleted and can't be restored.`
+}
+
+type ApiError = Error & { status?: number; body?: { error?: string; message?: string; used?: number; limit?: number | null } }
+
 export function hyperfyErrorMessage(err: unknown): string {
-  const e = err instanceof Error ? (err as Error & { status?: number }) : null
+  const e = err instanceof Error ? (err as ApiError) : null
   if (e?.message === 'upgrade_required') return "Your plan doesn't include deploying. Upgrade to connect your own Hyperfy world."
+  switch (e?.message) {
+    case 'hyperfy_hosting_unavailable':
+      return 'Hosted worlds are not available right now. Try again later.'
+    case 'world_limit_reached': {
+      const { used, limit } = e.body ?? {}
+      return typeof used === 'number' && typeof limit === 'number'
+        ? `You're using ${used} of ${limit} hosted worlds. Destroy one or upgrade your plan to make another.`
+        : "You've used all your hosted worlds. Destroy one or upgrade your plan to make another."
+    }
+    case 'not_restorable':
+      return "This world can't be restored."
+    case 'already_ended':
+      return 'This world has ended. Restore it instead.'
+    case 'not_hosted':
+      return 'Only hosted worlds have an end date.'
+    case 'world_update_failed':
+      return e.body?.message || "The world couldn't be updated. Try again in a moment."
+  }
+  if (e?.status === 502) return "The world couldn't start. Try again in a moment."
   if (e?.status === 400) return 'Give the world a name of 100 characters or fewer.'
   return 'Something went wrong. Try again in a moment.'
 }

@@ -2,9 +2,10 @@
 import { deployErrorMessage } from '@/lib/deploy'
 import { useApi } from '@/lib/api'
 import { API_URL } from '@/lib/config'
-import { hyperfyErrorMessage, lastSeenLabel, removeWorldPrompt, setupSteps } from '@/lib/hyperfy'
+import { destroyWorldPrompt, hyperfyErrorMessage, lastSeenLabel, removeWorldPrompt, setupSteps, shortDate, slotLine, worldStatusLabel } from '@/lib/hyperfy'
 import type { HyperfyWorldSummary } from 'vlm-shared'
 import { useAuth } from '@/lib/auth'
+import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
 
@@ -63,103 +64,216 @@ function formatDateTime(iso: string | null) {
   })
 }
 
-// -- Your Hyperfy worlds (self-run; never gated by hosting availability) -------
+// -- Your Hyperfy worlds (self-run and VLM-hosted) -----------------------------
+
+const POLL_MS = 5000
+
+/** An end date picked in the form is the end of that day, UTC. */
+const endOfDayUtc = (day: string) => new Date(`${day}T23:59:59Z`).toISOString()
+
+type Shown =
+  | { kind: 'key'; worldName: string; key: string }
+  | { kind: 'created'; worldName: string; address: string | null; adminCode: string }
 
 function HyperfyWorlds({ sceneId }: { sceneId: string }) {
   const { token } = useAuth()
   const api = useApi()
   const [worlds, setWorlds] = useState<HyperfyWorldSummary[]>([])
+  const [slots, setSlots] = useState<{ used: number; limit: number; hostingAvailable: boolean } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [name, setName] = useState('')
+  const [hostedName, setHostedName] = useState('')
+  const [hostedEnd, setHostedEnd] = useState('')
   const [busy, setBusy] = useState(false)
-  // The key is shown once, right after create or rotate, and dropped when the scene changes.
-  const [shown, setShown] = useState<{ worldName: string; key: string } | null>(null)
+  // Keys and admin codes live only in this component's state: shown once, dropped when the scene changes.
+  const [shown, setShown] = useState<Shown | null>(null)
+  const [revealed, setRevealed] = useState<{ id: string; code: string } | null>(null)
+  const [editing, setEditing] = useState<{ id: string; day: string } | null>(null)
   const [copied, setCopied] = useState(false)
+
+  const refreshSlots = () =>
+    api.getHyperfySlots()
+      .then((s) => setSlots({ used: s.used, limit: s.limit ?? Infinity, hostingAvailable: s.hostingAvailable }))
+      .catch(() => setSlots(null))
 
   useEffect(() => {
     if (!token) return
+    let stale = false
     setLoading(true)
     setError('')
+    setNotice('')
     setShown(null)
+    setRevealed(null)
+    setEditing(null)
     api.getHyperfyWorlds(sceneId)
-      .then((d) => setWorlds(d.worlds))
-      .catch((err) => { setWorlds([]); setError(hyperfyErrorMessage(err)) })
-      .finally(() => setLoading(false))
+      .then((d) => { if (!stale) setWorlds(d.worlds) })
+      .catch((err) => { if (!stale) { setWorlds([]); setError(hyperfyErrorMessage(err)) } })
+      .finally(() => { if (!stale) setLoading(false) })
+    api.getHyperfySlots()
+      .then((s) => { if (!stale) setSlots({ used: s.used, limit: s.limit ?? Infinity, hostingAvailable: s.hostingAvailable }) })
+      .catch(() => { if (!stale) setSlots(null) })
+    return () => { stale = true }
   }, [token, sceneId])
 
-  const connect = async (e: React.FormEvent) => {
+  // Worlds still setting up refresh every few seconds until they settle.
+  const settling = worlds.some((w) => w.status === 'provisioning')
+  useEffect(() => {
+    if (!token || !settling) return
+    let stale = false
+    const timer = setInterval(() => {
+      api.getHyperfyWorlds(sceneId)
+        .then((d) => { if (!stale) { setWorlds(d.worlds); refreshSlots() } })
+        .catch(() => { /* keep the last list; the next tick retries */ })
+    }, POLL_MS)
+    return () => { stale = true; clearInterval(timer) }
+  }, [token, sceneId, settling])
+
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      await action()
+    } catch (err) {
+      setError(hyperfyErrorMessage(err))
+    }
+    setBusy(false)
+  }
+
+  const replaceWorld = (world: HyperfyWorldSummary) => setWorlds((prev) => prev.map((x) => (x.id === world.id ? world : x)))
+
+  const connect = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    setBusy(true)
-    setError('')
-    try {
+    return run(async () => {
       const { world, key } = await api.createHyperfyWorld({ sceneId, name: name.trim() })
       setWorlds((prev) => [...prev, world])
-      setShown({ worldName: world.name, key })
+      setShown({ kind: 'key', worldName: world.name, key })
       setCopied(false)
       setName('')
-    } catch (err) {
-      setError(hyperfyErrorMessage(err))
-    }
-    setBusy(false)
+    })
   }
 
-  const rotate = async (w: HyperfyWorldSummary) => {
-    if (!confirm(`Make a new key for "${w.name}"? The old key stops working right away.`)) return
-    setBusy(true)
-    setError('')
-    try {
+  const createHosted = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!hostedName.trim()) return
+    if (hostedEnd && new Date(endOfDayUtc(hostedEnd)).getTime() <= Date.now()) {
+      setError('Pick an end date in the future.')
+      return
+    }
+    return run(async () => {
+      try {
+        const { world, adminCode } = await api.createHostedHyperfyWorld({
+          sceneId,
+          name: hostedName.trim(),
+          endsAt: hostedEnd ? endOfDayUtc(hostedEnd) : null,
+        })
+        setWorlds((prev) => [...prev, world])
+        setShown({ kind: 'created', worldName: world.name, address: world.address, adminCode })
+        setCopied(false)
+        setHostedName('')
+        setHostedEnd('')
+      } finally {
+        refreshSlots()
+      }
+    })
+  }
+
+  const rotate = (w: HyperfyWorldSummary) => {
+    const hosted = w.kind === 'hosted'
+    if (!confirm(hosted
+      ? `Make a new key for "${w.name}"? The world restarts to pick it up.`
+      : `Make a new key for "${w.name}"? The old key stops working right away.`)) return
+    return run(async () => {
       const { world, key } = await api.rotateHyperfyWorldKey(w.id)
-      setWorlds((prev) => prev.map((x) => (x.id === world.id ? world : x)))
-      setShown({ worldName: world.name, key })
-      setCopied(false)
-    } catch (err) {
-      setError(hyperfyErrorMessage(err))
-    }
-    setBusy(false)
+      replaceWorld(world)
+      if (hosted) {
+        setNotice(`"${world.name}" restarted with a new key.`)
+      } else {
+        setShown({ kind: 'key', worldName: world.name, key })
+        setCopied(false)
+      }
+    })
   }
 
-  const remove = async (w: HyperfyWorldSummary) => {
-    if (!confirm(removeWorldPrompt(w.name))) return
-    setBusy(true)
-    setError('')
-    try {
-      await api.deleteHyperfyWorld(w.id)
-      setWorlds((prev) => prev.filter((x) => x.id !== w.id))
-      setShown(null)
-    } catch (err) {
-      setError(hyperfyErrorMessage(err))
-    }
-    setBusy(false)
+  const remove = (w: HyperfyWorldSummary) => {
+    const hosted = w.kind === 'hosted'
+    if (!confirm(hosted ? destroyWorldPrompt(w.name) : removeWorldPrompt(w.name))) return
+    return run(async () => {
+      try {
+        await api.deleteHyperfyWorld(w.id)
+        setWorlds((prev) => prev.filter((x) => x.id !== w.id))
+        setShown(null)
+        setRevealed((r) => (r?.id === w.id ? null : r))
+      } finally {
+        if (hosted) refreshSlots()
+      }
+    })
   }
 
-  const copyKey = async () => {
-    if (!shown) return
+  const saveEndDate = (w: HyperfyWorldSummary, day: string | null) => {
+    if (day && new Date(endOfDayUtc(day)).getTime() <= Date.now()) {
+      setError('Pick an end date in the future.')
+      return
+    }
+    return run(async () => {
+      const { world } = await api.setHyperfyWorldEndDate(w.id, day ? endOfDayUtc(day) : null)
+      replaceWorld(world)
+      setEditing(null)
+    })
+  }
+
+  const restore = (w: HyperfyWorldSummary) =>
+    run(async () => {
+      try {
+        const { world } = await api.restoreHyperfyWorld(w.id)
+        replaceWorld(world)
+      } finally {
+        refreshSlots()
+      }
+    })
+
+  const showAdminCode = (w: HyperfyWorldSummary) =>
+    run(async () => {
+      const { adminCode } = await api.getHyperfyAdminCode(w.id)
+      setRevealed({ id: w.id, code: adminCode })
+    })
+
+  const copy = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(shown.key)
+      await navigator.clipboard.writeText(text)
       setCopied(true)
     } catch {
-      // clipboard blocked: the key is still visible to select
+      // clipboard blocked: the text is still visible to select
     }
   }
 
   const now = new Date()
+  const noSlotsLeft = slots !== null && slots.used >= slots.limit
+  const link = (address: string) => (
+    <a href={`https://${address}`} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline">{address}</a>
+  )
+  const actionClass = 'text-cyan-400 hover:text-cyan-300 disabled:opacity-50'
+  const dangerClass = 'text-red-400 hover:text-red-300 disabled:opacity-50'
+
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold">Your Hyperfy worlds</h2>
-        <p className="text-sm text-gray-500">Run your own Hyperfy world? Connect it and this scene shows up there, kept in sync with your edits.</p>
+        <p className="text-sm text-gray-500">Have VLM host a world for this scene, or connect one you run yourself. Either way it follows your edits.</p>
       </div>
 
       {error && <p className="rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300" role="alert">{error}</p>}
+      {notice && <p className="rounded-lg border border-cyan-900/60 bg-cyan-950/40 px-4 py-3 text-sm text-cyan-300" role="status">{notice}</p>}
 
-      {shown && (
+      {shown?.kind === 'key' && (
         <div className="space-y-3 rounded-xl border border-cyan-500/40 bg-gray-900 p-5">
           <p className="text-sm font-medium text-cyan-400">World key for {shown.worldName}</p>
           <div className="flex items-center gap-2">
             <code className="min-w-0 flex-1 break-all rounded-lg bg-gray-800 px-3 py-2 text-sm text-white">{shown.key}</code>
-            <button onClick={copyKey} className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-cyan-400 hover:bg-gray-700">{copied ? 'Copied' : 'Copy'}</button>
+            <button onClick={() => copy(shown.key)} className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-cyan-400 hover:bg-gray-700">{copied ? 'Copied' : 'Copy'}</button>
           </div>
           <p className="text-sm text-yellow-400">You won&apos;t see this key again.</p>
           <a href={`${API_URL}/api/hyperfy/app.hyp`} className="inline-block rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500">Download VLM app (.hyp)</a>
@@ -170,30 +284,129 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
         </div>
       )}
 
+      {shown?.kind === 'created' && (
+        <div className="space-y-3 rounded-xl border border-cyan-500/40 bg-gray-900 p-5">
+          <p className="text-sm font-medium text-cyan-400">{shown.worldName} is being set up</p>
+          <p className="text-sm text-gray-300">Type <code className="rounded bg-gray-800 px-1.5 py-0.5 text-white">/admin {shown.adminCode}</code> in the world&apos;s chat to build.</p>
+          <div>
+            <button onClick={() => copy(shown.adminCode)} className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-cyan-400 hover:bg-gray-700">{copied ? 'Copied' : 'Copy admin code'}</button>
+          </div>
+          {shown.address && <p className="text-sm text-gray-300">Address: {link(shown.address)}</p>}
+          <p className="text-sm text-gray-400">Setup takes about 2 to 3 minutes. The world shows as Live below when it&apos;s ready.</p>
+          <p className="text-sm text-yellow-400">Save the admin code now. You can show it again later from the world&apos;s row.</p>
+          <button onClick={() => setShown(null)} className="text-sm text-gray-400 hover:text-white">Done</button>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-gray-400">Loading worlds...</p>
       ) : worlds.length === 0 ? (
         !error && <p className="rounded-xl border border-gray-800 bg-gray-900 py-6 text-center text-sm text-gray-500">No worlds connected to this scene yet.</p>
       ) : (
         <div className="space-y-2">
-          {worlds.map((w) => (
+          {worlds.map((w) => w.kind === 'hosted' ? (
+            <div key={w.id} className="space-y-2 rounded-xl border border-gray-800 bg-gray-900 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{w.name}</p>
+                  {w.address && <p className="truncate text-sm">{link(w.address)}</p>}
+                  <p className="text-xs text-gray-500">
+                    {worldStatusLabel(w, now)}
+                    {w.status !== 'ended' && w.endsAt && ` · Ends ${shortDate(w.endsAt)}`}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3 text-sm">
+                  {w.status !== 'ended' && w.status !== 'failed' && (
+                    <button disabled={busy} onClick={() => setEditing({ id: w.id, day: w.endsAt ? w.endsAt.slice(0, 10) : '' })} className={actionClass}>Edit end date</button>
+                  )}
+                  {w.status !== 'ended' && w.status !== 'failed' && w.endsAt && (
+                    <button disabled={busy} onClick={() => saveEndDate(w, null)} className={actionClass}>Make permanent</button>
+                  )}
+                  {w.status === 'ended' && <button disabled={busy} onClick={() => restore(w)} className={actionClass}>Restore</button>}
+                  {w.status === 'running' && <button disabled={busy} onClick={() => showAdminCode(w)} className={actionClass}>Show admin code</button>}
+                  {w.status === 'running' && <button disabled={busy} onClick={() => rotate(w)} className={actionClass}>New key</button>}
+                  <button disabled={busy} onClick={() => remove(w)} className={dangerClass}>Destroy</button>
+                </div>
+              </div>
+              {editing?.id === w.id && (
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-gray-400" htmlFor={`end-${w.id}`}>Ends on</label>
+                    <input
+                      id={`end-${w.id}`}
+                      type="date"
+                      value={editing.day}
+                      onChange={(e) => setEditing({ id: w.id, day: e.target.value })}
+                      className="rounded-lg bg-gray-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-cyan-500"
+                    />
+                  </div>
+                  <button disabled={busy || !editing.day} onClick={() => saveEndDate(w, editing.day)} className="rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50">Save</button>
+                  <button onClick={() => setEditing(null)} className="text-sm text-gray-400 hover:text-white">Cancel</button>
+                </div>
+              )}
+              {revealed?.id === w.id && (
+                <div className="flex flex-wrap items-center gap-2 text-sm text-gray-300">
+                  <span>Type <code className="rounded bg-gray-800 px-1.5 py-0.5 text-white">/admin {revealed.code}</code> in the world&apos;s chat to build.</span>
+                  <button onClick={() => setRevealed(null)} className="text-gray-400 hover:text-white">Hide</button>
+                </div>
+              )}
+            </div>
+          ) : (
             <div key={w.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-800 bg-gray-900 px-4 py-3">
               <div className="min-w-0">
                 <p className="truncate font-medium">{w.name}</p>
                 <p className="text-xs text-gray-500">Key {w.keyPrefix}… · {lastSeenLabel(w.lastSeenAt, now)}</p>
               </div>
               <div className="flex gap-3 text-sm">
-                <button disabled={busy} onClick={() => rotate(w)} className="text-cyan-400 hover:text-cyan-300 disabled:opacity-50">New key</button>
-                <button disabled={busy} onClick={() => remove(w)} className="text-red-400 hover:text-red-300 disabled:opacity-50">Remove</button>
+                <button disabled={busy} onClick={() => rotate(w)} className={actionClass}>New key</button>
+                <button disabled={busy} onClick={() => remove(w)} className={dangerClass}>Remove</button>
               </div>
             </div>
           ))}
         </div>
       )}
 
+      {slots?.hostingAvailable && (
+        <div className="space-y-3 rounded-xl border border-gray-800 bg-gray-900 p-4">
+          <p className="text-sm font-medium">Create a hosted world</p>
+          <p className="text-xs text-gray-400">{slotLine(slots.used, slots.limit)}</p>
+          {noSlotsLeft ? (
+            <p className="text-sm text-gray-300">
+              You&apos;ve used all your hosted worlds.{' '}
+              <Link href="/settings" className="text-cyan-400 hover:underline">See plans</Link>
+            </p>
+          ) : (
+            <form onSubmit={createHosted} className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[12rem] flex-1">
+                <label className="mb-1 block text-xs text-gray-400" htmlFor="hosted-name">World name</label>
+                <input
+                  id="hosted-name"
+                  value={hostedName}
+                  onChange={(e) => setHostedName(e.target.value)}
+                  maxLength={100}
+                  placeholder="My hosted world"
+                  className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-cyan-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-gray-400" htmlFor="hosted-end">Ends on (optional)</label>
+                <input
+                  id="hosted-end"
+                  type="date"
+                  value={hostedEnd}
+                  onChange={(e) => setHostedEnd(e.target.value)}
+                  className="rounded-lg bg-gray-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-cyan-500"
+                />
+              </div>
+              <button type="submit" disabled={busy || !hostedName.trim()} className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50">Create world</button>
+            </form>
+          )}
+        </div>
+      )}
+
       <form onSubmit={connect} className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-800 bg-gray-900 p-4">
         <div className="min-w-[12rem] flex-1">
-          <label className="block text-xs text-gray-400 mb-1">World name</label>
+          <label className="block text-xs text-gray-400 mb-1">Connect a world you run yourself</label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -227,12 +440,9 @@ function DeployContent() {
 
   // New deployment form
   const [showNewDeploy, setShowNewDeploy] = useState(false)
-  const [newPlatform, setNewPlatform] = useState<'decentraland' | 'hyperfy'>('decentraland')
-  const [newDeployType, setNewDeployType] = useState<'parcel' | 'world' | 'instance'>('parcel')
+  const [newDeployType, setNewDeployType] = useState<'parcel' | 'world'>('parcel')
   const [newParcels, setNewParcels] = useState('')
   const [newContentServer, setNewContentServer] = useState('')
-  const [newHyperfyName, setNewHyperfyName] = useState('')
-  const [newHyperfyRegion, setNewHyperfyRegion] = useState('')
   const [deploying, setDeploying] = useState(false)
   const [deployError, setDeployError] = useState('')
 
@@ -245,16 +455,8 @@ function DeployContent() {
   const [addingWallet, setAddingWallet] = useState(false)
   const [walletError, setWalletError] = useState('')
 
-  // Hyperfy instance details
-  const [hyperfyLogs, setHyperfyLogs] = useState<Record<string, string>>({})
-  const [hyperfyStatus, setHyperfyStatus] = useState<Record<string, any>>({})
-  const [confirmDestroy, setConfirmDestroy] = useState<string | null>(null)
-  const [destroying, setDestroying] = useState(false)
-
   // Action states
   const [actionLoading, setActionLoading] = useState<string | null>(null)
-  // Hyperfy deploys stay off until this server can really host a world
-  const [hyperfyAvailable, setHyperfyAvailable] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
   // Load scenes
@@ -270,8 +472,6 @@ function DeployContent() {
         }
       }
     }).catch(() => setLoadingScenes(false))
-
-    api.getDeployPlatforms().then((d) => setHyperfyAvailable(d.platforms.hyperfy)).catch(() => setHyperfyAvailable(false))
 
     api.getDeployWallets().then((data) => {
       setWallets(data.wallets)
@@ -310,30 +510,17 @@ function DeployContent() {
     setDeployError('')
 
     try {
-      if (newPlatform === 'hyperfy') {
-        const result = await api.provisionHyperfy({
-          sceneId: selectedSceneId,
-          name: newHyperfyName.trim() || scenes.find((s) => s.id === selectedSceneId)?.name || 'Hyperfy World',
-          region: newHyperfyRegion.trim() || undefined,
-        })
-        // Refresh deployments
-        const data = await api.getDeployments(selectedSceneId)
-        setDeployments(data.deployments)
-      } else {
-        const target: Record<string, unknown> = {}
-        if (newDeployType === 'parcel' || newDeployType === 'world') {
-          if (newParcels.trim()) target.parcels = newParcels.trim()
-          if (newContentServer.trim()) target.contentServer = newContentServer.trim()
-        }
+      const target: Record<string, unknown> = {}
+      if (newParcels.trim()) target.parcels = newParcels.trim()
+      if (newContentServer.trim()) target.contentServer = newContentServer.trim()
 
-        const { deployment } = await api.createDeployment({
-          sceneId: selectedSceneId,
-          platform: newPlatform,
-          deploymentType: newDeployType,
-          target,
-        })
-        setDeployments((prev) => [deployment, ...prev])
-      }
+      const { deployment } = await api.createDeployment({
+        sceneId: selectedSceneId,
+        platform: 'decentraland',
+        deploymentType: newDeployType,
+        target,
+      })
+      setDeployments((prev) => [deployment, ...prev])
       setShowNewDeploy(false)
       resetNewDeployForm()
     } catch (err: any) {
@@ -343,12 +530,9 @@ function DeployContent() {
   }
 
   const resetNewDeployForm = () => {
-    setNewPlatform('decentraland')
     setNewDeployType('parcel')
     setNewParcels('')
     setNewContentServer('')
-    setNewHyperfyName('')
-    setNewHyperfyRegion('')
     setDeployError('')
   }
 
@@ -403,43 +587,6 @@ function DeployContent() {
     } catch { /* ignore */ }
   }
 
-  // -- Hyperfy Actions --------------------------------------------------------
-
-  const handleViewLogs = async (deploymentId: string) => {
-    try {
-      const { logs } = await api.getHyperfyLogs(deploymentId)
-      setHyperfyLogs((prev) => ({ ...prev, [deploymentId]: logs }))
-    } catch {
-      setHyperfyLogs((prev) => ({ ...prev, [deploymentId]: 'Failed to fetch logs.' }))
-    }
-  }
-
-  const handleViewStatus = async (deploymentId: string) => {
-    try {
-      const { instance } = await api.getHyperfyStatus(deploymentId)
-      setHyperfyStatus((prev) => ({ ...prev, [deploymentId]: instance }))
-    } catch {
-      setHyperfyStatus((prev) => ({ ...prev, [deploymentId]: { error: 'Failed to fetch status' } }))
-    }
-  }
-
-  const handleDestroy = async (deploymentId: string) => {
-    setDestroying(true)
-    setActionError(null)
-    try {
-      await api.destroyHyperfy(deploymentId)
-      // Refresh deployments
-      if (selectedSceneId) {
-        const data = await api.getDeployments(selectedSceneId)
-        setDeployments(data.deployments)
-      }
-      setConfirmDestroy(null)
-    } catch (err) {
-      setActionError(deployErrorMessage(err))
-    }
-    setDestroying(false)
-  }
-
   // -- Render -----------------------------------------------------------------
 
   if (loadingScenes) return <p className="text-gray-400">Loading...</p>
@@ -481,7 +628,7 @@ function DeployContent() {
       {!selectedSceneId && (
         <div className="text-center py-12">
           <p className="text-gray-500 mb-2">Select a scene to view and manage deployments.</p>
-          <p className="text-sm text-gray-600">You can deploy scenes to Decentraland or Hyperfy.</p>
+          <p className="text-sm text-gray-600">You can deploy scenes to Decentraland, or host a Hyperfy world.</p>
         </div>
       )}
 
@@ -492,38 +639,19 @@ function DeployContent() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Platform</label>
+              <label className="block text-xs text-gray-400 mb-1">Deployment Type</label>
               <select
-                value={newPlatform}
-                onChange={(e) => {
-                  setNewPlatform(e.target.value as 'decentraland' | 'hyperfy')
-                  if (e.target.value === 'hyperfy') setNewDeployType('instance')
-                  else setNewDeployType('parcel')
-                }}
+                value={newDeployType}
+                onChange={(e) => setNewDeployType(e.target.value as 'parcel' | 'world')}
                 className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="decentraland">Decentraland</option>
-                <option value="hyperfy" disabled={!hyperfyAvailable}>{hyperfyAvailable ? 'Hyperfy' : 'Hyperfy (hosting coming soon)'}</option>
+                <option value="parcel">Parcel</option>
+                <option value="world">World</option>
               </select>
             </div>
-
-            {newPlatform === 'decentraland' && (
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Deployment Type</label>
-                <select
-                  value={newDeployType}
-                  onChange={(e) => setNewDeployType(e.target.value as 'parcel' | 'world' | 'instance')}
-                  className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="parcel">Parcel</option>
-                  <option value="world">World</option>
-                </select>
-              </div>
-            )}
           </div>
 
-          {newPlatform === 'decentraland' && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Parcels</label>
                 <input
@@ -544,33 +672,7 @@ function DeployContent() {
                   className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-            </div>
-          )}
-
-          {newPlatform === 'hyperfy' && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">World Name</label>
-                <input
-                  type="text"
-                  value={newHyperfyName}
-                  onChange={(e) => setNewHyperfyName(e.target.value)}
-                  placeholder="My Hyperfy World"
-                  className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Region (optional)</label>
-                <input
-                  type="text"
-                  value={newHyperfyRegion}
-                  onChange={(e) => setNewHyperfyRegion(e.target.value)}
-                  placeholder="us-east-1"
-                  className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          )}
+          </div>
 
           {deployError && <p className="text-sm text-red-400">{deployError}</p>}
 
@@ -580,11 +682,7 @@ function DeployContent() {
               disabled={deploying}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
             >
-              {deploying
-                ? 'Deploying...'
-                : newPlatform === 'hyperfy'
-                  ? 'Provision World'
-                  : 'Start Deployment'}
+              {deploying ? 'Deploying...' : 'Start Deployment'}
             </button>
             <button
               type="button"
@@ -617,15 +715,6 @@ function DeployContent() {
                   actionLoading={actionLoading === dep.id}
                   onCancel={() => handleCancel(dep.id)}
                   onRedeploy={() => handleRedeploy(dep.id)}
-                  hyperfyLogs={hyperfyLogs[dep.id]}
-                  hyperfyStatusData={hyperfyStatus[dep.id]}
-                  onViewLogs={() => handleViewLogs(dep.id)}
-                  onViewStatus={() => handleViewStatus(dep.id)}
-                  confirmDestroy={confirmDestroy === dep.id}
-                  onConfirmDestroy={() => setConfirmDestroy(dep.id)}
-                  onCancelDestroy={() => setConfirmDestroy(null)}
-                  onDestroy={() => handleDestroy(dep.id)}
-                  destroying={destroying && confirmDestroy === dep.id}
                 />
               ))}
             </div>
@@ -735,32 +824,13 @@ function DeploymentCard({
   actionLoading,
   onCancel,
   onRedeploy,
-  hyperfyLogs,
-  hyperfyStatusData,
-  onViewLogs,
-  onViewStatus,
-  confirmDestroy,
-  onConfirmDestroy,
-  onCancelDestroy,
-  onDestroy,
-  destroying,
 }: {
   deployment: any
   actionLoading: boolean
   onCancel: () => void
   onRedeploy: () => void
-  hyperfyLogs?: string
-  hyperfyStatusData?: any
-  onViewLogs: () => void
-  onViewStatus: () => void
-  confirmDestroy: boolean
-  onConfirmDestroy: () => void
-  onCancelDestroy: () => void
-  onDestroy: () => void
-  destroying: boolean
 }) {
   const target = (deployment.target || {}) as Record<string, any>
-  const isHyperfy = deployment.platform === 'hyperfy'
   const canCancel = deployment.status === 'pending' || deployment.status === 'building'
 
   return (
@@ -827,28 +897,6 @@ function DeploymentCard({
         </div>
       )}
 
-      {/* Hyperfy Status */}
-      {isHyperfy && hyperfyStatusData && (
-        <div className="rounded-lg bg-gray-800 px-3 py-2">
-          <p className="text-xs text-gray-400 mb-1">Instance Status</p>
-          <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto">
-            {hyperfyStatusData.error
-              ? hyperfyStatusData.error
-              : JSON.stringify(hyperfyStatusData, null, 2)}
-          </pre>
-        </div>
-      )}
-
-      {/* Hyperfy Logs */}
-      {isHyperfy && hyperfyLogs !== undefined && (
-        <div className="rounded-lg bg-gray-800 px-3 py-2">
-          <p className="text-xs text-gray-400 mb-1">Logs</p>
-          <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto">
-            {hyperfyLogs || 'No logs available.'}
-          </pre>
-        </div>
-      )}
-
       {/* Actions */}
       <div className="flex flex-wrap gap-2 pt-1">
         {canCancel && (
@@ -867,47 +915,6 @@ function DeploymentCard({
         >
           {actionLoading ? 'Redeploying...' : 'Redeploy'}
         </button>
-
-        {isHyperfy && deployment.infrastructureId && (
-          <>
-            <button
-              onClick={onViewStatus}
-              className="rounded-lg bg-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-600"
-            >
-              Status
-            </button>
-            <button
-              onClick={onViewLogs}
-              className="rounded-lg bg-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-600"
-            >
-              View Logs
-            </button>
-            {!confirmDestroy ? (
-              <button
-                onClick={onConfirmDestroy}
-                className="rounded-lg bg-red-600/20 px-3 py-1.5 text-xs text-red-400 hover:bg-red-600/30"
-              >
-                Destroy
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={onDestroy}
-                  disabled={destroying}
-                  className="rounded-lg bg-red-600 px-3 py-1.5 text-xs text-white hover:bg-red-700 disabled:opacity-50"
-                >
-                  {destroying ? 'Destroying...' : 'Confirm Destroy'}
-                </button>
-                <button
-                  onClick={onCancelDestroy}
-                  className="rounded-lg bg-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-600"
-                >
-                  Cancel
-                </button>
-              </>
-            )}
-          </>
-        )}
       </div>
     </div>
   )

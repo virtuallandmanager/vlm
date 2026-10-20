@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { lastSeenLabel, setupSteps, hyperfyErrorMessage, removeWorldPrompt } from './hyperfy'
+import type { HyperfyWorldSummary } from 'vlm-shared'
+import { lastSeenLabel, setupSteps, hyperfyErrorMessage, removeWorldPrompt, worldStatusLabel, slotLine, destroyWorldPrompt } from './hyperfy'
 
 const now = new Date('2026-10-20T12:00:00Z')
 const ago = (ms: number) => new Date(now.getTime() - ms).toISOString()
@@ -49,5 +50,73 @@ describe('hyperfyErrorMessage', () => {
   })
   it('falls back', () => {
     expect(hyperfyErrorMessage(new Error('API error 500'))).toBe('Something went wrong. Try again in a moment.')
+  })
+})
+
+const world = (over: Partial<HyperfyWorldSummary>): HyperfyWorldSummary => ({
+  id: 'w1', sceneId: 's1', name: 'Gallery', kind: 'hosted', address: 'gallery.worlds.vlm.gg', status: 'running',
+  errorMessage: null, keyPrefix: 'vlmw_abcdefg', createdAt: '2026-10-01T00:00:00Z', lastSeenAt: null,
+  endsAt: null, endedAt: null, purgeAfter: null, ...over,
+})
+
+describe('worldStatusLabel', () => {
+  it('says setting up while provisioning', () => {
+    expect(worldStatusLabel(world({ status: 'provisioning' }), now)).toBe('Setting up…')
+  })
+  it('says live when running', () => {
+    expect(worldStatusLabel(world({ status: 'running' }), now)).toBe('Live')
+  })
+  it('shows the failure message', () => {
+    expect(worldStatusLabel(world({ status: 'failed', errorMessage: 'The world did not start' }), now)).toBe('Failed: The world did not start')
+  })
+  it('says just Failed without a message', () => {
+    expect(worldStatusLabel(world({ status: 'failed' }), now)).toBe('Failed')
+  })
+  it('gives the restore deadline in UTC for an ended world', () => {
+    expect(worldStatusLabel(world({ status: 'ended', purgeAfter: '2026-11-17T23:30:00Z' }), now)).toBe('Ended. Restorable until Nov 17')
+  })
+  it('says just Ended once the restore window has passed or is unknown', () => {
+    expect(worldStatusLabel(world({ status: 'ended', purgeAfter: '2026-10-19T00:00:00Z' }), now)).toBe('Ended')
+    expect(worldStatusLabel(world({ status: 'ended' }), now)).toBe('Ended')
+  })
+})
+
+describe('slotLine', () => {
+  it('shows used of limit', () => {
+    expect(slotLine(1, 3)).toBe('1 of 3 hosted worlds')
+    expect(slotLine(0, 1)).toBe('0 of 1 hosted worlds')
+  })
+  it('drops the limit when unlimited', () => {
+    expect(slotLine(1, Infinity)).toBe('1 hosted world')
+    expect(slotLine(4, Infinity)).toBe('4 hosted worlds')
+  })
+})
+
+describe('destroyWorldPrompt', () => {
+  it('says the world and everything built in it are deleted and cannot be restored', () => {
+    expect(destroyWorldPrompt('Gallery')).toBe('Destroy "Gallery"? The world and everything built in it are deleted and can\'t be restored.')
+  })
+})
+
+describe('hyperfyErrorMessage for hosted worlds', () => {
+  const apiErr = (code: string, status: number, body: Record<string, unknown> = {}) =>
+    Object.assign(new Error(code), { status, body: { error: code, ...body } })
+  it('explains hosting is unavailable', () => {
+    expect(hyperfyErrorMessage(apiErr('hyperfy_hosting_unavailable', 503))).toMatch(/not available/i)
+  })
+  it('explains the world limit with the counts', () => {
+    expect(hyperfyErrorMessage(apiErr('world_limit_reached', 403, { used: 3, limit: 3 }))).toMatch(/3 of 3/)
+  })
+  it('explains a world that cannot be restored', () => {
+    expect(hyperfyErrorMessage(apiErr('not_restorable', 409))).toMatch(/can't be restored/)
+  })
+  it('explains an already ended world', () => {
+    expect(hyperfyErrorMessage(apiErr('already_ended', 409))).toMatch(/ended/)
+  })
+  it('passes through the server message for a failed update', () => {
+    expect(hyperfyErrorMessage(apiErr('world_update_failed', 502, { message: 'The world did not restart.' }))).toBe('The world did not restart.')
+  })
+  it('explains a restore whose machines will not start', () => {
+    expect(hyperfyErrorMessage(apiErr('restore_failed', 502))).toMatch(/start/)
   })
 })

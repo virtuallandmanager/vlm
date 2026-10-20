@@ -56,7 +56,7 @@ export function useApi() {
       // A kind-less (pre-scene-pass) session, or a scene pass used outside its scope: drop it so the
       // dashboard layout sends the user to sign-in once (with `next`), instead of showing an error.
       if ((res.status === 401 && err.message === 'Session expired — sign in again') || (res.status === 403 && err.error === 'scene_pass_not_allowed')) logout()
-      throw Object.assign(new Error(err.error || `API error ${res.status}`), { status: res.status })
+      throw Object.assign(new Error(err.error || `API error ${res.status}`), { status: res.status, body: err })
     }
     if (res.status === 204) return undefined as T
     return res.json()
@@ -237,22 +237,22 @@ export function useApi() {
     deleteDeployWallet: (id: string) =>
       apiFetch<{ deleted: boolean }>(`/api/deploy/wallets/${id}`, { method: 'DELETE' }),
     getDeployPlatforms: () => apiFetch<{ platforms: { decentraland: boolean; hyperfy: boolean } }>('/api/deploy/platforms'),
-    provisionHyperfy: (data: { sceneId: string; name: string; region?: string }) =>
-      apiFetch<any>('/api/deploy/hyperfy/provision', { method: 'POST', body: JSON.stringify(data) }),
-    destroyHyperfy: (id: string) =>
-      apiFetch<{ destroyed: boolean }>(`/api/deploy/hyperfy/${id}/destroy`, { method: 'POST' }),
-    getHyperfyStatus: (id: string) =>
-      apiFetch<{ instance: any }>(`/api/deploy/hyperfy/${id}/status`),
-    getHyperfyLogs: (id: string, lines?: number) => {
-      const query = lines ? `?lines=${lines}` : ''
-      return apiFetch<{ logs: string }>(`/api/deploy/hyperfy/${id}/logs${query}`)
-    },
 
-    // Self-run Hyperfy worlds
+    // Hyperfy worlds (self-run and VLM-hosted)
     getHyperfyWorlds: (sceneId: string) =>
       apiFetch<{ worlds: HyperfyWorldSummary[] }>(`/api/hyperfy/worlds?sceneId=${encodeURIComponent(sceneId)}`),
     createHyperfyWorld: (data: { sceneId: string; name: string }) =>
       apiFetch<{ world: HyperfyWorldSummary; key: string }>('/api/hyperfy/worlds', { method: 'POST', body: JSON.stringify(data) }),
+    createHostedHyperfyWorld: (data: { sceneId: string; name: string; endsAt?: string | null }) =>
+      apiFetch<{ world: HyperfyWorldSummary; adminCode: string }>('/api/hyperfy/worlds', { method: 'POST', body: JSON.stringify({ ...data, kind: 'hosted' }) }),
+    getHyperfySlots: () =>
+      apiFetch<{ used: number; limit: number | null; hostingAvailable: boolean }>('/api/hyperfy/slots'),
+    setHyperfyWorldEndDate: (id: string, endsAt: string | null) =>
+      apiFetch<{ world: HyperfyWorldSummary }>(`/api/hyperfy/worlds/${id}`, { method: 'PATCH', body: JSON.stringify({ endsAt }) }),
+    restoreHyperfyWorld: (id: string) =>
+      apiFetch<{ world: HyperfyWorldSummary }>(`/api/hyperfy/worlds/${id}/restore`, { method: 'POST' }),
+    getHyperfyAdminCode: (id: string) =>
+      apiFetch<{ adminCode: string }>(`/api/hyperfy/worlds/${id}/admin-code`, { method: 'POST' }),
     rotateHyperfyWorldKey: (id: string) =>
       apiFetch<{ world: HyperfyWorldSummary; key: string }>(`/api/hyperfy/worlds/${id}/rotate-key`, { method: 'POST' }),
     deleteHyperfyWorld: (id: string) =>
