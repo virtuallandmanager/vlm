@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import net from 'node:net'
+import http from 'node:http'
+import { randomBytes } from 'node:crypto'
 import { replayTarget, createRouter } from './server.mjs'
 
 const D = 'worlds.vlm.gg'
@@ -16,13 +18,13 @@ test('apex, nested subdomain, bad characters, other domains → null', () => {
   for (const h of [
     'worlds.vlm.gg', 'a.b.worlds.vlm.gg', 'ab.worlds.vlm.gg', 'a'.repeat(31) + '.worlds.vlm.gg',
     'my_world.worlds.vlm.gg', 'my world.worlds.vlm.gg', 'x.example.com', 'abc.worlds.vlm.gg.evil.com',
-    'abc-worlds.vlm.gg', '', undefined,
+    'abc-worlds.vlm.gg', '-abc.worlds.vlm.gg', 'abc-.worlds.vlm.gg', '', undefined,
   ]) assert.equal(replayTarget(h, D), null, String(h))
   assert.equal(replayTarget('abc.other.test', 'other.test'), 'vlm-w-abc')
 })
 
-async function start() {
-  const server = createRouter(D)
+async function start(opts) {
+  const server = createRouter(D, opts)
   await new Promise((r) => server.listen(0, '127.0.0.1', r))
   return server
 }
@@ -79,5 +81,85 @@ test('GET /healthz on a non-world host answers 200 ok; a world host is still rep
     assert.match(w, /^HTTP\/1\.1 307/)
     const h = await raw(server, 'GET /healthz HTTP/1.1\r\nHost: \r\nConnection: close\r\n\r\n')
     assert.match(h, /^HTTP\/1\.1 200/)
+  } finally { server.close() }
+})
+
+async function upstream() {
+  const seen = []
+  const up = http.createServer((req, res) => {
+    const chunks = []
+    req.on('data', (c) => chunks.push(c))
+    req.on('end', () => {
+      seen.push({ method: req.method, url: req.url, host: req.headers.host, body: Buffer.concat(chunks) })
+      res.writeHead(201, { 'x-up': 'yes', 'content-type': 'text/plain' })
+      res.end('from upstream')
+    })
+  })
+  await new Promise((r) => up.listen(0, '127.0.0.1', r))
+  return { up, seen, port: up.address().port }
+}
+
+function post(server, headers, body) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ port: server.address().port, host: '127.0.0.1', method: 'POST', path: '/upload?x=1', headers: { host: 'foo-bar.worlds.vlm.gg', ...headers } }, (res) => {
+      const chunks = []
+      res.on('data', (c) => chunks.push(c))
+      res.on('end', () => resolve({ res, body: Buffer.concat(chunks).toString() }))
+    })
+    req.on('error', reject)
+    body(req)
+  })
+}
+
+test('a 2 MB POST to a world host is proxied to the upstream with the exact bytes', async () => {
+  const { up, seen, port } = await upstream()
+  const server = await start({ upstreamHost: () => '127.0.0.1', upstreamPort: port })
+  try {
+    const data = randomBytes(2 * 1024 * 1024)
+    const { res, body } = await post(server, { 'content-length': data.length }, (req) => req.end(data))
+    assert.equal(res.statusCode, 201)
+    assert.equal(res.headers['x-up'], 'yes')
+    assert.equal(body, 'from upstream')
+    assert.equal(seen.length, 1)
+    assert.equal(seen[0].url, '/upload?x=1')
+    assert.equal(seen[0].host, 'foo-bar.worlds.vlm.gg')
+    assert.ok(seen[0].body.equals(data))
+  } finally { server.close(); up.close() }
+})
+
+test('a chunked POST to a world host is proxied', async () => {
+  const { up, seen, port } = await upstream()
+  const server = await start({ upstreamHost: () => '127.0.0.1', upstreamPort: port })
+  try {
+    const { res } = await post(server, {}, (req) => { req.write('hello '); req.end('world') })
+    assert.equal(res.statusCode, 201)
+    assert.equal(seen[0].body.toString(), 'hello world')
+  } finally { server.close(); up.close() }
+})
+
+test('a POST of exactly 1 MB still gets the 307 replay', async () => {
+  const { up, seen, port } = await upstream()
+  const server = await start({ upstreamHost: () => '127.0.0.1', upstreamPort: port })
+  try {
+    const data = Buffer.alloc(1048576, 1)
+    const { res } = await post(server, { 'content-length': data.length }, (req) => req.end(data))
+    assert.equal(res.statusCode, 307)
+    assert.equal(res.headers['fly-replay'], 'app=vlm-w-foo-bar')
+    assert.equal(seen.length, 0)
+  } finally { server.close(); up.close() }
+})
+
+test('an unreachable upstream gives a short 502', async () => {
+  const dead = http.createServer()
+  await new Promise((r) => dead.listen(0, '127.0.0.1', r))
+  const port = dead.address().port
+  await new Promise((r) => dead.close(r))
+  const server = await start({ upstreamHost: () => '127.0.0.1', upstreamPort: port })
+  try {
+    const data = Buffer.alloc(1048577, 1)
+    const { res, body } = await post(server, { 'content-length': data.length }, (req) => req.end(data))
+    assert.equal(res.statusCode, 502)
+    assert.ok(body.length < 100)
+    assert.doesNotMatch(body, /ECONNREFUSED|at /)
   } finally { server.close() }
 })

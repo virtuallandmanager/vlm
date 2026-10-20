@@ -1,8 +1,8 @@
 // Hands each request for <slug>.<domain> to the world's own Fly app with fly-replay.
-import { createServer } from 'node:http'
+import { createServer, request as httpRequest } from 'node:http'
 import { fileURLToPath } from 'node:url'
 
-const SLUG = /^[a-z0-9-]{3,30}$/
+const SLUG = /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/
 
 export function replayTarget(host, domain) {
   if (typeof host !== 'string') return null
@@ -16,10 +16,37 @@ export function replayTarget(host, domain) {
 const NOT_FOUND_BODY = '<!doctype html><title>No world here</title><h1>No world here</h1><p>There is no VLM world at this address.</p>'
 const NOT_FOUND_HEAD = `HTTP/1.1 404 Not Found\r\ncontent-type: text/html; charset=utf-8\r\ncontent-length: ${Buffer.byteLength(NOT_FOUND_BODY)}\r\nconnection: close\r\n\r\n`
 
-export function createRouter(domain) {
+// fly-replay can't carry request bodies over 1 MB, so bigger (or chunked) ones are proxied over Flycast.
+const REPLAY_BODY_LIMIT = 1048576
+
+function needsProxy(req) {
+  if (/chunked/i.test(req.headers['transfer-encoding'] || '')) return true
+  return Number(req.headers['content-length'] || 0) > REPLAY_BODY_LIMIT
+}
+
+export function createRouter(domain, opts = {}) {
+  const suffix = opts.upstreamSuffix ?? '.flycast'
+  const upstreamHost = opts.upstreamHost ?? ((app) => app + suffix)
+  const upstreamPort = opts.upstreamPort ?? 80
+
+  function proxy(req, res, target) {
+    const up = httpRequest({ host: upstreamHost(target), port: upstreamPort, method: req.method, path: req.url, headers: req.headers }, (ures) => {
+      res.writeHead(ures.statusCode, ures.headers)
+      ures.pipe(res)
+    })
+    up.on('error', () => {
+      if (!res.headersSent) { res.writeHead(502, { 'content-type': 'text/plain' }); res.end('Bad gateway') }
+      else res.destroy()
+    })
+    res.on('close', () => up.destroy())
+    req.pipe(up)
+  }
+
   const server = createServer((req, res) => {
     const target = replayTarget(req.headers.host, domain)
-    if (target) {
+    if (target && needsProxy(req)) {
+      proxy(req, res, target)
+    } else if (target) {
       res.writeHead(307, { 'fly-replay': `app=${target}` })
       res.end()
     } else if (req.method === 'GET' && req.url === '/healthz') {
@@ -40,5 +67,8 @@ export function createRouter(domain) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  createRouter(process.env.ROUTER_DOMAIN || 'worlds.vlm.gg').listen(Number(process.env.PORT) || 3000, '0.0.0.0')
+  createRouter(process.env.ROUTER_DOMAIN || 'worlds.vlm.gg', {
+    upstreamSuffix: process.env.ROUTER_UPSTREAM_SUFFIX || '.flycast',
+    upstreamPort: Number(process.env.ROUTER_UPSTREAM_PORT) || 80,
+  }).listen(Number(process.env.PORT) || 3000, '0.0.0.0')
 }
