@@ -1,4 +1,5 @@
 import { Vec3, TransformData } from './types/math.js';
+import type { Quat } from './ads.js';
 import type { AnalyticsSceneRef } from './analytics.js';
 
 // ---------------------------------------------------------------------------
@@ -47,12 +48,19 @@ export interface VLMPlatformAdapter {
   resolveModelSrc?(src: string): string | null;
   setMaterial(entity: EntityHandle, material: MaterialData): void;
   setVideoMaterial(entity: EntityHandle, video: VideoMaterialData): void;
+  /** Optional: show text on the entity (the "Ad" label). Without it, ads show no label. */
+  setText?(entity: EntityHandle, text: string, opts: { fontSize: number }): void;
 
   // --- Video ---
   createVideoPlayer(entity: EntityHandle, options: VideoPlayerOptions): void;
   updateVideoSource(entity: EntityHandle, src: string): void;
   setVideoVolume(entity: EntityHandle, volume: number): void;
   getVideoState(entity: EntityHandle): VideoState;
+  /**
+   * Optional: call cb when the video playing on this entity reaches its end. A later call for the same entity
+   * replaces the callback. Without it, playlists don't advance and video ads never play.
+   */
+  onVideoEnded?(entity: EntityHandle, cb: () => void): void;
 
   // --- Audio ---
   setAudioSource(entity: EntityHandle, options: AudioOptions): void;
@@ -70,12 +78,19 @@ export interface VLMPlatformAdapter {
     cb: PointerCallback,
   ): void;
   removePointerEvents(entity: EntityHandle): void;
+  /**
+   * Optional: call onEnter / onLeave when the pointer starts / stops hovering the entity within maxDistance.
+   * removePointerEvents removes these too. Without it, ads record no look events.
+   */
+  onPointerHover?(entity: EntityHandle, onEnter: () => void, onLeave: () => void, maxDistance: number): void;
 
   // --- Player Actions ---
   openUrl(url: string): void;
   teleportPlayer(destination: string): void;
   movePlayer(position: Vec3, cameraTarget?: Vec3): void;
   triggerEmote(emoteId: string): void;
+  /** Optional: the camera's world pose, or null when unknown. Without it, ads record no on-screen events. */
+  getCameraPose?(): { position: Vec3; rotation: Quat } | null;
 
   // --- Frame Loop ---
   registerSystem(update: (dt: number) => void): void;

@@ -24,7 +24,7 @@ export function outlineBox(element: ElementKind, s: Vec3): { half: Vec3; center:
     const h = MARKER_SIZE / 2 + PAD
     return { half: { x: h, y: h, z: h }, center: { x: 0, y: 0, z: 0 } }
   }
-  if (element === 'image' || element === 'video') {
+  if (element === 'image' || element === 'video' || element === 'ad_space') {
     return { half: { x: ax / 2 + PAD, y: ay / 2 + PAD, z: 0 }, center: { x: 0, y: 0, z: 0 } }
   }
   // Models sit on their origin (base), so the box rises from it
@@ -42,7 +42,7 @@ export class Outline {
   /** Outlines the item at the transform (null removes it). Call every frame. */
   update(t: TransformData | null, element: ElementKind | null): void {
     if (!t || !element) return this.clear()
-    const flat = element === 'image' || element === 'video'
+    const flat = element === 'image' || element === 'video' || element === 'ad_space'
     const shape = flat ? 'flat' : 'box'
     if (shape !== this.builtFor) {
       this.clear()

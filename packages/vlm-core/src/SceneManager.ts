@@ -5,6 +5,8 @@ import { VideoManager } from './managers/VideoManager.js'
 import { ImageManager } from './managers/ImageManager.js'
 import { MeshManager } from './managers/MeshManager.js'
 import { SoundManager } from './managers/SoundManager.js'
+import { AdSpaceManager } from './managers/AdSpaceManager.js'
+import type { AdHost } from './ads/host.js'
 import { EventBus } from './events/EventBus.js'
 
 // Manager interface — shared by all element managers
@@ -26,25 +28,41 @@ interface ElementManager {
   upsert?(elementData: any): void
 }
 
-const EDITABLE: Selected['element'][] = ['image', 'video', 'model', 'sound']
+const EDITABLE: Selected['element'][] = ['image', 'video', 'model', 'sound', 'ad_space']
 
 export class SceneManager {
   private managers: Record<string, ElementManager>
   private events: EventBus
   private adapter: VLMPlatformAdapter
 
-  constructor(adapter: VLMPlatformAdapter, storage: VLMStorage, events: EventBus) {
+  /** `ads` serves the scene's ad spaces and ads-mode screens; without it they show their fallback or hide. */
+  constructor(adapter: VLMPlatformAdapter, storage: VLMStorage, events: EventBus, ads: AdHost | null = null) {
     this.adapter = adapter
     this.events = events
+    const video = new VideoManager(adapter, storage, ads)
     this.managers = {
-      video: new VideoManager(adapter, storage),
+      video,
       image: new ImageManager(adapter, storage),
       model: new MeshManager(adapter, storage, events),
       sound: new SoundManager(adapter, storage),
+      // keyed by the element type on the wire
+      ad_space: new AdSpaceManager(adapter, storage, ads, () => video.isStreamLive()),
     }
   }
 
+  /** True when any video config has a live, enabled stream. */
+  isStreamLive(): boolean {
+    return (this.managers.video as VideoManager).isStreamLive()
+  }
+
+  /** Any edit can start or end a live stream (live fields, enabled, create, delete); an init always rechecks. */
   handlePresetUpdate(message: any): void {
+    const wasLive = this.isStreamLive()
+    this.applyPresetUpdate(message)
+    if (message.action === 'init' || this.isStreamLive() !== wasLive) this.streamChanged()
+  }
+
+  private applyPresetUpdate(message: any): void {
     switch (message.action) {
       case 'init':
         this.initPreset(message.scenePreset)
@@ -105,7 +123,7 @@ export class SceneManager {
     return null
   }
 
-  /** Every instance of the four element types that has a live entity (visible ones). */
+  /** Every instance of the editable element types that has a live entity (visible ones). */
   listEditable(): (Selected & { entity: EntityHandle })[] {
     const out: (Selected & { entity: EntityHandle })[] = []
     for (const element of EDITABLE) {
@@ -139,11 +157,20 @@ export class SceneManager {
     if (message.scenePreset) {
       this.initPreset(message.scenePreset)
     }
+    // Screens are created in preset order: an ads-mode screen may have started a video ad before the live screen existed
+    this.streamChanged()
   }
 
   handleVideoStatus(message: any): void {
     const videoManager = this.managers.video as VideoManager
     videoManager.updateLiveStatus(message.elementId, message.status, message.url)
+    this.streamChanged()
+  }
+
+  /** What every ad space and ads-mode screen may play depends on whether any stream is live. */
+  private streamChanged(): void {
+    ;(this.managers.video as VideoManager).streamChanged()
+    ;(this.managers.ad_space as AdSpaceManager).streamChanged()
   }
 
   private initPreset(preset: any): void {
@@ -152,5 +179,6 @@ export class SceneManager {
     this.managers.image?.init(preset.images || [])
     this.managers.model?.init(preset.models || [])
     this.managers.sound?.init(preset.sounds || [])
+    this.managers.ad_space?.init(preset.adSpaces || [])
   }
 }

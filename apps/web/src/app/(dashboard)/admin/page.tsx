@@ -134,7 +134,10 @@ export default function AdminPage() {
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-        <Link href="/admin/catalog" className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm hover:bg-gray-700">Catalog packs</Link>
+        <div className="flex gap-2">
+          <Link href="/admin/ads" className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm hover:bg-gray-700">Ads</Link>
+          <Link href="/admin/catalog" className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm hover:bg-gray-700">Catalog packs</Link>
+        </div>
       </div>
 
       {/* Stats Cards */}

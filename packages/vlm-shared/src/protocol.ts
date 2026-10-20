@@ -81,7 +81,7 @@ export interface ScenePresetUpdateData {
 
 /** Unsaved transform of an instance while an editor drags it. Relayed to editors only, never persisted. */
 export interface TransformDraftData {
-  element: 'image' | 'video' | 'model' | 'sound';
+  element: 'image' | 'video' | 'model' | 'sound' | 'ad_space';
   sk: string;
   position: Vec3;
   rotation: Vec3;

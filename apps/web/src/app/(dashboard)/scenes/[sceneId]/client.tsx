@@ -1,6 +1,8 @@
 'use client'
 import { useApi, fileToBase64, mediaContentType, uploadErrorMessage, isGlbAsset } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { AD_SHAPES, type AdFormats } from 'vlm-shared'
+import { shapeLabel, offImageLabel, adModeHint } from '@/lib/ads'
 import { useSceneRoom } from '@/lib/colyseus'
 import { SceneRoles } from './SceneRoles'
 import { useParams, useSearchParams } from 'next/navigation'
@@ -11,7 +13,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 // Types
 // ---------------------------------------------------------------------------
 
-type ElementType = 'video' | 'image' | 'sound' | 'model' | 'widget'
+type ElementType = 'video' | 'image' | 'sound' | 'model' | 'widget' | 'ad_space'
 type TabKey = ElementType | 'moderation' | 'roles'
 
 interface Instance {
@@ -53,6 +55,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'model', label: 'Models' },
   { key: 'sound', label: 'Sounds' },
   { key: 'widget', label: 'Widgets' },
+  { key: 'ad_space', label: 'Ad spaces' },
   { key: 'moderation', label: 'Moderation' },
   { key: 'roles', label: 'Roles' },
 ]
@@ -67,7 +70,23 @@ const CONTROL_TYPES = [
   { value: 6, label: 'Slider' },
 ]
 
-const OFF_TYPES = ['None', 'Image', 'Playlist']
+const OFF_TYPES: { value: number; label: string }[] = [
+  { value: 0, label: 'None' },
+  { value: 1, label: 'Image' },
+  { value: 2, label: 'Playlist' },
+  { value: 4, label: 'Ads' },
+  { value: 5, label: 'Playlist + ads' },
+]
+
+const AD_SPACE_FORMATS: { value: AdFormats; label: string }[] = [
+  { value: 'both', label: 'Images and video' },
+  { value: 'image', label: 'Images only' },
+  { value: 'video', label: 'Video only' },
+]
+
+const ELEMENT_TYPE_LABELS: Record<ElementType, string> = {
+  video: 'Video', image: 'Image', model: 'Model', sound: 'Sound', widget: 'Widget', ad_space: 'Ad space',
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -281,14 +300,18 @@ function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
         <select value={props.offType ?? 0}
           onChange={e => updateProp('offType', parseInt(e.target.value))}
           className="w-48 rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500">
-          {OFF_TYPES.map((label, i) => (
-            <option key={i} value={i}>{label}</option>
+          {OFF_TYPES.map(t => (
+            <option key={t.value} value={t.value}>{t.label}</option>
           ))}
         </select>
       </div>
 
-      {(props.offType === 1) && (
-        <TextInput label="Off Image URL" value={props.offImageSrc || ''} onChange={v => updateProp('offImageSrc', v)} />
+      {offImageLabel(props.offType ?? 0) && (
+        <TextInput label={offImageLabel(props.offType ?? 0)!} value={props.offImageSrc || ''} onChange={v => updateProp('offImageSrc', v)} />
+      )}
+
+      {adModeHint(props.offType ?? 0) && (
+        <p className="text-xs text-gray-500">{adModeHint(props.offType ?? 0)}</p>
       )}
 
       {/* Playlist */}
@@ -539,6 +562,125 @@ function ImageElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
 
       {showPicker && (
         <MediaPicker api={api} accept="image/*" onSelect={setTexture} onClose={() => setShowPicker(false)} />
+      )}
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-400">Instances ({element.instances.length})</p>
+          <button onClick={() => onAddInstance(element.id)} className="text-xs text-blue-400 hover:text-blue-300">+ Add Instance</button>
+        </div>
+        {element.instances.map(inst => (
+          <InstanceEditor key={inst.id} instance={inst}
+            onUpdate={data => onUpdateInstance(inst.id, data)}
+            onDelete={() => onDeleteInstance(inst.id)} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Ad Space Element Editor
+// ---------------------------------------------------------------------------
+
+function AdSpaceElementEditor({ element, onUpdateElement, onUpdateInstance, onDeleteInstance, onAddInstance, api }: {
+  element: Element
+  onUpdateElement: (id: string, data: Record<string, any>) => void
+  onUpdateInstance: (id: string, data: Partial<Instance>) => void
+  onDeleteInstance: (id: string) => void
+  onAddInstance: (elementId: string) => void
+  api: ReturnType<typeof import('@/lib/api').useApi>
+}) {
+  const props = element.properties || {}
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+
+  const updateProp = (key: string, value: any) => {
+    onUpdateElement(element.id, { properties: { ...props, [key]: value } })
+  }
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setUploadError('')
+    try {
+      const base64 = await fileToBase64(file)
+      const { asset } = await api.uploadMedia(file.name, mediaContentType(file), base64)
+      updateProp('fallbackImageSrc', asset.publicUrl)
+    } catch (err: any) {
+      console.error('Upload failed:', err)
+      setUploadError(uploadErrorMessage(err))
+    }
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h4 className="font-semibold">{element.name}</h4>
+        <label className="flex items-center gap-2 text-sm text-gray-400">
+          <input type="checkbox" checked={element.enabled}
+            onChange={e => onUpdateElement(element.id, { enabled: e.target.checked })}
+            className="accent-blue-500" />
+          Enabled
+        </label>
+      </div>
+
+      <div className="flex flex-wrap gap-4">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-gray-500">Shape</span>
+          <select value={props.shape ?? '16:9'}
+            onChange={e => updateProp('shape', e.target.value)}
+            className="w-48 rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500">
+            {AD_SHAPES.map(s => (
+              <option key={s} value={s}>{shapeLabel(s)}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-gray-500">Formats</span>
+          <select value={props.formats ?? 'both'}
+            onChange={e => updateProp('formats', e.target.value)}
+            className="w-48 rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500">
+            {AD_SPACE_FORMATS.map(f => (
+              <option key={f.value} value={f.value}>{f.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <p className="text-xs text-gray-500">
+        Only ads made for this exact shape appear here. Video ads pause while a live stream plays.
+      </p>
+
+      {props.fallbackImageSrc && (
+        <div className="rounded-lg overflow-hidden border border-gray-700 bg-gray-800">
+          <img src={props.fallbackImageSrc} alt={`${element.name} fallback`}
+            className="max-h-40 w-full object-contain" />
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <TextInput label="Fallback Image URL" value={props.fallbackImageSrc || ''} onChange={v => updateProp('fallbackImageSrc', v)} />
+        <div className="flex items-center gap-2">
+          <label className={`rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 transition-colors cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+            {uploading ? 'Uploading...' : 'Upload'}
+            <input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} className="hidden" />
+          </label>
+          <button onClick={() => setShowPicker(true)}
+            className="rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 transition-colors">
+            Media Library
+          </button>
+          <span className="text-xs text-gray-500">Shown when there is no ad. Without one, the space hides itself.</span>
+        </div>
+        {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
+      </div>
+
+      {showPicker && (
+        <MediaPicker api={api} accept="image/*" onSelect={url => { updateProp('fallbackImageSrc', url); setShowPicker(false) }} onClose={() => setShowPicker(false)} />
       )}
 
       <div className="space-y-2">
@@ -1323,11 +1465,12 @@ export default function SceneEditorPage() {
       model: { modelSrc: '' },
       sound: { audioSrc: '', volume: 1, loop: false },
       widget: { controlType: 1, value: false, order: 0 },
+      ad_space: { shape: '16:9', formats: 'both' },
     }
     try {
       const { element } = await api.createElement(activePreset.id, {
         type,
-        name: `${type.charAt(0).toUpperCase() + type.slice(1)} ${count}`,
+        name: `${ELEMENT_TYPE_LABELS[type]} ${count}`,
         enabled: true,
         properties: defaults[type],
       })
@@ -1487,14 +1630,14 @@ export default function SceneEditorPage() {
       {activeTab !== 'moderation' && activeTab !== 'widget' && activeTab !== 'roles' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-400">{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}s ({filteredElements.length})</p>
+            <p className="text-sm text-gray-400">{ELEMENT_TYPE_LABELS[activeTab as ElementType]}s ({filteredElements.length})</p>
             <button onClick={() => handleAddElement(activeTab as ElementType)}
               className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 transition-colors">
-              + Add {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+              + Add {ELEMENT_TYPE_LABELS[activeTab as ElementType]}
             </button>
           </div>
           {filteredElements.length === 0 ? (
-            <p className="text-gray-500 text-sm py-8 text-center">No {activeTab} elements in this preset.</p>
+            <p className="text-gray-500 text-sm py-8 text-center">No {ELEMENT_TYPE_LABELS[activeTab as ElementType].toLowerCase()} elements in this preset.</p>
           ) : (
             filteredElements.map(el => {
               const editorProps = {
@@ -1510,6 +1653,7 @@ export default function SceneEditorPage() {
                 case 'image': return <ImageElementEditor key={el.id} {...editorProps} api={api} />
                 case 'model': return <ModelElementEditor key={el.id} {...editorProps} api={api} />
                 case 'sound': return <SoundElementEditor key={el.id} {...editorProps} />
+                case 'ad_space': return <AdSpaceElementEditor key={el.id} {...editorProps} api={api} />
                 default: return null
               }
             })

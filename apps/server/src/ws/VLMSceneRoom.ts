@@ -42,7 +42,7 @@ interface ClientMeta {
   sceneId: string
 }
 
-const DRAFT_ELEMENTS = new Set(['image', 'video', 'model', 'sound'])
+const DRAFT_ELEMENTS = new Set(['image', 'video', 'model', 'sound', 'ad_space'])
 const isVec3 = (v: any) => !!v && typeof v === 'object' && ['x', 'y', 'z'].every((k) => Number.isFinite(v[k]) && typeof v[k] === 'number')
 function isValidDraft(m: any) {
   return !!m && DRAFT_ELEMENTS.has(m.element) && isVec3(m.position) && isVec3(m.rotation) && isVec3(m.scale)
@@ -549,7 +549,7 @@ export class VLMSceneRoom extends Room {
       // Always send init even if there's no scene — client needs this to unblock
       client.send('scene_preset_update', {
         action: 'init',
-        scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [] },
+        scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [], adSpaces: [] },
         sceneSettings: [],
       })
       return
@@ -565,7 +565,7 @@ export class VLMSceneRoom extends Room {
         // Still send init with empty preset so client doesn't hang
         client.send('scene_preset_update', {
           action: 'init',
-          scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [] },
+          scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [], adSpaces: [] },
           sceneSettings: [],
         })
         return
@@ -584,7 +584,7 @@ export class VLMSceneRoom extends Room {
         console.log(`[VLMSceneRoom] Active preset not found: ${scene.activePresetId}`)
         client.send('scene_preset_update', {
           action: 'init',
-          scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [] },
+          scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [], adSpaces: [] },
           sceneSettings: [],
         })
         return
@@ -608,7 +608,7 @@ export class VLMSceneRoom extends Room {
       // Send empty init so client doesn't hang
       client.send('scene_preset_update', {
         action: 'init',
-        scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [] },
+        scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [], adSpaces: [] },
         sceneSettings: [],
       })
     }

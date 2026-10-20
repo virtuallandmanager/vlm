@@ -22,4 +22,5 @@ export interface VLMStorage {
   nfts: ElementStore;
   claimPoints: ElementStore;
   widgets: ElementStore;
+  adSpaces: ElementStore;
 }

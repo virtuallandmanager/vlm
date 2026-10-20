@@ -4,6 +4,7 @@ import { SceneManager } from './SceneManager.js'
 import { VLMStorageImpl } from './storage.js'
 import type { Selected } from './transform/session.js'
 import { EventBus } from './events/EventBus.js'
+import { AdHost } from './ads/host.js'
 
 // Default API URLs by environment
 const API_URLS: Record<string, string> = {
@@ -41,6 +42,8 @@ export class VLM {
   private http: VLMHttpClient
   private colyseus: ColyseusManager
   private sceneManager: SceneManager
+  /** Serves and measures the scene's ads; started once the scene has loaded. */
+  private ads: AdHost
   /** Core event emitter (also carries transform_draft / transform_draft_end / transform_held). */
   public readonly events: EventBus
   private userMessageHandlers: Map<string, (data: unknown) => void> = new Map()
@@ -65,7 +68,13 @@ export class VLM {
     this.colyseus = new ColyseusManager()
     this.events = new EventBus()
     this.storage = VLMStorageImpl.create()
-    this.sceneManager = new SceneManager(adapter, this.storage, this.events)
+    // Reads this.http at call time: authenticate() replaces the client
+    this.ads = new AdHost({
+      adapter,
+      getAds: (elementIds) => this.http.getAds(adapter, { elementIds }),
+      postEvents: (batch) => this.http.sendAdEvents(adapter, batch),
+    })
+    this.sceneManager = new SceneManager(adapter, this.storage, this.events, this.ads)
   }
 
   private _binding: { sceneId: string | null; locationId: string | null } | null = null
@@ -255,6 +264,7 @@ export class VLM {
     return new Promise<VLMStorageType>(async (resolve, reject) => {
       try {
         this.events.on('scene_initialized', () => {
+          void this.ads.start()
           this.setState('connected', { sceneId })
           resolve(this.storage)
         })
@@ -324,7 +334,7 @@ export class VLM {
       const d = message as { sk: string; saved: boolean }
       if (!d?.sk) return
       if (!d.saved) {
-        for (const e of ['image', 'video', 'model', 'sound'] as const) this.sceneManager.restoreTransform(e, d.sk)
+        for (const e of ['image', 'video', 'model', 'sound', 'ad_space'] as const) this.sceneManager.restoreTransform(e, d.sk)
       }
       this.events.emit('transform_draft_end', d)
     })
@@ -356,6 +366,7 @@ export class VLM {
 
     this.colyseus.onMessage('scene_change_preset', (message: unknown) => {
       this.sceneManager.handlePresetChange(message as any)
+      void this.ads.refresh()
     })
 
     this.colyseus.onMessage('scene_video_status', (message: unknown) => {
@@ -379,6 +390,7 @@ export class VLM {
     // The collector is shared per scene runtime (other VLM instances may use it): detach only.
     // Stop it explicitly with the adapter's stopVLMAnalytics().
     this.analytics = null
+    this.ads.stop()
     this.stopRenewal()
     this.http.reauthenticate = null
     this.colyseus.leaveRoom()

@@ -53,7 +53,7 @@ export class Gizmo {
   update(mode: TransformMode, lock: MoveLock, t: TransformData | null, element: ElementKind | null = null): void {
     if (!t) return this.clear()
     // Images and videos are flat planes: no Z stretch handle
-    const flat = element === 'image' || element === 'video'
+    const flat = element === 'image' || element === 'video' || element === 'ad_space'
     const built = mode === 'move' ? `move:${lock}` : mode === 'resize' ? `resize:${flat ? 'flat' : 'solid'}` : mode
     if (built !== this.builtFor) {
       this.clear()

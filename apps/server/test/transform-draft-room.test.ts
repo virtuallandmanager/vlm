@@ -56,6 +56,14 @@ describe('transform draft relay', () => {
     await s.owner.expectNone('transform_draft', 200)
   })
 
+  it('relays an ad_space draft like an image one', async () => {
+    const s = await setup()
+    s.owner.room.send('transform_draft', { ...draft(s.inst.id), element: 'ad_space' })
+    const got = await s.editor.waitFor('transform_draft')
+    expect(got).toMatchObject({ sk: s.inst.id, element: 'ad_space', holderName: 'Olivia', position: { x: 5, y: 2, z: 3 } })
+    expect(count(s.owner, 'vlm_error')).toBe(0)
+  })
+
   it('uses the account display name from the database, not a client-supplied one', async () => {
     const s = await setup()
     const srv = serverRoom(s.owner.room.roomId)

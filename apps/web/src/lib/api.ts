@@ -2,7 +2,7 @@
 import { useCallback } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
-import type { CatalogPack, HyperfyWorldSummary } from 'vlm-shared'
+import type { AdminAd, AdminAdSpace, AdReport, AdShape, CatalogPack, HyperfyWorldSummary } from 'vlm-shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
 /** Read a File as base64 (no `data:…;base64,` prefix) for JSON upload bodies. */
@@ -24,6 +24,8 @@ export function mediaContentType(file: File): string {
   if (file.type) return file.type
   return file.name.toLowerCase().endsWith('.glb') ? 'model/gltf-binary' : 'application/octet-stream'
 }
+
+export type { AdminAdSpace } from 'vlm-shared'
 
 export const MEDIA_UPLOAD_RULES = 'Only PNG, JPG, WebP, GIF (≤ 10 MB), GLB (≤ 50 MB) or MP4/WebM video (≤ 70 MB)'
 
@@ -293,6 +295,21 @@ export function useApi() {
     getAdminCatalogPacks: () => apiFetch<{ packs: CatalogPack[] }>('/api/admin/catalog/packs'),
     setCatalogPackEnabled: (id: string, enabled: boolean) =>
       apiFetch<{ pack: CatalogPack }>(`/api/admin/catalog/packs/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+
+    // Ads (admin)
+    getAdminAds: () => apiFetch<{ ads: AdminAd[] }>('/api/admin/ads'),
+    createAdminAd: (data: { name: string; kind: 'house' | 'partner'; clickUrl: string; startsAt?: string | null; endsAt?: string | null }) =>
+      apiFetch<{ ad: AdminAd }>('/api/admin/ads', { method: 'POST', body: JSON.stringify(data) }),
+    updateAdminAd: (id: string, data: { name?: string; clickUrl?: string; status?: 'active' | 'paused'; startsAt?: string | null; endsAt?: string | null }) =>
+      apiFetch<{ ad: AdminAd }>(`/api/admin/ads/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    addAdminAdCreative: (id: string, mediaAssetId: string, shape: AdShape) =>
+      apiFetch<{ creative: AdminAd['creatives'][number] }>(`/api/admin/ads/${id}/creatives`, { method: 'POST', body: JSON.stringify({ mediaAssetId, shape }) }),
+    deleteAdminAdCreative: (id: string, creativeId: string) =>
+      apiFetch<{ ok: true }>(`/api/admin/ads/${id}/creatives/${creativeId}`, { method: 'DELETE' }),
+    setAdminAdPlacements: (id: string, elementIds: string[]) =>
+      apiFetch<{ ad: AdminAd }>(`/api/admin/ads/${id}/placements`, { method: 'PUT', body: JSON.stringify({ elementIds }) }),
+    getAdminAdSpaces: () => apiFetch<{ spaces: AdminAdSpace[] }>('/api/admin/ads/spaces'),
+    getAdminAdReport: (id: string) => apiFetch<AdReport>(`/api/admin/ads/${id}/report`),
     /** Links a model you uploaded, or a catalog model, into a scene's library (no storage used for catalog models). */
     addModelToSceneLibrary: (sceneId: string, assetItemId: string) =>
       apiFetch<{ id: string }>(`/api/scenes/${sceneId}/library`, { method: 'POST', body: JSON.stringify({ assetItemId }) }),

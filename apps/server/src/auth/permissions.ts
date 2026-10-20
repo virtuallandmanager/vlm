@@ -172,7 +172,7 @@ const GRANT_FIELD_KEYS = new Set(['enabled'])
 export function scopesForElementChange(type: string, propertyKeys: string[], fieldKeys: string[]): VenueScope[] | null {
   if (fieldKeys.some((k) => !GRANT_FIELD_KEYS.has(k))) return null
   const base: VenueScope | null =
-    type === 'video' || type === 'image' || type === 'nft' ? 'screens' : type === 'sound' ? 'audio' : null
+    type === 'video' || type === 'image' || type === 'nft' || type === 'ad_space' ? 'screens' : type === 'sound' ? 'audio' : null
   if (!base) return null
   const needed = new Set<VenueScope>()
   for (const k of propertyKeys) needed.add(type === 'video' && PLAYLIST_KEYS.has(k) ? 'playlist' : base)

@@ -10,6 +10,7 @@ export class VLMStorageImpl {
       nfts: { configs: {}, instances: {} },
       claimPoints: { configs: {}, instances: {} },
       widgets: { configs: {}, instances: {} },
+      adSpaces: { configs: {}, instances: {} },
     }
   }
 }

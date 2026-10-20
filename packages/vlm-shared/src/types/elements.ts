@@ -8,6 +8,7 @@ import {
   MannequinType,
 } from '../enums/index.js';
 import { Vec3, ClickEvent } from './math.js';
+import type { AdShape, AdFormats } from '../ads.js';
 
 // ---------------------------------------------------------------------------
 // Generic element types
@@ -58,6 +59,7 @@ export interface VideoProperties {
   playlist?: string[];
   volume?: number;
   emission?: number;
+  adShape?: AdShape; // defaults to '16:9'
 }
 
 export interface ImageProperties {
@@ -97,6 +99,12 @@ export interface ClaimPointProperties {
   kioskImgSrc?: string;
   itemYOffset?: number;
   itemScale?: number;
+}
+
+export interface AdSpaceProperties {
+  shape: AdShape;
+  formats: AdFormats;
+  fallbackImageSrc?: string;
 }
 
 export interface NftProperties {

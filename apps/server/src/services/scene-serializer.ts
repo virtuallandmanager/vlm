@@ -56,6 +56,7 @@ export interface SerializedPreset {
   nfts: SerializedElement[]
   widgets: SerializedElement[]
   claimPoints: SerializedElement[]
+  adSpaces: SerializedElement[]
 }
 
 export interface SerializedElement {
@@ -145,6 +146,7 @@ export function serializePreset(preset: DbPreset): SerializedPreset {
     nfts: byType('nft'),
     widgets: byType('widget'),
     claimPoints: byType('claimpoint'),
+    adSpaces: byType('ad_space'),
   }
 }
 
