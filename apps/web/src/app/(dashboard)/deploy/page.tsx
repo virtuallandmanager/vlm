@@ -2,7 +2,7 @@
 import { deployErrorMessage } from '@/lib/deploy'
 import { useApi } from '@/lib/api'
 import { API_URL } from '@/lib/config'
-import { destroyWorldPrompt, hyperfyErrorMessage, lastSeenLabel, removeWorldPrompt, setupSteps, shortDate, slotLine, worldStatusLabel } from '@/lib/hyperfy'
+import { destroyWorldPrompt, hyperfyErrorMessage, lastSeenLabel, noSlotsLine, removeWorldPrompt, setupSteps, shortDate, slotLine, worldStatusLabel } from '@/lib/hyperfy'
 import type { HyperfyWorldSummary } from 'vlm-shared'
 import { useAuth } from '@/lib/auth'
 import Link from 'next/link'
@@ -369,10 +369,10 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
       {slots?.hostingAvailable && (
         <div className="space-y-3 rounded-xl border border-gray-800 bg-gray-900 p-4">
           <p className="text-sm font-medium">Create a hosted world</p>
-          <p className="text-xs text-gray-400">{slotLine(slots.used, slots.limit)}</p>
+          {slotLine(slots.used, slots.limit) && <p className="text-xs text-gray-400">{slotLine(slots.used, slots.limit)}</p>}
           {noSlotsLeft ? (
             <p className="text-sm text-gray-300">
-              You&apos;ve used all your hosted worlds.{' '}
+              {noSlotsLine(slots.limit)}{' '}
               <Link href="/settings" className="text-cyan-400 hover:underline">See plans</Link>
             </p>
           ) : (

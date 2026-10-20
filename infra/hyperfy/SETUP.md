@@ -65,7 +65,7 @@ World files (models, images, uploads) live in R2 under the prefix `<slug>/`, and
    s3://<access-key-id>:<secret>@<account-id>.r2.cloudflarestorage.com/vlm-hyperfy
    ```
 
-   Give it without a trailing slash and without a world name. The server appends `/<slug>` for each world. URL-encode the key or secret if they contain special characters.
+   Give it without a trailing slash and without a world name. The server appends `/<slug>` for each world. R2 access key IDs and secrets are hex, so paste them as they are: don't URL-encode anything (Hyperfy reads the key and secret out of the URI without decoding them).
 3. In the bucket's settings, add a public **custom domain** for the CDN, for example `worlds-cdn.vlm.gg`. Its origin, `https://worlds-cdn.vlm.gg`, becomes `HYPERFY_ASSETS_BASE_URL` (no trailing slash; the server appends `/<slug>`).
 4. Add a **CORS rule** on the bucket: allow `GET` and `HEAD` from `*` (the files are public anyway). If you'd rather restrict it, list explicit origins instead, `https://*.worlds.vlm.gg` and `https://vlm-w-*.fly.dev`, if R2 accepts wildcards inside origins.
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { HyperfyWorldSummary } from 'vlm-shared'
-import { lastSeenLabel, setupSteps, hyperfyErrorMessage, removeWorldPrompt, worldStatusLabel, slotLine, destroyWorldPrompt } from './hyperfy'
+import { lastSeenLabel, setupSteps, hyperfyErrorMessage, removeWorldPrompt, worldStatusLabel, slotLine, noSlotsLine, destroyWorldPrompt } from './hyperfy'
 
 const now = new Date('2026-10-20T12:00:00Z')
 const ago = (ms: number) => new Date(now.getTime() - ms).toISOString()
@@ -90,6 +90,18 @@ describe('slotLine', () => {
     expect(slotLine(1, Infinity)).toBe('1 hosted world')
     expect(slotLine(4, Infinity)).toBe('4 hosted worlds')
   })
+  it('shows no count when the plan has no hosted worlds (not "0 of 0")', () => {
+    expect(slotLine(0, 0)).toBeNull()
+  })
+})
+
+describe('noSlotsLine', () => {
+  it("says the plan doesn't include hosted worlds when the limit is 0", () => {
+    expect(noSlotsLine(0)).toBe("Your plan doesn't include hosted worlds.")
+  })
+  it('says all are used otherwise', () => {
+    expect(noSlotsLine(3)).toBe("You've used all your hosted worlds.")
+  })
 })
 
 describe('destroyWorldPrompt', () => {
@@ -106,6 +118,11 @@ describe('hyperfyErrorMessage for hosted worlds', () => {
   })
   it('explains the world limit with the counts', () => {
     expect(hyperfyErrorMessage(apiErr('world_limit_reached', 403, { used: 3, limit: 3 }))).toMatch(/3 of 3/)
+  })
+  it("says the plan doesn't include hosted worlds when the limit is 0", () => {
+    const msg = hyperfyErrorMessage(apiErr('world_limit_reached', 403, { used: 0, limit: 0 }))
+    expect(msg).toMatch(/plan doesn't include hosted worlds/)
+    expect(msg).not.toMatch(/0 of 0/)
   })
   it('explains a world that cannot be restored', () => {
     expect(hyperfyErrorMessage(apiErr('not_restorable', 409))).toMatch(/can't be restored/)

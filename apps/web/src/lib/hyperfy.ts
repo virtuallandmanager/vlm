@@ -40,10 +40,16 @@ export function worldStatusLabel(w: HyperfyWorldSummary, now: Date): string {
   return 'Ended'
 }
 
-/** `limit` is Infinity on an unlimited plan. */
-export function slotLine(used: number, limit: number): string {
+/** `limit` is Infinity on an unlimited plan; null when the plan has none (noSlotsLine says so instead of "0 of 0"). */
+export function slotLine(used: number, limit: number): string | null {
+  if (limit === 0) return null
   const worlds = used === 1 ? 'hosted world' : 'hosted worlds'
   return Number.isFinite(limit) ? `${used} of ${limit} hosted worlds` : `${used} ${worlds}`
+}
+
+/** Shown in place of the create form when no slot is free. */
+export function noSlotsLine(limit: number): string {
+  return limit === 0 ? "Your plan doesn't include hosted worlds." : "You've used all your hosted worlds."
 }
 
 /** Destroying a hosted world deletes it for good, unlike an ended one. */
@@ -61,6 +67,7 @@ export function hyperfyErrorMessage(err: unknown): string {
       return 'Hosted worlds are not available right now. Try again later.'
     case 'world_limit_reached': {
       const { used, limit } = e.body ?? {}
+      if (limit === 0) return "Your plan doesn't include hosted worlds. Upgrade your plan to make one."
       return typeof used === 'number' && typeof limit === 'number'
         ? `You're using ${used} of ${limit} hosted worlds. Destroy one or upgrade your plan to make another.`
         : "You've used all your hosted worlds. Destroy one or upgrade your plan to make another."

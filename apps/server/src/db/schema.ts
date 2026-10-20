@@ -884,6 +884,7 @@ export const hyperfyWorlds = pgTable('hyperfy_worlds', {
   endsAt: timestamp('ends_at', { withTimezone: true }),
   endedAt: timestamp('ended_at', { withTimezone: true }),
   purgeAfter: timestamp('purge_after', { withTimezone: true }),
+  // Reserved: never set. A purge deletes the row; the slug index and slot checks still treat a set value as purged
   purgedAt: timestamp('purged_at', { withTimezone: true }),
   // Set when a sweep starts destroying an ended world; the row (and its slug) stays until the destroy finishes
   purgeClaimedAt: timestamp('purge_claimed_at', { withTimezone: true }),
