@@ -15,7 +15,7 @@ import type { AuthUser } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess, isHostAccess, canWriteElement, diffKeys } from '../auth/permissions.js'
 import { config } from '../config.js'
-import { publishElementChanged } from '../realtime/bus.js'
+import { publishElementChanged, publishSceneTouched } from '../realtime/bus.js'
 import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 import { serializeSingleElement } from '../services/scene-serializer.js'
 import { getSubscription } from '../integrations/stripe.js'
@@ -49,6 +49,7 @@ async function dispatchElementCallbacks(e: ElementChange): Promise<void> {
 /** After a REST write: broadcast to scene rooms, and push to platform callbacks (fire-and-forget, errors swallowed). */
 async function elementChanged(e: ElementChange): Promise<void> {
   await publishElementChanged(e)
+  await publishSceneTouched(e.sceneId)
   void dispatchElementCallbacks(e).catch((err) => console.error('[scenes] platform callback dispatch failed:', err))
 }
 
@@ -289,6 +290,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
       }
 
       const [updated] = await db.update(scenes).set(updates).where(eq(scenes.id, sceneId)).returning()
+      if (activePresetId !== undefined) await publishSceneTouched(sceneId)
       return reply.send({ scene: updated })
     },
   )

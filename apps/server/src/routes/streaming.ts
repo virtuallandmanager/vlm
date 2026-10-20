@@ -21,6 +21,7 @@ import { authenticate } from '../middleware/auth.js'
 import { requireFeature } from '../middleware/feature-gate.js'
 import { config } from '../config.js'
 import { publishStreamStatus } from '../realtime/bus.js'
+import { touchScenesPlayingStream } from '../streaming/live-status.js'
 import { getSceneAccess, hasScope } from '../auth/permissions.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { isUuid } from '../auth/scene-from.js'
@@ -282,6 +283,7 @@ export default async function streamingRoutes(app: FastifyInstance) {
         }).catch(() => {})
       }
       if (server.hlsPlaylistUrl) await publishStreamStatus({ playlistUrl: server.hlsPlaylistUrl, live: true })
+      if (server.hlsPlaylistUrl) await touchScenesPlayingStream(server.hlsPlaylistUrl)
     } else {
       // Stream went offline
       await db
@@ -316,6 +318,7 @@ export default async function streamingRoutes(app: FastifyInstance) {
         }).catch(() => {})
       }
       if (server.hlsPlaylistUrl) await publishStreamStatus({ playlistUrl: server.hlsPlaylistUrl, live: false })
+      if (server.hlsPlaylistUrl) await touchScenesPlayingStream(server.hlsPlaylistUrl)
     }
 
     return reply.send({ ok: true })

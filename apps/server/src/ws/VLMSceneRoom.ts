@@ -23,7 +23,7 @@ import { ANONYMOUS, actorFromClaims, type Actor } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess, toVenueAccessMessage, type SceneAccess } from '../auth/permissions.js'
 import { authorizeSceneMessage, propertiesOf, type GuardResult, type GuardTarget } from './scene-guard.js'
 import { getSceneLibraryItem } from '../library/scene-library.js'
-import { venueTopic, STREAMS_TOPIC, type VenueEvent, type StreamStatusEvent } from '../realtime/bus.js'
+import { venueTopic, publishSceneTouched, STREAMS_TOPIC, type VenueEvent, type StreamStatusEvent } from '../realtime/bus.js'
 import { normalizeUrl, withLiveStatus, withLiveVideo } from '../streaming/live-status.js'
 import type { VenueAccessMessage } from 'vlm-shared'
 
@@ -119,6 +119,7 @@ export class VLMSceneRoom extends Room {
       console.log(`[VLMSceneRoom] scene_preset_update from ${client.sessionId}`, message.action)
 
       await this.persistPresetUpdate(message, result.target)
+      if (result.broadcast && this.sceneId) await publishSceneTouched(this.sceneId)
       client.send('scene_preset_update_ack', { action: message.action, id: message.elementData?.sk || message.id, sk: message.instanceData?.sk })
 
       // Edits to a non-active preset (e.g. a booking clone during setup) are not broadcast
@@ -235,6 +236,7 @@ export class VLMSceneRoom extends Room {
             .update(scenes)
             .set({ activePresetId: presetId, updatedAt: new Date() })
             .where(eq(scenes.id, this.sceneId))
+          await publishSceneTouched(this.sceneId)
 
           // Load the new preset with all elements and instances
           const preset = await db.query.scenePresets.findFirst({

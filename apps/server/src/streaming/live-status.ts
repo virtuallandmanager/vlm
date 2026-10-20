@@ -1,6 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { streamingServers } from '../db/schema.js'
+import { streamingServers, scenes, sceneElements } from '../db/schema.js'
+import { serializeSingleElement } from '../services/scene-serializer.js'
+import { publishSceneTouched } from '../realtime/bus.js'
 
 /** URLs are compared exactly after trimming (creators paste them). */
 export const normalizeUrl = (u: unknown): string => (typeof u === 'string' ? u.trim() : '')
@@ -29,4 +31,22 @@ export async function withLiveStatus<P extends { videos: Record<string, unknown>
 export async function withLiveVideo<E extends Record<string, unknown>>(element: E): Promise<E> {
   if (!normalizeUrl(element.liveSrc)) return element
   return mark(element, await liveUrls())
+}
+
+/** A stream went live/offline: touch every scene whose active preset has a video playing it. */
+export async function touchScenesPlayingStream(playlistUrl: string): Promise<void> {
+  try {
+    const url = normalizeUrl(playlistUrl)
+    if (!url) return
+    const videos = await db
+      .select({ sceneId: scenes.id, element: sceneElements })
+      .from(sceneElements)
+      .innerJoin(scenes, eq(scenes.activePresetId, sceneElements.presetId))
+      .where(eq(sceneElements.type, 'video'))
+    const hit = new Set<string>()
+    for (const v of videos) if (normalizeUrl(serializeSingleElement(v.element).liveSrc) === url) hit.add(v.sceneId)
+    for (const id of hit) await publishSceneTouched(id)
+  } catch (err) {
+    console.error('[live-status] scene touch for stream failed:', err)
+  }
 }

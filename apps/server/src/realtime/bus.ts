@@ -18,6 +18,8 @@ export type VenueEvent =
 
 export interface BusPresence {
   publish(topic: string, data: unknown): unknown
+  subscribe(topic: string, callback: (data: any) => void): unknown
+  unsubscribe(topic: string, callback?: (data: any) => void): unknown
 }
 
 let presence: BusPresence | null = null
@@ -33,6 +35,34 @@ export function venueTopic(sceneId: string) {
 export async function publishVenueEvent(e: VenueEvent) {
   if (!presence) return
   await presence.publish(venueTopic(e.sceneId), e)
+  if (e.type === 'preset_changed') await publishSceneTouched(e.sceneId)
+}
+
+/** Per-scene "live content changed" topic. Scene rooms don't listen, so they never see their own touches. */
+export function sceneFeedTopic(sceneId: string) {
+  return `feed:${sceneId}`
+}
+
+/** Say a scene's live content changed (after the DB write). Never throws, like publishElementChanged. */
+export async function publishSceneTouched(sceneId: string): Promise<void> {
+  if (!presence) return
+  try {
+    await presence.publish(sceneFeedTopic(sceneId), { sceneId })
+  } catch (err) {
+    console.error('[bus] scene touch publish failed:', err)
+  }
+}
+
+/** Call `cb` whenever the scene is touched, on any server. Returns the unsubscribe. */
+export function onSceneTouched(sceneId: string, cb: () => void): () => void {
+  const p = presence
+  if (!p) return () => {}
+  const topic = sceneFeedTopic(sceneId)
+  const handler = () => cb()
+  p.subscribe(topic, handler)
+  return () => {
+    p.unsubscribe(topic, handler)
+  }
 }
 
 /**
