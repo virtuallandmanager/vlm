@@ -6,13 +6,16 @@ const HOUR_MS = 60 * 60 * 1000
 export class AdRotation {
   private items: AdItem[]
   private readonly now: () => number
-  private readonly shown = new Map<string, number[]>()
+  /** When each ad was shown, by adId; shared between rotations when `opts.history` is given. */
+  private readonly shown: Map<string, number[]>
   private lastAdId: string | null = null
   private cursor = -1
 
-  constructor(items: AdItem[], opts?: { now?: () => number }) {
+  /** Pass one `history` to several rotations to apply the frequency cap across all of them. */
+  constructor(items: AdItem[], opts?: { now?: () => number; history?: Map<string, number[]> }) {
     this.items = items
     this.now = opts?.now ?? Date.now
+    this.shown = opts?.history ?? new Map()
   }
 
   setItems(items: AdItem[]): void {

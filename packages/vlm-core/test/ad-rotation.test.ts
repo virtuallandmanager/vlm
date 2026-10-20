@@ -56,6 +56,19 @@ describe('AdRotation', () => {
     expect(r.next(true)!.adId).toBe('c')
     expect(r.next(true)!.adId).toBe('c')
   })
+
+  it('rotations sharing a history share the frequency cap', () => {
+    const history = new Map<string, number[]>()
+    const r1 = new AdRotation([item('a')], { history })
+    const r2 = new AdRotation([item('a')], { history })
+    for (let i = 0; i < AD_LIMITS.freqCapPerHour / 2; i++) {
+      expect(r1.next(true)).not.toBeNull()
+      expect(r2.next(true)).not.toBeNull()
+    }
+    expect(r1.next(true)).toBeNull()
+    expect(r2.next(true)).toBeNull()
+    expect(new AdRotation([item('a')]).next(true)).not.toBeNull()
+  })
 })
 
 describe('durationMs', () => {

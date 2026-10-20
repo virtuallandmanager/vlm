@@ -1,6 +1,9 @@
+import { AD_LIMITS, VideoSourceType } from 'vlm-shared'
 import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData } from 'vlm-shared'
 import { listTransformable, previewOn, restoreOn } from './transform-ops.js'
 import type { ListedInstance } from './transform-ops.js'
+import { AdSlot } from '../ads/slot.js'
+import type { AdHost } from '../ads/host.js'
 
 // Internal tracking of element config
 interface VideoConfig {
@@ -30,17 +33,39 @@ interface VideoInstance {
   rotation: { x: number; y: number; z: number }
   scale: { x: number; y: number; z: number }
   withCollisions: boolean
+  /** Ads on this screen in the ads modes (4, 5); it may swap `entity` (see AdSlot). */
+  slot?: AdSlot
+  playlistIndex: number
+  /** Playlist videos played since the last ad (mode 5). */
+  sinceAd: number
+  /** Bumped on each applyMediaState so callbacks from an earlier state are ignored. */
+  mediaToken: number
 }
 
 export class VideoManager {
   private adapter: VLMPlatformAdapter
   private storage: VLMStorage
+  private host: AdHost | null
   private configs: Map<string, VideoConfig> = new Map()
   private instances: Map<string, VideoInstance> = new Map()
 
-  constructor(adapter: VLMPlatformAdapter, storage: VLMStorage) {
+  constructor(adapter: VLMPlatformAdapter, storage: VLMStorage, host: AdHost | null = null) {
     this.adapter = adapter
     this.storage = storage
+    this.host = host
+  }
+
+  /** True when any screen has a live, enabled stream (video ads stop scene-wide). */
+  isStreamLive(): boolean {
+    for (const c of this.configs.values()) {
+      if (c.isLive && c.enableLiveStream && c.liveSrc) return true
+    }
+    return false
+  }
+
+  /** A stream went live or ended: video ads on ads-mode screens stop or come back. */
+  streamChanged(): void {
+    for (const instance of this.instances.values()) instance.slot?.streamChanged()
   }
 
   init(elements: any[]): void {
@@ -99,9 +124,6 @@ export class VideoManager {
     // Set plane mesh for the video screen
     this.adapter.setPlaneRenderer(entity)
 
-    // Apply the correct media source
-    this.applyMediaState(entity, config)
-
     // Set collider if needed
     if (data.withCollisions) {
       this.adapter.setCollider(entity, { type: 'box' })
@@ -118,15 +140,29 @@ export class VideoManager {
       rotation,
       scale,
       withCollisions: data.withCollisions ?? false,
+      playlistIndex: config.playlistIndex,
+      sinceAd: 0,
+      mediaToken: 0,
     }
     this.instances.set(data.sk, instance)
+
+    // Apply the correct media source
+    this.applyMediaState(instance, config)
 
     // Register in storage
     const key = data.customId || data.sk
     this.storage.videos.instances[key] = data
   }
 
-  private applyMediaState(entity: EntityHandle, config: VideoConfig): void {
+  private applyMediaState(instance: VideoInstance, config: VideoConfig): void {
+    const token = ++instance.mediaToken
+    if (instance.slot) {
+      instance.slot.ensurePlane()
+      instance.slot.dispose()
+      instance.slot = undefined
+    }
+    const entity = instance.entity
+
     // Live stream mode
     if (config.isLive && config.enableLiveStream && config.liveSrc) {
       this.adapter.createVideoPlayer(entity, {
@@ -140,16 +176,16 @@ export class VideoManager {
 
     // Offline modes based on offType
     switch (config.offType) {
+      case VideoSourceType.ADS: // a 16:9 'both' ad space on the screen
+        instance.slot = this.makeSlot(instance, config)
+        instance.slot.run()
+        break
+      case VideoSourceType.PLAYLIST_ADS:
+        instance.slot = this.makeSlot(instance, config)
+        this.playPlaylist(instance, config, token)
+        break
       case 2: // PLAYLIST
-        if (config.playlist.length > 0) {
-          const src = config.playlist[config.playlistIndex % config.playlist.length]
-          this.adapter.createVideoPlayer(entity, {
-            src,
-            playing: true,
-            loop: config.playlist.length === 1,
-            volume: config.volume,
-          })
-        }
+        this.playPlaylist(instance, config, token)
         break
       case 1: // IMAGE
         if (config.offImageSrc) {
@@ -166,6 +202,58 @@ export class VideoManager {
     }
   }
 
+  private makeSlot(instance: VideoInstance, config: VideoConfig): AdSlot {
+    return new AdSlot({
+      adapter: this.adapter,
+      host: this.host,
+      holder: instance,
+      spec: {
+        key: instance.sk,
+        elementId: config.sk,
+        shape: '16:9',
+        formats: 'both',
+        fallbackImageSrc: config.offImageSrc,
+        withCollisions: instance.withCollisions,
+        emission: config.emission,
+      },
+      transform: { position: instance.position, rotation: instance.rotation, scale: instance.scale },
+      hasPlane: true,
+      isStreamLive: () => this.isStreamLive(),
+    })
+  }
+
+  /** Play the playlist from the instance's index; each end advances it (and, in mode 5, may play an ad first). */
+  private playPlaylist(instance: VideoInstance, config: VideoConfig, token: number): void {
+    const n = config.playlist.length
+    if (n === 0) return
+    instance.slot?.clear()
+    instance.slot?.ensurePlane()
+    const withAds = config.offType === VideoSourceType.PLAYLIST_ADS
+    this.adapter.createVideoPlayer(instance.entity, {
+      src: config.playlist[instance.playlistIndex % n],
+      playing: true,
+      loop: n === 1 && !withAds,
+      volume: config.volume,
+    })
+    this.adapter.onVideoEnded?.(instance.entity, () => {
+      if (instance.mediaToken !== token || instance.slot?.playing) return
+      instance.playlistIndex = (instance.playlistIndex + 1) % n
+      config.playlistIndex = instance.playlistIndex
+      const resume = () => {
+        if (instance.mediaToken === token) this.playPlaylist(instance, config, token)
+      }
+      if (withAds && instance.slot && ++instance.sinceAd >= AD_LIMITS.playlistItemsBetweenAds) {
+        instance.sinceAd = 0
+        const item = instance.slot.pick()
+        if (item) {
+          instance.slot.play(item, resume)
+          return
+        }
+      }
+      resume()
+    })
+  }
+
   // Called when server broadcasts video status change
   updateLiveStatus(elementId: string, status: string, url?: string): void {
     const config = this.configs.get(elementId)
@@ -180,7 +268,7 @@ export class VideoManager {
     // Re-apply media state to all instances of this config
     for (const instance of this.instances.values()) {
       if (instance.configSk === elementId) {
-        this.applyMediaState(instance.entity, config)
+        this.applyMediaState(instance, config)
       }
     }
   }
@@ -245,7 +333,7 @@ export class VideoManager {
     for (const instance of this.instances.values()) {
       if (instance.configSk === elementData.sk) {
         if (config.enabled) {
-          this.applyMediaState(instance.entity, config)
+          this.applyMediaState(instance, config)
         }
       }
     }
@@ -269,6 +357,7 @@ export class VideoManager {
       instance.position = position
       instance.rotation = rotation
       instance.scale = scale
+      instance.slot?.setTransform({ position, rotation, scale })
     }
 
     if (instanceData.enabled !== undefined) {
@@ -277,7 +366,9 @@ export class VideoManager {
 
     if (instanceData.withCollisions !== undefined) {
       instance.withCollisions = instanceData.withCollisions
-      if (instanceData.withCollisions) {
+      if (instance.slot) {
+        instance.slot.setWithCollisions(instanceData.withCollisions)
+      } else if (instanceData.withCollisions) {
         this.adapter.setCollider(instance.entity, { type: 'box' })
       } else {
         this.adapter.removeCollider(instance.entity)
@@ -318,6 +409,7 @@ export class VideoManager {
     // Destroy all instances of this element
     for (const [sk, instance] of this.instances) {
       if (instance.configSk === elementId) {
+        instance.slot?.dispose()
         this.adapter.destroyEntity(instance.entity)
         const instKey = instance.customId || instance.sk
         delete this.storage.videos.instances[instKey]
@@ -329,6 +421,7 @@ export class VideoManager {
   deleteInstance(instanceId: string): void {
     const instance = this.instances.get(instanceId)
     if (instance) {
+      instance.slot?.dispose()
       this.adapter.destroyEntity(instance.entity)
       const key = instance.customId || instance.sk
       delete this.storage.videos.instances[key]
@@ -338,6 +431,7 @@ export class VideoManager {
 
   clear(): void {
     for (const instance of this.instances.values()) {
+      instance.slot?.dispose()
       this.adapter.destroyEntity(instance.entity)
     }
     this.configs.clear()

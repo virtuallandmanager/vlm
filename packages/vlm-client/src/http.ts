@@ -215,14 +215,14 @@ export class VLMHttpClient {
     }
   }
 
-  /** Report ad view events. True only when the server accepted the batch. */
-  async sendAdEvents(adapter: VLMPlatformAdapter, batch: AdEventBatch): Promise<boolean> {
-    if (!adapter.signedRequest) return false
+  /** Report ad view events. `ok` only when the server accepted the batch; `status` 0 when there was no response. */
+  async sendAdEvents(adapter: VLMPlatformAdapter, batch: AdEventBatch): Promise<{ ok: boolean; status: number }> {
+    if (!adapter.signedRequest) return { ok: false, status: 0 }
     try {
       const res = await adapter.signedRequest(`${this.baseUrl}/api/ads/events`, { method: 'POST', body: JSON.stringify(batch) })
-      return res.status >= 200 && res.status < 300
+      return { ok: res.status >= 200 && res.status < 300, status: res.status }
     } catch {
-      return false
+      return { ok: false, status: 0 }
     }
   }
 

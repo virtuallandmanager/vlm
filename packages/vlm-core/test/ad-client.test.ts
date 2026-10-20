@@ -24,11 +24,14 @@ describe('VLMHttpClient ad calls', () => {
     expect(await client.getAds({} as any, REQ)).toBeNull()
   })
 
-  it('sendAdEvents posts the batch', async () => {
+  it('sendAdEvents posts the batch and reports the status', async () => {
     const signedRequest = vi.fn(async () => ({ status: 200, body: '{"accepted":1}' }))
-    expect(await makeClient().sendAdEvents({ signedRequest } as any, BATCH)).toBe(true)
+    expect(await makeClient().sendAdEvents({ signedRequest } as any, BATCH)).toEqual({ ok: true, status: 200 })
     expect(signedRequest).toHaveBeenCalledWith('https://api.example/api/ads/events', { method: 'POST', body: JSON.stringify(BATCH) })
-    expect(await makeClient().sendAdEvents({ signedRequest: async () => ({ status: 500, body: '' }) } as any, BATCH)).toBe(false)
-    expect(await makeClient().sendAdEvents({ signedRequest: async () => { throw new Error('x') } } as any, BATCH)).toBe(false)
+    expect(await makeClient().sendAdEvents({ signedRequest: async () => ({ status: 400, body: '' }) } as any, BATCH)).toEqual({ ok: false, status: 400 })
+    expect(await makeClient().sendAdEvents({ signedRequest: async () => ({ status: 500, body: '' }) } as any, BATCH)).toEqual({ ok: false, status: 500 })
+    // network failure or no signed request: status 0
+    expect(await makeClient().sendAdEvents({ signedRequest: async () => { throw new Error('x') } } as any, BATCH)).toEqual({ ok: false, status: 0 })
+    expect(await makeClient().sendAdEvents({} as any, BATCH)).toEqual({ ok: false, status: 0 })
   })
 })
