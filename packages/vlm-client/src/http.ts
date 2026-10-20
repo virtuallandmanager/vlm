@@ -1,4 +1,4 @@
-import type { Scene, AuthProof, VLMPlatformAdapter, AnalyticsSceneRef, SceneLibraryItemData } from 'vlm-shared'
+import type { Scene, AuthProof, VLMPlatformAdapter, AnalyticsSceneRef, SceneLibraryItemData, AdServeRequest, AdServeResponse, AdEventBatch } from 'vlm-shared'
 import type { AuthResponse, MediaAsset } from './types.js'
 import { VLMAuth } from './auth.js'
 
@@ -200,6 +200,29 @@ export class VLMHttpClient {
         : { eligible: !!data.eligible, known: !!data.known }
     } catch {
       return { eligible: false, known: false }
+    }
+  }
+
+  /** Ads to show in this scene's ad spaces. Any failure is `null` (spaces fall back or hide). */
+  async getAds(adapter: VLMPlatformAdapter, req: AdServeRequest): Promise<AdServeResponse | null> {
+    if (!adapter.signedRequest) return null
+    try {
+      const res = await adapter.signedRequest(`${this.baseUrl}/api/ads/serve`, { method: 'POST', body: JSON.stringify(req) })
+      if (res.status !== 200) return null
+      return JSON.parse(res.body) as AdServeResponse
+    } catch {
+      return null
+    }
+  }
+
+  /** Report ad view events. True only when the server accepted the batch. */
+  async sendAdEvents(adapter: VLMPlatformAdapter, batch: AdEventBatch): Promise<boolean> {
+    if (!adapter.signedRequest) return false
+    try {
+      const res = await adapter.signedRequest(`${this.baseUrl}/api/ads/events`, { method: 'POST', body: JSON.stringify(batch) })
+      return res.status >= 200 && res.status < 300
+    } catch {
+      return false
     }
   }
 
