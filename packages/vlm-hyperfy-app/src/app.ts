@@ -1,6 +1,6 @@
 /**
  * The VLM app for Hyperfy 0.16. Hyperfy runs this script once on the world's server and once in each
- * visitor's browser, with only its sandbox globals (world, app, fetch, props, setTimeout).
+ * visitor's browser, with only its sandbox globals (world, app, fetch, props, setTimeout, Matrix4).
  * - Server: long-polls VLM's scene feed with the world key, passes each new snapshot to every client, and
  *   records visits. Visitors' browsers never talk to VLM.
  * - Client: renders the snapshot's plan as nodes under the app root. Each node's local transform is the VLM
@@ -9,6 +9,7 @@
 import type { HyperfyFeedResponse } from 'vlm-shared'
 import { diffPlans, planScene, type RenderItem } from './plan.js'
 import { FeedPoller, type ScriptFetch, type ScriptSetTimeout } from './poller.js'
+import { MODEL_TURN, toVlmPosition, worldToLocal } from './transform.js'
 import { VisitRecorder } from './visits.js'
 
 type Vec = { x: number; y: number; z: number; fromArray(a: number[]): unknown }
@@ -18,6 +19,7 @@ interface HNode {
   scale: Vec
   onPointerDown?: () => void
   play?: () => void
+  add(child: HNode): void
   [prop: string]: unknown
 }
 interface HPlayer {
@@ -32,18 +34,22 @@ declare const world: {
   load(type: 'model', url: string): Promise<HNode>
   open(url: string, newWindow?: boolean): void
 }
+type Matrix = { elements: ArrayLike<number> }
 declare const app: {
+  /** The app root's world matrix (Hyperfy forwards unknown app props to the root node). */
+  matrixWorld: Matrix
   configure(fields: Array<{ key: string; type: 'text'; label: string; initial: string }>): void
   on(name: string, cb: (data: unknown, networkId?: string) => void): void
   send(name: string, data: unknown): void
   sendTo(playerId: string, name: string, data: unknown): void
-  create(type: 'video' | 'image' | 'audio'): HNode
+  create(type: 'video' | 'image' | 'audio' | 'group'): HNode
   add(node: HNode): void
   remove(node: HNode): void
 }
 declare const fetch: ScriptFetch
 declare const setTimeout: ScriptSetTimeout
 declare const props: { feedUrl?: string; worldKey?: string }
+declare const Matrix4: new () => Matrix & { copy(m: Matrix): Matrix & { invert(): Matrix } }
 
 const SCENE = 'vlm:scene'
 const HELLO = 'vlm:hello'
@@ -86,8 +92,11 @@ function runServer(): void {
     fetch,
     setTimeout,
     now: () => Date.now(),
-    getPlayers: () =>
-      world.getPlayers().map((p) => ({ id: p.id, position: { x: p.position.x, y: p.position.y, z: p.position.z } })),
+    // Positions go to VLM in its own frame: world -> app-local (wherever the owner placed the app) -> z mirrored.
+    getPlayers: () => {
+      const inverse = new Matrix4().copy(app.matrixWorld).invert()
+      return world.getPlayers().map((p) => ({ id: p.id, position: toVlmPosition(worldToLocal(p.position, inverse)) }))
+    },
   })
   world.on('enter', (e) => visits.enter(e.playerId))
   world.on('leave', (e) => visits.leave(e.playerId))
@@ -134,11 +143,15 @@ function runClient(): void {
     if (item.kind === 'model') {
       world
         .load('model', item.src)
-        .then((node) => {
+        .then((model) => {
           if (shown.get(item.key) !== entry) return // removed or replaced while loading
-          place(node, item)
-          entry.node = node
-          app.add(node)
+          // The group carries the VLM transform; the model turns inside it to face the way Decentraland shows it.
+          const group = app.create('group')
+          place(group, item)
+          model.rotation.set(MODEL_TURN[0], MODEL_TURN[1], MODEL_TURN[2], 'YXZ')
+          group.add(model)
+          entry.node = group
+          app.add(group)
         })
         .catch((err: unknown) => console.warn(`[vlm] model ${item.src} failed to load`, err))
       return

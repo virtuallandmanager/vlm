@@ -22,3 +22,27 @@ export function toHyperfyTransform(t: { position: Vec3; rotation: Vec3; scale: V
     scale: [t.scale.x, t.scale.y, t.scale.z],
   }
 }
+
+/**
+ * The turn a loaded model gets inside the group that carries its mapped transform. Decentraland shows a glTF
+ * x-mirrored (glTF (x, y, z) at (-x, y, z)); with the z-mirror above that is a half turn about Y in Hyperfy.
+ * The half turn, diag(-1, 1, -1), commutes with scale, so the group can keep the VLM scale.
+ */
+export const MODEL_TURN: Triple = [0, Math.PI, 0]
+
+type XYZ = { x: number; y: number; z: number }
+
+/** A world position in the app's local frame, given the inverse of the app root's world matrix (three.js Matrix4). */
+export function worldToLocal(p: XYZ, inverse: { elements: ArrayLike<number> }): XYZ {
+  const e = inverse.elements // column-major
+  return {
+    x: e[0] * p.x + e[4] * p.y + e[8] * p.z + e[12],
+    y: e[1] * p.x + e[5] * p.y + e[9] * p.z + e[13],
+    z: e[2] * p.x + e[6] * p.y + e[10] * p.z + e[14],
+  }
+}
+
+/** An app-local Hyperfy position back in VLM terms: the inverse of toHyperfyTransform's position mapping. */
+export function toVlmPosition(local: XYZ): Vec3 {
+  return { x: local.x, y: local.y, z: -local.z }
+}

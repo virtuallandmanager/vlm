@@ -15,7 +15,8 @@ const MAX_QUEUED = 1_000
 /**
  * Queues visitor enter, leave and position events and posts them to VLM's analytics in batches.
  * Positions are sampled every positionSampleMs for each present player; the queue flushes every
- * analyticsFlushMs. A failed post keeps the events, up to 1,000, dropping the oldest.
+ * analyticsFlushMs. Players already present at start() are recorded as entering. A post that fails on the
+ * network, a 429 or a 5xx keeps the events, up to 1,000, dropping the oldest; any other refusal drops the batch.
  */
 export class VisitRecorder {
   private queue: HyperfyVisitEvent[] = []
@@ -26,6 +27,7 @@ export class VisitRecorder {
   start(): void {
     if (this.running) return
     this.running = true
+    for (const p of this.opts.getPlayers()) this.enter(p.id)
     this.opts.setTimeout(() => this.sample(), HYPERFY_FEED.positionSampleMs)
     this.opts.setTimeout(() => void this.flush(), HYPERFY_FEED.analyticsFlushMs)
   }
@@ -65,7 +67,8 @@ export class VisitRecorder {
     if (!this.running) return
     while (this.queue.length) {
       const events = this.queue.splice(0, HYPERFY_ANALYTICS_LIMITS.maxBatchEvents)
-      if (!(await this.post(events))) {
+      const result = await this.post(events)
+      if (result === 'retry') {
         // Put them back in front of anything queued meanwhile; the cap drops the oldest.
         this.queue = events.concat(this.queue)
         this.cap()
@@ -75,16 +78,19 @@ export class VisitRecorder {
     this.opts.setTimeout(() => void this.flush(), HYPERFY_FEED.analyticsFlushMs)
   }
 
-  private async post(events: HyperfyVisitEvent[]): Promise<boolean> {
+  /** 'drop' for a refusal that won't change on retry (a 4xx other than 429), so it can't block the queue. */
+  private async post(events: HyperfyVisitEvent[]): Promise<'ok' | 'retry' | 'drop'> {
     try {
       const res = await this.opts.fetch(`${this.opts.feedUrl}/api/hyperfy/analytics`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${this.opts.worldKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ v: 1, events }),
       })
-      return !!res?.ok
+      if (res?.ok) return 'ok'
+      if (res && res.status >= 400 && res.status < 500 && res.status !== 429) return 'drop'
+      return 'retry'
     } catch {
-      return false
+      return 'retry'
     }
   }
 }

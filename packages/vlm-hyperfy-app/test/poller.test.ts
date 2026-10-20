@@ -139,8 +139,7 @@ describe('VisitRecorder', () => {
 
   it('samples positions, queues enter and leave, and posts them on flush', async () => {
     const t = recorder([ok({ accepted: 3 })], [{ id: 'p1', position: { x: 1, y: 2, z: 3 } }])
-    t.r.enter('p1')
-    t.r.start()
+    t.r.start() // p1 is already here: recorded as entering
     // timers: [sample at 5 s, flush at 15 s]
     expect(t.delays).toEqual([5000, 15000])
     t.advance(5000)
@@ -174,5 +173,37 @@ describe('VisitRecorder', () => {
     expect(sent).toHaveLength(1000)
     expect(sent[0].playerId).toBe('p5')
     expect(bodies(t.calls.slice(1)).every((b) => b.events.length <= 200)).toBe(true)
+  })
+  it('records players already in the world when it starts', async () => {
+    const players = [{ id: 'p1', position: { x: 0, y: 0, z: 0 } }, { id: 'p2', position: { x: 0, y: 0, z: 0 } }]
+    const t = recorder([ok({})], players)
+    t.r.start()
+    await t.tick() // sample
+    await t.tick() // flush
+    const events = bodies(t.calls)[0].events
+    expect(events.filter((e: { type: string }) => e.type === 'enter')).toEqual([
+      { type: 'enter', playerId: 'p1', t: 1000 },
+      { type: 'enter', playerId: 'p2', t: 1000 },
+    ])
+  })
+
+  it('drops a batch the server refuses (4xx), and keeps retrying on 429, 5xx and network failures', async () => {
+    const t = recorder([status(400), ok({}), status(429), status(503), undefined, ok({})], [])
+    t.r.start()
+    t.r.enter('bad')
+    await t.tick() // sample
+    await t.tick() // flush: 400, dropped
+    expect(t.calls).toHaveLength(1)
+    t.r.enter('good')
+    await t.tick() // sample
+    await t.tick() // flush: ok, only the new event
+    expect(bodies(t.calls.slice(1, 2))[0].events.map((e: { playerId: string }) => e.playerId)).toEqual(['good'])
+    t.r.enter('kept')
+    for (let i = 0; i < 4; i++) {
+      await t.tick() // sample
+      await t.tick() // flush: 429, 503, network failure, then ok
+    }
+    const tries = bodies(t.calls.slice(2)).map((b) => b.events.map((e: { playerId: string }) => e.playerId))
+    expect(tries).toEqual([['kept'], ['kept'], ['kept'], ['kept']])
   })
 })
