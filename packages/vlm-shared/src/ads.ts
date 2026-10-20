@@ -95,3 +95,24 @@ export function checkAdEventBatch(body: unknown): AdEventBatchCheck {
   }
   return { ok: true, batch: { v: 1, sessionId: body.sessionId, events } }
 }
+
+export interface AdminAd {
+  id: string
+  name: string
+  kind: 'house' | 'partner'
+  clickUrl: string
+  status: 'active' | 'paused'
+  startsAt: string | null
+  endsAt: string | null
+  creatives: { id: string; shape: AdShape; kind: 'image' | 'video'; url: string }[]
+  placements: string[]
+}
+
+export type LevelCounts = Record<AdLevel, number> & { unverified: Record<AdLevel, number> }
+
+export interface AdReport {
+  totals: LevelCounts
+  byDay: ({ day: string } & LevelCounts)[]
+  bySpace: ({ elementId: string; sceneName: string } & LevelCounts)[]
+  avgLookMs: number | null
+}

@@ -20,6 +20,7 @@ vi.mock('../src/services/dcl/deployer.js', async () => {
 })
 
 const H = 3600_000
+const AD_ID = '00000000-0000-4000-8000-000000000001'
 const PUBLIC_TARGET = { parcels: ['0,0'], contentServer: 'https://1.1.1.1' }
 
 /** Everything below is B's, except `aScene`/`aEvent`, which A owns and uses to reach for B's ids in a body. */
@@ -179,6 +180,11 @@ const CASES: Case[] = [
   { route: 'DELETE /api/admin/users/:userId', url: (f) => `/api/admin/users/${f.b.id}` },
   { route: 'DELETE /api/admin/orgs/:orgId', url: (f) => `/api/admin/orgs/${f.org.id}` },
   { route: 'PATCH /api/admin/catalog/packs/:id', url: () => '/api/admin/catalog/packs/any-pack', body: () => ({ enabled: false }) },
+  { route: 'PATCH /api/admin/ads/:id', url: () => `/api/admin/ads/${AD_ID}`, body: () => ({ status: 'paused' }) },
+  { route: 'POST /api/admin/ads/:id/creatives', url: () => `/api/admin/ads/${AD_ID}/creatives`, body: () => ({ mediaAssetId: AD_ID, shape: '1:1' }) },
+  { route: 'DELETE /api/admin/ads/:id/creatives/:creativeId', url: () => `/api/admin/ads/${AD_ID}/creatives/${AD_ID}` },
+  { route: 'PUT /api/admin/ads/:id/placements', url: () => `/api/admin/ads/${AD_ID}/placements`, body: () => ({ elementIds: [] }) },
+  { route: 'GET /api/admin/ads/:id/report', url: () => `/api/admin/ads/${AD_ID}/report` },
 ]
 
 // Collected routes with a `:param` (or a body id) that are not another account's resource, each with its reason.
