@@ -16,12 +16,13 @@ function setup(sendImpl?: (e: AdEvent[]) => Promise<boolean>) {
     sent.push(events)
     return sendImpl ? sendImpl(events) : true
   })
-  const tracker = new AdTracker({ send, now: () => t })
+  const onSeen = vi.fn()
+  const tracker = new AdTracker({ send, now: () => t, onSeen })
   const advance = (ms: number) => { t += ms }
   const tick = (o: Partial<{ inScene: boolean; moved: boolean; camera: typeof camera | null }> = {}) =>
     tracker.tick({ inScene: true, moved: true, camera, spaces, ...o })
   const all = () => sent.flat()
-  return { tracker, send, sent, all, advance, tick, now: () => t }
+  return { tracker, send, sent, all, advance, tick, onSeen, now: () => t }
 }
 
 describe('AdTracker', () => {
@@ -100,6 +101,38 @@ describe('AdTracker', () => {
     const keys = all().map((e) => `${e.adId}:${e.level}`)
     expect(keys.filter((k) => k.startsWith('ad1'))).toEqual(['ad1:scene', 'ad1:screen', 'ad1:look', 'ad1:click'])
     expect(keys).toContain('ad2:scene')
+  })
+
+  it('reports each showing as seen once it has been on screen for onScreenMinMs', () => {
+    const { tracker, advance, tick, onSeen } = setup()
+    tick()
+    tracker.showing('s1', 'el1', 'ad1')
+    tick()
+    advance(AD_LIMITS.onScreenMinMs - 1)
+    tick()
+    expect(onSeen).not.toHaveBeenCalled()
+    advance(1)
+    tick()
+    advance(5000)
+    tick()
+    expect(onSeen.mock.calls).toEqual([['s1', 'ad1']])
+    // the same ad shown again is a new showing, though its screen event was already sent
+    tracker.showing('s1', 'el1', 'ad1')
+    tick()
+    advance(AD_LIMITS.onScreenMinMs)
+    tick()
+    expect(onSeen.mock.calls).toEqual([['s1', 'ad1'], ['s1', 'ad1']])
+    // off screen or idle: not seen
+    const away = { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 1, z: 0, w: 0 } }
+    tracker.showing('s1', 'el1', 'ad2')
+    tick({ camera: away })
+    advance(5000)
+    tick({ camera: away })
+    advance(AD_LIMITS.idleMs)
+    tick({ moved: false })
+    advance(5000)
+    tick({ moved: false })
+    expect(onSeen).toHaveBeenCalledTimes(2)
   })
 
   it('tracks house ads like any other', async () => {

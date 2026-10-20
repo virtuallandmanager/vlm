@@ -32,16 +32,36 @@ describe('AdRotation', () => {
     expect(r.next(true)!.adId).toBe('v')
   })
 
-  it('rotation respects the hourly frequency cap', () => {
+  it('a showing counts against the frequency cap only once it has been seen', () => {
     let t = 1_000_000
     const r = new AdRotation([item('a'), item('b')], { now: () => t })
-    const shown: string[] = []
-    // a and b alternate; each hits the cap after freqCapPerHour showings
-    for (let i = 0; i < AD_LIMITS.freqCapPerHour * 2; i++) shown.push(r.next(true)!.adId)
-    expect(shown.filter((x) => x === 'a')).toHaveLength(AD_LIMITS.freqCapPerHour)
-    expect(r.next(true)).toBeNull()
+    // picked but never on screen: nothing is capped
+    const unseen = Array.from({ length: AD_LIMITS.freqCapPerHour * 4 }, () => r.next(true)!.adId)
+    expect(unseen.filter((x) => x === 'a')).toHaveLength(AD_LIMITS.freqCapPerHour * 2)
+    for (let i = 0; i < AD_LIMITS.freqCapPerHour; i++) r.seen('a')
+    expect([r.next(true)!.adId, r.next(true)!.adId, r.next(true)!.adId]).toEqual(['b', 'b', 'b'])
     t += 60 * 60 * 1000 + 1
-    expect(r.next(true)).not.toBeNull()
+    expect([r.next(true)!.adId, r.next(true)!.adId]).toContain('a')
+  })
+
+  it('house ads are never capped', () => {
+    const r = new AdRotation([{ ...item('h'), house: true }, item('p')])
+    for (let i = 0; i < AD_LIMITS.freqCapPerHour * 3; i++) r.seen('h')
+    for (let i = 0; i < AD_LIMITS.freqCapPerHour; i++) r.seen('p')
+    expect([r.next(true)!.adId, r.next(true)!.adId]).toEqual(['h', 'h'])
+  })
+
+  it('when every eligible item is capped the least recently seen one repeats', () => {
+    let t = 1_000_000
+    const r = new AdRotation([item('a'), item('b')], { now: () => t })
+    for (let i = 0; i < AD_LIMITS.freqCapPerHour; i++) r.seen('b')
+    t += 1000
+    for (let i = 0; i < AD_LIMITS.freqCapPerHour; i++) r.seen('a')
+    expect(r.next(true)!.adId).toBe('b')
+    t += 1000
+    r.seen('b')
+    expect(r.next(true)!.adId).toBe('a')
+    expect(new AdRotation([item('v', 'video'), item('i')], { now: () => t }).next(false)!.adId).toBe('i')
   })
 
   it('rotation returns null when nothing is eligible', () => {
@@ -51,7 +71,7 @@ describe('AdRotation', () => {
 
   it('setItems replaces the items but keeps frequency history', () => {
     const r = new AdRotation([item('a')])
-    for (let i = 0; i < AD_LIMITS.freqCapPerHour; i++) r.next(true)
+    for (let i = 0; i < AD_LIMITS.freqCapPerHour; i++) r.seen('a')
     r.setItems([item('a'), item('c')])
     expect(r.next(true)!.adId).toBe('c')
     expect(r.next(true)!.adId).toBe('c')
@@ -59,15 +79,14 @@ describe('AdRotation', () => {
 
   it('rotations sharing a history share the frequency cap', () => {
     const history = new Map<string, number[]>()
-    const r1 = new AdRotation([item('a')], { history })
+    const r1 = new AdRotation([item('a'), item('c')], { history })
     const r2 = new AdRotation([item('a')], { history })
     for (let i = 0; i < AD_LIMITS.freqCapPerHour / 2; i++) {
-      expect(r1.next(true)).not.toBeNull()
-      expect(r2.next(true)).not.toBeNull()
+      r1.seen('a')
+      r2.seen('a')
     }
-    expect(r1.next(true)).toBeNull()
-    expect(r2.next(true)).toBeNull()
-    expect(new AdRotation([item('a')]).next(true)).not.toBeNull()
+    expect([r1.next(true)!.adId, r1.next(true)!.adId]).toEqual(['c', 'c'])
+    expect(new AdRotation([item('a'), item('c')]).next(true)!.adId).toBe('a')
   })
 })
 

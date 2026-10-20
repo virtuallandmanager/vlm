@@ -69,6 +69,7 @@ export class AdHost {
     const id = sessionId()
     this.tracker = new AdTracker({
       now: this.now,
+      onSeen: (key, adId) => this.attached.get(key)?.rotation.seen(adId),
       // A 4xx batch will never be accepted: drop it (true) so it can't block the queue; keep it on 5xx or no response.
       send: async (events) => {
         const res = await opts.postEvents({ v: 1, sessionId: id, events })

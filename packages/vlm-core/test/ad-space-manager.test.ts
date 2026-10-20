@@ -279,6 +279,20 @@ describe('AdSpaceManager', () => {
     expect(s.showing(s.entityAt(1))).toMatchObject({ kind: 'video' })
   })
 
+  it('a video-only space waiting for a video slot gets one within imageSeconds of it freeing', async () => {
+    const vids = { ads: [ad('v', 'video')] }
+    const s = setup([serve({ a: vids, b: vids, c: vids })])
+    s.sm.handlePresetUpdate({
+      action: 'init',
+      scenePreset: { adSpaces: [space('a', 1, { formats: 'video' }), space('b', 2, { formats: 'video' }), space('c', 3, { formats: 'video' })] },
+    })
+    await s.host.start()
+    expect(s.showing(s.entityAt(3))).toBeNull()
+    s.sm.handlePresetUpdate({ action: 'delete', element: 'ad_space', id: 'a' })
+    s.advance(AD_LIMITS.imageSeconds * 1000)
+    expect(s.showing(s.entityAt(3))).toMatchObject({ kind: 'video' })
+  })
+
   it('an adapter without onVideoEnded never plays video ads', async () => {
     const s = setup([serve({ a: { ads: [ad('v', 'video'), ad('i')] } })], { noVideoEnded: true })
     s.sm.handlePresetUpdate({ action: 'init', scenePreset: { adSpaces: [space('a', 1)] } })
@@ -380,6 +394,53 @@ describe('AdSpaceManager', () => {
     expect(s.labels()).toEqual([])
     await s.host.refresh()
     expect(s.getAds).toHaveBeenCalledTimes(1) // nothing attached: no serve call
+  })
+})
+
+describe('frequency cap in the scene', () => {
+  /** A moving camera at (x, 1, -5) looking along +Z, so only spaces placed at that x are on screen. */
+  const lookAt = (s: ReturnType<typeof setup>, x: number) => {
+    let n = 0
+    s.adapter.getCameraPose.mockImplementation(() => ({ position: { x, y: 1, z: -5 - (n++ % 2) * 0.1 }, rotation: { x: 0, y: 0, z: 0, w: 1 } }))
+  }
+  /** Run the scene a second at a time; the ad on the space at x each second ('HIDDEN' when none). */
+  const watch = (s: ReturnType<typeof setup>, x: number, seconds: number) => {
+    const out: string[] = []
+    for (let i = 0; i < seconds; i++) {
+      s.advance(1000)
+      const e = s.entityAt(x)
+      const m = s.showing(e)
+      out.push(s.hasPlane(e) && m && s.labels().length > 0 ? m.src.split('/').pop()! : 'HIDDEN')
+    }
+    return out
+  }
+
+  it('a house ad space is never blanked by the cap', async () => {
+    const s = setup([serve({ s1: { ads: [{ ...ad('h1'), house: true }] } })])
+    s.sm.handlePresetUpdate({ action: 'init', scenePreset: { adSpaces: [space('s1', 1)] } })
+    lookAt(s, 1)
+    await s.host.start()
+    expect(watch(s, 1, 280).filter((x) => x !== 'h1.png')).toEqual([])
+  })
+
+  it('a capped partner ad repeats rather than blanking its space', async () => {
+    const s = setup([serve({ s1: { ads: [ad('p1')] } })])
+    s.sm.handlePresetUpdate({ action: 'init', scenePreset: { adSpaces: [space('s1', 1)] } })
+    lookAt(s, 1)
+    await s.host.start()
+    expect(watch(s, 1, 280).filter((x) => x !== 'p1.png')).toEqual([])
+  })
+
+  it('only showings the visitor saw count against the cap, across every space', async () => {
+    const s = setup([serve({ s1: { ads: [ad('a'), ad('b')] }, s2: { ads: [ad('a')] } })])
+    s.sm.handlePresetUpdate({ action: 'init', scenePreset: { adSpaces: [space('s1', 1), space('s2', 40)] } })
+    lookAt(s, 40) // s2 on screen, s1 not
+    await s.host.start()
+    const s2 = watch(s, 40, 280)
+    expect(s2.filter((x) => x !== 'a.png')).toEqual([])
+    // a was seen freqCapPerHour times on s2 within about a minute; s1 (never seen) then shows only b
+    const s1 = watch(s, 1, 60)
+    expect(s1.filter((x) => x !== 'b.png')).toEqual([])
   })
 })
 

@@ -6,7 +6,7 @@ const HOUR_MS = 60 * 60 * 1000
 export class AdRotation {
   private items: AdItem[]
   private readonly now: () => number
-  /** When each ad was shown, by adId; shared between rotations when `opts.history` is given. */
+  /** When the visitor saw each ad, by adId; shared between rotations when `opts.history` is given. */
   private readonly shown: Map<string, number[]>
   private lastAdId: string | null = null
   private cursor = -1
@@ -25,32 +25,48 @@ export class AdRotation {
     this.cursor = last === null ? -1 : items.findIndex((i) => i.adId === last)
   }
 
+  /**
+   * The next ad, skipping capped ones and avoiding a back-to-back repeat. House ads are never capped; when every
+   * eligible item is capped, the least recently seen one repeats so the space is never empty.
+   */
   next(allowVideo: boolean): AdItem | null {
     const t = this.now()
     const n = this.items.length
-    let fallback: AdItem | null = null
+    let repeat: AdItem | null = null
+    let leastRecent: { item: AdItem; idx: number; at: number } | null = null
     for (let step = 1; step <= n; step++) {
       const idx = (this.cursor + step + n) % n
       const item = this.items[idx]
       if (!allowVideo && item.kind === 'video') continue
-      if (this.recentCount(item.adId, t) >= AD_LIMITS.freqCapPerHour) continue
-      if (item.adId === this.lastAdId) {
-        fallback ??= item
+      const recent = this.recent(item.adId, t)
+      if (!item.house && recent.length >= AD_LIMITS.freqCapPerHour) {
+        const at = recent[recent.length - 1]
+        if (!leastRecent || at < leastRecent.at) leastRecent = { item, idx, at }
         continue
       }
-      return this.pick(item, idx, t)
+      if (item.adId === this.lastAdId) {
+        repeat ??= item
+        continue
+      }
+      return this.pick(item, idx)
     }
-    return fallback ? this.pick(fallback, this.items.indexOf(fallback), t) : null
+    if (repeat) return this.pick(repeat, this.items.indexOf(repeat))
+    return leastRecent ? this.pick(leastRecent.item, leastRecent.idx) : null
   }
 
-  private recentCount(adId: string, t: number): number {
+  /** The visitor had this ad on screen: one showing counts against its frequency cap. */
+  seen(adId: string): void {
+    const t = this.now()
+    this.shown.set(adId, [...this.recent(adId, t), t])
+  }
+
+  private recent(adId: string, t: number): number[] {
     const recent = (this.shown.get(adId) ?? []).filter((at) => t - at < HOUR_MS)
     this.shown.set(adId, recent)
-    return recent.length
+    return recent
   }
 
-  private pick(item: AdItem, idx: number, t: number): AdItem {
-    this.shown.get(item.adId)!.push(t)
+  private pick(item: AdItem, idx: number): AdItem {
     this.lastAdId = item.adId
     this.cursor = idx
     return item

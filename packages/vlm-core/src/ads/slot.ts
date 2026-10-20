@@ -187,15 +187,16 @@ export class AdSlot {
     done?.()
   }
 
-  /** Fallback image (no label, no click), or no plane at all. */
+  /** Fallback image (no label, no click), or no plane at all; look again in imageSeconds. */
   private showNothing(): void {
     this.clear()
     if (this.spec.fallbackImageSrc) {
       this.ensurePlane()
       this.adapter.setMaterial(this.holder.entity, { textureSrc: this.spec.fallbackImageSrc, emission: this.spec.emission })
-      return
+    } else if (this.hasPlane) {
+      this.replaceEntity()
     }
-    if (this.hasPlane) this.replaceEntity()
+    if (this.host) this.setDeadline(this.host.now() + AD_LIMITS.imageSeconds * 1000)
   }
 
   private onServeChange(): void {
@@ -249,7 +250,9 @@ export class AdSlot {
     this.deadline = at
     if (at !== null && !this.system) {
       this.system = () => {
-        if (this.deadline !== null && this.host!.now() >= this.deadline) this.finish()
+        if (this.deadline === null || this.host!.now() < this.deadline) return
+        if (this.current) this.finish()
+        else this.showNext()
       }
       this.adapter.registerSystem(this.system)
     } else if (at === null && this.system) {

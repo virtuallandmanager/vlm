@@ -8,11 +8,14 @@ interface SpaceState {
   elementId: string
   adId: string | null
   onScreenSince: number | null
+  /** This showing has been on screen for onScreenMinMs. */
+  seen: boolean
   hover: { adId: string; since: number } | null
 }
 
 export class AdTracker {
   private readonly send: (events: AdEvent[]) => Promise<boolean>
+  private readonly onSeen: (spaceKey: string, adId: string) => void
   private readonly now: () => number
   private readonly spaces = new Map<string, SpaceState>()
   private readonly emitted = new Set<string>()
@@ -22,16 +25,23 @@ export class AdTracker {
   private lastFlushAt: number
   private flushing = false
 
-  constructor(opts: { send: (events: AdEvent[]) => Promise<boolean>; now?: () => number }) {
+  /** `onSeen` fires once per showing, when the visitor has had it on screen (the level-2 moment). */
+  constructor(opts: { send: (events: AdEvent[]) => Promise<boolean>; now?: () => number; onSeen?: (spaceKey: string, adId: string) => void }) {
     this.send = opts.send
+    this.onSeen = opts.onSeen ?? (() => {})
     this.now = opts.now ?? Date.now
     this.lastMoveAt = this.lastFlushAt = this.now()
   }
 
+  /** A new showing on this space (the same ad again counts as a new showing). */
   showing(spaceKey: string, elementId: string, adId: string | null): void {
     const prev = this.spaces.get(spaceKey)
-    if (prev && prev.adId === adId && prev.elementId === elementId) return
-    this.spaces.set(spaceKey, { elementId, adId, onScreenSince: null, hover: null })
+    if (prev && prev.adId === adId && prev.elementId === elementId) {
+      prev.onScreenSince = null
+      prev.seen = false
+      return
+    }
+    this.spaces.set(spaceKey, { elementId, adId, onScreenSince: null, seen: false, hover: null })
     this.emitScene(this.spaces.get(spaceKey)!)
   }
 
@@ -56,7 +66,12 @@ export class AdTracker {
         continue
       }
       space.onScreenSince ??= t
-      if (t - space.onScreenSince >= AD_LIMITS.onScreenMinMs) this.emit(space, space.adId, 'screen')
+      if (t - space.onScreenSince < AD_LIMITS.onScreenMinMs) continue
+      this.emit(space, space.adId, 'screen')
+      if (!space.seen) {
+        space.seen = true
+        this.onSeen(key, space.adId)
+      }
     }
 
     if (t - this.lastFlushAt >= AD_LIMITS.eventsFlushMs) void this.flush()
