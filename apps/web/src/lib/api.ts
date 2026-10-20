@@ -2,7 +2,7 @@
 import { useCallback } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
-import type { AdminAd, AdminAdSpace, AdReport, AdShape, CatalogPack, HyperfyWorldSummary } from 'vlm-shared'
+import type { AdminAd, AdminAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyWorldSummary } from 'vlm-shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
 /** Read a File as base64 (no `data:…;base64,` prefix) for JSON upload bodies. */
@@ -297,6 +297,7 @@ export function useApi() {
       apiFetch<{ pack: CatalogPack }>(`/api/admin/catalog/packs/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
 
     // Ads (admin)
+    getAdminAdvertiserLeads: () => apiFetch<{ leads: AdminAdvertiserLead[] }>('/api/admin/advertiser-leads'),
     getAdminAds: () => apiFetch<{ ads: AdminAd[] }>('/api/admin/ads'),
     createAdminAd: (data: { name: string; kind: 'house' | 'partner'; clickUrl: string; startsAt?: string | null; endsAt?: string | null }) =>
       apiFetch<{ ad: AdminAd }>('/api/admin/ads', { method: 'POST', body: JSON.stringify(data) }),

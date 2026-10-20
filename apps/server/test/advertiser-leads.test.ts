@@ -3,7 +3,7 @@ import { db } from '../src/db/connection.js'
 import { advertiserLeads } from '../src/db/schema.js'
 import { buildApp } from '../src/app.js'
 import { resetDb } from './helpers/db.js'
-import { testApp } from './helpers/factories.js'
+import { testApp, createUser, tokenFor } from './helpers/factories.js'
 
 describe('advertiser leads', () => {
   let app: Awaited<ReturnType<typeof testApp>>
@@ -71,5 +71,25 @@ describe('advertiser leads', () => {
     } finally {
       await limited.close()
     }
+  })
+
+  it('admin lists leads newest first', async () => {
+    await submit({ email: 'first@brand.example', consent: true })
+    await submit({ email: 'second@brand.example', name: 'Sam', consent: true })
+    const admin = await createUser({ role: 'admin' })
+    const res = await app.inject({ method: 'GET', url: '/api/admin/advertiser-leads', headers: { authorization: `Bearer ${tokenFor(admin)}` } })
+    expect(res.statusCode).toBe(200)
+    const leads = res.json().leads
+    expect(leads.map((l: { email: string }) => l.email)).toEqual(['second@brand.example', 'first@brand.example'])
+    expect(Object.keys(leads[0]).sort()).toEqual(['company', 'consentAt', 'createdAt', 'email', 'id', 'message', 'name', 'updatedAt', 'website'])
+    expect(leads[0]).toMatchObject({ name: 'Sam', company: null })
+    expect(leads[0].createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/)
+  })
+
+  it('non-admins get 403, anonymous gets 401', async () => {
+    const creator = await createUser({ role: 'creator' })
+    const url = '/api/admin/advertiser-leads'
+    expect((await app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${tokenFor(creator)}` } })).statusCode).toBe(403)
+    expect((await app.inject({ method: 'GET', url })).statusCode).toBe(401)
   })
 })

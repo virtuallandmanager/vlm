@@ -1,7 +1,15 @@
-import type { FastifyInstance } from 'fastify'
-import type { AdvertiserLeadInput } from 'vlm-shared'
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
+import { desc } from 'drizzle-orm'
+import type { AdminAdvertiserLead, AdvertiserLeadInput } from 'vlm-shared'
 import { db } from '../db/connection.js'
 import { advertiserLeads } from '../db/schema.js'
+import { authenticate } from '../middleware/auth.js'
+
+async function requireAdmin(request: FastifyRequest, reply: FastifyReply) {
+  if (request.user.role !== 'admin') {
+    return reply.status(403).send({ error: 'Forbidden', message: 'Admin access required' })
+  }
+}
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const MAX_FIELD = 200
@@ -69,4 +77,20 @@ export default async function advertiserLeadRoutes(app: FastifyInstance) {
       return reply.status(201).send({ ok: true })
     },
   )
+
+  app.get('/api/admin/advertiser-leads', { preHandler: [authenticate, requireAdmin] }, async (_request, reply) => {
+    const rows = await db.select().from(advertiserLeads).orderBy(desc(advertiserLeads.createdAt))
+    const leads: AdminAdvertiserLead[] = rows.map((r) => ({
+      id: r.id,
+      email: r.email,
+      name: r.name,
+      company: r.company,
+      website: r.website,
+      message: r.message,
+      consentAt: r.consentAt.toISOString(),
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+    }))
+    return reply.send({ leads })
+  })
 }
