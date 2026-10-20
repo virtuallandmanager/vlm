@@ -26,7 +26,7 @@ Every ad space has exactly one shape:
 
 An ad only shows in a space with its exact shape. Ads are never stretched or cropped. If no ad fits your shape, the space shows its fallback image instead.
 
-Scale the instance to match the shape. A panel whose shorter side is under half a metre shows no ads, so keep spaces at least that big.
+The space's height follows its width and shape. Set the width (the X scale) and the height is worked out from the shape, so ads always keep their proportions. A panel whose shorter side is under half a metre shows no ads, so keep spaces at least that big.
 
 ## Images, videos or both
 
@@ -60,7 +60,7 @@ Any video screen can become an ad space. Open the screen and set **Off Type** to
 
 When a stream is live on the screen, it switches to the stream. Ads come back when the stream ends.
 
-A screen only shows ads once an admin places them on it. A screen in any other mode never shows ads.
+A screen in an ads mode uses its off image as its fallback image: it shows when no ad can play. A screen in any other mode never shows ads.
 
 ## Live streams
 
@@ -110,4 +110,4 @@ House ads pay owners nothing. For now, owners are paid for partner ads manually,
 - **Pause / Resume:** takes an ad out of rotation and brings it back.
 - **Report:** per ad, with totals for in scene, on screen (paid), looked at and clicked, the click rate, and the unverified numbers beside them. Break-downs by space and by day show what each scene delivered.
 
-If a space has partner ads placed on it, it shows only those. Otherwise it shows house ads.
+If a partner ad that fits the space is placed on it, the space shows only partner ads. Otherwise it shows house ads.

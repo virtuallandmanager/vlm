@@ -2,7 +2,7 @@
 import { useApi, fileToBase64, mediaContentType, uploadErrorMessage, isGlbAsset } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { AD_SHAPES, type AdFormats } from 'vlm-shared'
-import { shapeLabel } from '@/lib/ads'
+import { shapeLabel, offImageLabel, adModeHint } from '@/lib/ads'
 import { useSceneRoom } from '@/lib/colyseus'
 import { SceneRoles } from './SceneRoles'
 import { useParams, useSearchParams } from 'next/navigation'
@@ -306,14 +306,12 @@ function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
         </select>
       </div>
 
-      {(props.offType === 1) && (
-        <TextInput label="Off Image URL" value={props.offImageSrc || ''} onChange={v => updateProp('offImageSrc', v)} />
+      {offImageLabel(props.offType ?? 0) && (
+        <TextInput label={offImageLabel(props.offType ?? 0)!} value={props.offImageSrc || ''} onChange={v => updateProp('offImageSrc', v)} />
       )}
 
-      {(props.offType === 4 || props.offType === 5) && (
-        <p className="text-xs text-gray-500">
-          {props.offType === 4 ? 'Shows ads while no stream is live.' : 'Plays the playlist with an ad after every video.'} Ads only appear once an admin places them on this screen.
-        </p>
+      {adModeHint(props.offType ?? 0) && (
+        <p className="text-xs text-gray-500">{adModeHint(props.offType ?? 0)}</p>
       )}
 
       {/* Playlist */}

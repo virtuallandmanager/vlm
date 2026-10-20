@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { LevelCounts } from 'vlm-shared'
-import { shapeLabel, isHttpsUrl, clickRate } from './ads'
+import { shapeLabel, isHttpsUrl, clickRate, offImageLabel, adModeHint } from './ads'
 
 const zero = { scene: 0, screen: 0, look: 0, click: 0 }
 const counts = (screen: number, click: number): LevelCounts => ({ ...zero, screen, click, unverified: { ...zero } })
@@ -36,5 +36,22 @@ describe('clickRate', () => {
   })
   it('is a dash when nobody saw it on screen', () => {
     expect(clickRate(counts(0, 0))).toBe('—')
+  })
+})
+
+describe('offImageLabel', () => {
+  it('offers the off image in image mode and as the fallback in the ads modes', () => {
+    expect(offImageLabel(1)).toBe('Off Image URL')
+    expect(offImageLabel(4)).toBe('Fallback Image URL (shown when no ad can play)')
+    expect(offImageLabel(5)).toBe('Fallback Image URL (shown when no ad can play)')
+    for (const t of [0, 2, 3]) expect(offImageLabel(t)).toBeNull()
+  })
+})
+
+describe('adModeHint', () => {
+  it('describes the ads modes without claiming ads need an admin placement', () => {
+    expect(adModeHint(4)).toBe('Shows ads while no stream is live. House ads fill it unless a partner ad is placed on it.')
+    expect(adModeHint(5)).toBe('Plays the playlist with an ad after every video. House ads fill it unless a partner ad is placed on it.')
+    expect(adModeHint(1)).toBeNull()
   })
 })
