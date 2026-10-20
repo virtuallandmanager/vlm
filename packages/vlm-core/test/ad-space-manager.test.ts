@@ -306,11 +306,57 @@ describe('AdSpaceManager', () => {
     const s = setup([serve({ small: ads, big: ads })])
     s.sm.handlePresetUpdate({
       action: 'init',
-      scenePreset: { adSpaces: [space('small', 1, {}, { x: 2, y: 0.4, z: 1 }), space('big', 2, {}, { x: 0.5, y: 0.5, z: 1 })] },
+      // 0.8 m wide at 16:9 is 0.45 m tall; 0.5 m square is just big enough
+      scenePreset: { adSpaces: [space('small', 1, {}, { x: 0.8, y: 5, z: 1 }), space('big', 2, { shape: '1:1' }, { x: 0.5, y: 0.1, z: 1 })] },
     })
     await s.host.refresh()
     expect(s.hasPlane(s.entityAt(1))).toBe(false)
     expect(s.showing(s.entityAt(2))).toMatchObject({ src: ad('i1').url })
+  })
+
+  it("the plane's height follows its width and shape, so ads are never stretched", async () => {
+    const s = setup([serve({ wide: { ads: [] }, tall: { ads: [] }, sq: { ads: [] }, portrait: { ads: [] } })])
+    const unit = { x: 1, y: 1, z: 1 }
+    s.sm.handlePresetUpdate({
+      action: 'init',
+      scenePreset: {
+        adSpaces: [
+          space('wide', 1, {}, { x: 1.6, y: 1.6, z: 1 }),
+          space('tall', 2, { shape: '2:5' }, unit),
+          space('sq', 3, { shape: '1:1' }, { x: 2, y: 0.3, z: 1 }),
+          space('portrait', 4, { shape: '9:16' }, unit),
+        ],
+      },
+    })
+    const scaleAt = (x: number) => s.adapter.setTransform.mock.calls.filter((c: any) => c[0] === s.entityAt(x)).at(-1)[1].scale
+    expect(scaleAt(1)).toEqual({ x: 1.6, y: 0.9, z: 1 })
+    expect(scaleAt(2)).toEqual({ x: 1, y: 2.5, z: 1 })
+    expect(scaleAt(3)).toEqual({ x: 2, y: 2, z: 1 })
+    expect(scaleAt(4)).toEqual({ x: 1, y: 16 / 9, z: 1 })
+
+    // a scale change keeps the shape's proportions; so does a shape change
+    s.sm.handlePresetUpdate({ action: 'update', element: 'ad_space', instance: true, instanceData: { sk: 'wide-i', scale: { x: 3.2, y: 1, z: 1 } } })
+    expect(scaleAt(1)).toEqual({ x: 3.2, y: 1.8, z: 1 })
+    s.sm.handlePresetUpdate({ action: 'update', element: 'ad_space', elementData: { sk: 'wide', shape: '1:1' } })
+    expect(scaleAt(1)).toEqual({ x: 3.2, y: 3.2, z: 1 })
+    // in-world moving previews with the same proportions
+    s.sm.handlePresetUpdate({ action: 'init', scenePreset: { adSpaces: [space('p', 5)] } })
+    const e = s.entityAt(5)
+    const manager = (s.sm as any).managers.ad_space
+    manager.previewTransform('p-i', { position: { x: 6, y: 1, z: 1 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1.6, y: 7, z: 1 } })
+    expect(s.adapter.setTransform.mock.calls.filter((c: any) => c[0] === e).at(-1)[1].scale).toEqual({ x: 1.6, y: 0.9, z: 1 })
+  })
+
+  it('a shape change re-serves the space at once', async () => {
+    const s = setup([serve({ s1: { ads: [ad('wide')] } }), serve({ s1: { ads: [ad('square')] } })])
+    s.sm.handlePresetUpdate({ action: 'init', scenePreset: { adSpaces: [space('s1', 1)] } })
+    await s.host.start()
+    expect(s.showing(s.entityAt(1))).toMatchObject({ src: ad('wide').url })
+    s.sm.handlePresetUpdate({ action: 'upsert', element: 'ad_space', elementData: space('s1', 1, { shape: '1:1' }) })
+    s.frame()
+    await settle()
+    expect(s.getAds).toHaveBeenCalledTimes(2)
+    expect(s.showing(s.entityAt(1))).toMatchObject({ src: ad('square').url })
   })
 
   it('paused space shows fallback or hides', async () => {

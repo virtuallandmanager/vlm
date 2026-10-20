@@ -1,5 +1,5 @@
 import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData, AdShape, AdFormats } from 'vlm-shared'
-import { listTransformable, previewOn, restoreOn } from './transform-ops.js'
+import { listTransformable } from './transform-ops.js'
 import type { ListedInstance } from './transform-ops.js'
 import { AdSlot } from '../ads/slot.js'
 import type { AdHost } from '../ads/host.js'
@@ -28,6 +28,14 @@ interface AdSpaceInstance {
   scale: { x: number; y: number; z: number }
   withCollisions: boolean
   slot: AdSlot
+}
+
+/** Plane height over width for each shape. */
+const HEIGHT_PER_WIDTH: Record<AdShape, number> = { '16:9': 9 / 16, '1:1': 1, '9:16': 16 / 9, '2:5': 5 / 2 }
+
+/** The plane's transform: its height follows its width (scale.x) and the shape, so ads are never stretched. */
+function planeTransform(t: TransformData, shape: AdShape): TransformData {
+  return { ...t, scale: { ...t.scale, y: t.scale.x * (HEIGHT_PER_WIDTH[shape] ?? HEIGHT_PER_WIDTH['16:9']) } }
 }
 
 export class AdSpaceManager {
@@ -88,7 +96,7 @@ export class AdSpaceManager {
     const scale = data.scale || { x: 1, y: 1, z: 1 }
 
     // No plane yet: the slot adds it only when there is something to show
-    this.adapter.setTransform(entity, { position, rotation, scale })
+    this.adapter.setTransform(entity, planeTransform({ position, rotation, scale }, config.shape))
 
     const instance = {
       sk: data.sk,
@@ -122,7 +130,7 @@ export class AdSpaceManager {
         fallbackImageSrc: config.fallbackImageSrc,
         withCollisions: instance.withCollisions,
       },
-      transform: { position: instance.position, rotation: instance.rotation, scale: instance.scale },
+      transform: planeTransform({ position: instance.position, rotation: instance.rotation, scale: instance.scale }, config.shape),
       hasPlane,
       isStreamLive: this.isStreamLive,
     })
@@ -159,6 +167,7 @@ export class AdSpaceManager {
     // Shape, formats or fallback changed: restart each instance's slot with the new settings
     for (const instance of this.instances.values()) {
       if (instance.configSk !== elementData.sk) continue
+      this.adapter.setTransform(instance.entity, planeTransform({ position: instance.position, rotation: instance.rotation, scale: instance.scale }, config.shape))
       const planeShown = instance.slot.planeShown
       instance.slot.dispose()
       instance.slot = this.makeSlot(config, instance, planeShown)
@@ -179,11 +188,12 @@ export class AdSpaceManager {
       const rotation = instanceData.rotation || instance.rotation
       const scale = instanceData.scale || instance.scale
 
-      this.adapter.setTransform(instance.entity, { position, rotation, scale })
+      const plane = planeTransform({ position, rotation, scale }, this.configs.get(instance.configSk)?.shape ?? '16:9')
+      this.adapter.setTransform(instance.entity, plane)
       instance.position = position
       instance.rotation = rotation
       instance.scale = scale
-      instance.slot.setTransform({ position, rotation, scale })
+      instance.slot.setTransform(plane)
     }
 
     if (instanceData.enabled !== undefined) {
@@ -205,11 +215,13 @@ export class AdSpaceManager {
   }
 
   previewTransform(sk: string, t: TransformData): void {
-    previewOn(this.adapter, this.instances, sk, t)
+    const i = this.instances.get(sk)
+    if (i) this.adapter.setTransform(i.entity, planeTransform(t, this.configs.get(i.configSk)?.shape ?? '16:9'))
   }
 
   restoreTransform(sk: string): void {
-    restoreOn(this.adapter, this.instances, sk)
+    const i = this.instances.get(sk)
+    if (i) this.previewTransform(sk, { position: i.position, rotation: i.rotation, scale: i.scale })
   }
 
   updateInstance(instanceId: string, property: string, value: unknown): void {

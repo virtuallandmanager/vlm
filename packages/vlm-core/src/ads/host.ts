@@ -56,6 +56,8 @@ export class AdHost {
   private served: AdServeResponse | null = null
   /** Element ids already asked for, so a newly attached element triggers a refresh. */
   private requested = new Set<string>()
+  /** The shape each element had when its ads were asked for; served ads for another shape are never shown. */
+  private requestedShapes = new Map<string, AdShape>()
   private videosPlaying = 0
   private refreshing = false
   private nextRefreshAt = 0
@@ -108,7 +110,10 @@ export class AdHost {
   }
 
   detach(key: string): void {
+    const a = this.attached.get(key)
     this.attached.delete(key)
+    // Last copy of this element gone: ask again when it comes back (e.g. recreated with a new shape)
+    if (a && ![...this.attached.values()].some((o) => o.elementId === a.elementId)) this.requested.delete(a.elementId)
     this.tracker.showing(key, '', null)
   }
 
@@ -138,6 +143,7 @@ export class AdHost {
     const ids = [...new Set([...this.attached.values()].map((a) => a.elementId))]
     this.nextRefreshAt = this.now() + AD_LIMITS.serveRefreshMs
     this.requested = new Set(ids)
+    this.requestedShapes = new Map([...this.attached.values()].map((a) => [a.elementId, a.space.shape]))
     if (ids.length === 0) {
       this.served = null
       return
@@ -159,7 +165,8 @@ export class AdHost {
   }
 
   private syncItems(a: Attached): void {
-    a.rotation.setItems(forFormats(this.served?.spaces[a.elementId]?.ads ?? [], a.space.formats))
+    const fits = this.requestedShapes.get(a.elementId) === a.space.shape
+    a.rotation.setItems(fits ? forFormats(this.served?.spaces[a.elementId]?.ads ?? [], a.space.formats) : [])
   }
 
   private frame(): void {
