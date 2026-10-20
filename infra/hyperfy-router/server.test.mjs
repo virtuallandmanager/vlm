@@ -104,6 +104,7 @@ function post(server, headers, body) {
     const req = http.request({ port: server.address().port, host: '127.0.0.1', method: 'POST', path: '/upload?x=1', headers: { host: 'foo-bar.worlds.vlm.gg', ...headers } }, (res) => {
       const chunks = []
       res.on('data', (c) => chunks.push(c))
+      res.on('error', reject)
       res.on('end', () => resolve({ res, body: Buffer.concat(chunks).toString() }))
     })
     req.on('error', reject)
@@ -162,4 +163,51 @@ test('an unreachable upstream gives a short 502', async () => {
     assert.ok(body.length < 100)
     assert.doesNotMatch(body, /ECONNREFUSED|at /)
   } finally { server.close() }
+})
+
+test('an upstream that dies after sending headers closes the client connection', async () => {
+  const up = http.createServer((req, res) => {
+    req.resume()
+    req.on('end', () => {
+      res.writeHead(200, { 'content-length': 1000 })
+      res.write('partial')
+      setTimeout(() => res.socket.destroy(), 50)
+    })
+  })
+  await new Promise((r) => up.listen(0, '127.0.0.1', r))
+  const server = await start({ upstreamHost: () => '127.0.0.1', upstreamPort: up.address().port })
+  try {
+    const data = Buffer.alloc(1048577, 1)
+    const outcome = await Promise.race([
+      post(server, { 'content-length': data.length }, (req) => req.end(data)).then(() => 'ended', () => 'closed'),
+      new Promise((r) => setTimeout(() => r('hung'), 2000)),
+    ])
+    assert.notEqual(outcome, 'hung')
+  } finally { server.closeAllConnections(); server.close(); up.close() }
+})
+
+test('hop-by-hop headers are stripped in both directions, Host is kept', async () => {
+  let got
+  const up = http.createServer((req, res) => {
+    got = req.headers
+    req.resume()
+    req.on('end', () => {
+      res.writeHead(200, { connection: 'x-secret-hop, keep-alive', 'x-secret-hop': '1', 'keep-alive': 'timeout=5', 'x-keep': 'yes' })
+      res.end('ok')
+    })
+  })
+  await new Promise((r) => up.listen(0, '127.0.0.1', r))
+  const server = await start({ upstreamHost: () => '127.0.0.1', upstreamPort: up.address().port })
+  try {
+    const data = Buffer.alloc(1048577, 1)
+    const { res } = await post(server, { 'content-length': data.length, connection: 'x-req-hop, close', 'x-req-hop': '1', 'proxy-authorization': 'secret', te: 'trailers', 'x-keep': 'yes' }, (req) => req.end(data))
+    assert.equal(got['x-req-hop'], undefined)
+    assert.equal(got['proxy-authorization'], undefined)
+    assert.equal(got.te, undefined)
+    assert.equal(got['x-keep'], 'yes')
+    assert.equal(got.host, 'foo-bar.worlds.vlm.gg')
+    assert.equal(res.headers['x-secret-hop'], undefined)
+    assert.equal(res.headers['keep-alive'], undefined)
+    assert.equal(res.headers['x-keep'], 'yes')
+  } finally { server.closeAllConnections(); server.close(); up.close() }
 })

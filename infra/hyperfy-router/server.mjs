@@ -1,5 +1,6 @@
 // Hands each request for <slug>.<domain> to the world's own Fly app with fly-replay.
 import { createServer, request as httpRequest } from 'node:http'
+import { pipeline } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/
@@ -19,6 +20,14 @@ const NOT_FOUND_HEAD = `HTTP/1.1 404 Not Found\r\ncontent-type: text/html; chars
 // fly-replay can't carry request bodies over 1 MB, so bigger (or chunked) ones are proxied over Flycast.
 const REPLAY_BODY_LIMIT = 1048576
 
+const HOP_BY_HOP = ['connection', 'keep-alive', 'proxy-connection', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'upgrade']
+
+function stripHopByHop(headers) {
+  const drop = new Set(HOP_BY_HOP)
+  for (const name of String(headers.connection || '').split(',')) if (name.trim()) drop.add(name.trim().toLowerCase())
+  return Object.fromEntries(Object.entries(headers).filter(([k]) => !drop.has(k.toLowerCase())))
+}
+
 function needsProxy(req) {
   if (/chunked/i.test(req.headers['transfer-encoding'] || '')) return true
   return Number(req.headers['content-length'] || 0) > REPLAY_BODY_LIMIT
@@ -30,16 +39,16 @@ export function createRouter(domain, opts = {}) {
   const upstreamPort = opts.upstreamPort ?? 80
 
   function proxy(req, res, target) {
-    const up = httpRequest({ host: upstreamHost(target), port: upstreamPort, method: req.method, path: req.url, headers: req.headers }, (ures) => {
-      res.writeHead(ures.statusCode, ures.headers)
-      ures.pipe(res)
+    const up = httpRequest({ host: upstreamHost(target), port: upstreamPort, method: req.method, path: req.url, headers: stripHopByHop(req.headers) }, (ures) => {
+      res.writeHead(ures.statusCode, stripHopByHop(ures.headers))
+      pipeline(ures, res, () => {})
     })
     up.on('error', () => {
       if (!res.headersSent) { res.writeHead(502, { 'content-type': 'text/plain' }); res.end('Bad gateway') }
       else res.destroy()
     })
     res.on('close', () => up.destroy())
-    req.pipe(up)
+    pipeline(req, up, () => {})
   }
 
   const server = createServer((req, res) => {
