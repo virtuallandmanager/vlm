@@ -234,16 +234,17 @@ try {
   await test('boots on Postgres as a world role that cannot CREATE on the database, and installs vlm in its schema', async () => {
     const adminUrl = process.env.TEST_DATABASE_URL ||
       readFileSync(path.join(repoRoot, 'apps/server/vitest.config.ts'), 'utf8').match(/TEST_DATABASE_URL \|\| '([^']+)'/)[1]
+    const u = new URL(adminUrl)
+    // Before the import: the server's config reads its env once, when it loads.
+    process.env.HYPERFY_WORLDS_DB_URL_TEMPLATE = `postgres://{user}:{password}@${u.host}${u.pathname}`
     const serverRequire = createRequire(path.join(repoRoot, 'apps/server/package.json'))
     const { tsImport } = serverRequire('tsx/esm/api')
     const worldsDb = await tsImport(path.join(repoRoot, 'apps/server/src/hyperfy/worlds-db.ts'), import.meta.url)
     const postgres = serverRequire('postgres')
-    const u = new URL(adminUrl)
-    process.env.HYPERFY_WORLDS_DB_URL_TEMPLATE = `postgres://{user}:{password}@${u.host}${u.pathname}`
     const slug = `t4-${randomBytes(3).toString('hex')}`
     const admin = postgres(adminUrl, { max: 1, onnotice: () => {} })
     try {
-      const { dbUri, schema } = await worldsDb.createWorldDatabase(slug, adminUrl)
+      const { dbUri, schema } = await worldsDb.createWorldDatabase(slug, worldsDb.directRunner(adminUrl))
       const [{ c }] = await admin`SELECT has_database_privilege(${schema}, current_database(), 'CREATE') AS c`
       eq(c, false, 'world role has CREATE on the database')
       await boot(`${world}-pg`, { VLM_WORLD_KEY: KEY1, DB_URI: dbUri, DB_SCHEMA: schema })
@@ -254,7 +255,7 @@ try {
       eq(ents.length, 1, 'vlm entity count in Postgres')
     } finally {
       await stop()
-      await worldsDb.dropWorldDatabase(slug, adminUrl).catch((e) => console.log(`        cleanup: ${e.message}`))
+      await worldsDb.dropWorldDatabase(slug, worldsDb.directRunner(adminUrl)).catch((e) => console.log(`        cleanup: ${e.message}`))
       await admin.end({ timeout: 2 })
       rmSync(path.join(srcDir, `${world}-pg`), { recursive: true, force: true })
     }

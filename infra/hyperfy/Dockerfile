@@ -1,5 +1,5 @@
 # VLM's Hyperfy world image: Hyperfy dev at b4081eb with infra/hyperfy/patches applied in order, and the VLM app
-# (installed as blueprint `vlm` on every boot by 0002-vlm-app.patch). Build from the repo root:
+# (installed as blueprint `vlm` on every boot by 0002-vlm-app.patch), plus the worlds DB job. Build from the repo root:
 #   docker build --platform linux/amd64 -f infra/hyperfy/Dockerfile .
 FROM node:22.11.0-bookworm AS builder
 ARG HYPERFY_COMMIT=b4081eb14478972eb7070d3b5bc0bf2b9f8cf92a
@@ -19,6 +19,8 @@ COPY --from=builder /app/build ./build
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/package.json /app/package-lock.json ./
 COPY packages/vlm-hyperfy-app/dist/vlm.hyp /app/vlm/vlm.hyp
+# The worlds DB job the VLM server runs as one-shot machines; it uses Hyperfy's own `pg` (a dependency at b4081eb).
+COPY infra/hyperfy/db-job.mjs /app/vlm/db-job.mjs
 ENV NODE_ENV=production PORT=3000 WORLD=world
 EXPOSE 3000
 CMD ["node", "build/index.js"]

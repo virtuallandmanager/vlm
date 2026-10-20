@@ -163,4 +163,128 @@ describe('FlyApi', () => {
     expect(err.status).toBe(200)
     expect(err.message).toMatch(/not JSON/)
   })
+
+  describe('runJob', () => {
+    const JOB = { image: 'img:9', env: { DB_STATEMENTS: 'c2VjcmV0' }, cmd: ['node', '/app/vlm/db-job.mjs'] }
+    const exitEvents = (code: number) => [
+      { type: 'exit', status: 'stopped', timestamp: 3, request: { exit_event: { exit_code: code, oom_killed: false } } },
+      { type: 'start', status: 'started', timestamp: 2 },
+      { type: 'launch', status: 'created', timestamp: 1 },
+    ]
+    const route = (c: Call) => `${c.method} ${c.url.replace('https://api.machines.dev/v1/apps/vlm-worlds-db-jobs', '')}`
+
+    it('creates a one-shot machine, waits for it to stop, reads the exit code and deletes it', async () => {
+      const { fn, calls } = fakeFetch((c) => {
+        if (c.method === 'POST') return { body: { id: 'j1', state: 'created' } }
+        if (c.url.includes('/wait')) return { body: { ok: true } }
+        if (c.method === 'GET') return { body: { id: 'j1', state: 'stopped', events: exitEvents(0) } }
+        return { body: { ok: true } }
+      })
+      expect(await mk(fn).runJob('vlm-worlds-db-jobs', JOB)).toEqual({ exitCode: 0 })
+      expect(calls.map(route)).toEqual([
+        'POST /machines',
+        'GET /machines/j1/wait?state=stopped&timeout=60',
+        'GET /machines/j1',
+        'DELETE /machines/j1?force=true',
+      ])
+      expect(calls[0].body).toEqual({
+        region: 'iad',
+        config: {
+          image: 'img:9',
+          env: { DB_STATEMENTS: 'c2VjcmV0' },
+          init: { cmd: ['node', '/app/vlm/db-job.mjs'] },
+          guest: { cpu_kind: 'shared', cpus: 1, memory_mb: 256 },
+          restart: { policy: 'no' },
+          auto_destroy: false,
+        },
+      })
+      expect(calls[0].body.config.services).toBeUndefined()
+    })
+
+    it('returns a failing exit code and still deletes the machine', async () => {
+      const { fn, calls } = fakeFetch((c) => {
+        if (c.method === 'POST') return { body: { id: 'j2' } }
+        if (c.url.includes('/wait')) return { body: { ok: true } }
+        if (c.method === 'GET') return { body: { id: 'j2', events: exitEvents(1) } }
+        return { body: {} }
+      })
+      expect(await mk(fn).runJob('vlm-worlds-db-jobs', JOB)).toEqual({ exitCode: 1 })
+      expect(calls.at(-1)!.method).toBe('DELETE')
+    })
+
+    it('keeps waiting while Fly answers 408, in waits no longer than what is left', async () => {
+      let waits = 0
+      const { fn, calls } = fakeFetch((c) => {
+        if (c.method === 'POST') return { body: { id: 'j3' } }
+        if (c.url.includes('/wait')) return ++waits < 3 ? { status: 408, body: { error: 'deadline_exceeded' } } : { body: { ok: true } }
+        if (c.method === 'GET') return { body: { id: 'j3', events: exitEvents(0) } }
+        return { body: {} }
+      })
+      expect(await mk(fn).runJob('vlm-worlds-db-jobs', JOB, 30_000)).toEqual({ exitCode: 0 })
+      const waitCalls = calls.filter((c) => c.url.includes('/wait'))
+      expect(waitCalls).toHaveLength(3)
+      expect(waitCalls[0].url).toMatch(/timeout=30$/)
+    })
+
+    it('gives up after the timeout with FlyError and deletes the machine', async () => {
+      const { fn, calls } = fakeFetch((c) => {
+        if (c.method === 'POST') return { body: { id: 'j4' } }
+        if (c.url.includes('/wait')) return { status: 408, body: { error: 'deadline_exceeded' } }
+        return { body: {} }
+      })
+      const err = await mk(fn).runJob('vlm-worlds-db-jobs', JOB, 50).catch((e) => e)
+      expect(err).toBeInstanceOf(FlyError)
+      expect(err.message).toMatch(/did not finish/)
+      expect(calls.at(-1)!.url).toMatch(/\/machines\/j4\?force=true$/)
+      expect(calls.at(-1)!.method).toBe('DELETE')
+    })
+
+    it('a failed wait or a machine with no exit event is a FlyError, and the machine is deleted', async () => {
+      const failing = fakeFetch((c) => {
+        if (c.method === 'POST') return { body: { id: 'j5' } }
+        if (c.url.includes('/wait')) return { status: 500, body: { error: 'boom' } }
+        return { body: {} }
+      })
+      const err = await mk(failing.fn).runJob('vlm-worlds-db-jobs', JOB).catch((e) => e)
+      expect(err).toBeInstanceOf(FlyError)
+      expect(err.status).toBe(500)
+      expect(failing.calls.at(-1)!.method).toBe('DELETE')
+
+      for (const events of [undefined, [], [{ type: 'exit', request: {} }], [{ type: 'exit', request: { exit_event: { exit_code: 'x' } } }]]) {
+        const odd = fakeFetch((c) => {
+          if (c.method === 'POST') return { body: { id: 'j6' } }
+          if (c.url.includes('/wait')) return { body: { ok: true } }
+          if (c.method === 'GET') return { body: { id: 'j6', events } }
+          return { body: {} }
+        })
+        const e = await mk(odd.fn).runJob('vlm-worlds-db-jobs', JOB).catch((x) => x)
+        expect(e, JSON.stringify(events)).toBeInstanceOf(FlyError)
+        expect(e.message).toMatch(/exit code/)
+        expect(odd.calls.at(-1)!.method).toBe('DELETE')
+      }
+    })
+
+    it('uses the newest exit event when the machine has several', async () => {
+      const events = [
+        { type: 'exit', timestamp: 5, request: { exit_event: { exit_code: 1 } } },
+        { type: 'exit', timestamp: 9, request: { exit_event: { exit_code: 0 } } },
+      ]
+      const { fn } = fakeFetch((c) => {
+        if (c.method === 'POST') return { body: { id: 'j7' } }
+        if (c.method === 'GET' && !c.url.includes('/wait')) return { body: { id: 'j7', events } }
+        return { body: {} }
+      })
+      expect(await mk(fn).runJob('vlm-worlds-db-jobs', JOB)).toEqual({ exitCode: 0 })
+    })
+
+    it('a failed delete does not hide the result', async () => {
+      const { fn } = fakeFetch((c) => {
+        if (c.method === 'POST') return { body: { id: 'j8' } }
+        if (c.method === 'DELETE') return { status: 500, body: { error: 'nope' } }
+        if (c.method === 'GET' && !c.url.includes('/wait')) return { body: { id: 'j8', events: exitEvents(0) } }
+        return { body: {} }
+      })
+      expect(await mk(fn).runJob('vlm-worlds-db-jobs', JOB)).toEqual({ exitCode: 0 })
+    })
+  })
 })

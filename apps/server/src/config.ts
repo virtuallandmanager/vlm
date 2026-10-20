@@ -106,6 +106,10 @@ export const config = {
   flyWorldsOrg: env('FLY_WORLDS_ORG'),
   hyperfyImage: env('HYPERFY_IMAGE'), // registry.fly.io/vlm-hyperfy-image:<git-sha>
   hyperfyWorldsDatabaseUrl: env('HYPERFY_WORLDS_DATABASE_URL'), // admin URL: creates and drops world roles/schemas
+  // How that SQL runs: `fly-job` (default on fly; in a one-shot machine of HYPERFY_DB_JOB_APP, inside Fly's private
+  // network) or `direct` (from this server). Resolved by worldsDbMode().
+  hyperfyWorldsDbMode: env('HYPERFY_WORLDS_DB_MODE'),
+  hyperfyDbJobApp: env('HYPERFY_DB_JOB_APP') ?? 'vlm-worlds-db-jobs',
   hyperfyWorldsDbUrlTemplate: env('HYPERFY_WORLDS_DB_URL_TEMPLATE'), // what worlds connect with; {user} and {password}
   hyperfyAssetsS3Uri: env('HYPERFY_ASSETS_S3_URI'), // s3://<key>:<secret>@<account>.r2.cloudflarestorage.com/<bucket>
   hyperfyAssetsBaseUrl: env('HYPERFY_ASSETS_BASE_URL'), // the bucket's CDN origin

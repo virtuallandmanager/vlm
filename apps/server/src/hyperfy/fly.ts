@@ -12,10 +12,45 @@ export class FlyError extends Error {
 /** `autostart` defaults to true; it is turned off for ended worlds so a visit can't wake them. */
 export type WorldMachineSpec = { image: string; env: Record<string, string>; autostart?: boolean }
 
+/** A one-shot machine: runs `cmd` in `image` and stops. */
+export type JobSpec = { image: string; env: Record<string, string>; cmd: string[] }
+
 type FlyOpts = { token: string; org: string; fetch?: typeof fetch; baseUrl?: string; timeoutMs?: number }
 
 const REGION = 'iad'
 const REQUEST_TIMEOUT_MS = 30_000
+/** Fly's machine wait endpoint accepts at most 60 s per call. */
+const MAX_WAIT_S = 60
+
+function jobBody(j: JobSpec) {
+  return {
+    region: REGION,
+    config: {
+      image: j.image,
+      env: j.env,
+      init: { cmd: j.cmd },
+      guest: { cpu_kind: 'shared', cpus: 1, memory_mb: 256 },
+      restart: { policy: 'no' },
+      auto_destroy: false,
+    },
+  }
+}
+
+/** The exit code from the newest `exit` event; machine events are loosely shaped, so anything odd is undefined. */
+function exitCodeOf(events: unknown): number | undefined {
+  if (!Array.isArray(events)) return undefined
+  let best: { code: number; ts: number } | undefined
+  for (const [i, e] of events.entries()) {
+    if (!e || typeof e !== 'object' || (e as { type?: unknown }).type !== 'exit') continue
+    const code = (e as { request?: { exit_event?: { exit_code?: unknown } } }).request?.exit_event?.exit_code
+    if (typeof code !== 'number' || !Number.isInteger(code)) continue
+    const raw = (e as { timestamp?: unknown }).timestamp
+    // Fly lists events newest first; without timestamps, the earlier entry wins.
+    const ts = typeof raw === 'number' ? raw : -i
+    if (!best || ts > best.ts) best = { code, ts }
+  }
+  return best?.code
+}
 
 function machineBody(m: WorldMachineSpec) {
   return {
@@ -55,7 +90,13 @@ export class FlyApi {
     return this.token ? s.split(this.token).join('[redacted]') : s
   }
 
-  private async request(method: string, path: string, body?: unknown, okStatuses: number[] = []): Promise<{ status: number; text: string }> {
+  private async request(
+    method: string,
+    path: string,
+    body?: unknown,
+    okStatuses: number[] = [],
+    timeoutMs = this.timeoutMs,
+  ): Promise<{ status: number; text: string }> {
     let res: Response
     try {
       res = await this.fetchFn(`${this.baseUrl}${path}`, {
@@ -65,11 +106,11 @@ export class FlyApi {
           ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(timeoutMs),
       })
     } catch (e) {
       if ((e as Error)?.name === 'TimeoutError') {
-        throw new FlyError(`Fly ${method} ${path} timed out after ${this.timeoutMs / 1000} s`, 0, '')
+        throw new FlyError(`Fly ${method} ${path} timed out after ${timeoutMs / 1000} s`, 0, '')
       }
       const msg = this.scrub(e instanceof Error ? e.message : String(e))
       throw new FlyError(`Fly ${method} ${path} failed: ${msg}`, 0, '')
@@ -137,5 +178,32 @@ export class FlyApi {
 
   async startMachine(app: string, id: string): Promise<void> {
     await this.request('POST', `/apps/${encodeURIComponent(app)}/machines/${encodeURIComponent(id)}/start`)
+  }
+
+  /**
+   * Runs a one-shot machine (no services, never restarted) and returns its exit code once it stops. The machine is
+   * deleted afterwards whatever happened; a failed delete leaves a stopped machine behind but doesn't change the result.
+   */
+  async runJob(app: string, spec: JobSpec, timeoutMs = 120_000): Promise<{ exitCode: number }> {
+    const base = `/apps/${encodeURIComponent(app)}/machines`
+    const { id } = await this.json<{ id: string }>('POST', base, jobBody(spec))
+    const machine = `${base}/${encodeURIComponent(id)}`
+    try {
+      const deadline = Date.now() + timeoutMs
+      for (;;) {
+        const left = deadline - Date.now()
+        if (left <= 0) throw new FlyError(`Fly job machine ${id} in ${app} did not finish within ${timeoutMs / 1000} s`, 0, '')
+        const secs = Math.min(MAX_WAIT_S, Math.ceil(left / 1000))
+        // Fly answers 408 when the wait times out with the machine still running.
+        const r = await this.request('GET', `${machine}/wait?state=stopped&timeout=${secs}`, undefined, [408], secs * 1000 + this.timeoutMs)
+        if (r.status !== 408) break
+      }
+      const m = await this.json<{ events?: unknown }>('GET', machine)
+      const exitCode = exitCodeOf(m.events)
+      if (exitCode === undefined) throw new FlyError(`Fly job machine ${id} in ${app} stopped without an exit code`, 0, '')
+      return { exitCode }
+    } finally {
+      await this.request('DELETE', `${machine}?force=true`, undefined, [404]).catch(() => {})
+    }
   }
 }

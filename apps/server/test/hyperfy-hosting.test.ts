@@ -56,6 +56,27 @@ describe('Hyperfy hosting availability', () => {
     }
     configure({ ...HOSTING, hyperfyInfraProvider: 'docker' })
     expect(hyperfyHosting().available).toBe(false)
+
+  })
+
+  it('needs a valid worlds DB mode, and the job app in fly-job mode (the default on fly)', () => {
+    const saved = { mode: (config as any).hyperfyWorldsDbMode, app: (config as any).hyperfyDbJobApp }
+    try {
+      configure(HOSTING)
+      ;(config as any).hyperfyWorldsDbMode = undefined
+      ;(config as any).hyperfyDbJobApp = 'vlm-worlds-db-jobs'
+      expect(hyperfyHosting().available).toBe(true)
+      ;(config as any).hyperfyDbJobApp = ''
+      expect(hyperfyHosting().available).toBe(false)
+      ;(config as any).hyperfyWorldsDbMode = 'direct'
+      expect(hyperfyHosting().available).toBe(true)
+      ;(config as any).hyperfyWorldsDbMode = 'sideways'
+      ;(config as any).hyperfyDbJobApp = 'vlm-worlds-db-jobs'
+      expect(hyperfyHosting().available).toBe(false)
+    } finally {
+      ;(config as any).hyperfyWorldsDbMode = saved.mode
+      ;(config as any).hyperfyDbJobApp = saved.app
+    }
   })
 
   it('is never available without Fly, in any mode', () => {

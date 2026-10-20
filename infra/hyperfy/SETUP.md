@@ -25,16 +25,26 @@ You need: `flyctl`, `docker`, `railway`, a Cloudflare account, and access to you
    ```sh
    fly apps create vlm-hyperfy-image -o vlm-worlds
    ```
+4. Create the app the worlds database jobs run in (step 2). It has no services or addresses; the server starts a
+   short-lived machine in it for each world database create or drop, and deletes the machine when it stops:
+
+   ```sh
+   fly apps create vlm-worlds-db-jobs -o vlm-worlds
+   ```
 
 ## 2. The worlds database (Fly Managed Postgres)
 
 Every world gets a schema `world_<slug>` and a Postgres role of the same name that can use only that schema. All worlds share one cluster.
 
-1. Create a Managed Postgres cluster in `vlm-worlds`, region `iad`, plan **Basic** (about $38 per month, see fly.io/docs/mpg). It must be **Postgres 15 or newer**: the server refuses older versions with `worlds database must run Postgres 15 or newer`.
+Managed Postgres is reachable only inside Fly's private network, so the VLM server (on Railway) never connects to it. It
+builds the SQL for a world's role and schema and runs it in a one-shot machine of `vlm-worlds-db-jobs`, using the world
+image (`node /app/vlm/db-job.mjs`). Each create or drop runs as one transaction, so a failure leaves nothing behind.
+
+1. Create a Managed Postgres cluster **in the org `vlm-worlds`** (the job machines and worlds reach it only over that org's private network), region `iad`, plan **Basic** (about $38 per month, see fly.io/docs/mpg). It must be **Postgres 15 or newer**: the server refuses older versions with `worlds database must run Postgres 15 or newer`.
 2. From the cluster's page take two connection strings:
-   - **Admin URL**: the cluster's admin user, which can create and drop roles and schemas. It becomes `HYPERFY_WORLDS_DATABASE_URL`. Only the VLM server uses it.
+   - **Admin URL**: the cluster's **private** address with its admin user, which can create and drop roles and schemas. It becomes `HYPERFY_WORLDS_DATABASE_URL`. The VLM server only passes it to the job machines, which are the only things that connect with it.
    - **Pooled URL**: the pooled (PgBouncer) address that is reachable on Fly's private network. This is what the worlds connect with. Replace the user and password in it with the literal placeholders `{user}` and `{password}`, giving something like `postgres://{user}:{password}@<pooled-host>:5432/<database>`. That becomes `HYPERFY_WORLDS_DB_URL_TEMPLATE`. The server fills the placeholders in with each world's own role and a random password.
-3. The VLM server (on Railway) reaches the admin URL over the public internet, so it must be a host the cluster accepts from outside Fly. If the cluster only offers a private address, make the public one available before continuing.
+3. Don't make the cluster public: nothing outside Fly needs to reach it. If a world database create or drop fails, the world's error says `worlds database job failed with exit code …`, and the job's one-line Postgres error (never the SQL) is in `fly logs -a vlm-worlds-db-jobs`.
 
 ## 3. The files bucket (Cloudflare R2)
 
@@ -113,12 +123,14 @@ Set these on the `vlm-server` service:
 | `FLY_API_TOKEN` | the org token from step 1 |
 | `FLY_WORLDS_ORG` | `vlm-worlds` |
 | `HYPERFY_IMAGE` | the tag printed in step 6 |
-| `HYPERFY_WORLDS_DATABASE_URL` | the admin URL from step 2 |
+| `HYPERFY_WORLDS_DATABASE_URL` | the private admin URL from step 2 (used only inside the job machines) |
 | `HYPERFY_WORLDS_DB_URL_TEMPLATE` | the pooled URL with `{user}` and `{password}` |
 | `HYPERFY_ASSETS_S3_URI` | `s3://<key>:<secret>@<account-id>.r2.cloudflarestorage.com/vlm-hyperfy` |
 | `HYPERFY_ASSETS_BASE_URL` | `https://worlds-cdn.vlm.gg` |
 | `HYPERFY_ROUTER_DOMAIN` | `worlds.vlm.gg` |
 | `HYPERFY_SECRET_KEY` | 32 random bytes as 64 hex characters (`openssl rand -hex 32`); it encrypts the worlds' admin codes. Don't lose or change it, or stored admin codes become unreadable. |
+| `HYPERFY_DB_JOB_APP` | optional, default `vlm-worlds-db-jobs` (the app from step 1) |
+| `HYPERFY_WORLDS_DB_MODE` | optional, default `fly-job`. `direct` makes the server connect to `HYPERFY_WORLDS_DATABASE_URL` itself, which only works where that address is reachable (local dev). |
 
 ```sh
 railway variables -s vlm-server --set "HYPERFY_INFRA_PROVIDER=fly" --set "FLY_WORLDS_ORG=vlm-worlds" # …and the rest
@@ -126,7 +138,7 @@ railway variables -s vlm-server --set "HYPERFY_INFRA_PROVIDER=fly" --set "FLY_WO
 
 Enter the secret values in the Railway dashboard instead if you don't want them in your shell history.
 
-Also add every one of these ten names, plus `HYPERFY_DB_JOB_APP` and `HYPERFY_WORLDS_DB_MODE` (see the Postgres notes) to the `env` of `vlm-server` in `.railway/railway.ts`, each as `NAME: preserve()`. `railway config apply` deletes any variable that file doesn't list, so unlisted ones would vanish on the next apply. Run `railway config plan` before any apply.
+Also add every one of these twelve names to the `env` of `vlm-server` in `.railway/railway.ts`, each as `NAME: preserve()`. `railway config apply` deletes any variable that file doesn't list, so unlisted ones would vanish on the next apply. Run `railway config plan` before any apply.
 
 Deploy the server (and only this way):
 
