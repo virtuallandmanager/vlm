@@ -45,6 +45,10 @@
   - position `(x, y, z)` → `(x, y, -z)`;
   - rotation in degrees `(rx, ry, rz)` → radians `(-rx, -ry, rz)`, order `'XYZ'`;
   - scale is unchanged.
+- **Scale: VLM's size is the base, and the app root converts.** A VLM scale is an absolute size: an image or screen is a 1 m plane times its scale, and a model is its GLB size times its scale. The app builds every node at that size, as a child of the app's root, so a node's local transform is always the VLM value (mapped as above).
+  - **Conversion:** what a visitor sees is the root's transform × the node's local transform. The root's transform is wherever, and at whatever size, the world owner placed the VLM app. A freshly placed app at scale 1 shows the scene at its exact VLM size. Scaling the app to 2 shows it twice as big in that world.
+  - **Never written back:** moving or scaling the VLM app is that world's placement only. VLM's data is unchanged, and the next snapshot never resets it.
+  - **Going back:** if in-world editing comes later (a spec non-goal today), an edited node's local transform is already in VLM's terms. It goes back through the inverse of the coordinate mapping, with no extra scale factor.
 - **Rendering per element type:**
   - **Video:** shows `liveSrc` when `isLive && enableLiveStream`. Otherwise offType 2 shows `playlist[0]` looped, offType 1 shows `offImageSrc` as an image, and anything else shows nothing. Ad modes 4 and 5 show nothing in project 1. Width and height come from `scale.x` and `scale.y`, at `volume`.
   - **Image:** `textureSrc`, with width and height from `scale.x` and `scale.y`.
@@ -288,7 +292,7 @@
     - sends `vlm:hello` on start;
     - on `vlm:scene`, applies `diffPlans` between the current and new plan;
     - creates `video`/`image`/`audio` nodes with `app.create`, or loads models with `world.load('model', src)` and `app.add`;
-    - applies the transform, sizes planes from width and height, and sets `onPointerDown` to `world.open(clickUrl)` when present;
+    - applies the transform as the node's local transform under the app root (never to the root itself), sizes planes from width and height, and sets `onPointerDown` to `world.open(clickUrl)` when present;
     - removes nodes on remove, and replaces on update (remove, then add).
   - **`app.configure`** declares the `feedUrl` and `worldKey` text props.
   - **`.hyp` builder:** writes the Hyperfy `.hyp` format (4-byte LE header length, JSON header `{ blueprint, assets }`, asset bytes in order). It follows `src/core/extras/appTools.js` in Hyperfy and the probe tool at `/private/tmp/claude-501/-Users-unknower/b9939c47-0269-41f1-b9f9-52b05b9552d9/scratchpad/hyperfy-spike/harness/inject-probe.mjs`.
@@ -367,7 +371,8 @@ Run a local VLM server and a local Hyperfy world (`/private/tmp/claude-501/-User
 2. Seed the app: put `dist/vlm.hyp` in as the world's `src/world/scene.hyp` on a fresh world, with props pre-set by a variant of the probe-injection script, or drag it in via the browser.
 3. Open the world in headless Chrome.
 4. Confirm that an image, a looped video, a model and a sound render.
-5. Confirm that a dashboard edit to an image's position appears within 2 s.
+5. Confirm that a dashboard edit to an image's position appears within 2 s, and that an edit to its scale resizes it within 2 s.
+   - Then scale the VLM app itself to 2 in build mode. The whole scene should show twice as big, and VLM's stored transforms should be unchanged. The next dashboard edit should still land correctly, at the doubled size.
 6. Confirm that removing the world in the dashboard makes the feed return 401 while the world keeps its last scene.
 7. Confirm that an analytics session appears.
 
