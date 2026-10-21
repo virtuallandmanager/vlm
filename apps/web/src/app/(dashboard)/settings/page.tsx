@@ -3,6 +3,7 @@ import { useApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useEffect, useState } from 'react'
 import { LinkedWallets } from './LinkedWallets'
+import { LinkedHyperfySessions } from './LinkedHyperfySessions'
 
 function formatBytes(bytes: number): string {
   if (bytes === Infinity) return 'Unlimited'
@@ -367,6 +368,8 @@ export default function SettingsPage() {
           </div>
 
           <LinkedWallets />
+
+          <LinkedHyperfySessions />
 
           {/* Change Password */}
           <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">

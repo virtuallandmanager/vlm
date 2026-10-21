@@ -3,7 +3,7 @@ import { useCallback } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
 import { requestHeaders } from './request-headers'
-import type { AdminAd, AdminAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyWorldSummary } from 'vlm-shared'
+import type { AdminAd, AdminAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyPairingSummary, HyperfyWorldSummary } from 'vlm-shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
 /** Read a File as base64 (no `data:…;base64,` prefix) for JSON upload bodies. */
@@ -236,6 +236,14 @@ export function useApi() {
     deleteDeployWallet: (id: string) =>
       apiFetch<{ deleted: boolean }>(`/api/deploy/wallets/${id}`, { method: 'DELETE' }),
     getDeployPlatforms: () => apiFetch<{ platforms: { decentraland: boolean; hyperfy: boolean } }>('/api/deploy/platforms'),
+
+    // Hyperfy HUD pairings
+    getHyperfyPairingInfo: (code: string) =>
+      apiFetch<{ pairingId: string; worldName: string; sceneId: string; sceneName: string; playerName: string | null }>(`/api/hyperfy/pair/${encodeURIComponent(code)}`),
+    approveHyperfyPairing: (code: string) =>
+      apiFetch<{ result: 'approved' }>(`/api/hyperfy/pair/${encodeURIComponent(code)}/approve`, { method: 'POST' }),
+    getHyperfyPairings: () => apiFetch<{ pairings: HyperfyPairingSummary[] }>('/api/hyperfy/pairings'),
+    revokeHyperfyPairing: (id: string) => apiFetch<{ revoked: true }>(`/api/hyperfy/pairings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
     // Hyperfy worlds (self-run and VLM-hosted)
     getHyperfyWorlds: (sceneId: string) =>
