@@ -64,6 +64,7 @@ describe('Hyperfy pairings and passes', () => {
     const claims = verifySessionToken(res.pass)!
     expect(claims).toMatchObject({ kind: 'scene', sceneId: s.scene.id, id: s.owner.id, wallet: s.owner.wallet, verified: true, via: 'hyperfy', pairingId: res.pairingId, worldId: s.world.id })
     expect(res.user).toEqual({ id: s.owner.id, displayName: s.owner.displayName })
+    expect(res.sceneId).toBe(s.scene.id)
     expect(new Date(res.passExpiresAt).getTime()).toBeGreaterThan(Date.now())
     const [row] = await db.select().from(hyperfyPairings)
     expect(row.status).toBe('claimed')
@@ -134,6 +135,7 @@ describe('Hyperfy pairings and passes', () => {
     const renewed = await renewPairing(res.pairingId, SECRET, app)
     if (typeof renewed === 'string') throw new Error(renewed)
     expect(verifySessionToken(renewed.pass)).toMatchObject({ via: 'hyperfy', pairingId: res.pairingId, sceneId: s.scene.id })
+    expect(renewed.sceneId).toBe(s.scene.id)
     const [row] = await db.select().from(hyperfyPairings)
     expect(row.lastUsedAt).not.toBeNull()
     expect((await listPairings(s.owner.id)).map((p) => p.id)).toEqual([res.pairingId])

@@ -48,6 +48,8 @@ export type PairClaimResponse =
       pass: string
       passExpiresAt: string
       pairingId: string
+      /** The scene the pass edits (the world's scene). */
+      sceneId: string
       user: { id: string; displayName: string }
     }
   | { status: 'refused' | 'expired' }
@@ -55,7 +57,24 @@ export type PairClaimResponse =
 export interface PairRenewResponse {
   pass: string
   passExpiresAt: string
+  sceneId: string
 }
+
+/** A hosted world's vouch for a linked player (POST /api/hyperfy/pairings/vouch). */
+export interface HyperfyVouchLinked {
+  status: 'linked'
+  pass: string
+  passExpiresAt: string
+  pairingId: string
+  sceneId: string
+  user: { id: string; displayName: string }
+}
+
+/** Every answer of POST /api/hyperfy/pairings/vouch. */
+export type HyperfyVouchResponse =
+  | HyperfyVouchLinked
+  | { status: 'unlinked'; code: string; approveUrl: string; qrUrl: string; expiresAt: string; pairingId: string }
+  | { status: 'pending' | 'refused' | 'expired' }
 
 export interface HyperfyPairingSummary {
   id: string

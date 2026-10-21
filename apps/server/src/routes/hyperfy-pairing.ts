@@ -7,7 +7,7 @@
  * POST   /api/hyperfy/pair/:code/approve    — (signed in) Approve (or, without editing access, refuse) a code
  * POST   /api/hyperfy/pair/:code/claim      — (public, browser secret) Trade an approved code for a pass
  * POST   /api/hyperfy/pairings/:id/renew    — (public, browser secret) A fresh pass for a live pairing
- * POST   /api/hyperfy/pairings/vouch        — (public, VLM_WORLD_SECRET) A hosted world speaks for a player: pass, a new code, or (with
+ * POST   /api/hyperfy/pairings/vouch        — (public, world key + VLM_WORLD_SECRET) A hosted world speaks for a player: pass, a new code, or (with
  *                                             pendingPairingId) the state of that player's pending pairing
  * GET    /api/hyperfy/pairings              — (signed in) My live pairings
  * DELETE /api/hyperfy/pairings/:id          — (signed in) Revoke one of my pairings
@@ -120,11 +120,12 @@ export default async function hyperfyPairingRoutes(app: FastifyInstance) {
   // The world's own server calls this with VLM_WORLD_SECRET; the player id is trusted only because of that proof.
   // Not limited per IP: the secret is checked first, then each world gets its own window.
   app.post('/api/hyperfy/pairings/vouch', { config: { rateLimit: false } }, async (request, reply) => {
-    const body = (request.body ?? {}) as { worldId?: unknown; worldSecret?: unknown; hyperfyPlayerId?: unknown; playerName?: unknown; pendingPairingId?: unknown }
-    const worldId = str(body.worldId, 64)
+    const body = (request.body ?? {}) as { worldKey?: unknown; worldSecret?: unknown; hyperfyPlayerId?: unknown; playerName?: unknown; pendingPairingId?: unknown }
+    const worldKey = str(body.worldKey, MAX_SECRET)
     const worldSecret = str(body.worldSecret, MAX_SECRET)
-    if (!worldId || !worldSecret) return reply.status(401).send({ error: 'invalid_world_secret' })
-    const world = await findWorldBySecret(worldId, worldSecret)
+    if (!worldKey || !worldSecret) return reply.status(401).send({ error: 'invalid_world_secret' })
+    // Unknown key, a world without a secret, or another world's secret: all the same 401.
+    const world = await findWorldBySecret(worldKey, worldSecret)
     if (!world) return reply.status(401).send({ error: 'invalid_world_secret' })
     if (!vouchAllowed(world.id)) return reply.status(429).send({ error: 'rate_limited' })
     const playerId = str(body.hyperfyPlayerId, 128)

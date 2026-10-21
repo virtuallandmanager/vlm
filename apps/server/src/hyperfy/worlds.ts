@@ -30,11 +30,14 @@ export function createWorldSecret(): { raw: string; hash: string } {
   return { raw, hash: hashWorldKey(raw) }
 }
 
-/** The live hosted world with this id whose secret this is; null for any other case (unknown, no secret, wrong secret, ended). */
-export async function findWorldBySecret(worldId: string, secret: string): Promise<HyperfyWorldRow | null> {
-  if (typeof worldId !== 'string' || !/^[0-9a-f-]{36}$/i.test(worldId) || typeof secret !== 'string' || !secret) return null
-  const [row] = await db.select().from(hyperfyWorlds).where(eq(hyperfyWorlds.id, worldId))
-  if (!row || !row.worldSecretHash || row.status === 'ended' || row.status === 'failed') return null
+/**
+ * The live hosted world with this key whose secret this is; null for any other case (unknown key, no secret, wrong
+ * secret, another world's secret, ended or failed). The secret is compared in constant time.
+ */
+export async function findWorldBySecret(worldKey: string, secret: string): Promise<HyperfyWorldRow | null> {
+  if (typeof worldKey !== 'string' || typeof secret !== 'string' || !secret) return null
+  const row = await findWorldByKey(worldKey)
+  if (!row || !row.worldSecretHash) return null
   const a = Buffer.from(row.worldSecretHash), b = Buffer.from(hashWorldKey(secret))
   return a.length === b.length && timingSafeEqual(a, b) ? row : null
 }

@@ -21,20 +21,20 @@ describe('Hyperfy pairing routes', () => {
   beforeEach(async () => { await resetDb(); app = await testApp() })
   afterEach(() => app.close())
 
-  async function seed(hosted = false) {
+  async function seed(hosted = false, worldSecret = WORLD_SECRET) {
     const owner = await createUser({ wallet: randomWallet() })
     const { scene } = await createScene(owner)
     const key = createWorldKey()
     const [world] = await db.insert(hyperfyWorlds).values({
       sceneId: scene.id, ownerId: owner.id, name: 'Arbor World', keyHash: key.hash, keyPrefix: key.prefix,
-      ...(hosted ? { kind: 'hosted', worldSecretHash: sha256(WORLD_SECRET) } : {}),
+      ...(hosted ? { kind: 'hosted', worldSecretHash: sha256(worldSecret) } : {}),
     }).returning()
     return { owner, scene, world, key: key.raw }
   }
   const start = (s: { key: string }) =>
     app.inject({ method: 'POST', url: '/api/hyperfy/pair', payload: { worldKey: s.key, secretHash: sha256(SECRET), playerName: 'Pip' } })
-  const vouch = (s: { world: { id: string } }, over: Record<string, unknown> = {}) =>
-    app.inject({ method: 'POST', url: '/api/hyperfy/pairings/vouch', payload: { worldId: s.world.id, worldSecret: WORLD_SECRET, hyperfyPlayerId: 'player-1', playerName: 'Pip', ...over } })
+  const vouch = (s: { key: string }, over: Record<string, unknown> = {}) =>
+    app.inject({ method: 'POST', url: '/api/hyperfy/pairings/vouch', payload: { worldKey: s.key, worldSecret: WORLD_SECRET, hyperfyPlayerId: 'player-1', playerName: 'Pip', ...over } })
 
   it('self-run flow: start, approve, claim, then a pass-enabled edit succeeds', async () => {
     const s = await seed()
@@ -61,12 +61,14 @@ describe('Hyperfy pairing routes', () => {
 
     const claimed = (await claim()).json()
     expect(claimed.status).toBe('approved')
+    expect(claimed.sceneId).toBe(s.scene.id)
     const edit = await app.inject({ method: 'GET', url: `/api/scenes/${s.scene.id}/library`, headers: bearer(claimed.pass) })
     expect(edit.statusCode).toBe(200)
 
     const renew = await app.inject({ method: 'POST', url: `/api/hyperfy/pairings/${claimed.pairingId}/renew`, payload: { secret: SECRET } })
     expect(renew.statusCode).toBe(200)
     expect(renew.json().pass).toBeTruthy()
+    expect(renew.json().sceneId).toBe(s.scene.id)
     const wrong = await app.inject({ method: 'POST', url: `/api/hyperfy/pairings/${claimed.pairingId}/renew`, payload: { secret: 'nope' } })
     expect(wrong.statusCode).toBe(401)
 
@@ -99,7 +101,7 @@ describe('Hyperfy pairing routes', () => {
 
   it("vouch with a wrong secret is 401; self-run worlds can't vouch", async () => {
     const hosted = await seed(true)
-    for (const over of [{ worldSecret: 'x'.repeat(64) }, { worldSecret: undefined }, { worldId: undefined }, { worldId: '00000000-0000-0000-0000-000000000000' }]) {
+    for (const over of [{ worldSecret: 'x'.repeat(64) }, { worldSecret: undefined }, { worldKey: undefined }, { worldKey: 'vlmw_nope' }, { worldKey: 'nope' }]) {
       expect((await vouch(hosted, over)).statusCode).toBe(401)
     }
     const self = await seed(false)
@@ -109,6 +111,15 @@ describe('Hyperfy pairing routes', () => {
     // an ended world's secret stops working
     await db.update(hyperfyWorlds).set({ status: 'ended' }).where(eq(hyperfyWorlds.id, hosted.world.id))
     expect((await vouch(hosted)).statusCode).toBe(401)
+  })
+
+  it("vouch with a valid secret and another world's key is 401", async () => {
+    const a = await seed(true, 'a'.repeat(64))
+    const b = await seed(true, 'b'.repeat(64))
+    expect((await vouch(a, { worldSecret: 'a'.repeat(64) })).statusCode).toBe(200)
+    expect((await vouch(b, { worldSecret: 'a'.repeat(64) })).statusCode).toBe(401)
+    expect((await vouch(a, { worldSecret: 'b'.repeat(64) })).statusCode).toBe(401)
+    expect(await db.select().from(hyperfyPairings).where(eq(hyperfyPairings.worldId, b.world.id))).toHaveLength(0)
   })
 
   it('hosted flow: vouch unlinked returns a code, approve, vouch again returns linked with a pass, a later vouch for the same player is linked without a new code', async () => {
@@ -125,7 +136,7 @@ describe('Hyperfy pairing routes', () => {
 
     expect((await app.inject({ method: 'POST', url: `/api/hyperfy/pair/${first.code}/approve`, headers: bearer(tokenFor(s.owner)) })).json()).toEqual({ result: 'approved' })
     const linked = (await vouch(s)).json()
-    expect(linked).toMatchObject({ status: 'linked', pairingId: first.pairingId, user: { id: s.owner.id } })
+    expect(linked).toMatchObject({ status: 'linked', pairingId: first.pairingId, sceneId: s.scene.id, user: { id: s.owner.id } })
     expect(linked.code).toBeUndefined()
     const after = (await db.select().from(hyperfyPairings))[0]
     expect(after).toMatchObject({ status: 'claimed', codeHash: null, expiresAt: null })
@@ -237,7 +248,7 @@ describe('Hyperfy pairing routes', () => {
       try {
         const s = await seed(true)
         for (let i = 0; i < config.rateLimitMax + 5; i++) {
-          const r = await limited.inject({ method: 'POST', url: '/api/hyperfy/pairings/vouch', payload: { worldId: s.world.id, worldSecret: WORLD_SECRET, hyperfyPlayerId: 'same', playerName: 'P' } })
+          const r = await limited.inject({ method: 'POST', url: '/api/hyperfy/pairings/vouch', payload: { worldKey: s.key, worldSecret: WORLD_SECRET, hyperfyPlayerId: 'same', playerName: 'P' } })
           if (r.statusCode !== 200) throw new Error(`call ${i} -> ${r.statusCode}`)
         }
       } finally {
@@ -260,7 +271,7 @@ describe('Hyperfy pairing routes', () => {
     expect((await vouch(s, { pendingPairingId: 'not-a-uuid' })).json()).toEqual({ status: 'expired' })
     await app.inject({ method: 'POST', url: `/api/hyperfy/pair/${first.code}/approve`, headers: bearer(tokenFor(s.owner)) })
     const linked = (await vouch(s, { pendingPairingId: first.pairingId })).json()
-    expect(linked).toMatchObject({ status: 'linked', pairingId: first.pairingId, user: { id: s.owner.id } })
+    expect(linked).toMatchObject({ status: 'linked', pairingId: first.pairingId, sceneId: s.scene.id, user: { id: s.owner.id } })
     // once claimed, the same call is just a normal vouch
     expect((await vouch(s, { pendingPairingId: first.pairingId })).json()).toMatchObject({ status: 'linked', pairingId: first.pairingId })
     expect(await db.select().from(hyperfyPairings)).toHaveLength(1)

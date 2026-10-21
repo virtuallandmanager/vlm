@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto'
 import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm'
-import { HYPERFY_PAIRING, type HyperfyPairingSummary, type PairClaimResponse, type PairRenewResponse } from 'vlm-shared'
+import { HYPERFY_PAIRING, type HyperfyPairingSummary, type HyperfyVouchLinked, type PairClaimResponse, type PairRenewResponse } from 'vlm-shared'
 import { db } from '../db/connection.js'
 import { hyperfyPairings, hyperfyWorlds, scenes, users } from '../db/schema.js'
 import { getSceneAccess, type SceneAccess } from '../auth/permissions.js'
@@ -142,8 +142,8 @@ export async function claimPairing(code: string, secret: string, app: FastifyIns
   if (!claimed) return { status: 'expired' }
   const sceneId = await sceneOfWorld(claimed.worldId)
   const minted = sceneId ? await mintPass(app, claimed, sceneId) : null
-  if (!minted) return { status: 'expired' }
-  return { status: 'approved', pass: minted.pass, passExpiresAt: minted.passExpiresAt.toISOString(), pairingId: claimed.id, user: { id: minted.user.id, displayName: minted.user.displayName } }
+  if (!sceneId || !minted) return { status: 'expired' }
+  return { status: 'approved', pass: minted.pass, passExpiresAt: minted.passExpiresAt.toISOString(), pairingId: claimed.id, sceneId, user: { id: minted.user.id, displayName: minted.user.displayName } }
 }
 
 /** A fresh pass for a live pairing; bumps lastUsedAt. 'revoked' also covers an unknown pairing or a wrong secret. */
@@ -159,8 +159,8 @@ export async function renewPairing(pairingId: string, secret: string, app: Fasti
   if (!bumped) return 'revoked'
   const sceneId = await sceneOfWorld(bumped.worldId)
   const minted = sceneId ? await mintPass(app, bumped, sceneId) : null
-  if (!minted) return 'revoked'
-  return { pass: minted.pass, passExpiresAt: minted.passExpiresAt.toISOString() }
+  if (!sceneId || !minted) return 'revoked'
+  return { pass: minted.pass, passExpiresAt: minted.passExpiresAt.toISOString(), sceneId }
 }
 
 /** Ends a pairing the user owns. Its passes stop working at once on this process. */
@@ -215,7 +215,7 @@ export async function pairingLive(pairingId: string): Promise<boolean> {
 }
 
 export type VouchResponse =
-  | { status: 'linked'; pass: string; passExpiresAt: string; pairingId: string; user: { id: string; displayName: string } }
+  | HyperfyVouchLinked
   | { status: 'unlinked'; code: string; expiresAt: string; pairingId: string }
   | { status: 'pending' | 'refused' | 'expired' }
 
@@ -248,7 +248,7 @@ export async function vouchPairing(app: FastifyInstance, world: Pick<HyperfyWorl
   const link = async (p: PairingRow): Promise<VouchResponse | null> => {
     const minted = await mintPass(app, p, world.sceneId)
     if (!minted) return null
-    return { status: 'linked', pass: minted.pass, passExpiresAt: minted.passExpiresAt.toISOString(), pairingId: p.id, user: { id: minted.user.id, displayName: minted.user.displayName } }
+    return { status: 'linked', pass: minted.pass, passExpiresAt: minted.passExpiresAt.toISOString(), pairingId: p.id, sceneId: world.sceneId, user: { id: minted.user.id, displayName: minted.user.displayName } }
   }
 
   for (const row of rows.filter((r) => r.status === 'claimed' && activeAt(r, now))) {

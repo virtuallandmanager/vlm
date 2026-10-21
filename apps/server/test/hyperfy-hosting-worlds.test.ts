@@ -198,8 +198,10 @@ describe('hosted Hyperfy worlds', () => {
     const stored = await row(world.id)
     expect(stored.worldSecretHash).toBe(createHash('sha256').update(secret).digest('hex'))
     expect(JSON.stringify(stored)).not.toContain(secret)
-    expect((await findWorldBySecret(world.id, secret))?.id).toBe(world.id)
-    expect(await findWorldBySecret(world.id, 'wrong')).toBeNull()
+    const key = f.machines.get('vlm-w-secret-world')!.env.VLM_WORLD_KEY
+    expect((await findWorldBySecret(key, secret))?.id).toBe(world.id)
+    expect(await findWorldBySecret(key, 'wrong')).toBeNull()
+    expect(await findWorldBySecret('vlmw_other', secret)).toBeNull()
     // rotating the key leaves the secret alone
     await rotateHostedWorldKey(world.id, f.deps)
     expect(f.machines.get('vlm-w-secret-world')!.env.VLM_WORLD_SECRET).toBe(secret)
