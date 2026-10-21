@@ -31,13 +31,20 @@ const MAX_SECRET = 256
 
 /** Per-world vouch limit (callers are world servers: one IP, many players polling). Exported so tests can shrink it. */
 export const vouchLimiter = { max: 600, windowMs: 60_000 }
-const vouchWindows = new Map<string, { count: number; resetAt: number }>()
-/** Counts one vouch for this world; false when the world is over its window's limit. */
-function vouchAllowed(worldId: string, now = Date.now()): boolean {
-  if (vouchWindows.size > 1000) for (const [k, w] of vouchWindows) if (w.resetAt <= now) vouchWindows.delete(k)
-  let w = vouchWindows.get(worldId)
-  if (!w || w.resetAt <= now) vouchWindows.set(worldId, (w = { count: 0, resetAt: now + vouchLimiter.windowMs }))
-  return ++w.count <= vouchLimiter.max
+/**
+ * Per-IP vouch limit, checked before the secret so bad-secret calls (each one a DB lookup) are capped too. Generous:
+ * well above one world's budget, since several hosted worlds can share a machine's IP.
+ */
+export const vouchIpLimiter = { max: 3000, windowMs: 60_000 }
+type Window = { count: number; resetAt: number }
+const vouchWindows = new Map<string, Window>()
+const vouchIpWindows = new Map<string, Window>()
+/** Counts one call for `key`; false when it is over its window's limit. */
+function windowAllowed(windows: Map<string, Window>, key: string, limit: { max: number; windowMs: number }, now = Date.now()): boolean {
+  if (windows.size > 1000) for (const [k, w] of windows) if (w.resetAt <= now) windows.delete(k)
+  let w = windows.get(key)
+  if (!w || w.resetAt <= now) windows.set(key, (w = { count: 0, resetAt: now + limit.windowMs }))
+  return ++w.count <= limit.max
 }
 
 const approveUrlFor = (code: string) => `${config.webAppUrl}/pair/${code}`
@@ -118,8 +125,9 @@ export default async function hyperfyPairingRoutes(app: FastifyInstance) {
   })
 
   // The world's own server calls this with VLM_WORLD_SECRET; the player id is trusted only because of that proof.
-  // Not limited per IP: the secret is checked first, then each world gets its own window.
+  // Not under the app-wide IP limit: a generous per-IP cap comes first, then the secret, then each world's own window.
   app.post('/api/hyperfy/pairings/vouch', { config: { rateLimit: false } }, async (request, reply) => {
+    if (!windowAllowed(vouchIpWindows, request.ip, vouchIpLimiter)) return reply.status(429).send({ error: 'rate_limited' })
     const body = (request.body ?? {}) as { worldKey?: unknown; worldSecret?: unknown; hyperfyPlayerId?: unknown; playerName?: unknown; pendingPairingId?: unknown }
     const worldKey = str(body.worldKey, MAX_SECRET)
     const worldSecret = str(body.worldSecret, MAX_SECRET)
@@ -127,7 +135,7 @@ export default async function hyperfyPairingRoutes(app: FastifyInstance) {
     // Unknown key, a world without a secret, or another world's secret: all the same 401.
     const world = await findWorldBySecret(worldKey, worldSecret)
     if (!world) return reply.status(401).send({ error: 'invalid_world_secret' })
-    if (!vouchAllowed(world.id)) return reply.status(429).send({ error: 'rate_limited' })
+    if (!windowAllowed(vouchWindows, world.id, vouchLimiter)) return reply.status(429).send({ error: 'rate_limited' })
     const playerId = str(body.hyperfyPlayerId, 128)
     const playerName = optName(body.playerName)
     if (!playerId || playerName === undefined) return reply.status(400).send({ error: 'Missing or invalid fields: hyperfyPlayerId, playerName' })

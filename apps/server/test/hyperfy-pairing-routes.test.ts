@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { HYPERFY_PAIRING } from 'vlm-shared'
 import { buildApp } from '../src/app.js'
-import { vouchLimiter } from '../src/routes/hyperfy-pairing.js'
+import { vouchIpLimiter, vouchLimiter } from '../src/routes/hyperfy-pairing.js'
 import { config } from '../src/config.js'
 import { register } from '../src/metrics.js'
 import { db } from '../src/db/connection.js'
@@ -268,7 +268,26 @@ describe('Hyperfy pairing routes', () => {
 
   describe('vouch rate limit', () => {
     const prev = { ...vouchLimiter }
-    afterEach(() => Object.assign(vouchLimiter, prev))
+    const prevIp = { ...vouchIpLimiter }
+    afterEach(() => {
+      Object.assign(vouchLimiter, prev)
+      Object.assign(vouchIpLimiter, prevIp)
+    })
+
+    it('has a generous per-IP cap (3000 a minute) that applies before the secret check', async () => {
+      expect(vouchIpLimiter).toEqual({ max: 3000, windowMs: 60_000 })
+      const s = await seed(true)
+      vouchIpLimiter.max = 4
+      const from = (ip: string, over: Record<string, unknown> = {}) =>
+        app.inject({ method: 'POST', url: '/api/hyperfy/pairings/vouch', remoteAddress: ip, payload: { worldKey: s.key, worldSecret: WORLD_SECRET, hyperfyPlayerId: 'player-1', playerName: 'Pip', ...over } })
+      // bad secrets count against the caller's IP
+      for (let i = 0; i < 4; i++) expect((await from('203.0.113.7', { worldSecret: 'x'.repeat(64) })).statusCode).toBe(401)
+      expect((await from('203.0.113.7', { worldSecret: 'x'.repeat(64) })).statusCode).toBe(429)
+      // then even the right secret from that IP waits
+      expect((await from('203.0.113.7')).statusCode).toBe(429)
+      // another IP is unaffected
+      expect((await from('203.0.113.8')).statusCode).toBe(200)
+    })
 
     it('is per world, after the secret check, and the IP limit does not throttle it', async () => {
       const a = await seed(true)
