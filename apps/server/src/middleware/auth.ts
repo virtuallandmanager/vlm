@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { apiKeys, users } from '../db/schema.js'
 import '../auth/scene-from.js' // FastifyContextConfig.scenePass
+import { pairingLive } from '../hyperfy/pairing.js'
 
 export interface AuthUser {
   id: string
@@ -17,6 +18,9 @@ export interface AuthUser {
   kind?: 'account' | 'scene'
   sceneId?: string | null
   locationId?: string | null
+  via?: 'hyperfy'
+  pairingId?: string
+  worldId?: string
 }
 
 declare module 'fastify' {
@@ -27,7 +31,7 @@ declare module 'fastify' {
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    payload: { id: string; email: string | null; role: string; orgId?: string | null; wallet?: string | null; verified?: boolean; guest?: boolean; refresh?: boolean; kind?: 'account' | 'scene'; sceneId?: string | null; locationId?: string | null }
+    payload: { id: string; email: string | null; role: string; orgId?: string | null; wallet?: string | null; verified?: boolean; guest?: boolean; refresh?: boolean; kind?: 'account' | 'scene'; sceneId?: string | null; locationId?: string | null; via?: 'hyperfy'; pairingId?: string; worldId?: string }
     user: AuthUser
   }
 }
@@ -106,6 +110,9 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired — sign in again' })
     }
     request.user = decoded
+    if (decoded.via === 'hyperfy' && !(decoded.pairingId && (await pairingLive(decoded.pairingId)))) {
+      return reply.status(401).send({ error: 'pairing_revoked' })
+    }
     if (decoded.kind === 'scene') {
       // Default deny: a scene pass works only on routes that declare how to find their scene,
       // and only when that scene is the pass's own. A resolver error refuses too (never 401/pass-through).

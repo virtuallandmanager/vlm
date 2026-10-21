@@ -14,6 +14,10 @@ export interface SessionClaims {
   kind?: TokenKind
   sceneId?: string | null
   locationId?: string | null
+  /** Set on a Hyperfy HUD pass: the pairing that minted it, checked on every request. */
+  via?: 'hyperfy'
+  pairingId?: string
+  worldId?: string
 }
 
 const verifier = createVerifier({ key: config.jwtSecret })

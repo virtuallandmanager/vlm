@@ -896,6 +896,26 @@ export const hyperfyWorlds = pgTable('hyperfy_worlds', {
   slugUq: uniqueIndex('hyperfy_worlds_slug_uq').on(t.slug).where(sql`${t.purgedAt} IS NULL`),
 }))
 
+// ── Hyperfy HUD pairings (a Hyperfy player is paired to a VLM user, who approves on vlm.gg) ──
+
+export const hyperfyPairings = pgTable('hyperfy_pairings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  worldId: uuid('world_id').notNull().references(() => hyperfyWorlds.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }), // null until approval
+  codeHash: text('code_hash').unique(), // SHA-256 of the pairing code; null once claimed
+  secretHash: text('secret_hash'), // SHA-256 of the browser's claim secret; null for hosted (vouched) pairings
+  hyperfyPlayerId: text('hyperfy_player_id'), // hosted worlds only
+  playerName: text('player_name'),
+  status: text('status').notNull().default('pending'), // pending | approved | refused | claimed | revoked
+  codeExpiresAt: timestamp('code_expires_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }), // null for hosted pairings (idle-expiry instead)
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  userIdx: index('hyperfy_pairings_user_idx').on(t.userId),
+  worldIdx: index('hyperfy_pairings_world_idx').on(t.worldId),
+}))
+
 // ── Password Reset Tokens ───────────────────────────────────────────────────
 
 export const passwordResetTokens = pgTable('password_reset_tokens', {

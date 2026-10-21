@@ -123,6 +123,14 @@ if [ -n "$DATABASE_URL" ]; then
         console.log('[vlm-server] advertiser_leads table ensured');
       } catch(e) { console.log('[vlm-server] advertiser_leads:', e.message); }
 
+      // Hyperfy HUD pairings; matches hyperfyPairings in src/db/schema.ts
+      try {
+        await sql\`CREATE TABLE IF NOT EXISTS hyperfy_pairings (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), world_id UUID NOT NULL REFERENCES hyperfy_worlds(id) ON DELETE CASCADE, user_id UUID REFERENCES users(id) ON DELETE CASCADE, code_hash TEXT UNIQUE, secret_hash TEXT, hyperfy_player_id TEXT, player_name TEXT, status TEXT NOT NULL DEFAULT 'pending', code_expires_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ, last_used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        await sql\`CREATE INDEX IF NOT EXISTS hyperfy_pairings_user_idx ON hyperfy_pairings (user_id)\`;
+        await sql\`CREATE INDEX IF NOT EXISTS hyperfy_pairings_world_idx ON hyperfy_pairings (world_id)\`;
+        console.log('[vlm-server] hyperfy_pairings table ensured');
+      } catch(e) { console.log('[vlm-server] hyperfy_pairings:', e.message); }
+
       // model enum value
       try {
         await sql\`ALTER TYPE element_type ADD VALUE IF NOT EXISTS 'model'\`;

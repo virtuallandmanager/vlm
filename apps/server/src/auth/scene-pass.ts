@@ -4,7 +4,7 @@ import type { SessionClaims } from './tokens.js'
 import type { SessionUser } from './sessions.js'
 import type { SceneBinding } from './scene-binding.js'
 
-export function sceneClaims(user: { id: string; role: string }, wallet: string, b: SceneBinding): SessionClaims {
+export function sceneClaims(user: { id: string; role: string }, wallet: string | null, b: SceneBinding): SessionClaims {
   return { id: user.id, email: null, role: user.role, orgId: null, wallet, verified: true, kind: 'scene', sceneId: b.sceneId, locationId: b.locationId }
 }
 
@@ -21,4 +21,20 @@ export function issueScenePass(app: FastifyInstance, user: SessionUser, wallet: 
     refreshToken: null,
     scene: b,
   }
+}
+
+/**
+ * A Hyperfy HUD pass: a scene pass for the world's scene, tied to a pairing so revoking the pairing kills it at once.
+ * The wallet is the approving user's verified wallet, or null. No refresh token: the HUD renews through its pairing.
+ */
+export function issueHyperfyPass(
+  app: FastifyInstance,
+  user: { id: string; role: string },
+  wallet: string | null,
+  pairing: { id: string; worldId: string; sceneId: string },
+): { pass: string; passExpiresAt: Date } {
+  const claims: SessionClaims = { ...sceneClaims(user, wallet, { sceneId: pairing.sceneId, locationId: null }), via: 'hyperfy', pairingId: pairing.id, worldId: pairing.worldId }
+  const pass = app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry })
+  const exp = (app.jwt.decode(pass) as { exp: number }).exp
+  return { pass, passExpiresAt: new Date(exp * 1000) }
 }
