@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { deployErrorMessage } from './deploy'
+import { deployErrorMessage, listedDeployments } from './deploy'
 
 describe('deployErrorMessage', () => {
   it('explains that Hyperfy hosting is not set up yet', () => {
@@ -11,5 +11,12 @@ describe('deployErrorMessage', () => {
   it('falls back to a generic message', () => {
     expect(deployErrorMessage(new Error('API error 500'))).toBe('Something went wrong. Try again in a moment.')
     expect(deployErrorMessage('nope')).toBe('Something went wrong. Try again in a moment.')
+  })
+})
+
+describe('listedDeployments', () => {
+  it('leaves out Hyperfy entries, which live under Your Hyperfy worlds now', () => {
+    const list = [{ id: 'a', platform: 'decentraland' }, { id: 'b', platform: 'hyperfy' }, { id: 'c', platform: 'decentraland' }]
+    expect(listedDeployments(list).map((d) => d.id)).toEqual(['a', 'c'])
   })
 })

@@ -2,6 +2,7 @@
 import { useCallback } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
+import { requestHeaders } from './request-headers'
 import type { AdminAd, AdminAdSpace, AdReport, AdShape, CatalogPack, HyperfyWorldSummary } from 'vlm-shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
@@ -46,11 +47,7 @@ export function useApi() {
   const { token, logout } = useAuth()
 
   const apiFetch = useCallback(async <T = any>(path: string, options: RequestInit = {}): Promise<T> => {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers as Record<string, string> || {}),
-    }
+    const headers = requestHeaders(token, options)
     const res = await fetch(`${API_URL}${path}`, { ...options, headers })
     if (!res.ok) {
       // Non-JSON error bodies (proxy pages, e.g. a 413 from the edge) become `HTTP <status>`.

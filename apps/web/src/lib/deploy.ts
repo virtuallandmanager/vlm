@@ -8,3 +8,8 @@ export function deployErrorMessage(err: unknown): string {
   const code = err instanceof Error ? err.message : ''
   return MESSAGES[code] ?? 'Something went wrong. Try again in a moment.'
 }
+
+/** Deployments to list. Hosted Hyperfy worlds have their own section now, so old Hyperfy deployment records are left out. */
+export function listedDeployments<T extends { platform: string }>(deployments: T[]): T[] {
+  return deployments.filter((d) => d.platform !== 'hyperfy')
+}

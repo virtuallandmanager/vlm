@@ -46,7 +46,8 @@ describe('hyperfyErrorMessage', () => {
     expect(hyperfyErrorMessage(new Error('upgrade_required'))).toMatch(/plan/i)
   })
   it('explains a too-long name', () => {
-    expect(hyperfyErrorMessage(Object.assign(new Error('x'), { status: 400 }))).toMatch(/100/)
+    const err = 'name is required (up to 100 characters)'
+    expect(hyperfyErrorMessage(Object.assign(new Error(err), { status: 400, body: { error: err } }))).toMatch(/100/)
   })
   it('falls back', () => {
     expect(hyperfyErrorMessage(new Error('API error 500'))).toBe('Something went wrong. Try again in a moment.')
@@ -135,5 +136,14 @@ describe('hyperfyErrorMessage for hosted worlds', () => {
   })
   it('explains a restore whose machines will not start', () => {
     expect(hyperfyErrorMessage(apiErr('restore_failed', 502))).toMatch(/start/)
+  })
+})
+
+describe('hyperfyErrorMessage for bad requests', () => {
+  const bad = (error: string) => Object.assign(new Error(error), { status: 400, body: { error } })
+  it('names the real problem instead of always blaming the name', () => {
+    expect(hyperfyErrorMessage(bad('name is required (up to 100 characters)'))).toBe('Give the world a name of 100 characters or fewer.')
+    expect(hyperfyErrorMessage(bad('endsAt must be a future ISO date, or null'))).toBe('Pick an end date in the future, or leave it empty.')
+    expect(hyperfyErrorMessage(bad('Body cannot be empty when content-type is set to \'application/json\''))).toBe('Something went wrong. Try again in a moment.')
   })
 })
