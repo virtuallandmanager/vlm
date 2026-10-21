@@ -46,6 +46,14 @@ describe('planScene', () => {
     expect(item.transform.position).toEqual([1, 2, -3])
   })
 
+  it('keeps the element name and the VLM transform for editing', () => {
+    const [item] = planScene(scene({ videos: [video({ name: 'Screen', isLive: true })] }))
+    expect(item.name).toBe('Screen')
+    expect(item.vlm).toEqual({ position: v(1, 2, 3), rotation: v(0, 0, 0), scale: v(4, 2, 1) })
+    const [unnamed] = planScene(scene({ videos: [video({ isLive: true })] }))
+    expect(unnamed.name).toBe('')
+  })
+
   it('playlist mode shows the first playlist item looped', () => {
     const [item] = planScene(scene({ videos: [video({ offType: 2 })] }))
     expect(item).toMatchObject({ kind: 'video', src: 'https://cdn.example/a.mp4', loop: true })

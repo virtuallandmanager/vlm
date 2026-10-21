@@ -6,7 +6,11 @@
     "noEmit": true,
     "composite": false,
     "declaration": false,
-    "declarationMap": false
+    "declarationMap": false,
+    "paths": {
+      "vlm-core/transform/session": ["../vlm-core/src/transform/session.ts"],
+      "vlm-core/transform/math": ["../vlm-core/src/transform/math.ts"]
+    }
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }

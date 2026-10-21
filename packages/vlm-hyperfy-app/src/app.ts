@@ -7,9 +7,11 @@
  *   transform, so the app's own placement and scale in the world carry the whole scene; the root is never moved.
  */
 import type { HyperfyFeedResponse } from 'vlm-shared'
+import { clickHandler, renderedItem, type RenderedItem } from './edit/controller.js'
 import { diffPlans, planScene, type RenderItem } from './plan.js'
 import { FeedPoller, type ScriptFetch, type ScriptSetTimeout } from './poller.js'
-import { MODEL_TURN, toVlmPosition, worldToLocal } from './transform.js'
+import { MODEL_TURN, toHyperfyTransform, toVlmPosition, worldToLocal, type HyperfyTransform } from './transform.js'
+import type { VlmTransform } from './vlm-api.js'
 import { VisitRecorder } from './visits.js'
 
 type Vec = { x: number; y: number; z: number; fromArray(a: number[]): unknown }
@@ -17,7 +19,7 @@ interface HNode {
   position: Vec
   rotation: { set(x: number, y: number, z: number, order: string): unknown }
   scale: Vec
-  onPointerDown?: () => void
+  onPointerDown?: (() => void) | undefined
   play?: () => void
   add(child: HNode): void
   [prop: string]: unknown
@@ -103,22 +105,48 @@ function runServer(): void {
   visits.start()
 }
 
-function runClient(): void {
+/** What the client half offers edit mode (Task 8 wires the HUD and EditController to it). */
+export interface ClientEditHooks {
+  /** Swaps every VLM node's click: select (while editing) or open its link. */
+  setEditing(on: boolean, select: (key: string) => void): void
+  items(): Map<string, RenderedItem>
+  preview(key: string, t: VlmTransform): void
+  restore(key: string): void
+  /** Called after each snapshot is applied, with the previous and the new plan. */
+  onPlan(cb: (prev: RenderItem[], next: RenderItem[]) => void): void
+}
+
+function runClient(): ClientEditHooks {
   type Shown = { item: RenderItem; node: HNode | null }
   let plan: RenderItem[] = []
   const shown = new Map<string, Shown>()
+  /** Edit mode's drafts shown in place of the feed transform, by key, until restored. */
+  const previews = new Map<string, VlmTransform>()
+  let editing = false
+  let select: (key: string) => void = () => {}
+  const planListeners: Array<(prev: RenderItem[], next: RenderItem[]) => void> = []
+
+  const setClick = (node: HNode, item: RenderItem) => {
+    node.onPointerDown = clickHandler(item, editing, { select: (key) => select(key), open: (url) => world.open(url, true) })
+  }
 
   /** Sets the VLM transform as the node's local transform. Planes and sounds take no scale: a plane's VLM
    * scale is its width and height (see `plane`), so scaling the node as well would size it twice. */
-  const place = (node: HNode, item: RenderItem) => {
-    const { position: p, rotation: r, scale: s } = item.transform
+  const place = (node: HNode, item: RenderItem, t: HyperfyTransform = item.transform) => {
+    const { position: p, rotation: r, scale: s } = t
     node.position.fromArray(p)
     node.rotation.set(r[0], r[1], r[2], 'YXZ')
     node.scale.fromArray(item.kind === 'model' ? s : [1, 1, 1])
-    if (item.clickUrl) {
-      const url = item.clickUrl
-      node.onPointerDown = () => world.open(url, true)
+    if (item.kind === 'video' || item.kind === 'image') {
+      node.width = s[0]
+      node.height = s[1]
     }
+  }
+
+  /** The transform to show: edit mode's draft if there is one, else the feed's. */
+  const shownTransform = (item: RenderItem): HyperfyTransform => {
+    const draft = previews.get(item.key)
+    return draft ? toHyperfyTransform(draft) : item.transform
   }
 
   const plane = (type: 'video' | 'image', item: RenderItem): HNode => {
@@ -147,7 +175,8 @@ function runClient(): void {
           if (shown.get(item.key) !== entry) return // removed or replaced while loading
           // The group carries the VLM transform; the model turns inside it to face the way Decentraland shows it.
           const group = app.create('group')
-          place(group, item)
+          place(group, item, shownTransform(item))
+          setClick(group, item)
           model.rotation.set(MODEL_TURN[0], MODEL_TURN[1], MODEL_TURN[2], 'YXZ')
           group.add(model)
           entry.node = group
@@ -165,7 +194,8 @@ function runClient(): void {
     } else {
       node = plane(item.kind, item)
     }
-    place(node, item)
+    place(node, item, shownTransform(item))
+    setClick(node, item)
     entry.node = node
     app.add(node)
     node.play?.()
@@ -193,8 +223,34 @@ function runClient(): void {
       add(item)
     }
     for (const item of d.add) add(item)
+    for (const key of [...previews.keys()]) if (!shown.has(key)) previews.delete(key)
+    const prev = plan
     plan = next
+    for (const cb of planListeners) cb(prev, next)
   })
 
   app.send(HELLO, null)
+
+  return {
+    setEditing(on, onSelect) {
+      editing = on
+      select = onSelect
+      for (const { item, node } of shown.values()) if (node) setClick(node, item)
+    },
+    items: () => new Map([...shown.values()].map(({ item }) => [item.key, renderedItem(item)])),
+    preview(key, t) {
+      const entry = shown.get(key)
+      if (!entry) return
+      previews.set(key, t)
+      if (entry.node) place(entry.node, entry.item, toHyperfyTransform(t))
+    },
+    restore(key) {
+      previews.delete(key)
+      const entry = shown.get(key)
+      if (entry?.node) place(entry.node, entry.item)
+    },
+    onPlan(cb) {
+      planListeners.push(cb)
+    },
+  }
 }

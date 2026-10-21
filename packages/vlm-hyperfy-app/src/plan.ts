@@ -5,6 +5,8 @@ export type RenderItem = {
   /** `${elementId}:${instanceId}` */
   key: string
   kind: 'video' | 'image' | 'model' | 'audio'
+  /** The element's name ('' when it has none). */
+  name: string
   /** For video, image and model, the URL to show. */
   src: string
   loop: boolean
@@ -12,6 +14,8 @@ export type RenderItem = {
   width: number
   height: number
   transform: ReturnType<typeof toHyperfyTransform>
+  /** The same transform in VLM coordinates (Decentraland frame, degrees), as edit mode drafts and saves it. */
+  vlm: { position: Vec3; rotation: Vec3; scale: Vec3 }
   clickUrl: string | null
 }
 
@@ -98,15 +102,18 @@ function planElements(
       const inst = raw as Props
       if (inst.enabled === false) continue
       const scale = vec(inst.scale, 1)
+      const vlm = { position: vec(inst.position, 0), rotation: vec(inst.rotation, 0), scale }
       out.push({
         key: `${el.sk}:${inst.sk}`,
         kind: media.kind,
+        name: typeof el.name === 'string' ? el.name : '',
         src: media.src,
         loop: media.loop,
         volume: media.kind === 'image' ? 0 : volume,
         width: scale.x,
         height: scale.y,
-        transform: toHyperfyTransform({ position: vec(inst.position, 0), rotation: vec(inst.rotation, 0), scale }),
+        transform: toHyperfyTransform(vlm),
+        vlm,
         clickUrl: externalUrl(clickOf(inst, el)),
       })
     }

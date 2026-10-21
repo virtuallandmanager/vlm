@@ -4,21 +4,15 @@ import { build } from 'esbuild'
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { HyperfyFeedResponse } from 'vlm-shared'
+// @ts-expect-error plain .mjs shared with the build script
+import { bundleOptions } from '../scripts/bundle-options.mjs'
 
 const pkg = join(dirname(fileURLToPath(import.meta.url)), '..')
 let js = ''
 
 beforeAll(async () => {
   // Bundled the same way as scripts/build-hyp.mjs.
-  const out = await build({
-    entryPoints: [join(pkg, 'src/app.ts')],
-    bundle: true,
-    format: 'iife',
-    platform: 'neutral',
-    target: 'es2020',
-    write: false,
-    alias: { 'vlm-shared': join(pkg, '../vlm-shared/src/hyperfy.ts') },
-  })
+  const out = await build(bundleOptions(pkg, join(pkg, 'src/app.ts')))
   js = out.outputFiles[0].text
 }, 30_000)
 
