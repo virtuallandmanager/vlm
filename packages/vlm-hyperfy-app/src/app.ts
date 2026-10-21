@@ -6,8 +6,8 @@
  * - Client: renders the snapshot's plan as nodes under the app root. Each node's local transform is the VLM
  *   transform, so the app's own placement and scale in the world carry the whole scene; the root is never moved.
  * - HUD (client, admins and builders only): links the player to VLM, then edits the scene with VLM's REST API.
- *   Hosted worlds link through the server half, which vouches for its players with VLM_WORLD_SECRET
- *   (`app.vlmWorld`, server only); self-run worlds pair from the browser with a code.
+ *   Hosted worlds link through the server half, which asks the image to vouch for its players (`app.vlmVouch`,
+ *   server only; the world secret stays in Node); self-run worlds pair from the browser with a code.
  */
 import type { HyperfyFeedResponse, SerializedScene } from 'vlm-shared'
 import { clickHandler, renderedItem } from './edit/controller.js'
@@ -47,7 +47,7 @@ else runHud(runClient(), { app, world, fetch, setTimeout, props, Matrix4, uuid }
 function runServer(): void {
   const feedUrl = (props.feedUrl || 'https://api.vlm.gg').trim().replace(/\/+$/, '')
   const worldKey = (props.worldKey || '').trim()
-  runLinkRelay({ app, world, fetch, setTimeout, vlmWorld: app.vlmWorld })
+  runLinkRelay({ app, world, setTimeout, vouch: app.vlmVouch })
   if (!worldKey) {
     console.log('[vlm] set this app\'s world key (from VLM: Connect your own Hyperfy world)')
     return

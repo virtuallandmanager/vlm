@@ -2,7 +2,7 @@
  * The Hyperfy 0.16 script globals as the VLM app uses them, and the messages its two halves exchange. Only types:
  * the modules that need a global take it as an argument, so app.ts stays the one place that reads the sandbox.
  */
-import type { SerializedScene } from 'vlm-shared'
+import type { HyperfyVouchResponse, SerializedScene } from 'vlm-shared'
 import type { RenderedItem } from './edit/controller.js'
 import type { GizmoNode } from './edit/gizmo.js'
 import type { RenderItem } from './plan.js'
@@ -56,8 +56,11 @@ export type Matrix = { elements: ArrayLike<number> }
 export interface HApp {
   /** The app root's world matrix (Hyperfy forwards unknown app props to the root node). */
   matrixWorld: Matrix
-  /** A VLM-hosted world's server half only (from its machine env); undefined anywhere else (self-run worlds, clients). */
-  vlmWorld?: VlmWorld
+  /**
+   * A VLM-hosted world's server half only: the image vouches for a player with VLM from Node, holding the world secret
+   * itself. Undefined anywhere else (self-run worlds, clients, other apps, an edited VLM script).
+   */
+  vlmVouch?: VlmVouch
   configure(fields: Array<{ key: string; type: 'text'; label: string; initial: string }>): void
   on(name: string, cb: (data: unknown, networkId?: string) => void): void
   send(name: string, data: unknown): void
@@ -71,15 +74,15 @@ export interface HApp {
   remove(node: HNode | GizmoNode | object): void
   control(): HControl
 }
-/**
- * The server-only VLM world a hosted image hands the VLM app's server half (Task 9): VLM_WORLD_SECRET, VLM_FEED_URL
- * and VLM_WORLD_KEY. Never props, which builders can edit, and never sent to a browser.
- */
-export interface VlmWorld {
-  secret?: string
-  apiUrl?: string
-  worldKey?: string
+/** What the server half asks `app.vlmVouch` for: the player to vouch for, and their pending pairing when polling. */
+export interface VlmVouchRequest {
+  hyperfyPlayerId: string
+  playerName: string | null
+  pendingPairingId?: string
 }
+/** VLM's vouch answer as the image passes it on (only the expected fields), or `error` on any failure. */
+export type VlmVouchResult = HyperfyVouchResponse | { status: 'error' }
+export type VlmVouch = (req: VlmVouchRequest) => Promise<VlmVouchResult>
 export type Matrix4Ctor = new () => Matrix & { copy(m: Matrix): Matrix & { invert(): Matrix } }
 export type AppProps = { feedUrl?: string; worldKey?: string }
 export type { ScriptFetch, ScriptSetTimeout }
