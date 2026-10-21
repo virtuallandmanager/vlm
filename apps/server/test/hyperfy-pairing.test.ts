@@ -7,7 +7,7 @@ import { hyperfyPairings, hyperfyWorlds, venues, bookings, accessGrants } from '
 import { createWorldKey } from '../src/hyperfy/worlds.js'
 import { actorFromClaims } from '../src/auth/actor.js'
 import { verifySessionToken } from '../src/auth/tokens.js'
-import { startPairing, pairingForApproval, approvePairing, claimPairing, renewPairing, revokePairing, listPairings, pairingActive } from '../src/hyperfy/pairing.js'
+import { startPairing, pairingForApproval, approvePairing, claimPairing, renewPairing, revokePairing, listPairings, pairingActive, pairingLive } from '../src/hyperfy/pairing.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, createScene, tokenFor, randomWallet, type TestUser } from './helpers/factories.js'
 
@@ -185,6 +185,25 @@ describe('Hyperfy pairings and passes', () => {
     expect(after.json()).toEqual({ error: 'pairing_revoked' })
     // an ordinary account token is unaffected
     expect((await app.inject({ method: 'GET', url: `/api/scenes/${s.scene.id}/library`, headers: { authorization: `Bearer ${tokenFor(s.owner)}` } })).statusCode).toBe(200)
+  })
+
+  it('a liveness read that started before a revoke cannot re-cache the pairing as live', async () => {
+    const s = await seed()
+    const { code } = await pair(s)
+    await approvePairing(code, actor(s.owner))
+    const res = await claimPairing(code, SECRET, app)
+    if (res.status !== 'approved') throw new Error('not approved')
+    // An in-flight middleware check: it read the row (live) before the revoke committed, and finishes after it.
+    let finish!: (live: boolean) => void
+    const slowRead = () => new Promise<boolean>((r) => (finish = r))
+    const inFlight = pairingLive(res.pairingId, slowRead)
+    expect(await revokePairing(res.pairingId, s.owner.id)).toBe(true)
+    finish(true)
+    await inFlight
+    // The next check must not be served a stale live:true from the cache.
+    expect(await pairingLive(res.pairingId)).toBe(false)
+    const call = await app.inject({ method: 'GET', url: `/api/scenes/${s.scene.id}/library`, headers: { authorization: `Bearer ${res.pass}` } })
+    expect(call.statusCode).toBe(401)
   })
 
   it('startPairing needs exactly one of secretHash and hyperfyPlayerId', async () => {

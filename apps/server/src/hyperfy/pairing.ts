@@ -170,6 +170,7 @@ export async function revokePairing(pairingId: string, userId: string): Promise<
     .set({ status: 'revoked', codeHash: null })
     .where(and(eq(hyperfyPairings.id, pairingId), eq(hyperfyPairings.userId, userId), inArray(hyperfyPairings.status, ['approved', 'claimed'])))
     .returning({ id: hyperfyPairings.id })
+  revokeGeneration++
   liveCache.delete(pairingId)
   return rows.length > 0
 }
@@ -205,12 +206,16 @@ export async function pairingActive(pairingId: string, now = new Date()): Promis
 // Per-pairing answer for the auth middleware, kept for 10 s; revoking on this process drops the entry.
 const LIVE_CACHE_MS = 10_000
 const liveCache = new Map<string, { live: boolean; until: number }>()
+/** Bumped by every revoke: a read that started before one may have seen the row still live, so it isn't cached. */
+let revokeGeneration = 0
 
-export async function pairingLive(pairingId: string): Promise<boolean> {
+/** `read` is the database check (a seam for tests). */
+export async function pairingLive(pairingId: string, read: (id: string) => Promise<boolean> = pairingActive): Promise<boolean> {
   const hit = liveCache.get(pairingId)
   if (hit && hit.until > Date.now()) return hit.live
-  const live = await pairingActive(pairingId)
-  liveCache.set(pairingId, { live, until: Date.now() + LIVE_CACHE_MS })
+  const generation = revokeGeneration
+  const live = await read(pairingId)
+  if (generation === revokeGeneration) liveCache.set(pairingId, { live, until: Date.now() + LIVE_CACHE_MS })
   return live
 }
 
