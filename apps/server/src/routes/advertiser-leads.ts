@@ -15,14 +15,13 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const MAX_FIELD = 200
 const MAX_MESSAGE = 2000
 
-type LeadFields = { name?: string | null; company?: string | null; website?: string | null; message?: string | null }
+type LeadFields = { name?: string; company?: string; website?: string; message?: string }
 type Parsed = { ok: true; email: string; fields: LeadFields } | { ok: false; error: 'invalid_email' | 'consent_required' | 'invalid_website' | 'too_long' }
 
-/** Trimmed text, null for an empty string, undefined when the field was not sent or is not a string. */
-const text = (v: unknown): string | null | undefined => {
+/** Trimmed text; undefined when the field was not sent, is not a string, or is blank (the form sends '' for empty fields). */
+const text = (v: unknown): string | undefined => {
   if (typeof v !== 'string') return undefined
-  const t = v.trim()
-  return t ? t : null
+  return v.trim() || undefined
 }
 
 /** A website as an absolute http(s) URL; a bare domain gets https://. Undefined when it isn't one. */
@@ -53,7 +52,7 @@ function parseLead(body: Partial<AdvertiserLeadInput> | null | undefined): Parse
     if (!website) return { ok: false, error: 'invalid_website' }
     fields.website = website
   }
-  // Only fields that were sent overwrite a returning advertiser's earlier answers
+  // Only answered fields overwrite a returning advertiser's earlier answers; a blank never erases one
   for (const key of Object.keys(fields) as (keyof LeadFields)[]) if (fields[key] === undefined) delete fields[key]
   return { ok: true, email, fields }
 }

@@ -36,6 +36,14 @@ describe('advertiser leads', () => {
     expect(all[0].updatedAt.getTime()).toBeGreaterThan(all[0].createdAt.getTime())
   })
 
+  it('a resubmit with blank fields keeps the earlier answers', async () => {
+    // The real form sends every field, with '' for the ones left empty
+    await submit({ email: 'ana@brand.example', name: 'Ana', company: 'Brand', website: 'brand.example', message: 'First', consent: true })
+    await submit({ email: 'ana@brand.example', name: '', company: '  ', website: '', message: 'Second', consent: true })
+    const [row] = await rows()
+    expect(row).toMatchObject({ name: 'Ana', company: 'Brand', website: 'https://brand.example', message: 'Second' })
+  })
+
   it('rejects bad input', async () => {
     const cases: [unknown, string][] = [
       [{ consent: true }, 'invalid_email'],
