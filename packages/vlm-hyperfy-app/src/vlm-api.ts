@@ -37,6 +37,13 @@ export interface VlmApiOptions {
   onAuthFailure: () => void
 }
 
+/** The scene as the HUD needs it: its presets for the preset switcher. */
+export interface SceneInfo {
+  id: string
+  activePresetId: string | null
+  presets: Array<{ id: string; name: string }>
+}
+
 const CATALOG_PAGE = 24
 
 /** The model's display name: the file name in its URL, without the extension. */
@@ -77,6 +84,25 @@ export class VlmApi {
   /** POST /api/elements/:id/live { enabled } */
   setLive(elementId: string, enabled: boolean): Promise<ApiResult<unknown>> {
     return this.call('POST', `/api/elements/${encodeURIComponent(elementId)}/live`, { enabled })
+  }
+
+  /** GET /api/scenes/:id (a scene pass sees the active preset and its own booking's). */
+  async getScene(sceneId: string): Promise<ApiResult<SceneInfo>> {
+    const r = await this.call<{ scene?: { id?: string; activePresetId?: string | null; presets?: Array<{ id: string; name?: string }> } }>(
+      'GET',
+      `/api/scenes/${encodeURIComponent(sceneId)}`,
+    )
+    if (!r.ok) return r
+    const sc = r.value.scene
+    if (!sc) return { ok: false, reason: 'server' }
+    return {
+      ok: true,
+      value: {
+        id: sc.id ?? sceneId,
+        activePresetId: sc.activePresetId ?? null,
+        presets: (sc.presets ?? []).map((p) => ({ id: p.id, name: p.name || 'Preset' })),
+      },
+    }
   }
 
   /** GET /api/scenes/:id/library */

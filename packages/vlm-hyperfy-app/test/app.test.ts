@@ -19,22 +19,95 @@ beforeAll(async () => {
 type Fake = Record<string, any>
 
 /** A Hyperfy-like node: three.js transform objects plus children. */
-function node(type: string): Fake {
-  return { type, position: new Vector3(), rotation: new Euler(), scale: new Vector3(1, 1, 1), children: [] as Fake[], add(c: Fake) { this.children.push(c) } }
+function node(type: string, data: Fake = {}): Fake {
+  return {
+    type,
+    ...data,
+    position: new Vector3(),
+    rotation: new Euler(),
+    scale: new Vector3(1, 1, 1),
+    children: [] as Fake[],
+    add(c: Fake) {
+      this.children.push(c)
+    },
+    remove(c: Fake) {
+      this.children = this.children.filter((x: Fake) => x !== c)
+    },
+  }
+}
+
+/** A fake `app.control()`: buttons made on first use, a locked pointer, the camera rig and the screen. */
+function control(): Fake {
+  const target: Fake = {
+    pointer: { locked: true, coords: new Vector3(0.5, 0.5, 0), lock() {}, unlock() {} },
+    camera: { position: new Vector3(0, 1.6, 0), quaternion: new Quaternion(), zoom: 0 },
+    screen: { width: 1600, height: 900 },
+    release() {},
+  }
+  return new Proxy(target, {
+    get(t, prop: string) {
+      if (!(prop in t)) t[prop] = { $button: true, down: false, pressed: false, released: false, capture: false, onPress: null, onRelease: null }
+      return t[prop]
+    },
+  })
+}
+
+/** Every text in a node tree, depth first. */
+const texts = (n: Fake): string[] => [...(typeof n.value === 'string' ? [n.value] : []), ...(n.children ?? []).flatMap(texts)]
+/** The first node in the tree with a click handler whose text is `label`. */
+function button(roots: Fake[], label: string): Fake | undefined {
+  for (const r of roots) {
+    if (r.onPointerDown && texts(r).includes(label)) return r
+    const inner = button(r.children ?? [], label)
+    if (inner) return inner
+  }
+  return undefined
+}
+
+type Res = { ok: boolean; status: number; json(): Promise<unknown> } | undefined
+const res = (status: number, body: unknown): Res => ({ ok: status < 400, status, json: async () => body })
+
+/** Globals the sandbox doesn't have: any use is recorded. */
+function forbiddenGlobals(used: string[]) {
+  const trap = (name: string) =>
+    new Proxy(function () {}, {
+      get: () => (used.push(name), undefined),
+      apply: () => (used.push(name), undefined),
+      construct: () => (used.push(name), {}),
+    })
+  const names = ['setInterval', 'clearTimeout', 'clearInterval', 'localStorage', 'crypto', 'TextEncoder', 'WebSocket', 'require']
+  const values = names.map(trap)
+  const URL = { createObjectURL: () => 'blob:x' }
+  return { names: [...names, 'URL'], values: [...values, URL] }
 }
 
 /** Runs the bundled script with only the sandbox globals it may use. */
-function run(opts: { isServer: boolean; players?: Fake[]; matrixWorld?: Matrix4 }) {
+function run(opts: {
+  isServer: boolean
+  players?: Fake[]
+  /** The client's local player (world.getPlayer()). */
+  me?: Fake
+  matrixWorld?: Matrix4
+  worldSecret?: string
+  route?: (url: string, body: any) => Res | undefined
+}) {
   const timers: Array<() => void> = []
   const posts: Array<{ url: string; body: any }> = []
+  const requests: Array<{ url: string; body: any }> = []
   const handlers = new Map<string, (data: unknown, id?: string) => void>()
   const added: Fake[] = []
+  const created: Fake[] = []
   const loads: Array<Promise<Fake>> = []
+  const sent: Array<{ name: string; data: any }> = []
+  const sentTo: Array<{ playerId: string; name: string; data: any }> = []
+  const controls: Fake[] = []
+  const used: string[] = []
   const world = {
     isServer: opts.isServer,
     isClient: !opts.isServer,
     on() {},
     getPlayers: () => opts.players ?? [],
+    getPlayer: (id?: string) => (id === undefined ? (opts.me ?? null) : ((opts.players ?? []).find((p) => p.id === id) ?? null)),
     load: (_type: string, _url: string) => {
       const p = Promise.resolve(node('model'))
       loads.push(p)
@@ -44,25 +117,60 @@ function run(opts: { isServer: boolean; players?: Fake[]; matrixWorld?: Matrix4 
   }
   const app = {
     matrixWorld: opts.matrixWorld ?? new Matrix4(),
+    vlmWorldSecret: opts.worldSecret,
     configure() {},
     on: (name: string, cb: (data: unknown, id?: string) => void) => handlers.set(name, cb),
-    send() {},
-    sendTo() {},
-    create: (type: string) => node(type),
+    send: (name: string, data: unknown) => void sent.push({ name, data }),
+    sendTo: (playerId: string, name: string, data: unknown) => void sentTo.push({ playerId, name, data }),
+    create: (type: string, data?: Fake) => {
+      const n = node(type, data)
+      created.push(n)
+      return n
+    },
     add: (n: Fake) => added.push(n),
-    remove() {},
+    remove: (n: Fake) => {
+      const i = added.indexOf(n)
+      if (i >= 0) added.splice(i, 1)
+    },
+    control: () => {
+      const c = control()
+      controls.push(c)
+      return c
+    },
   }
   const fetch = async (url: string, init: { body?: string }) => {
-    if (url.includes('/api/hyperfy/analytics')) posts.push({ url, body: JSON.parse(init.body!) })
-    return undefined // the feed poller just backs off
+    const body = init?.body ? JSON.parse(init.body) : undefined
+    if (url.includes('/api/hyperfy/analytics')) posts.push({ url, body })
+    else requests.push({ url, body })
+    return opts.route?.(url, body) // undefined: the feed poller just backs off
   }
   const setTimeout = (fn: () => void) => void timers.push(fn)
   const props = { feedUrl: 'https://api.example', worldKey: 'vlmw_k' }
-  new Function('world', 'app', 'fetch', 'props', 'setTimeout', 'Matrix4', 'Vector3', js)(world, app, fetch, props, setTimeout, Matrix4, Vector3)
+  let n = 0
+  const uuid = () => `uuid-${++n}`
+  const bad = forbiddenGlobals(used)
+  new Function('world', 'app', 'fetch', 'props', 'setTimeout', 'Matrix4', 'Vector3', 'Quaternion', 'uuid', ...bad.names, js)(
+    world,
+    app,
+    fetch,
+    props,
+    setTimeout,
+    Matrix4,
+    Vector3,
+    Quaternion,
+    uuid,
+    ...bad.values,
+  )
   const settle = async () => {
     for (let i = 0; i < 20; i++) await Promise.resolve()
   }
-  return { timers, posts, handlers, added, loads, settle }
+  /** Runs every pending timer once, then lets promises settle. */
+  const tick = async () => {
+    for (const fn of timers.splice(0)) fn()
+    await settle()
+  }
+  const update = () => handlers.get('update')?.(1 / 60)
+  return { timers, posts, requests, handlers, added, created, loads, sent, sentTo, controls, used, settle, tick, update }
 }
 
 describe('the VLM app script', () => {
@@ -117,5 +225,91 @@ describe('the VLM app script', () => {
     expect(model.type).toBe('model')
     expect([model.rotation.x, model.rotation.y, model.rotation.z]).toEqual([0, Math.PI, 0])
     expect(model.scale.toArray()).toEqual([1, 1, 1])
+  })
+
+  it('the sandbox build runs the client and server halves without forbidden globals', async () => {
+    const me = { id: 'p1', name: 'Pip', admin: true, builder: true, position: new Vector3() }
+    const server = run({ isServer: true, players: [me], worldSecret: 's3cret', route: () => res(200, { status: 'pending' }) })
+    server.handlers.get('vlm:link')!(null, 'p1')
+    for (let i = 0; i < 3; i++) await server.tick()
+    const client = run({ isServer: false, me, route: () => res(200, { code: 'ABC234', approveUrl: 'a', qrUrl: 'q', expiresAt: new Date(Date.now() + 600_000).toISOString() }) })
+    client.update()
+    button(client.added, 'Link to VLM')!.onPointerDown()
+    client.handlers.get('vlm:link')!({ status: 'self' })
+    for (let i = 0; i < 3; i++) await client.tick()
+    client.update()
+    expect([...server.used, ...client.used]).toEqual([])
+  })
+
+  it("the HUD draws nothing for a visitor who isn't admin or builder", async () => {
+    const c = run({ isServer: false, me: { id: 'p9', name: 'Vi', admin: false, builder: false, position: new Vector3() } })
+    c.update()
+    await c.settle()
+    expect(c.created.filter((n) => n.type.startsWith('ui'))).toEqual([])
+    expect(c.controls).toHaveLength(0)
+    expect(c.sent.filter((m) => m.name === 'vlm:link')).toEqual([])
+  })
+
+  it('an admin or builder gets the Link button; a self-run world pairs from the browser', async () => {
+    const c = run({
+      isServer: false,
+      me: { id: 'p1', name: 'Pip', admin: false, builder: true, position: new Vector3() },
+      route: (url) => (url.endsWith('/api/hyperfy/pair') ? res(200, { code: 'ABC234', approveUrl: 'https://vlm.gg/pair/ABC234', qrUrl: 'https://q', expiresAt: new Date(Date.now() + 600_000).toISOString() }) : undefined),
+    })
+    c.update()
+    const link = button(c.added, 'Link to VLM')
+    expect(link).toBeDefined()
+    link!.onPointerDown()
+    expect(c.sent.filter((m) => m.name === 'vlm:link')).toHaveLength(1)
+    c.handlers.get('vlm:link')!({ status: 'self' })
+    await c.settle()
+    expect(c.requests.find((r) => r.url === 'https://api.example/api/hyperfy/pair')?.body).toMatchObject({ worldKey: 'vlmw_k', playerName: 'Pip' })
+    c.update()
+    expect(c.added.flatMap(texts)).toContain('ABC-234')
+  })
+
+  it('hosted: a vlm:link request is answered with the vouch result for that player only', async () => {
+    const players = [
+      { id: 'p1', name: 'Pip', position: new Vector3() },
+      { id: 'p2', name: 'Bo', position: new Vector3() },
+    ]
+    const vouches: any[] = []
+    const s = run({
+      isServer: true,
+      players,
+      worldSecret: 's3cret',
+      route: (url, body) => {
+        if (!url.endsWith('/api/hyperfy/pairings/vouch')) return undefined
+        vouches.push(body)
+        if (vouches.length === 1) return res(200, { status: 'unlinked', code: 'ABC234', approveUrl: 'https://vlm.gg/pair/ABC234', qrUrl: 'https://q', expiresAt: 'e', pairingId: 'pair-1' })
+        if (vouches.length === 2) return res(200, { status: 'pending' })
+        return res(200, { status: 'linked', pass: 'PASS', passExpiresAt: 'x', pairingId: 'pair-1', sceneId: 'scene-1', user: { id: 'u1', displayName: 'Ada' } })
+      },
+    })
+    // The body can't pick the player: the sender's id does.
+    s.handlers.get('vlm:link')!({ hyperfyPlayerId: 'p2', playerName: 'Mallory' }, 'p1')
+    await s.settle()
+    expect(vouches[0]).toEqual({ worldKey: 'vlmw_k', worldSecret: 's3cret', hyperfyPlayerId: 'p1', playerName: 'Pip' })
+    expect(s.sentTo).toEqual([{ playerId: 'p1', name: 'vlm:link', data: { status: 'unlinked', code: 'ABC234', approveUrl: 'https://vlm.gg/pair/ABC234', qrUrl: 'https://q', expiresAt: 'e' } }])
+    // polls with the pending pairing until it's approved
+    await s.tick()
+    expect(vouches[1]).toMatchObject({ hyperfyPlayerId: 'p1', pendingPairingId: 'pair-1' })
+    expect(s.sentTo).toHaveLength(1)
+    await s.tick()
+    expect(vouches[2]).toMatchObject({ hyperfyPlayerId: 'p1', pendingPairingId: 'pair-1' })
+    expect(s.sentTo.at(-1)).toEqual({ playerId: 'p1', name: 'vlm:link', data: { status: 'linked', pass: 'PASS', passExpiresAt: 'x', pairingId: 'pair-1', sceneId: 'scene-1', displayName: 'Ada' } })
+    // linked: polling stops, and nothing was broadcast
+    await s.tick()
+    expect(vouches).toHaveLength(3)
+    expect(s.sentTo.every((m) => m.playerId === 'p1')).toBe(true)
+    expect(s.sent.filter((m) => m.name === 'vlm:link')).toEqual([])
+  })
+
+  it('self-run: the server half never vouches and tells the player to pair from the browser', async () => {
+    const s = run({ isServer: true, players: [{ id: 'p1', name: 'Pip', position: new Vector3() }] })
+    s.handlers.get('vlm:link')!(null, 'p1')
+    await s.settle()
+    expect(s.requests.filter((r) => r.url.includes('vouch'))).toEqual([])
+    expect(s.sentTo).toEqual([{ playerId: 'p1', name: 'vlm:link', data: { status: 'self' } }])
   })
 })

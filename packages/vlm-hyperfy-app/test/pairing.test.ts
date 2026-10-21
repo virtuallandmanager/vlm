@@ -67,7 +67,7 @@ function make(routes: Record<string, Array<Res | (() => Res)>>, extra: Partial<C
 }
 
 const approved = (pass: string, ttlMs: number) =>
-  res(200, { status: 'approved', pass, passExpiresAt: new Date(T0 + ttlMs).toISOString(), pairingId: 'pid-1', user: { id: 'u', displayName: 'Ada' } })
+  res(200, { status: 'approved', pass, passExpiresAt: new Date(T0 + ttlMs).toISOString(), pairingId: 'pid-1', sceneId: 'scene-1', user: { id: 'u', displayName: 'Ada' } })
 
 describe('Pairing', () => {
   it("start posts the secret's hash, never the secret", async () => {
@@ -92,7 +92,7 @@ describe('Pairing', () => {
     expect(t.p.pass()).toBeNull()
     await t.advance(HYPERFY_PAIRING.claimPollMs * 2)
     expect(t.p.pass()).toBe('PASS1')
-    expect(t.states.at(-1)).toEqual({ status: 'linked', displayName: 'Ada' })
+    expect(t.states.at(-1)).toEqual({ status: 'linked', displayName: 'Ada', sceneId: 'scene-1' })
     const claims = t.calls.filter((c) => c.url.endsWith('/claim')).length
     expect(claims).toBe(3)
     await t.advance(60_000)
@@ -137,6 +137,20 @@ describe('Pairing', () => {
     expect(JSON.parse(t.calls.find((c) => c.url.endsWith('/renew'))!.init.body!).secret).toHaveLength(108)
   })
 
+  it('a renewal carries the pass\'s scene id into the linked state', async () => {
+    const t = make({
+      'POST /api/hyperfy/pair': [res(200, START)],
+      'POST /api/hyperfy/pair/ABC234/claim': [approved('PASS1', 15 * 60_000)],
+      'POST /api/hyperfy/pairings/pid-1/renew': [res(200, { pass: 'PASS2', passExpiresAt: new Date(T0 + 30 * 60_000).toISOString(), sceneId: 'scene-2' })],
+    })
+    t.p.start('Ada')
+    await t.advance(HYPERFY_PAIRING.claimPollMs)
+    expect(t.states.at(-1)).toEqual({ status: 'linked', displayName: 'Ada', sceneId: 'scene-1' })
+    await t.advance(15 * 60_000)
+    expect(t.states.at(-1)).toEqual({ status: 'linked', displayName: 'Ada', sceneId: 'scene-2' })
+    t.p.stop()
+  })
+
   it('a revoked pairing is expired; a failed renew backs off and retries', async () => {
     const t = make({
       'POST /api/hyperfy/pair': [res(200, START)],
@@ -165,9 +179,9 @@ describe('Pairing', () => {
         },
       },
     )
-    t.p.adopt({ pass: 'H1', passExpiresAt: new Date(T0 + 10 * 60_000).toISOString(), displayName: 'Bo' })
+    t.p.adopt({ pass: 'H1', passExpiresAt: new Date(T0 + 10 * 60_000).toISOString(), displayName: 'Bo', sceneId: 'scene-1' })
     expect(t.p.pass()).toBe('H1')
-    expect(t.states.at(-1)).toEqual({ status: 'linked', displayName: 'Bo' })
+    expect(t.states.at(-1)).toEqual({ status: 'linked', displayName: 'Bo', sceneId: 'scene-1' })
     await t.advance(10 * 60_000 - HYPERFY_PAIRING.renewBeforeMs + 10)
     expect(renews).toBe(1)
     expect(t.p.pass()).toBe('H2')
@@ -244,7 +258,7 @@ describe('Pairing: fix round 1', () => {
     await t.advance(HYPERFY_FEED_MAX)
     expect(t.p.pass()).toBe('NEW')
     expect((await api.saveTransform('i1', draft)).ok).toBe(true)
-    expect(t.states.at(-1)).toEqual({ status: 'linked', displayName: 'Ada' })
+    expect(t.states.at(-1)).toEqual({ status: 'linked', displayName: 'Ada', sceneId: 'scene-1' })
   })
 
   it('a failed pair start retries with back-off; invalid_world_key is a terminal error', async () => {
@@ -274,16 +288,16 @@ describe('Pairing: fix round 1', () => {
 
   it('renewNow is a no-op for a hosted link without a renewer; a malformed expiry is ignored', async () => {
     const t = make({})
-    t.p.adopt({ pass: 'H1', passExpiresAt: iso(T0 + 10 * MIN), displayName: 'Bo' })
+    t.p.adopt({ pass: 'H1', passExpiresAt: iso(T0 + 10 * MIN), displayName: 'Bo', sceneId: 'scene-1' })
     expect(await t.p.renewNow()).toBe(false)
     expect(t.calls).toHaveLength(0)
     const u = make({})
-    u.p.adopt({ pass: 'X', passExpiresAt: 'not a date', displayName: 'Bo' })
+    u.p.adopt({ pass: 'X', passExpiresAt: 'not a date', displayName: 'Bo', sceneId: 'scene-1' })
     expect(u.p.pass()).toBeNull()
     expect(u.states).toHaveLength(0)
 
     const bad = make({}, { renewer: async () => ({ pass: 'Y', passExpiresAt: 'garbage' }) })
-    bad.p.adopt({ pass: 'H1', passExpiresAt: iso(T0 + 10 * MIN), displayName: 'Bo' })
+    bad.p.adopt({ pass: 'H1', passExpiresAt: iso(T0 + 10 * MIN), displayName: 'Bo', sceneId: 'scene-1' })
     expect(await bad.p.renewNow()).toBe(false)
     expect(bad.p.pass()).toBe('H1')
   })

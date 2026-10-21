@@ -5,17 +5,18 @@ import { sha256Hex } from './sha256.js'
 export type PairingState =
   | { status: 'idle' }
   | { status: 'waiting'; code: string; approveUrl: string; qrUrl: string; expiresAt: string }
-  | { status: 'linked'; displayName: string }
+  | { status: 'linked'; displayName: string; sceneId: string }
   | { status: 'expired' }
   | { status: 'lost' }
   | { status: 'error'; reason: 'invalid_world_key' }
 
-/** A scene pass and when it stops working (ISO time). pairingId/displayName come with a first link. */
+/** A scene pass, when it stops working (ISO time) and the scene it edits. pairingId/displayName come with a first link. */
 export interface PassLink {
   pass: string
   passExpiresAt: string
   displayName?: string
   pairingId?: string
+  sceneId?: string
 }
 
 /**
@@ -23,7 +24,7 @@ export interface PassLink {
  * rejection are temporary failures (retried with back-off). Self-run worlds use the secret-based default;
  * hosted worlds inject one that asks the world's server half to vouch again.
  */
-export type PassRenewer = () => Promise<{ pass: string; passExpiresAt: string } | 'revoked' | null | undefined>
+export type PassRenewer = () => Promise<{ pass: string; passExpiresAt: string; sceneId?: string } | 'revoked' | null | undefined>
 
 export interface PairingOptions {
   feedUrl: string
@@ -50,6 +51,7 @@ export class Pairing {
   private passValue: string | null = null
   private passExpiresAtMs = 0
   private name = ''
+  private sceneId = ''
   private state: PairingState = { status: 'idle' }
   private renewDelay = 0
   private renewing: Promise<boolean> | null = null
@@ -77,6 +79,7 @@ export class Pairing {
     if (!Number.isFinite(Date.parse(link.passExpiresAt))) return
     if (link.pairingId) this.pairingId = link.pairingId
     if (link.displayName) this.name = link.displayName
+    if (link.sceneId) this.sceneId = link.sceneId
     this.install(link.pass, link.passExpiresAt, this.gen)
   }
 
@@ -106,6 +109,7 @@ export class Pairing {
     this.passExpiresAtMs = 0
     this.pairingId = ''
     this.secret = ''
+    this.sceneId = ''
     this.renewDelay = 0
     this.renewing = null
     this.renewToken++
@@ -176,6 +180,7 @@ export class Pairing {
     if (b?.status === 'approved' && Number.isFinite(Date.parse(b.passExpiresAt))) {
       this.pairingId = b.pairingId
       this.name = b.user.displayName
+      if (typeof b.sceneId === 'string') this.sceneId = b.sceneId
       this.install(b.pass, b.passExpiresAt, gen)
     } else if (b?.status === 'refused' || b?.status === 'expired' || this.now() >= codeExpiresAt) {
       this.emit({ status: 'expired' })
@@ -190,7 +195,7 @@ export class Pairing {
     this.passValue = pass
     this.passExpiresAtMs = Date.parse(passExpiresAt)
     this.renewDelay = 0
-    this.emit({ status: 'linked', displayName: this.name })
+    this.emit({ status: 'linked', displayName: this.name, sceneId: this.sceneId })
     this.scheduleRenew(gen, Math.max(0, this.passExpiresAtMs - HYPERFY_PAIRING.renewBeforeMs - this.now()))
     const token = ++this.expiryToken
     this.opts.setTimeout(() => {
@@ -222,6 +227,7 @@ export class Pairing {
       return false
     }
     if (out && Number.isFinite(Date.parse(out.passExpiresAt))) {
+      if (typeof out.sceneId === 'string' && out.sceneId) this.sceneId = out.sceneId
       this.install(out.pass, out.passExpiresAt, gen)
       return true
     }

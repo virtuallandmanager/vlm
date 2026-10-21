@@ -1,0 +1,419 @@
+/**
+ * The HUD's view model, free of Hyperfy nodes: what the edit bar, panels and alert stack show for the current
+ * pairing, edit and scene state, plus the HUD's small pure helpers (alerts, typing, placement). view.ts draws it.
+ */
+import {
+  formatPairingCode,
+  type SerializedScene,
+  type SerializedSceneElement,
+  type Vec3,
+} from 'vlm-shared'
+import type { MoveLock, TransformMode } from 'vlm-core/transform/session'
+import {
+  ALERT_LOST,
+  ALERT_NO_ACCESS,
+  ALERT_RECONNECTED,
+  alertCouldntSave,
+  type EditState,
+  type HudAlert,
+} from '../edit/controller.js'
+import type { PairingState } from '../pairing.js'
+import type { RenderItem } from '../plan.js'
+import { toVlmPosition, worldToLocal } from '../transform.js'
+import type { ApiFailure, ApiResult, VlmTransform } from '../vlm-api.js'
+
+export const alertLinked = (name: string) => `Linked to VLM as ${name}`
+export const ALERT_LINK_EXPIRED = 'Link expired. Pair again.'
+export const ALERT_STREAM_LIVE = 'Stream is live'
+export const ALERT_STREAM_OFFLINE = 'Stream went offline'
+export const ALERT_PLACED = 'Added here. Decentraland needs a redeploy to show it.'
+export const PLACE_LABEL = 'Place in front of me'
+/** Shift is Hyperfy's run key, so L cycles the axis lock. */
+export const KEY_HINT = 'L: axis lock · ` or Esc: use the HUD · click the world: aim'
+
+/** How far in front of the camera "Place in front of me" puts a model, in metres. */
+export const PLACE_DISTANCE = 2
+const MAX_ALERTS = 3
+export const PAGE_SIZE = 8
+
+export type Panel = 'layout' | 'streams' | 'assets' | null
+export type AssetTab = 'library' | 'catalog' | 'link'
+export type Axis = 'x' | 'y' | 'z'
+export type TypingTarget = Axis | 'link' | 'search'
+
+export interface AssetEntry {
+  id: string
+  name: string
+  /** The model file to place. */
+  src: string
+  source: AssetTab
+}
+
+/** The HUD's own state (what panel is open, what was loaded or typed). */
+export interface HudUi {
+  /** Edit mode is on: clicks select. */
+  editing: boolean
+  panel: Panel
+  tab: AssetTab
+  /** null while loading (or not loaded yet). */
+  library: AssetEntry[] | null
+  catalog: AssetEntry[] | null
+  query: string
+  linkUrl: string
+  /** The chosen asset's id. */
+  chosen: string | null
+  presets: Array<{ id: string; name: string }> | null
+  typing: { target: TypingTarget; text: string } | null
+  /** A link request is on its way (hosted worlds ask their server half). */
+  linking: boolean
+  /** A placement is on its way. */
+  placing: boolean
+}
+
+export const initialUi = (): HudUi => ({
+  editing: false,
+  panel: null,
+  tab: 'library',
+  library: null,
+  catalog: null,
+  query: '',
+  linkUrl: '',
+  chosen: null,
+  presets: null,
+  typing: null,
+  linking: false,
+  placing: false,
+})
+
+export interface HudState {
+  pairing: PairingState
+  edit: EditState
+  plan: RenderItem[]
+  scene: SerializedScene | null
+  alerts: HudAlert[]
+  ui?: Partial<HudUi>
+}
+
+export interface HudViewModel {
+  link: {
+    status: PairingState['status']
+    label: string
+    /** XXX-XXX while waiting. */
+    code?: string
+    approveUrl?: string
+    qrUrl?: string
+    canLink: boolean
+  }
+  linked: boolean
+  /** The edit bar; null until linked (kept while editing if the link lapses). */
+  bar: null | {
+    editing: boolean
+    mode: TransformMode
+    lock: MoveLock
+    lockLabel: string
+    snap: boolean
+    dirty: boolean
+    saving: boolean
+    /** Unsaved changes blocked a selection or Done: Save or Revert. */
+    prompt: boolean
+    selectedName: string | null
+    values: Array<{ axis: Axis; text: string; typing: boolean }> | null
+    hint: string
+  }
+  panel: Panel
+  layout: {
+    items: Array<{
+      elementId: string
+      kind: 'video' | 'image' | 'model' | 'audio'
+      name: string
+      enabled: boolean
+    }>
+    presets: Array<{ id: string; name: string; active: boolean }>
+  }
+  streams: Array<{ elementId: string; name: string; enableLiveStream: boolean; isLive: boolean }>
+  assets: {
+    tabs: AssetTab[]
+    tab: AssetTab
+    entries: Array<AssetEntry & { chosen: boolean }>
+    loading: boolean
+    query: string
+    linkUrl: string
+    typing: TypingTarget | null
+    canPlace: boolean
+    placeLabel: string
+  }
+  alerts: HudAlert[]
+}
+
+const KINDS: Array<
+  [
+    keyof SerializedScene & ('videos' | 'images' | 'models' | 'sounds'),
+    'video' | 'image' | 'model' | 'audio',
+    string,
+  ]
+> = [
+  ['videos', 'video', 'Screen'],
+  ['images', 'image', 'Image'],
+  ['models', 'model', 'Model'],
+  ['sounds', 'audio', 'Sound'],
+]
+const LOCK_LABEL: Record<MoveLock, string> = { free: 'Free', x: 'X', y: 'Y', z: 'Z' }
+const AXES: Axis[] = ['x', 'y', 'z']
+
+const nameOf = (el: SerializedSceneElement, fallback: string) =>
+  typeof el.name === 'string' && el.name.trim() ? el.name : fallback
+/** A model link the HUD will place: an http(s) URL. */
+export const isModelUrl = (s: string) => /^https?:\/\/\S+$/i.test(s.trim())
+
+function linkCard(p: PairingState, linking: boolean): HudViewModel['link'] {
+  switch (p.status) {
+    case 'idle':
+      return { status: p.status, label: linking ? 'Linking…' : 'Link to VLM', canLink: !linking }
+    case 'waiting':
+      return {
+        status: p.status,
+        label: 'Approve this code on vlm.gg',
+        code: formatPairingCode(p.code),
+        approveUrl: p.approveUrl,
+        qrUrl: p.qrUrl,
+        canLink: false,
+      }
+    case 'linked':
+      return { status: p.status, label: alertLinked(p.displayName), canLink: false }
+    case 'expired':
+      return { status: p.status, label: ALERT_LINK_EXPIRED, canLink: !linking }
+    case 'lost':
+      return { status: p.status, label: ALERT_LOST, canLink: false }
+    case 'error':
+      return { status: p.status, label: "This app's VLM world key isn't valid", canLink: false }
+  }
+}
+
+export function hudModel(state: HudState): HudViewModel {
+  const ui = { ...initialUi(), ...state.ui }
+  const linked = state.pairing.status === 'linked'
+  const e = state.edit
+  const typingAxis = ui.typing && AXES.includes(ui.typing.target as Axis) ? ui.typing : null
+  const values =
+    e.selectedKey && e.values
+      ? AXES.map((axis) =>
+          typingAxis?.target === axis
+            ? { axis, text: `${typingAxis.text}_`, typing: true }
+            : { axis, text: e.values![axis].toFixed(2), typing: false },
+        )
+      : null
+  const scene = state.scene
+  const activePreset = typeof scene?.sk === 'string' ? scene.sk : null
+
+  const items: HudViewModel['layout']['items'] = []
+  for (const [list, kind, fallback] of KINDS) {
+    for (const el of scene?.[list] ?? []) {
+      if (typeof el.sk !== 'string') continue
+      items.push({
+        elementId: el.sk,
+        kind,
+        name: nameOf(el, fallback),
+        enabled: el.enabled !== false,
+      })
+    }
+  }
+  const presets = (
+    ui.presets ??
+    (activePreset
+      ? [{ id: activePreset, name: typeof scene?.name === 'string' ? scene.name : 'Preset' }]
+      : [])
+  ).map((p) => ({
+    ...p,
+    active: p.id === activePreset,
+  }))
+  const streams = (scene?.videos ?? [])
+    .filter((v) => typeof v.sk === 'string')
+    .map((v) => ({
+      elementId: v.sk as string,
+      name: nameOf(v, 'Screen'),
+      enableLiveStream: !!v.enableLiveStream,
+      isLive: !!v.isLive,
+    }))
+
+  const list = ui.tab === 'library' ? ui.library : ui.tab === 'catalog' ? ui.catalog : []
+  const entries = (list ?? [])
+    .slice(0, PAGE_SIZE)
+    .map((a) => ({ ...a, chosen: a.id === ui.chosen }))
+  const chosen = ui.tab === 'link' ? isModelUrl(ui.linkUrl) : entries.some((a) => a.chosen)
+
+  return {
+    link: linkCard(state.pairing, ui.linking),
+    linked,
+    // While editing the bar stays even if the link lapses, so a draft survives re-linking.
+    bar:
+      linked || ui.editing
+        ? {
+            editing: ui.editing,
+            mode: e.mode,
+            lock: e.lock,
+            lockLabel: LOCK_LABEL[e.lock],
+            snap: e.snap,
+            dirty: e.dirty,
+            saving: e.saving,
+            prompt: e.prompt,
+            selectedName: e.selectedName,
+            values,
+            hint: KEY_HINT,
+          }
+        : null,
+    panel: linked ? ui.panel : null,
+    layout: { items, presets },
+    streams,
+    assets: {
+      tabs: ['library', 'catalog', 'link'],
+      tab: ui.tab,
+      entries,
+      loading: ui.tab !== 'link' && list === null,
+      query: ui.query,
+      linkUrl: ui.linkUrl,
+      typing: ui.typing && !typingAxis ? ui.typing.target : null,
+      canPlace: chosen && !!activePreset && !ui.placing,
+      placeLabel: PLACE_LABEL,
+    },
+    alerts: state.alerts.slice(-MAX_ALERTS),
+  }
+}
+
+/** "Stream is live" / "Stream went offline" for each screen whose isLive changed between two snapshots. */
+export function alertsFromSnapshot(
+  prev: SerializedScene | null,
+  next: SerializedScene | null,
+): HudAlert[] {
+  if (!prev || !next) return []
+  const before = new Map((prev.videos ?? []).map((v) => [v.sk, !!v.isLive]))
+  const out: HudAlert[] = []
+  for (const v of next.videos ?? []) {
+    const was = before.get(v.sk)
+    if (was === undefined || was === !!v.isLive) continue
+    out.push({ kind: 'info', text: v.isLive ? ALERT_STREAM_LIVE : ALERT_STREAM_OFFLINE })
+  }
+  return out
+}
+
+/** The alert for a change of link state, or null. */
+export function pairingAlert(prev: PairingState, next: PairingState): HudAlert | null {
+  if (prev.status === next.status) return null
+  switch (next.status) {
+    case 'linked':
+      return prev.status === 'lost'
+        ? { kind: 'info', text: ALERT_RECONNECTED }
+        : { kind: 'info', text: alertLinked(next.displayName) }
+    case 'expired':
+      return { kind: 'error', text: ALERT_LINK_EXPIRED }
+    case 'lost':
+      return { kind: 'error', text: ALERT_LOST }
+    default:
+      return null
+  }
+}
+
+/** The alert for a failed HUD request. 'auth' has none: the link state shows "Link expired". */
+export function failureAlert(reason: ApiFailure): HudAlert | null {
+  switch (reason) {
+    case 'auth':
+      return null
+    case 'no_access':
+      return { kind: 'error', text: ALERT_NO_ACCESS }
+    case 'lost':
+      return { kind: 'error', text: ALERT_LOST }
+    default:
+      return { kind: 'error', text: alertCouldntSave(reason) }
+  }
+}
+
+/**
+ * One key while typing into a HUD field (Hyperfy has no text input; `app.control()` gives the key and its text).
+ * Numbers take digits, '-' and '.'; text takes any printable character. Enter commits, Escape cancels.
+ */
+export function typeKey(
+  text: string,
+  prop: string,
+  char: string,
+  kind: 'number' | 'text',
+): { text: string; action: 'none' | 'commit' | 'cancel' } {
+  if (prop === 'enter') return { text, action: 'commit' }
+  if (prop === 'escape') return { text, action: 'cancel' }
+  if (prop === 'backspace') return { text: text.slice(0, -1), action: 'none' }
+  if (typeof char !== 'string' || char.length !== 1) return { text, action: 'none' }
+  if (kind === 'number' && !/[0-9.\-]/.test(char)) return { text, action: 'none' }
+  return { text: text + char, action: 'none' }
+}
+
+type XYZ = { x: number; y: number; z: number }
+type Quat = XYZ & { w: number }
+
+/** q * v (unit quaternion). */
+function rotate(q: Quat, v: XYZ): XYZ {
+  const tx = 2 * (q.y * v.z - q.z * v.y)
+  const ty = 2 * (q.z * v.x - q.x * v.z)
+  const tz = 2 * (q.x * v.y - q.y * v.x)
+  return {
+    x: v.x + q.w * tx + (q.y * tz - q.z * ty),
+    y: v.y + q.w * ty + (q.z * tx - q.x * tz),
+    z: v.z + q.w * tz + (q.x * ty - q.y * tx),
+  }
+}
+
+/**
+ * Where "Place in front of me" puts a model: PLACE_DISTANCE in front of the camera rig, along its heading (pitch
+ * ignored), at the player's feet height; then app-local (inverse of the app root's world matrix) and VLM coordinates.
+ */
+export function inFrontOf(
+  camera: { position: XYZ; quaternion: Quat },
+  floorY: number,
+  rootInverse: { elements: ArrayLike<number> },
+): VlmTransform {
+  const f = rotate(camera.quaternion, { x: 0, y: 0, z: -1 })
+  let len = Math.hypot(f.x, f.z)
+  // Looking straight up or down: use the camera's up vector, which then points along the heading.
+  const h = len > 1e-6 ? f : rotate(camera.quaternion, { x: 0, y: f.y > 0 ? -1 : 1, z: 0 })
+  len = Math.hypot(h.x, h.z) || 1
+  const world = {
+    x: camera.position.x + (h.x / len) * PLACE_DISTANCE,
+    y: floorY,
+    z: camera.position.z + (h.z / len) * PLACE_DISTANCE,
+  }
+  const position: Vec3 = toVlmPosition(worldToLocal(world, rootInverse))
+  return { position, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }
+}
+
+export interface PlaceApi {
+  addFromCatalog(sceneId: string, item: { id: string }): Promise<ApiResult<unknown>>
+  placeModel(
+    presetId: string,
+    src: string,
+    t: VlmTransform,
+  ): Promise<ApiResult<{ elementId: string; instanceId: string }>>
+}
+
+/**
+ * Places a model from the asset browser in the active preset: a catalog model is added to the scene library first.
+ * Alerts "Added here…" on success (Decentraland shows it after a redeploy), or the failure.
+ */
+export async function placeAsset(opts: {
+  api: PlaceApi
+  sceneId: string
+  presetId: string
+  entry: AssetEntry
+  transform: VlmTransform
+  alert: (a: HudAlert) => void
+}): Promise<boolean> {
+  const fail = (reason: ApiFailure) => {
+    const a = failureAlert(reason)
+    if (a) opts.alert(a)
+    return false
+  }
+  if (opts.entry.source === 'catalog') {
+    const added = await opts.api.addFromCatalog(opts.sceneId, { id: opts.entry.id })
+    if (!added.ok) return fail(added.reason)
+  }
+  const placed = await opts.api.placeModel(opts.presetId, opts.entry.src, opts.transform)
+  if (!placed.ok) return fail(placed.reason)
+  opts.alert({ kind: 'info', text: ALERT_PLACED })
+  return true
+}

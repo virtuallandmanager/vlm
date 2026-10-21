@@ -107,4 +107,11 @@ describe('VlmApi', () => {
     expect(f.calls[2].init.method).toBe('DELETE')
     expect(f.calls[2].url).toBe('https://api.example/api/elements/e9')
   })
+
+  it('getScene reads the scene and its presets with the pass', async () => {
+    const t = make([res(200, { scene: { id: 's1', activePresetId: 'p1', presets: [{ id: 'p1', name: 'Day' }, { id: 'p2', name: 'Night', extra: 1 }] } })])
+    expect(await t.api.getScene('s1')).toEqual({ ok: true, value: { id: 's1', activePresetId: 'p1', presets: [{ id: 'p1', name: 'Day' }, { id: 'p2', name: 'Night' }] } })
+    expect(t.calls[0].url).toBe('https://api.example/api/scenes/s1')
+    expect(t.calls[0].init).toMatchObject({ method: 'GET', headers: { Authorization: 'Bearer P' } })
+  })
 })
