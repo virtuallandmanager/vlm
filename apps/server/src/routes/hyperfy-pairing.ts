@@ -105,7 +105,8 @@ export default async function hyperfyPairingRoutes(app: FastifyInstance) {
     return reply.send({ result })
   })
 
-  app.post('/api/hyperfy/pair/:code/claim', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
+  // Each browser polls 30 a minute: 120 lets a few admins link at once from behind one NAT (an event venue, say).
+  app.post('/api/hyperfy/pair/:code/claim', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     const code = codeParam(request, reply)
     if (!code) return
     const secret = str((request.body as { secret?: unknown } | undefined)?.secret, MAX_SECRET)

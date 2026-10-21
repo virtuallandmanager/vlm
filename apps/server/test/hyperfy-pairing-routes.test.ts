@@ -189,6 +189,23 @@ describe('Hyperfy pairing routes', () => {
     expect(renew.json()).toEqual({ error: 'pairing_revoked' })
   })
 
+  it('claim polls allow 120 a minute per IP (three admins linking behind one NAT)', async () => {
+    const limited = await buildApp({ rateLimit: true, logger: false, backfill: false })
+    await limited.ready()
+    try {
+      const s = await seed()
+      const { code } = (await limited.inject({ method: 'POST', url: '/api/hyperfy/pair', payload: { worldKey: s.key, secretHash: sha256(SECRET) } })).json()
+      const claim = () => limited.inject({ method: 'POST', url: `/api/hyperfy/pair/${code}/claim`, payload: { secret: SECRET } })
+      for (let i = 0; i < 120; i++) {
+        const r = await claim()
+        if (r.statusCode !== 200) throw new Error(`claim ${i} -> ${r.statusCode}`)
+      }
+      expect((await claim()).statusCode).toBe(429)
+    } finally {
+      await limited.close()
+    }
+  })
+
   it('pair start is rate limited (and approve too)', async () => {
     const limited = await buildApp({ rateLimit: true, logger: false, backfill: false })
     await limited.ready()
