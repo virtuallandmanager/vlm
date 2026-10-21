@@ -14,15 +14,22 @@ re-run `infra/hyperfy/test-world.mjs`.
   `worldKey` = `VLM_WORLD_KEY` (version bumped when anything changes), and keeps exactly one `vlm` entity, created at
   the origin. `$scene` and every other app are left alone. On Postgres it skips `CREATE SCHEMA` when `DB_SCHEMA`
   already exists, because world roles have no CREATE on the database (VLM creates the schema first).
-- `0003-vlm-world-secret.patch`: VLM only, never for upstream. The server half of the shipped VLM app reads
-  `app.vlmWorld = { secret, apiUrl, worldKey }` (from `VLM_WORLD_SECRET`, `VLM_FEED_URL`, `VLM_WORLD_KEY`), which it uses
-  to vouch for players to VLM. `src/server/vlm.js` remembers, in server memory only, the script asset `installVlmApp`
-  installed for blueprint `vlm`; `App.getScriptAppProxy` hands the values to a script run only on the server, only for
-  blueprint `vlm`, and only while that blueprint's script is still that asset. The values go on a proxy made for that
-  run alone, so a builder's edited script (a new asset), and any callback it leaves behind after the shipped script is
-  restored, reads undefined. So do clients, every other app, and self-run worlds (`VLM_WORLD_SECRET` unset). The values
-  are never in blueprint props, entity state, snapshots, `/env.js` or any packet. Note that all app scripts in a world
-  share one SES compartment, so the VLM app must keep the secret in its own closures, never on `globalThis`.
+- `0003-vlm-world-secret.patch`: VLM only, never for upstream. Hosted worlds vouch for their builders with VLM while
+  the world secret stays out of every script. The server half of the shipped VLM app gets
+  `app.vlmVouch({ hyperfyPlayerId, playerName, pendingPairingId })`. Node checks that the player is connected and is a
+  builder or admin, POSTs `${VLM_FEED_URL}/api/hyperfy/pairings/vouch` with `VLM_WORLD_KEY` and `VLM_WORLD_SECRET`,
+  and resolves only the expected fields of VLM's answer, or `{ status: 'error' }`.
+  - **Who gets it:** `src/server/vlm.js` remembers, in server memory only, the script asset `installVlmApp` installed
+    for blueprint `vlm`. `App.getScriptAppProxy` adds `vlmVouch` to a proxy made for that one script run, on the server
+    only, for blueprint `vlm` only, and only while that blueprint's script is still that asset. A builder's edited
+    script is a new asset, so it sees undefined, and so does any callback it leaves behind after the shipped script is
+    restored. Clients, other apps and self-run worlds (any of the three env vars unset) also see undefined.
+  - **Why a worker thread:** the request runs in a worker thread, which reads the secret from its own copy of the env.
+    All app scripts share the server's realm, and Hyperfy's `lockdown()` (`__hardenTaming__: 'unsafe'`) leaves its
+    intrinsics mutable. A script can hook `Object.prototype.toJSON` or `JSON.stringify` and see any secret the main
+    thread serialises, even through references captured at load. The worker is a separate realm.
+  - **Never exposed:** the secret is never in blueprint props, entity state, snapshots, `/env.js`, any packet or any
+    log.
 
 ## Testing and building
 

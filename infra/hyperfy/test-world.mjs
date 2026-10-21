@@ -1,6 +1,6 @@
 // World test for VLM's Hyperfy image: boots a built, patched Hyperfy source tree locally and checks that the VLM app
 // is installed as blueprint `vlm` (one entity at the origin) beside Hyperfy's default `$scene`, and that only the server
-// half of the shipped VLM script can read the world's server-only values (`app.vlmWorld`, patch 0003).
+// half of the shipped VLM script can vouch with VLM (`app.vlmVouch`, patch 0003), and the world secret stays in Node.
 //
 //   node infra/hyperfy/test-world.mjs <hyperfy-src-dir>
 //
@@ -212,7 +212,8 @@ async function session(url, fn) {
       }
       throw new Error(`timed out in the page waiting for ${expression}`)
     }
-    await fn({ evaluate, waitFor, consoles, frames })
+    const reload = () => call('Page.reload', { ignoreCache: false })
+    await fn({ evaluate, waitFor, consoles, frames, reload })
     ws.close()
   } finally {
     chrome.kill('SIGKILL')
@@ -222,20 +223,43 @@ async function session(url, fn) {
   return { consoles, frames }
 }
 
-// --- app.vlmWorld probes -------------------------------------------------------------------------------------------
+// --- app.vlmVouch probes -------------------------------------------------------------------------------------------
 
-// Scripts that print what `app.vlmWorld` reads, prefixed `[vlm-probe] <which> <server|client>`. The probe .hyp is the
-// VLM app with its script swapped for the shipped probe, so it is what patch 0002 installs.
+// Scripts that print `typeof app.vlmVouch` and `typeof app.vlmWorld` (removed; must stay undefined), prefixed
+// `[vlm-probe] <which> <server|client>`. The probe .hyp is the VLM app with its script swapped for the shipped probe, so
+// it is what patch 0002 installs. On the server the shipped probe vouches for every player who enters (as the relay
+// would), then for a player id that isn't in the world, then again with a pending pairing VLM answers 500 to.
 const probeLine = (which) =>
-  `console.log('[vlm-probe] ${which} ' + (world.isServer ? 'server' : 'client') + ' ' + (app.vlmWorld === undefined ? 'undefined' : JSON.stringify(app.vlmWorld)))`
+  `console.log('[vlm-probe] ${which} ' + (world.isServer ? 'server' : 'client') + ' ' + typeof app.vlmVouch + ' ' + typeof app.vlmWorld)`
 const HOLD_PORT = 3212
-const shippedProbe = scriptAsset(`${probeLine('shipped')}\n`)
-// The builder's edit: reads the values now, and again from a callback that only runs after the shipped script is back
-// (a server fetch held open until the app is rebuilt, which aborts it).
+const VLM_PORT = 3213
+const VLM_URL = `http://127.0.0.1:${VLM_PORT}`
+const shippedProbe = scriptAsset(`${probeLine('shipped')}
+if (world.isServer && app.vlmVouch) {
+  const vouch = app.vlmVouch
+  const show = (which, r) => console.log('[vlm-probe] ' + which + ' server ' + JSON.stringify(r))
+  world.on('enter', async (e) => {
+    show('vouch', await vouch({ hyperfyPlayerId: e.playerId, playerName: 'Probe Player' }))
+    show('vouch-nobody', await vouch({ hyperfyPlayerId: 'nobody', playerName: 'X' }))
+    show('vouch-500', await vouch({ hyperfyPlayerId: e.playerId, playerName: 'Probe Player', pendingPairingId: 'pair-500' }))
+  })
+}
+`)
+// The builder's edit: reads now, and again from a callback that only runs after the shipped script is back (a server
+// fetch held open until the app is rebuilt, which aborts it).
 const editedProbe = scriptAsset(`${probeLine('edited')}
 if (world.isServer) fetch('http://127.0.0.1:${HOLD_PORT}/hold').then(() => { ${probeLine('edited-late')} })
 `)
 const otherProbe = scriptAsset(`${probeLine('other')}\n`)
+// A builder's app that hooks the realm's shared intrinsics, as a thief would, and prints anything secret-shaped.
+const hookProbe = scriptAsset(`if (world.isServer) {
+  const steal = (v) => { const t = String(v); if (t.includes('vlmws_')) console.log('[vlm-probe] stolen server ' + t) }
+  Object.defineProperty(Object.prototype, 'toJSON', { configurable: true, value() { if (this && this.worldSecret) steal(this.worldSecret); return this } })
+  const stringify = JSON.stringify
+  JSON.stringify = function (v, ...rest) { const out = stringify(v, ...rest); if (typeof out === 'string') steal(out); return out }
+  console.log('[vlm-probe] hook server installed')
+}
+`)
 const probeDir = mkdtempSync(path.join(tmpdir(), 'vlm-world-test-hyp-'))
 const probeHypPath = path.join(probeDir, 'vlm-probe.hyp')
 writeHyp(probeHypPath, { ...vlmHyp.blueprint, script: shippedProbe.url }, [
@@ -253,12 +277,46 @@ async function until(cond, what, ms = 30000) {
   }
   throw new Error(`timed out waiting for ${what}:\n${log.join('').slice(-2000)}`)
 }
+// Waits until the page's world is loaded and stays connected. Under load, headless Chrome can miss the server's first
+// ping (10 s) while the world is still initialising, and the server drops it ("disconnect" in the page's console); the
+// page is then reloaded, as a player would.
+async function connected({ waitFor, consoles, reload }) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const seen = consoles.length
+    if (attempt) await reload()
+    await waitFor(worldReady)
+    await wait(12000)
+    if (!consoles.slice(seen).some((l) => l.startsWith('disconnect'))) return
+  }
+  throw new Error('the page kept being disconnected from the world')
+}
 const worldReady = `!!(window.world?.blueprints?.get('vlm') && window.world.network?.id && [...window.world.entities.items.values()].some((e) => e.data?.blueprint === 'vlm'))`
+
+// A fake VLM: records every request, answers vouch with a linked player plus fields the image must strip, and 500 for
+// pendingPairingId `pair-500`.
+const vlmRequests = []
+const fakeVlm = createServer((req, res) => {
+  let body = ''
+  req.on('data', (d) => (body += d))
+  req.on('end', () => {
+    let json
+    try { json = JSON.parse(body) } catch {}
+    vlmRequests.push({ method: req.method, url: req.url, body: json, raw: body })
+    res.setHeader('content-type', 'application/json')
+    if (req.url !== '/api/hyperfy/pairings/vouch') return res.writeHead(404).end('{}')
+    if (json?.pendingPairingId === 'pair-500') return res.writeHead(500).end('{"error":"boom"}')
+    res.end(JSON.stringify({ status: 'linked', pass: 'PASS', passExpiresAt: 'x', pairingId: 'pair-1', sceneId: 'scene-1', user: { id: 'u1', displayName: 'Ada', email: 'leak@example' }, extra: 'junk' }))
+  })
+})
+await new Promise((r) => fakeVlm.listen(VLM_PORT, '127.0.0.1', r))
+const LINKED = JSON.stringify({ status: 'linked', pass: 'PASS', passExpiresAt: 'x', pairingId: 'pair-1', sceneId: 'scene-1', user: { id: 'u1', displayName: 'Ada' } })
 
 // --- tests ---------------------------------------------------------------------------------------------------------
 
 const results = []
+const only = process.env.TEST_ONLY ? new RegExp(process.env.TEST_ONLY) : null // run just the matching tests
 async function test(name, fn) {
+  if (only && !only.test(name)) return
   try {
     await fn()
     results.push([true, name])
@@ -338,16 +396,33 @@ try {
 
   const sworld = `${world}-secret`
   const SECRET = `vlmws_FAKE_TEST_SECRET_${randomBytes(8).toString('hex')}`
-  const secretEnv = { VLM_APP_PATH: probeHypPath, VLM_WORLD_KEY: KEY1, VLM_WORLD_SECRET: SECRET }
-  const expected = JSON.stringify({ secret: SECRET, apiUrl: FEED_URL, worldKey: KEY1 })
+  const secretEnv = { VLM_APP_PATH: probeHypPath, VLM_FEED_URL: VLM_URL, VLM_WORLD_KEY: KEY1, VLM_WORLD_SECRET: SECRET }
+  // the Chrome player's id, as the server saw it enter
+  const enteredId = () => vlmRequests.find((r) => r.url === '/api/hyperfy/pairings/vouch')?.body?.hyperfyPlayerId
 
-  await test('the vlm app\'s server script reads app.vlmWorld = { secret, apiUrl, worldKey }', async () => {
+  await test('the shipped vlm server script can vouch: Node posts the world secret to VLM and hands back only the expected fields', async () => {
+    vlmRequests.length = 0
     await boot(sworld, secretEnv)
     await until(() => probeReads('shipped', 'server').length, 'the shipped probe on the server')
-    eq(probeReads('shipped', 'server'), [expected], 'app.vlmWorld in the vlm app\'s server script')
+    eq(probeReads('shipped', 'server'), ['function undefined'], 'typeof app.vlmVouch / app.vlmWorld in the vlm app\'s server script')
+    await session(base, async ({ waitFor }) => {
+      await waitFor(worldReady)
+      await until(() => probeReads('vouch-500', 'server').length, 'the probe\'s three vouches')
+    })
+    const vouches = vlmRequests.filter((r) => r.url === '/api/hyperfy/pairings/vouch')
+    eq(vlmRequests.length, vouches.length, 'only vouch requests reach VLM')
+    eq(vouches.length, 2, 'vouch requests (the absent player id is refused without one)')
+    const id = enteredId()
+    ok(typeof id === 'string' && id.length > 0, `no player id in the vouch: ${JSON.stringify(vouches[0]?.body)}`)
+    eq(vouches[0].method, 'POST', 'vouch method')
+    eq(vouches[0].body, { worldKey: KEY1, worldSecret: SECRET, hyperfyPlayerId: id, playerName: 'Probe Player' }, 'vouch body')
+    eq(vouches[1].body, { worldKey: KEY1, worldSecret: SECRET, hyperfyPlayerId: id, playerName: 'Probe Player', pendingPairingId: 'pair-500' }, 'polling vouch body')
+    eq(probeReads('vouch', 'server'), [LINKED], 'the vouch answer the script gets (unexpected fields stripped)')
+    eq(probeReads('vouch-nobody', 'server'), ['{"status":"error"}'], 'a player id that isn\'t in the world')
+    eq(probeReads('vouch-500', 'server'), ['{"status":"error"}'], 'VLM answering 500')
   })
 
-  await test('client scripts and other apps read undefined', async () => {
+  await test('client scripts and other apps see app.vlmVouch undefined', async () => {
     const otherBp = { id: 'user-probe', version: 1, name: 'Probe', model: vlmHyp.blueprint.model, script: otherProbe.url, props: {} }
     const otherEnt = { ...userEntity, id: 'userprobe01', blueprint: 'user-probe' }
     sqlite(sworld, `insert into blueprints (id,data,createdAt,updatedAt) values ('user-probe','${esc(JSON.stringify(otherBp))}','${now}','${now}')`)
@@ -356,44 +431,78 @@ try {
     writeFileSync(path.join(srcDir, sworld, 'assets', otherProbe.url.replace('asset://', '')), otherProbe.bytes)
     await boot(sworld, secretEnv)
     await until(() => probeReads('other', 'server').length && probeReads('shipped', 'server').length, 'both probes on the server')
-    eq(probeReads('other', 'server'), ['undefined'], 'app.vlmWorld in another app\'s server script')
-    eq(probeReads('shipped', 'server'), [expected], 'app.vlmWorld in the vlm app\'s server script')
-    const { consoles } = await session(base, async ({ waitFor, consoles }) => {
+    eq(probeReads('other', 'server'), ['undefined undefined'], 'another app\'s server script')
+    eq(probeReads('shipped', 'server'), ['function undefined'], 'the vlm app\'s server script')
+    await session(base, async ({ waitFor, consoles }) => {
       await waitFor(worldReady)
       await until(() => pageReads(consoles, 'shipped').length && pageReads(consoles, 'other').length, 'both probes in the page')
+      eq(pageReads(consoles, 'shipped'), ['undefined undefined'], 'the vlm app\'s client script')
+      eq(pageReads(consoles, 'other'), ['undefined undefined'], 'another app\'s client script')
     })
-    eq(pageReads(consoles, 'shipped'), ['undefined'], 'app.vlmWorld in the vlm app\'s client script')
-    eq(pageReads(consoles, 'other'), ['undefined'], 'app.vlmWorld in another app\'s client script')
   })
 
-  await test('the secret never appears in the client\'s snapshot or packets, the page, /env.js or the world\'s rows', async () => {
-    await boot(sworld, secretEnv)
-    const page = await (await fetch(base)).text()
-    const env = await (await fetch(`${base}/env.js`)).text()
-    ok(env.includes('PUBLIC_WS_URL'), `/env.js does not look like Hyperfy's: ${env.slice(0, 200)}`)
-    ok(!page.includes(SECRET), 'the secret is in the served page')
-    ok(!env.includes(SECRET), 'the secret is in /env.js')
-    const { frames } = await session(base, async ({ waitFor }) => {
+  await test('a player who is neither admin nor builder is refused without calling VLM', async () => {
+    vlmRequests.length = 0
+    // with an admin code, a new player is a visitor
+    await boot(sworld, { ...secretEnv, ADMIN_CODE: `fake-admin-code-${randomBytes(4).toString('hex')}` })
+    await session(base, async ({ waitFor }) => {
       await waitFor(worldReady)
-      await wait(3000)
+      await waitFor(`!!window.world.entities.player && !window.world.entities.player.isBuilder()`) // a visitor, not a builder
+      await until(() => probeReads('vouch-500', 'server').length, 'the probe\'s three vouches')
     })
-    ok(frames.length > 0 && frames[0].length > 1000, `no client snapshot captured (${frames.length} frames, first ${frames[0]?.length} bytes)`)
-    ok(frames[0].includes(Buffer.from(KEY1)), 'the captured snapshot does not carry blueprint vlm\'s props (is it the snapshot?)')
-    ok(!frames.some((f) => f.includes(Buffer.from(SECRET))), 'the secret is in a packet the client received')
-    for (const table of ['blueprints', 'entities', 'config']) {
-      const rows = JSON.stringify(sqlite(sworld, `select * from ${table}`))
-      ok(!rows.includes(SECRET), `the secret is in the world's ${table} table`)
+    eq(probeReads('vouch', 'server'), ['{"status":"error"}'], 'vouch for a visitor')
+    eq(probeReads('vouch-500', 'server'), ['{"status":"error"}'], 'polling vouch for a visitor')
+    eq(vlmRequests, [], 'requests to VLM')
+  })
+
+  await test('the secret never appears in any client frame, the page, /env.js, console output or the world\'s rows, nor to an app hooking JSON', async () => {
+    vlmRequests.length = 0
+    const hookBp = { id: 'user-hook', version: 1, name: 'Hook', model: vlmHyp.blueprint.model, script: hookProbe.url, props: {} }
+    const hookEnt = { ...userEntity, id: 'userhook001', blueprint: 'user-hook' }
+    sqlite(sworld, `insert into blueprints (id,data,createdAt,updatedAt) values ('user-hook','${esc(JSON.stringify(hookBp))}','${now}','${now}')`)
+    sqlite(sworld, `insert into entities (id,data,createdAt,updatedAt) values ('userhook001','${esc(JSON.stringify(hookEnt))}','${now}','${now}')`)
+    mkdirSync(path.join(srcDir, sworld, 'assets'), { recursive: true })
+    writeFileSync(path.join(srcDir, sworld, 'assets', hookProbe.url.replace('asset://', '')), hookProbe.bytes)
+    try {
+      await boot(sworld, secretEnv)
+      await until(() => probeReads('hook', 'server').length, 'the hooking app on the server')
+      const page = await (await fetch(base)).text()
+      const env = await (await fetch(`${base}/env.js`)).text()
+      ok(env.includes('PUBLIC_WS_URL'), `/env.js does not look like Hyperfy's: ${env.slice(0, 200)}`)
+      ok(!page.includes(SECRET), 'the secret is in the served page')
+      ok(!env.includes(SECRET), 'the secret is in /env.js')
+      const { frames, consoles } = await session(base, async ({ waitFor }) => {
+        await waitFor(worldReady)
+        await until(() => probeReads('vouch-500', 'server').length, 'the probe\'s three vouches')
+        await wait(2000)
+      })
+      ok(vlmRequests.some((r) => r.raw.includes(SECRET)), 'VLM never got the secret, so this proves nothing')
+      eq(probeReads('vouch', 'server'), [LINKED], 'the vouch answer with the hooking app running')
+      eq(probeReads('stolen', 'server'), [], 'what the hooking app stole')
+      ok(frames.length > 0 && frames[0].length > 1000, `no client snapshot captured (${frames.length} frames, first ${frames[0]?.length} bytes)`)
+      ok(frames[0].includes(Buffer.from(KEY1)), 'the captured snapshot does not carry blueprint vlm\'s props (is it the snapshot?)')
+      ok(!frames.some((f) => f.includes(Buffer.from(SECRET))), 'the secret is in a packet the client received')
+      ok(consoles.length > 0 && !consoles.some((l) => l.includes(SECRET)), 'the secret is in the page\'s console')
+      ok(!log.join('').includes(SECRET), 'the secret is in the world\'s console output')
+      for (const table of ['blueprints', 'entities', 'config']) {
+        ok(!JSON.stringify(sqlite(sworld, `select * from ${table}`)).includes(SECRET), `the secret is in the world's ${table} table`)
+      }
+    } finally {
+      // a realm-wide toJSON hook also disturbs Hyperfy itself (later script edits stall), so it only lives for this test
+      await stop()
+      sqlite(sworld, `delete from entities where id = 'userhook001'`)
+      sqlite(sworld, `delete from blueprints where id = 'user-hook'`)
     }
   })
 
-  await test('an edited vlm script reads undefined, even from callbacks that outlive it once the shipped script is back', async () => {
+  await test('an edited vlm script sees app.vlmVouch undefined, even from callbacks that outlive it once the shipped script is back', async () => {
     const hold = createServer(() => {}) // never answers; the rebuild aborts the request
     await new Promise((r) => hold.listen(HOLD_PORT, '127.0.0.1', r))
     try {
       await boot(sworld, secretEnv)
       await until(() => probeReads('shipped', 'server').length, 'the shipped probe on the server')
-      await session(base, async ({ evaluate, waitFor }) => {
-        await waitFor(worldReady)
+      await session(base, async ({ evaluate, waitFor, consoles, reload }) => {
+        await connected({ waitFor, consoles, reload })
         const edit = (code) => `(async () => {
           const world = window.world
           const code = ${JSON.stringify(code)}
@@ -414,20 +523,20 @@ try {
         eq(await evaluate(edit(shippedProbe.bytes.toString())), shippedProbe.url, 'restored script url')
         await until(() => probeReads('shipped', 'server').length >= 2 && probeReads('edited-late', 'server').length, 'the restored script and the edited script\'s late callback')
       })
-      eq(probeReads('edited', 'server'), ['undefined'], 'app.vlmWorld in the edited script')
-      eq(probeReads('edited-late', 'server'), ['undefined'], 'app.vlmWorld in the edited script\'s callback after the restore')
-      eq(probeReads('shipped', 'server'), [expected, expected], 'app.vlmWorld in the shipped script, at boot and once restored')
+      eq(probeReads('edited', 'server'), ['undefined undefined'], 'the edited script')
+      eq(probeReads('edited-late', 'server'), ['undefined undefined'], 'the edited script\'s callback after the restore')
+      eq(probeReads('shipped', 'server'), ['function undefined', 'function undefined'], 'the shipped script, at boot and once restored')
     } finally {
       hold.closeAllConnections()
       hold.close()
     }
   })
 
-  await test('self-run (no VLM_WORLD_SECRET): the vlm app\'s server script reads undefined', async () => {
+  await test('self-run (no VLM_WORLD_SECRET): the vlm app\'s server script sees app.vlmVouch undefined', async () => {
     const { VLM_WORLD_SECRET, ...selfRun } = secretEnv
     await boot(sworld, selfRun)
     await until(() => probeReads('shipped', 'server').length, 'the shipped probe on the server')
-    eq(probeReads('shipped', 'server'), ['undefined'], 'app.vlmWorld without VLM_WORLD_SECRET')
+    eq(probeReads('shipped', 'server'), ['undefined undefined'], 'without VLM_WORLD_SECRET')
   })
 
   await test('boots on Postgres as a world role that cannot CREATE on the database, and installs vlm in its schema', async () => {
@@ -464,6 +573,8 @@ try {
   rmSync(worldDir, { recursive: true, force: true })
   rmSync(path.join(srcDir, `${world}-secret`), { recursive: true, force: true })
   rmSync(probeDir, { recursive: true, force: true })
+  fakeVlm.closeAllConnections()
+  fakeVlm.close()
 }
 
 const failed = results.filter(([pass]) => !pass).length
