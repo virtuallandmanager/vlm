@@ -17,6 +17,12 @@ final class SceneRenderer {
         didSet { if soundOn != oldValue { rebuild() } }
     }
 
+    /// Called once an item's visible content is in place (a model only after it has loaded), so platform code can
+    /// fit collision shapes to it. Not called for sounds.
+    var onVisualsReady: ((String, Entity) -> Void)?
+    /// Called after each feed snapshot is applied, with what changed.
+    var onApplied: ((PlanDiff) -> Void)?
+
     private var plan: [RenderItem] = []
     private var shown: [String: Entity] = [:]
     private var tokens: [String: UUID] = [:]
@@ -33,6 +39,36 @@ final class SceneRenderer {
         }
         for item in d.add { add(item) }
         plan = next
+        onApplied?(d)
+    }
+
+    // MARK: - Lookup (for local edits)
+
+    func entity(for key: String) -> Entity? { shown[key] }
+    func item(for key: String) -> RenderItem? { plan.first { $0.key == key } }
+
+    /// The item key of `entity` or of the item entity it sits inside; nil when it isn't part of an item.
+    func key(of entity: Entity) -> String? {
+        var e: Entity? = entity
+        while let cur = e {
+            if cur.parent === root { return shown[cur.name] === cur ? cur.name : nil }
+            e = cur.parent
+        }
+        return nil
+    }
+
+    /// The transform the feed gives an item's entity (what a local edit is reset to).
+    func feedTransform(for key: String) -> Transform? {
+        item(for: key).map(Self.transform(of:))
+    }
+
+    private static func transform(of item: RenderItem) -> Transform {
+        let t = item.transform
+        return Transform(
+            scale: item.kind == .model ? SIMD3<Float>(t.scale) : SIMD3<Float>(1, 1, 1),
+            rotation: t.orientation.float,
+            translation: SIMD3<Float>(t.position)
+        )
     }
 
     private func rebuild() {
@@ -49,12 +85,7 @@ final class SceneRenderer {
         tokens[item.key] = token
         let group = Entity()
         group.name = item.key
-        let t = item.transform
-        group.transform = Transform(
-            scale: item.kind == .model ? SIMD3<Float>(t.scale) : SIMD3<Float>(1, 1, 1),
-            rotation: t.orientation.float,
-            translation: SIMD3<Float>(t.position)
-        )
+        group.transform = Self.transform(of: item)
         root.addChild(group)
         shown[item.key] = group
         let alive = { [weak self] in self?.tokens[item.key] == token }
@@ -85,6 +116,7 @@ final class SceneRenderer {
         placeholder.faceCulling = .none
         let entity = plane(item, material: placeholder)
         group.addChild(entity)
+        onVisualsReady?(item.key, group)
         Task {
             do {
                 let file = try await Downloads.shared.file(for: item.src)
@@ -119,6 +151,7 @@ final class SceneRenderer {
         var mat = VideoMaterial(avPlayer: player)
         mat.faceCulling = .none
         group.addChild(plane(item, material: mat))
+        onVisualsReady?(item.key, group)
         players[item.key] = (player, looper)
         player.play()
     }
@@ -135,11 +168,13 @@ final class SceneRenderer {
                 let model = GLTFRealityKitLoader.convert(scene: scene, asset: asset)
                 guard alive() else { return }
                 turn.addChild(model)
+                self.onVisualsReady?(item.key, group)
                 for anim in model.availableAnimations { model.playAnimation(anim.repeat()) }
             } catch {
                 print("[vlm] model failed, showing placeholder: \(item.key) \(error.localizedDescription)")
                 guard alive() else { return }
                 turn.addChild(Self.placeholderBox(named: URL(string: item.src)?.lastPathComponent ?? item.src))
+                self.onVisualsReady?(item.key, group)
             }
         }
     }

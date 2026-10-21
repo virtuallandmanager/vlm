@@ -53,6 +53,7 @@ targets:
       path: visionOS/Info.plist
       properties:
         CFBundleDisplayName: VLM Spaces
+        NSWorldSensingUsageDescription: VLM Spaces uses world tracking to pin your VLM scene to a spot in this room.
         UIApplicationSceneManifest:
           UIApplicationPreferredDefaultSceneSessionRole: UIWindowSceneSessionRoleApplication
           UIApplicationSupportsMultipleScenes: true

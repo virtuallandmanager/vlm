@@ -48,6 +48,29 @@ xcrun simctl launch <vision-sim-id> gg.vlm.spaces.visionos -feedUrl http://127.0
 
 See `docs/visionos-immersive-fixture.png` for the result.
 
+## Placing the scene (Vision Pro)
+
+The window's top row has a mode picker (**View**, **Place scene**, **Edit objects**) and **Enter/Leave space**. In **View** mode, gestures are off.
+
+In the space, a translucent 0.6 m disc marks the scene's centre, VLM (8, 0, 8), on the floor. Its arrow and **N** point to the scene's north, VLM +Z. A thin outline shows the 16 m × 16 m parcel; the parcel's south-west corner is VLM's origin.
+
+- **Place scene:** pinch and drag the marker or the outline to slide the whole scene along the floor. Pinch the marker with both hands and twist to turn the scene about its centre.
+- **Pin to this room:** adds an ARKit `WorldAnchor` at the scene's current spot and saves its id in `UserDefaults`. On the next launch, the scene moves back to that spot once visionOS finds the anchor. If you move a pinned scene, the pin moves with it.
+- **Re-place:** clears the pin and puts the scene 2 m ahead of you again, with north pointing away from you.
+- Pinning needs a device. In the simulator the buttons do nothing and the status reads "Pinning needs a device".
+
+## Editing objects (Vision Pro)
+
+In **Edit objects** mode, pinch an image, video or model to select it. The selected object gets a cyan box around it, and the window shows its name and a **Reset object** button.
+
+- Drag to move it in 3D.
+- Pinch with both hands and twist to turn it about the vertical axis.
+- Pinch with both hands and spread or close them to resize it, from 0.1× to 10× its VLM size.
+
+Edits stay on the headset and aren't saved to VLM. When the feed changes an object, the feed's version replaces the local edit, so live edits from VLM still show. Changing **Sound** and tapping **Connect** rebuilds every object, which drops all local edits.
+
+See `docs/visionos-controls.png` for the window in the simulator.
+
 ## Run on your Apple Vision Pro (or iPhone)
 
 1. Run `cd apps/ar-spike && xcodegen generate`, then open `VLMSpaces.xcodeproj` in Xcode 26.
@@ -61,4 +84,4 @@ See `docs/visionos-immersive-fixture.png` for the result.
 4. In Xcode's toolbar, choose the **VLMSpaces-visionOS** scheme and pick your Vision Pro as the run destination. Press **Run** (⌘R). The first install can take a few minutes while Xcode prepares the device.
    - For an iPhone, plug it in, choose **VLMSpaces-iOS**, pick the phone and run. On first launch, allow camera access.
 5. In the app's settings, paste a world key. To get one, open vlm.gg → **Deploy** → **Your Hyperfy worlds** → **Connect a world** and copy the `vlmw_…` key. Tap **Connect**. The status line should read `Live · version xxxxxxxx · N items`.
-6. **Vision Pro:** tap **Enter space**. The scene appears life-size with its centre 2 m ahead of you on the floor. Turn so you face where you want the scene's north to be before you enter. **iPhone:** move the phone around until the floor is detected, then tap it.
+6. **Vision Pro:** tap **Enter space**. The scene appears life-size with its centre 2 m ahead of you on the floor, north pointing away from you. Use **Place scene** to move it and **Pin to this room** to keep it there. **iPhone:** move the phone around until the floor is detected, then tap it.

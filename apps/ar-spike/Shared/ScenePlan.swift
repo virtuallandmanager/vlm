@@ -7,6 +7,8 @@ struct RenderItem: Equatable {
 
     /// "\(elementSk):\(instanceSk)"
     var key: String
+    /// The element's name in VLM, or the media file name when it has none.
+    var name: String
     var kind: Kind
     /// For video, image and model, the URL to show; for audio, the sound.
     var src: String
@@ -134,6 +136,7 @@ private func planElements(_ out: inout [RenderItem], _ elements: Any?, _ kind: R
             let scale = vec(inst["scale"], 1)
             out.append(RenderItem(
                 key: "\(templateString(el["sk"])):\(templateString(inst["sk"]))",
+                name: nonEmptyString(el["name"]) ?? (URL(string: media.src)?.lastPathComponent ?? media.src),
                 kind: media.kind,
                 src: media.src,
                 loop: media.loop,
