@@ -14,6 +14,15 @@ re-run `infra/hyperfy/test-world.mjs`.
   `worldKey` = `VLM_WORLD_KEY` (version bumped when anything changes), and keeps exactly one `vlm` entity, created at
   the origin. `$scene` and every other app are left alone. On Postgres it skips `CREATE SCHEMA` when `DB_SCHEMA`
   already exists, because world roles have no CREATE on the database (VLM creates the schema first).
+- `0003-vlm-world-secret.patch`: VLM only, never for upstream. The server half of the shipped VLM app reads
+  `app.vlmWorld = { secret, apiUrl, worldKey }` (from `VLM_WORLD_SECRET`, `VLM_FEED_URL`, `VLM_WORLD_KEY`), which it uses
+  to vouch for players to VLM. `src/server/vlm.js` remembers, in server memory only, the script asset `installVlmApp`
+  installed for blueprint `vlm`; `App.getScriptAppProxy` hands the values to a script run only on the server, only for
+  blueprint `vlm`, and only while that blueprint's script is still that asset. The values go on a proxy made for that
+  run alone, so a builder's edited script (a new asset), and any callback it leaves behind after the shipped script is
+  restored, reads undefined. So do clients, every other app, and self-run worlds (`VLM_WORLD_SECRET` unset). The values
+  are never in blueprint props, entity state, snapshots, `/env.js` or any packet. Note that all app scripts in a world
+  share one SES compartment, so the VLM app must keep the secret in its own closures, never on `globalThis`.
 
 ## Testing and building
 
