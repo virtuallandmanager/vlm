@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { siteLinks } from './site'
 
 describe('siteLinks', () => {
-  it('derives the privacy page from the docs site', () => {
-    expect(siteLinks({ docs: 'https://docs.example/' })).toEqual({ docs: 'https://docs.example/', privacy: 'https://docs.example/privacy/', discord: null })
+  it('privacy is the in-app page, docs and Discord come from config', () => {
+    expect(siteLinks({ docs: 'https://docs.example/', discord: 'https://discord.gg/x' })).toEqual({ docs: 'https://docs.example/', privacy: '/privacy/', discord: 'https://discord.gg/x' })
   })
 
-  it('leaves out links that are not configured', () => {
-    expect(siteLinks({})).toEqual({ docs: null, privacy: null, discord: null })
+  it('leaves out docs and Discord when not configured, but always has privacy', () => {
+    expect(siteLinks({})).toEqual({ docs: null, privacy: '/privacy/', discord: null })
   })
 })

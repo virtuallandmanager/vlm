@@ -117,6 +117,12 @@ if [ -n "$DATABASE_URL" ]; then
         console.log('[vlm-server] system_flags table ensured');
       } catch(e) { console.log('[vlm-server] system_flags:', e.message); }
 
+      // Advertiser early-access list; matches advertiserLeads in src/db/schema.ts
+      try {
+        await sql\`CREATE TABLE IF NOT EXISTS advertiser_leads (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), email TEXT NOT NULL UNIQUE, name TEXT, company TEXT, website TEXT, message TEXT, consent_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        console.log('[vlm-server] advertiser_leads table ensured');
+      } catch(e) { console.log('[vlm-server] advertiser_leads:', e.message); }
+
       // model enum value
       try {
         await sql\`ALTER TYPE element_type ADD VALUE IF NOT EXISTS 'model'\`;

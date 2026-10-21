@@ -16,3 +16,6 @@ Raw events are kept for the scene owner's plan (7–365 days, unlimited on the t
 
 ## Deleting your data
 Call `POST /api/analytics/me/delete` with your session token. A dashboard control for this is coming. This removes your sessions, events and positions from every scene.
+
+## Advertiser early access
+When you ask for advertising early access on vlm.gg, VLM stores the email address, name, company or project, website and message you enter, and the time you sent the form. It's used only to contact you about advertising on VLM. If you send the form again with the same email, the new answers replace the old ones (fields you leave blank keep what you sent before). Your IP address is used briefly to limit repeated submissions and is not stored. To be removed from the list, email sales@vlm.gg.
