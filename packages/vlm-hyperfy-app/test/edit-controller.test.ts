@@ -28,7 +28,7 @@ function scene(xs: Record<string, number>): SerializedScene {
 
 type Reply = { status: number; body?: unknown } | undefined
 
-function setup(xs: Record<string, number> = { inst1: 1 }, opts: { replies?: Reply[]; rootInverse?: Matrix4 } = {}) {
+function setup(xs: Record<string, number> = { inst1: 1 }, opts: { replies?: Reply[]; rootInverse?: Matrix4; renews?: boolean } = {}) {
   let plan: RenderItem[] = planScene(scene(xs))
   const replies = [...(opts.replies ?? [])]
   const fetch = vi.fn(async (_url: string, _init?: unknown) => {
@@ -36,7 +36,7 @@ function setup(xs: Record<string, number> = { inst1: 1 }, opts: { replies?: Repl
     if (!r) return undefined
     return { ok: r.status >= 200 && r.status < 300, status: r.status, json: async () => r.body ?? {} }
   })
-  const api = new VlmApi({ feedUrl: 'https://api.example', fetch: fetch as never, getPass: () => 'pass', onAuthFailure: () => {} })
+  const api = new VlmApi({ feedUrl: 'https://api.example', fetch: fetch as never, getPass: () => 'pass', onAuthFailure: async () => opts.renews ?? false })
   const save = vi.spyOn(api, 'saveTransform')
   const preview = vi.fn()
   const restore = vi.fn()
@@ -175,19 +175,31 @@ describe('EditController', () => {
     expect(t.edit.state.selectedKey).toBe(null)
   })
 
-  it('an auth failure on save keeps the draft and a later save succeeds', async () => {
+  it('an auth failure on save renews the pass and saves in the same press', async () => {
+    const t = setup({ inst1: 1 }, { replies: [{ status: 401 }, { status: 200, body: {} }], renews: true })
+    dragX(t)
+    t.edit.pointerUp()
+    const draft = t.session.draft
+    await t.edit.save()
+    expect(t.save).toHaveBeenCalledTimes(1)
+    expect(t.fetch).toHaveBeenCalledTimes(2)
+    expect(JSON.parse((t.fetch.mock.calls[1][1] as { body: string }).body)).toEqual(draft)
+    expect(t.alerts).toEqual([{ kind: 'info', text: 'Saved' }])
+    expect(t.edit.state.dirty).toBe(false)
+  })
+
+  it("an auth failure that can't renew keeps the draft (the link shows expired) and a save after re-linking succeeds", async () => {
     const t = setup({ inst1: 1 }, { replies: [{ status: 401 }, { status: 200, body: {} }] })
     dragX(t)
     t.edit.pointerUp()
     const draft = t.session.draft
     await t.edit.save()
+    expect(t.fetch).toHaveBeenCalledTimes(1)
     expect(t.edit.state.dirty).toBe(true)
     expect(t.session.draft).toEqual(draft)
     expect(t.restore).not.toHaveBeenCalled()
     expect(t.alerts).toEqual([])
-    // The pass renewed: Save again sends the same draft.
     await t.edit.save()
-    expect(t.save).toHaveBeenCalledTimes(2)
     expect(t.save.mock.calls[1][1]).toEqual(draft)
     expect(t.alerts).toEqual([{ kind: 'info', text: 'Saved' }])
     expect(t.edit.state.dirty).toBe(false)

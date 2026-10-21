@@ -101,7 +101,7 @@ export function runHud(hooks: ClientEditHooks, sandbox: HudSandbox): void {
     feedUrl,
     fetch,
     getPass: () => pairing?.pass() ?? null,
-    onAuthFailure: () => void pairing?.renewNow(),
+    onAuthFailure: () => pairing?.renewOrExpire() ?? Promise.resolve(false),
   })
   const session = new TransformSession({ now: () => Date.now(), onDraft: () => {} })
   const controller = new EditController({

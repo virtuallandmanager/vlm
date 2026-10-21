@@ -5,7 +5,7 @@ type Res = { ok: boolean; status: number; json(): Promise<unknown> } | undefined
 type Call = { url: string; init: { method?: string; headers?: Record<string, string>; body?: string } }
 const res = (status: number, body: unknown = {}): Res => ({ ok: status >= 200 && status < 300, status, json: async () => body })
 
-function make(responses: Array<Res | Error>, pass: string | null = 'P') {
+function make(responses: Array<Res | Error>, pass: string | null = 'P', renew: (() => string | null) | null = null) {
   const calls: Call[] = []
   let auth = 0
   const api = new VlmApi({
@@ -17,7 +17,13 @@ function make(responses: Array<Res | Error>, pass: string | null = 'P') {
       return r
     },
     getPass: () => pass,
-    onAuthFailure: () => auth++,
+    onAuthFailure: async () => {
+      auth++
+      const next = renew ? renew() : null
+      if (!next) return false
+      pass = next
+      return true
+    },
   })
   return { api, calls, auth: () => auth }
 }
@@ -29,6 +35,24 @@ describe('VlmApi', () => {
     const t = make([res(403, { error: 'Forbidden' })])
     expect(await t.api.saveTransform('i1', T)).toEqual({ ok: false, reason: 'no_access' })
     expect(t.auth()).toBe(0)
+  })
+
+  it('a 401 renews and retries once with the fresh pass', async () => {
+    const t = make([res(401), res(200, { ok: 1 })], 'OLD', () => 'NEW')
+    expect(await t.api.saveTransform('i1', T)).toEqual({ ok: true, value: { ok: 1 } })
+    expect(t.auth()).toBe(1)
+    expect(t.calls.map((c) => c.init.headers!.Authorization)).toEqual(['Bearer OLD', 'Bearer NEW'])
+    expect(body(t.calls[1])).toEqual(body(t.calls[0]))
+  })
+
+  it('no pass renews first, then sends; a second 401 after renewing is auth without another retry', async () => {
+    const n = make([res(200, {})], null, () => 'NEW')
+    expect((await n.api.setEnabled('e1', true)).ok).toBe(true)
+    expect(n.calls.map((c) => c.init.headers!.Authorization)).toEqual(['Bearer NEW'])
+    const twice = make([res(401), res(401)], 'OLD', () => 'NEW')
+    expect(await twice.api.setEnabled('e1', true)).toEqual({ ok: false, reason: 'auth' })
+    expect(twice.calls).toHaveLength(2)
+    expect(twice.auth()).toBe(1)
   })
 
   it('401 is auth and calls onAuthFailure; no pass is auth without a request', async () => {

@@ -234,7 +234,8 @@ export class EditController {
    * Saves the draft with PUT /api/instances/:id.
    * - Success: the saved value stands in for the feed's until the feed brings it (see `saved`).
    * - 'no_access': alerts and reverts.
-   * - 'auth' (expired pass): keeps the draft quietly; the pairing shows "Link expired" and Save works after it renews.
+   * - 'auth' (VLM refused the pass): VlmApi has already renewed and retried once, so this means the pass couldn't be
+   *   renewed. Keeps the draft quietly; the pairing shows "Link expired. Pair again." and Save works once re-linked.
    * - 'lost': keeps the draft, alerts once, and retries with back-off (2 s doubling to 30 s) while the draft is
    *   unchanged; a later success alerts "Reconnected" then "Saved".
    * - Anything else: keeps the draft with "Couldn't save: <reason>".

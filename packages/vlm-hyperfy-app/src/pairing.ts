@@ -92,6 +92,22 @@ export class Pairing {
     }))
   }
 
+  /**
+   * VLM refused the pass (a 401): renews now, and if that can't produce a fresh pass the link is expired for good
+   * ("Link expired. Pair again."), with no background renewal that could flip it back. Resolves true when renewed.
+   */
+  async renewOrExpire(): Promise<boolean> {
+    const gen = this.gen
+    if (await this.renewNow()) return true
+    if (gen === this.gen && (this.state.status === 'linked' || this.state.status === 'lost')) {
+      this.passValue = null
+      this.renewToken++
+      this.expiryToken++
+      this.emit({ status: 'expired' })
+    }
+    return false
+  }
+
   stop(): void {
     this.reset()
   }

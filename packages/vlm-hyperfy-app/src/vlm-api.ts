@@ -33,8 +33,12 @@ export interface VlmApiOptions {
   feedUrl: string
   fetch: ScriptFetch
   getPass: () => string | null
-  /** Called on every 401 (and when there is no pass): the owner should renew the pass. */
-  onAuthFailure: () => void
+  /**
+   * Called on a 401 (and when there is no pass): the owner renews the pass. Resolves true when a fresh pass is in
+   * place, and the call is then retried once with it; false when it couldn't renew (the owner shows the link as
+   * expired) and the call is 'auth'.
+   */
+  onAuthFailure: () => Promise<boolean>
 }
 
 /** The scene as the HUD needs it: its presets for the preset switcher. */
@@ -60,8 +64,9 @@ function modelName(src: string): string {
 
 /**
  * The Hyperfy HUD's edit client: VLM's REST API with a scene pass. Every call resolves (never rejects) with
- * ok/value or a reason. An undefined fetch (network or CORS failure) is 'lost'; 401 is 'auth' and calls
- * onAuthFailure; 403 is 'no_access'; other 4xx are 'invalid'; 5xx are 'server'.
+ * ok/value or a reason. An undefined fetch (network or CORS failure) is 'lost'; 401 calls onAuthFailure and, if
+ * that renewed the pass, retries once, else (or on a second 401) is 'auth'; 403 is 'no_access'; other 4xx are
+ * 'invalid'; 5xx are 'server'.
  */
 export class VlmApi {
   constructor(private readonly opts: VlmApiOptions) {}
@@ -151,11 +156,27 @@ export class VlmApi {
   }
 
   private async call<T = unknown>(method: string, path: string, body?: object): Promise<ApiResult<T>> {
-    const pass = this.opts.getPass()
-    if (!pass) {
-      this.opts.onAuthFailure()
-      return { ok: false, reason: 'auth' }
+    let renewed = false
+    for (;;) {
+      const r = await this.send<T>(method, path, body)
+      if (r !== 'unauthorized') return r
+      if (renewed || !(await this.renew())) return { ok: false, reason: 'auth' }
+      renewed = true
     }
+  }
+
+  private async renew(): Promise<boolean> {
+    try {
+      return (await this.opts.onAuthFailure()) === true
+    } catch {
+      return false
+    }
+  }
+
+  /** One request; 'unauthorized' for a 401 or no pass, so call() can renew and retry. */
+  private async send<T>(method: string, path: string, body?: object): Promise<ApiResult<T> | 'unauthorized'> {
+    const pass = this.opts.getPass()
+    if (!pass) return 'unauthorized'
     const headers: Record<string, string> = { Authorization: `Bearer ${pass}` }
     const init: { method: string; headers: Record<string, string>; body?: string } = { method, headers }
     if (body !== undefined) {
@@ -169,10 +190,7 @@ export class VlmApi {
       res = undefined
     }
     if (!res) return { ok: false, reason: 'lost' }
-    if (res.status === 401) {
-      this.opts.onAuthFailure()
-      return { ok: false, reason: 'auth' }
-    }
+    if (res.status === 401) return 'unauthorized'
     if (res.status === 403) return { ok: false, reason: 'no_access' }
     if (res.status >= 500) return { ok: false, reason: 'server' }
     if (!res.ok) return { ok: false, reason: 'invalid' }
