@@ -101,11 +101,12 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   // JWT
   await registerJwt(app, config.jwtSecret)
 
-  // Every route, with whether it declares a scene-pass resolver (the scene-pass guard test walks these).
-  const registeredRoutes: Array<{ method: string; url: string; scenePass: boolean }> = []
+  // Every route, with whether it declares a scene-pass resolver and takes Hyperfy passes (the scene-pass guard test walks these).
+  const registeredRoutes: Array<{ method: string; url: string; scenePass: boolean; hyperfy: boolean }> = []
   app.addHook('onRoute', (r) => {
     const methods = Array.isArray(r.method) ? r.method : [r.method]
-    for (const m of methods) if (m !== 'HEAD' && m !== 'OPTIONS') registeredRoutes.push({ method: m, url: r.url, scenePass: !!(r.config as { scenePass?: unknown } | undefined)?.scenePass })
+    const sp = (r.config as { scenePass?: { hyperfy?: boolean } } | undefined)?.scenePass
+    for (const m of methods) if (m !== 'HEAD' && m !== 'OPTIONS') registeredRoutes.push({ method: m, url: r.url, scenePass: !!sp, hyperfy: !!sp?.hyperfy })
   })
   app.decorate('registeredRoutes', registeredRoutes)
 

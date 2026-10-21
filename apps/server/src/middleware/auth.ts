@@ -113,6 +113,10 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     if (decoded.via === 'hyperfy' && !(decoded.pairingId && (await pairingLive(decoded.pairingId)))) {
       return reply.status(401).send({ error: 'pairing_revoked' })
     }
+    // Default deny for Hyperfy passes too: only routes that opt in (the HUD's) take one.
+    if (decoded.via === 'hyperfy' && request.routeOptions.config?.scenePass && !request.routeOptions.config.scenePass.hyperfy) {
+      return reply.status(403).send({ error: 'hyperfy_pass_not_allowed' })
+    }
     if (decoded.kind === 'scene') {
       // Default deny: a scene pass works only on routes that declare how to find their scene,
       // and only when that scene is the pass's own. A resolver error refuses too (never 401/pass-through).

@@ -223,7 +223,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   // ── GET /api/scenes/:sceneId — get scene with full nested data ───────────
 
-  app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId', { config: { scenePass: { sceneFrom: fromParam('sceneId') } } }, async (request, reply) => {
+  app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId', { config: { scenePass: { sceneFrom: fromParam('sceneId'), hyperfy: true } } }, async (request, reply) => {
     const { sceneId } = request.params
 
     const scene = await db.query.scenes.findFirst({
@@ -265,7 +265,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.put<{ Params: { sceneId: string }; Body: Partial<CreateSceneBody> & { activePresetId?: string } }>(
     '/api/scenes/:sceneId',
-    { config: { scenePass: { sceneFrom: fromParam('sceneId') } } },
+    { config: { scenePass: { sceneFrom: fromParam('sceneId'), hyperfy: true } } },
     async (request, reply) => {
       const { sceneId } = request.params
       const { name, description, activePresetId } = request.body
@@ -344,7 +344,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { presetId: string }; Body: CreateElementBody }>(
     '/api/presets/:presetId/elements',
-    { config: { scenePass: { sceneFrom: fromPreset } } },
+    { config: { scenePass: { sceneFrom: fromPreset, hyperfy: true } } },
     async (request, reply) => {
       const { presetId } = request.params
       const { type, name, enabled, customId, customRendering, clickEvent, properties } = request.body
@@ -392,7 +392,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.put<{ Params: { elementId: string }; Body: Partial<CreateElementBody> }>(
     '/api/elements/:elementId',
-    { config: { scenePass: { sceneFrom: fromElement } } },
+    { config: { scenePass: { sceneFrom: fromElement, hyperfy: true } } },
     async (request, reply) => {
       const { elementId } = request.params
 
@@ -439,7 +439,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { elementId: string }; Body: { enabled?: unknown } }>(
     '/api/elements/:elementId/live',
-    { config: { scenePass: { sceneFrom: fromElement } } },
+    { config: { scenePass: { sceneFrom: fromElement, hyperfy: true } } },
     async (request, reply) => {
       const { elementId } = request.params
       const enabled = request.body?.enabled
@@ -472,7 +472,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.delete<{ Params: { elementId: string } }>(
     '/api/elements/:elementId',
-    { config: { scenePass: { sceneFrom: fromElement } } },
+    { config: { scenePass: { sceneFrom: fromElement, hyperfy: true } } },
     async (request, reply) => {
       const { elementId } = request.params
 
@@ -502,7 +502,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { elementId: string }; Body: CreateInstanceBody }>(
     '/api/elements/:elementId/instances',
-    { config: { scenePass: { sceneFrom: fromElement } } },
+    { config: { scenePass: { sceneFrom: fromElement, hyperfy: true } } },
     async (request, reply) => {
       const { elementId } = request.params
 
@@ -560,7 +560,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
 
   app.put<{ Params: { instanceId: string }; Body: UpdateInstanceBody }>(
     '/api/instances/:instanceId',
-    { config: { scenePass: { sceneFrom: fromInstance } } },
+    { config: { scenePass: { sceneFrom: fromInstance, hyperfy: true } } },
     async (request, reply) => {
       const { instanceId } = request.params
 

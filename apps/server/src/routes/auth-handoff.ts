@@ -35,9 +35,8 @@ export async function purgeAuthHandoffCodes(now = new Date()): Promise<number> {
 export default async function authHandoffRoutes(app: FastifyInstance) {
   const limiter = new TokenBucketLimiter()
 
+  // No `hyperfy` opt-in: a Hyperfy pass is tied to a revocable pairing, and the exchanged session would outlive a revoke.
   app.post('/api/auth/handoff', { preHandler: authenticate, config: { scenePass: { sceneFrom: boundScene } } }, async (request, reply) => {
-    // A Hyperfy pass is tied to a revocable pairing; the exchanged pass would carry no such tie and outlive a revoke.
-    if (request.user.via === 'hyperfy') return reply.status(403).send({ error: 'hyperfy_pass_not_allowed' })
     const actor = actorFromClaims(request.user)
     if (!actor.userId || !actor.verified || !actor.wallet) {
       return reply.status(401).send({ error: 'Sign-in hand-off needs a verified wallet' })

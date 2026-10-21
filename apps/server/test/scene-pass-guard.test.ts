@@ -5,6 +5,9 @@ import { testApp, createUser, createScene, createElement, createInstance, tokenF
 import { createAnalyticsScene } from './helpers/analytics.js'
 import { createSetup } from './helpers/setups.js'
 import { verifySessionToken } from '../src/auth/tokens.js'
+import { issueHyperfyPass } from '../src/auth/scene-pass.js'
+import { db } from '../src/db/connection.js'
+import { hyperfyPairings, hyperfyWorlds } from '../src/db/schema.js'
 
 const pass = (u: any, sceneId: string | null, locationId: string | null = null) => tokenFor(u, { kind: 'scene', sceneId, locationId, orgId: null })
 
@@ -266,5 +269,92 @@ describe('scene pass guard', () => {
     expect(other.statusCode).toBe(403)
     const own = await app.inject({ method: 'GET', url: `/api/analytics/locations/${la.id}/summary`, headers: { authorization: `Bearer ${pass(owner, a.scene.id, la.id)}` } })
     expect(own.statusCode).toBe(200)
+  })
+
+  describe('Hyperfy passes (refused unless the route opts in)', () => {
+    // The HUD's routes (packages/vlm-hyperfy-app/src/vlm-api.ts); nothing else accepts a Hyperfy pass.
+    const HUD_ROUTES = [
+      'GET /api/scenes/:sceneId',
+      'PUT /api/scenes/:sceneId',
+      'POST /api/presets/:presetId/elements',
+      'PUT /api/elements/:elementId',
+      'DELETE /api/elements/:elementId',
+      'POST /api/elements/:elementId/live',
+      'POST /api/elements/:elementId/instances',
+      'PUT /api/instances/:instanceId',
+      'GET /api/scenes/:sceneId/library',
+      'POST /api/scenes/:sceneId/library',
+    ].sort()
+
+    /** A live Hyperfy pass for the owner's own scene, plus ids under that scene for the walk. */
+    async function fixture() {
+      const owner = await createUser({ wallet: '0x00000000000000000000000000000000000000a2' })
+      const { scene, preset } = await createScene(owner)
+      const element = await createElement(preset.id)
+      const instance = await createInstance(element.id)
+      const [world] = await db.insert(hyperfyWorlds).values({ sceneId: scene.id, ownerId: owner.id, name: 'W', keyHash: 'guard-world-hash', keyPrefix: 'vlmw_g' }).returning()
+      const [pairing] = await db.insert(hyperfyPairings).values({
+        worldId: world.id, userId: owner.id, secretHash: 'guard-secret-hash', status: 'claimed', codeExpiresAt: new Date(Date.now() + 3600_000), expiresAt: new Date(Date.now() + 3600_000),
+      }).returning()
+      const { pass: hp } = issueHyperfyPass(app, owner, owner.wallet ?? null, { id: pairing.id, worldId: world.id, sceneId: scene.id })
+      const url = (u: string) =>
+        u.replace(/:sceneId/g, scene.id).replace(/:presetId/g, preset.id).replace(/:elementId/g, element.id).replace(/:instanceId/g, instance.id).replace(/:[A-Za-z]+/g, '00000000-0000-0000-0000-000000000000')
+      return { owner, scene, preset, element, instance, hp, url }
+    }
+
+    it('only the HUD routes opt in', async () => {
+      const all = (app as any).registeredRoutes as Array<{ method: string; url: string; scenePass: boolean; hyperfy: boolean }>
+      expect(all.filter((r) => r.hyperfy).map((r) => `${r.method} ${r.url}`).sort()).toEqual(HUD_ROUTES)
+      expect(all.filter((r) => r.hyperfy && !r.scenePass)).toEqual([])
+    })
+
+    it('every scenePass route without the opt-in refuses a Hyperfy pass for its own scene (route walk)', async () => {
+      const f = await fixture()
+      const all = (app as any).registeredRoutes as Array<{ method: string; url: string; scenePass: boolean; hyperfy: boolean }>
+      const routes = all.filter((r) => r.scenePass && !r.hyperfy)
+      expect(routes.length).toBeGreaterThan(15)
+      const offenders: string[] = []
+      for (const r of routes) {
+        const res = await app.inject({ method: r.method as any, url: f.url(r.url), headers: { authorization: `Bearer ${f.hp}` }, payload: { sceneId: f.scene.id, wallet: '0x00000000000000000000000000000000000000b3', role: 'cohost' } })
+        let error: unknown
+        try { error = res.json().error } catch { error = undefined }
+        if (res.statusCode !== 403 || error !== 'hyperfy_pass_not_allowed') offenders.push(`${r.method} ${r.url} → ${res.statusCode} ${String(error)}`)
+      }
+      expect(offenders).toEqual([])
+    })
+
+    it('role writes, transfer-host, upload tokens and the hand-off refuse a Hyperfy pass; nothing is changed', async () => {
+      const f = await fixture()
+      const h = { authorization: `Bearer ${f.hp}` }
+      const cohost = '0x00000000000000000000000000000000000000b4'
+      const cases: Array<[string, string, object | undefined]> = [
+        ['POST', `/api/scenes/${f.scene.id}/roles`, { wallet: cohost, role: 'cohost' }],
+        ['DELETE', `/api/scenes/${f.scene.id}/roles/${cohost}`, undefined],
+        ['POST', `/api/scenes/${f.scene.id}/transfer-host`, { wallet: cohost }],
+        ['POST', '/api/upload-tokens', { sceneId: f.scene.id }],
+        ['POST', '/api/auth/handoff', {}],
+      ]
+      for (const [method, url, payload] of cases) {
+        const res = await app.inject({ method: method as any, url, headers: h, payload })
+        expect([res.statusCode, res.json().error], `${method} ${url}`).toEqual([403, 'hyperfy_pass_not_allowed'])
+      }
+      const roles = await app.inject({ method: 'GET', url: `/api/scenes/${f.scene.id}/roles`, headers: { authorization: `Bearer ${tokenFor(f.owner)}` } })
+      expect(JSON.stringify(roles.json())).not.toContain(cohost)
+    })
+
+    it('the HUD routes still take a Hyperfy pass', async () => {
+      const f = await fixture()
+      const h = { authorization: `Bearer ${f.hp}` }
+      const t = { position: { x: 1, y: 2, z: 3 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }
+      expect((await app.inject({ method: 'GET', url: `/api/scenes/${f.scene.id}`, headers: h })).statusCode).toBe(200)
+      expect((await app.inject({ method: 'PUT', url: `/api/instances/${f.instance.id}`, headers: h, payload: t })).statusCode).toBe(200)
+      expect((await app.inject({ method: 'PUT', url: `/api/elements/${f.element.id}`, headers: h, payload: { enabled: false } })).statusCode).toBe(200)
+      expect((await app.inject({ method: 'GET', url: `/api/scenes/${f.scene.id}/library`, headers: h })).statusCode).toBe(200)
+      const el = await app.inject({ method: 'POST', url: `/api/presets/${f.preset.id}/elements`, headers: h, payload: { type: 'model', name: 'Tree', properties: { modelSrc: 'https://x/t.glb' } } })
+      expect(el.statusCode).toBe(201)
+      const id = el.json().element.id
+      expect((await app.inject({ method: 'POST', url: `/api/elements/${id}/instances`, headers: h, payload: t })).statusCode).toBe(201)
+      expect((await app.inject({ method: 'DELETE', url: `/api/elements/${id}`, headers: h })).statusCode).toBe(204)
+    })
   })
 })

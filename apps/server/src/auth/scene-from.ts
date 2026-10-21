@@ -10,7 +10,11 @@ import { analyticsScenes, sceneElementInstances, sceneElements, scenePresets } f
 export type SceneFrom = (request: FastifyRequest) => Promise<string | null> | string | null
 declare module 'fastify' {
   interface FastifyContextConfig {
-    scenePass?: { sceneFrom: SceneFrom }
+    /**
+     * `hyperfy: true` also lets a Hyperfy HUD pass (via 'hyperfy') in. Default refused: such a pass is tied to a
+     * revocable pairing, so only the HUD's own routes opt in, never ones that grant access or mint credentials.
+     */
+    scenePass?: { sceneFrom: SceneFrom; hyperfy?: true }
   }
 }
 
