@@ -26,6 +26,7 @@ private enum PinKeys {
 @MainActor
 final class SpaceController: ObservableObject {
     let model: AppModel
+    let markers: MarkerTestModel
     let guides = Entity()
 
     @Published var mode: SpaceMode = .view { didSet { updateTargets() } }
@@ -51,8 +52,9 @@ final class SpaceController: ObservableObject {
     private var scaleStart: Float?
     private var placeGestureActive: Bool { dragStart != nil || rotateStart != nil }
 
-    init(model: AppModel) {
+    init(model: AppModel, markers: MarkerTestModel) {
         self.model = model
+        self.markers = markers
         PlaceHandleComponent.registerComponent()
         EditableItemComponent.registerComponent()
         pinnedID = UserDefaults.standard.string(forKey: PinKeys.anchorID).flatMap(UUID.init(uuidString:))
@@ -85,8 +87,9 @@ final class SpaceController: ObservableObject {
         }
         let session = ARKitSession()
         let world = WorldTrackingProvider()
+        let images = makeImageTracking()
         do {
-            try await session.run([world])
+            try await session.run(images.map { [world, $0] } ?? [world])
         } catch {
             print("[vlm] world tracking failed: \(error.localizedDescription)")
             pinStatus = "World tracking failed: \(error.localizedDescription)"
@@ -94,6 +97,8 @@ final class SpaceController: ObservableObject {
         }
         self.session = session
         self.world = world
+        if let images { Task { await self.trackMarkers(images, world: world) } }
+        Task { await self.watchSessionEvents(session) }
         if pinnedID == nil {
             placeAhead() // now that the head pose is known
         } else {
@@ -108,6 +113,58 @@ final class SpaceController: ObservableObject {
                 pinStatus = "Pinned to this room"
             case .removed:
                 pinStatus = "Pinned spot lost · Re-place to start over"
+            }
+        }
+    }
+
+    // MARK: - Marker detection-range test
+
+    /// Image tracking for the printed test markers, or nil (with the reason in the test panel) when it can't run.
+    private func makeImageTracking() -> ImageTrackingProvider? {
+        guard ImageTrackingProvider.isSupported else {
+            markers.status = "Image tracking isn't supported here"
+            return nil
+        }
+        var refs: [ReferenceImage] = []
+        for m in TestMarker.all {
+            guard let cg = markers.image(for: m) else {
+                markers.status = "Missing reference image for \(m.code)"
+                continue
+            }
+            var ref = ReferenceImage(cgimage: cg, physicalSize: CGSize(width: m.width, height: m.width))
+            ref.name = m.code
+            refs.append(ref)
+        }
+        guard !refs.isEmpty else { return nil }
+        markers.status = "Looking for \(refs.count) markers"
+        return ImageTrackingProvider(referenceImages: refs)
+    }
+
+    /// Distance from the headset to each marker on every image anchor update.
+    private func trackMarkers(_ images: ImageTrackingProvider, world: WorldTrackingProvider) async {
+        for await update in images.anchorUpdates {
+            let anchor = update.anchor
+            guard let code = anchor.referenceImage.name else { continue }
+            let m = anchor.originFromAnchorTransform
+            var distance = 0.0
+            if let head = world.queryDeviceAnchor(atTimestamp: CACurrentMediaTime()) {
+                let h = head.originFromAnchorTransform.columns.3
+                distance = Double(simd_distance(SIMD3(h.x, h.y, h.z), SIMD3(m.columns.3.x, m.columns.3.y, m.columns.3.z)))
+            }
+            let tracked = update.event != .removed && anchor.isTracked
+            markers.observe(code: code, tracked: tracked, distance: distance, transform: m)
+            let scale = anchor.estimatedScaleFactor
+            if tracked, abs(scale - 1) > 0.03 {
+                markers.status = String(format: "%@ looks %.0f%% off its printed size: check the print", code, (scale - 1) * 100)
+            }
+        }
+    }
+
+    /// Provider errors (Apple's forums report intermittent "Adding reference image failed") go to the test panel.
+    private func watchSessionEvents(_ session: ARKitSession) async {
+        for await event in session.events {
+            if case .dataProviderStateChanged(_, let newState, let error) = event, let error {
+                markers.status = "Tracking stopped (\(newState)): \(error.localizedDescription)"
             }
         }
     }

@@ -85,3 +85,28 @@ See `docs/visionos-controls.png` for the window in the simulator.
    - For an iPhone, plug it in, choose **VLMSpaces-iOS**, pick the phone and run. On first launch, allow camera access.
 5. In the app's settings, paste a world key. To get one, open vlm.gg → **Deploy** → **Your Hyperfy worlds** → **Connect a world** and copy the `vlmw_…` key. Tap **Connect**. The status line should read `Live · version xxxxxxxx · N items`.
 6. **Vision Pro:** tap **Enter space**. The scene appears life-size with its centre 2 m ahead of you on the floor, north pointing away from you. Use **Place scene** to move it and **Pin to this room** to keep it there. **iPhone:** move the phone around until the floor is detected, then tap it.
+
+## Marker detection-range test
+
+Checks how far away each device can spot a registration marker before the real generator is built. Two test markers, both laid out as the AR spaces design describes (QR code, 2-module quiet zone, hashed border ring; the ring's outer square is the tracked image):
+
+| Marker | Tracked square | Plaque |
+|---|---|---|
+| `TEST12` | 120 mm | 150 mm |
+| `TEST17` | 170 mm | 178 mm |
+
+`python3 tools/make_markers.py` regenerates `markers/` (the reference PNGs are also copied into `Shared/Markers/`, which both apps bundle). Per marker:
+
+- `<code>-paper.pdf`: US Letter, marker at exact size, with a 100 mm check bar. Print at 100% ("Actual size"), then measure the bar. Glue it to stiff card so it stays flat.
+- `<code>.3mf`: base and raised parts as one object with two colours, for multicolour printers.
+- `<code>-base.stl` and `<code>-raised.stl`: the same two parts for single-colour printers. Load both (they share an origin) and change filament at **4.0 mm**. Matte filament tracks better than glossy.
+- `<code>-reference.png`: the tracked square only, which the apps track.
+
+The QR codes open `vlm.gg/s/TEST12` and `vlm.gg/s/TEST17`, which don't exist yet.
+
+Running it:
+
+- **Vision Pro:** tap **Enter space** (visionOS only tracks images while the space is open). The window's **Marker test** card shows each marker's state. A green square covers a tracked marker.
+- **iPhone:** the panel at the bottom shows the same, plus the last QR code read and how far away it was.
+- Mount the marker at about 1.5 m. Walk back until it's lost, then toward it until it's found again. "Found at" is the distance where tracking started: that's the number that matters, since a visitor has to be found from where they stand. **Reset** clears the readings.
+- If a marker's measured size is more than 3% off its printed size, the status line says so: check the print scale.

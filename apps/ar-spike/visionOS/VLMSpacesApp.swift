@@ -5,22 +5,25 @@ import SwiftUI
 struct VLMSpacesApp: App {
     @StateObject private var model: AppModel
     @StateObject private var space: SpaceController
+    @StateObject private var markers: MarkerTestModel
 
     init() {
         let model = AppModel()
+        let markers = MarkerTestModel()
         _model = StateObject(wrappedValue: model)
-        _space = StateObject(wrappedValue: SpaceController(model: model))
+        _markers = StateObject(wrappedValue: markers)
+        _space = StateObject(wrappedValue: SpaceController(model: model, markers: markers))
     }
 
     var body: some SwiftUI.Scene {
         WindowGroup {
-            ContentView(model: model, space: space)
+            ContentView(model: model, space: space, markers: markers)
                 .onAppear { model.connect() }
         }
         .defaultSize(width: 640, height: 820)
 
         ImmersiveSpace(id: ImmersiveSpaceID.vlm) {
-            ImmersiveView(model: model, space: space)
+            ImmersiveView(model: model, space: space, markers: markers)
         }
         .immersionStyle(selection: .constant(.mixed), in: .mixed)
     }
@@ -33,6 +36,7 @@ enum ImmersiveSpaceID {
 struct ContentView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var space: SpaceController
+    @ObservedObject var markers: MarkerTestModel
     @Environment(\.openImmersiveSpace) private var openImmersiveSpace
     @Environment(\.dismissImmersiveSpace) private var dismissImmersiveSpace
     @State private var inSpace = false
@@ -87,6 +91,14 @@ struct ContentView: View {
                     }
                     .padding(12)
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        MarkerTestPanel(test: markers, showQR: false)
+                        Text("Enter the space first: visionOS only tracks images while it's open. Walk back from a marker until it's lost, then walk toward it until it's found again.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
                 }
                 .padding()
                 SettingsForm(model: model)
@@ -114,12 +126,14 @@ struct ContentView: View {
 struct ImmersiveView: View {
     let model: AppModel
     let space: SpaceController
+    let markers: MarkerTestModel
 
     var body: some View {
         RealityView { content in
             let floor = AnchorEntity(world: .zero)
             floor.addChild(model.placement)
             content.add(floor)
+            content.add(markers.overlays)
         }
         .gesture(
             DragGesture()

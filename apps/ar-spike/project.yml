@@ -72,6 +72,7 @@ targets:
       - Tests
       - Shared/Mapping.swift
       - Shared/ScenePlan.swift
+      - Shared/MarkerReadings.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: gg.vlm.spaces.tests
