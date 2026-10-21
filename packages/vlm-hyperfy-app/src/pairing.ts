@@ -1,0 +1,214 @@
+import { HYPERFY_FEED, HYPERFY_PAIRING, type PairClaimResponse, type PairRenewResponse, type PairStartResponse } from 'vlm-shared'
+import type { ScriptFetch, ScriptSetTimeout } from './poller.js'
+import { sha256Hex } from './sha256.js'
+
+export type PairingState =
+  | { status: 'idle' }
+  | { status: 'waiting'; code: string; approveUrl: string; qrUrl: string; expiresAt: string }
+  | { status: 'linked'; displayName: string }
+  | { status: 'expired' }
+  | { status: 'lost' }
+
+/** A scene pass and when it stops working (ISO time). pairingId/displayName come with a first link. */
+export interface PassLink {
+  pass: string
+  passExpiresAt: string
+  displayName?: string
+  pairingId?: string
+}
+
+/**
+ * Asks for a fresh pass. Resolves to one; 'revoked' means the pairing is gone for good; null, undefined or a
+ * rejection are temporary failures (retried with back-off). Self-run worlds use the secret-based default;
+ * hosted worlds inject one that asks the world's server half to vouch again.
+ */
+export type PassRenewer = () => Promise<{ pass: string; passExpiresAt: string } | 'revoked' | null | undefined>
+
+export interface PairingOptions {
+  feedUrl: string
+  worldKey: string
+  fetch: ScriptFetch
+  setTimeout: ScriptSetTimeout
+  uuid: () => string
+  onState: (s: PairingState) => void
+  /** Milliseconds now; defaults to Date.now. */
+  now?: () => number
+  renewer?: PassRenewer
+}
+
+/**
+ * A HUD's link to VLM. Self-run: start() asks for a code, polls the claim until a VLM user approves it, then
+ * keeps the pass fresh by renewing renewBeforeMs before it expires. Hosted: adopt() installs the pass the server
+ * half vouched for, and the injected renewer keeps it fresh. The browser secret never leaves this object except
+ * in the claim and renew bodies; only its SHA-256 goes out with the pair start.
+ */
+export class Pairing {
+  private gen = 0
+  private secret = ''
+  private pairingId = ''
+  private passValue: string | null = null
+  private passExpiresAtMs = 0
+  private name = ''
+  private state: PairingState = { status: 'idle' }
+  private renewDelay = 0
+  private renewing: Promise<boolean> | null = null
+
+  constructor(private readonly opts: PairingOptions) {}
+
+  /** The current pass, or null when there is none or it has expired. */
+  pass(): string | null {
+    return this.passValue && this.now() < this.passExpiresAtMs ? this.passValue : null
+  }
+
+  start(playerName: string): void {
+    this.reset()
+    const gen = this.gen
+    this.secret = this.opts.uuid() + this.opts.uuid() + this.opts.uuid()
+    this.name = playerName
+    void this.begin(gen, playerName)
+  }
+
+  /** Installs a pass from a hosted `linked` result, or a renewal of one. */
+  adopt(link: PassLink): void {
+    if (link.pairingId) this.pairingId = link.pairingId
+    if (link.displayName) this.name = link.displayName
+    this.install(link.pass, link.passExpiresAt, this.gen)
+  }
+
+  /** Renews now (after a 401, say). Resolves true when a fresh pass was installed. */
+  renewNow(): Promise<boolean> {
+    return (this.renewing ??= this.renewOnce(this.gen).finally(() => {
+      this.renewing = null
+    }))
+  }
+
+  stop(): void {
+    this.reset()
+  }
+
+  private now(): number {
+    return this.opts.now ? this.opts.now() : Date.now()
+  }
+
+  private reset(): void {
+    this.gen++
+    this.passValue = null
+    this.passExpiresAtMs = 0
+    this.pairingId = ''
+    this.secret = ''
+    this.renewDelay = 0
+    this.renewing = null
+  }
+
+  private emit(s: PairingState): void {
+    const prev = this.state
+    if (prev.status === s.status && JSON.stringify(prev) === JSON.stringify(s)) return
+    this.state = s
+    this.opts.onState(s)
+  }
+
+  private async post<T>(path: string, body: object): Promise<{ status: number; body: T | null } | undefined> {
+    try {
+      const res = await this.opts.fetch(`${this.opts.feedUrl}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-VLM-App-Version': String(HYPERFY_FEED.version) },
+        body: JSON.stringify(body),
+      })
+      if (!res) return undefined
+      let parsed: T | null = null
+      try {
+        parsed = (await res.json()) as T
+      } catch {
+        /* no body */
+      }
+      return { status: res.status, body: res.ok ? parsed : null }
+    } catch {
+      return undefined
+    }
+  }
+
+  private async begin(gen: number, playerName: string): Promise<void> {
+    const r = await this.post<PairStartResponse>('/api/hyperfy/pair', {
+      worldKey: this.opts.worldKey,
+      secretHash: sha256Hex(this.secret),
+      playerName,
+    })
+    if (gen !== this.gen) return
+    const b = r?.body
+    if (!b || typeof b.code !== 'string') {
+      this.emit({ status: 'lost' })
+      return
+    }
+    this.emit({ status: 'waiting', code: b.code, approveUrl: b.approveUrl, qrUrl: b.qrUrl, expiresAt: b.expiresAt })
+    this.pollClaim(gen, b.code, Date.parse(b.expiresAt), 0)
+  }
+
+  private pollClaim(gen: number, code: string, codeExpiresAt: number, failDelay: number): void {
+    this.opts.setTimeout(() => void this.claim(gen, code, codeExpiresAt, failDelay), failDelay || HYPERFY_PAIRING.claimPollMs)
+  }
+
+  private async claim(gen: number, code: string, codeExpiresAt: number, failDelay: number): Promise<void> {
+    if (gen !== this.gen) return
+    const r = await this.post<PairClaimResponse>(`/api/hyperfy/pair/${encodeURIComponent(code)}/claim`, { secret: this.secret })
+    if (gen !== this.gen) return
+    const b = r?.body
+    if (b?.status === 'approved') {
+      this.pairingId = b.pairingId
+      this.name = b.user.displayName
+      this.install(b.pass, b.passExpiresAt, gen)
+    } else if (b?.status === 'refused' || b?.status === 'expired' || this.now() >= codeExpiresAt) {
+      this.emit({ status: 'expired' })
+    } else {
+      // pending polls at claimPollMs; a failed poll backs off (doubling, up to retryMaxMs)
+      const next = b?.status === 'pending' ? 0 : Math.min(Math.max(failDelay * 2, HYPERFY_FEED.retryMinMs), HYPERFY_FEED.retryMaxMs)
+      this.pollClaim(gen, code, codeExpiresAt, next)
+    }
+  }
+
+  private install(pass: string, passExpiresAt: string, gen: number): void {
+    this.passValue = pass
+    this.passExpiresAtMs = Date.parse(passExpiresAt)
+    this.renewDelay = 0
+    this.emit({ status: 'linked', displayName: this.name })
+    this.scheduleRenew(gen, Math.max(0, this.passExpiresAtMs - HYPERFY_PAIRING.renewBeforeMs - this.now()))
+  }
+
+  private scheduleRenew(gen: number, ms: number): void {
+    if (!this.opts.renewer && !(this.pairingId && this.secret)) return
+    this.opts.setTimeout(() => {
+      if (gen === this.gen) void this.renewNow()
+    }, ms)
+  }
+
+  private async renewOnce(gen: number): Promise<boolean> {
+    if (gen !== this.gen || !this.passValue) return false
+    let out: Awaited<ReturnType<PassRenewer>>
+    try {
+      out = await this.renew()
+    } catch {
+      out = null
+    }
+    if (gen !== this.gen) return false
+    if (out === 'revoked') {
+      this.passValue = null
+      this.emit({ status: 'lost' })
+      return false
+    }
+    if (out) {
+      this.install(out.pass, out.passExpiresAt, gen)
+      return true
+    }
+    this.renewDelay = Math.min(Math.max(this.renewDelay * 2, HYPERFY_FEED.retryMinMs), HYPERFY_FEED.retryMaxMs)
+    this.scheduleRenew(gen, this.renewDelay)
+    return false
+  }
+
+  /** The injected renewer, or the secret-based renew of this pairing. */
+  private async renew(): ReturnType<PassRenewer> {
+    if (this.opts.renewer) return this.opts.renewer()
+    const r = await this.post<PairRenewResponse>(`/api/hyperfy/pairings/${encodeURIComponent(this.pairingId)}/renew`, { secret: this.secret })
+    if (!r) return null
+    if (r.status === 401) return 'revoked'
+    return r.body && typeof r.body.pass === 'string' ? r.body : null
+  }
+}

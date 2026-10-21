@@ -67,6 +67,7 @@ describe('vlm.hyp', () => {
       ['TextEncoder', /\bTextEncoder\b/],
       ['setInterval', /\bsetInterval\b/],
       ['crypto', /\bcrypto\b/],
+      ['localStorage', /\blocalStorage\b/],
       ['require', /\brequire\b/],
       ['import', /\bimport\b/],
       ['URL', /\bnew\s+URL\b|(?<![\w$.])URL\s*[.(]/],
