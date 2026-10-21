@@ -16,7 +16,7 @@ import { FlyApi } from './fly.js'
 import { hostedWorldSlots } from './slots.js'
 import { deleteWorldFiles } from './worlds-bucket.js'
 import { createWorldDatabase, dropWorldDatabase, WorldDbJobFailed } from './worlds-db.js'
-import { createWorldKey, worldSummary, type HyperfyWorldRow } from './worlds.js'
+import { createWorldKey, createWorldSecret, worldSummary, type HyperfyWorldRow } from './worlds.js'
 
 type Log = { info(...a: unknown[]): void; warn(...a: unknown[]): void; error(...a: unknown[]): void }
 
@@ -188,6 +188,7 @@ export async function createHostedWorld(
   const { tier } = await getSubscription(input.ownerId)
   const routed = ROUTER_TIERS.has(tier)
   const key = createWorldKey()
+  const worldSecret = createWorldSecret()
   const adminCode = randomBytes(12).toString('hex')
   const adminCodeEnc = encryptAdminCode(adminCode)
   const base = slugFromName(input.name)
@@ -209,6 +210,7 @@ export async function createHostedWorld(
             kind: 'hosted',
             keyHash: key.hash,
             keyPrefix: key.prefix,
+            worldSecretHash: worldSecret.hash,
             slug,
             address: routed ? `${slug}.${config.hyperfyRouterDomain}` : `${flyAppName(slug)}.fly.dev`,
             flyApp: flyAppName(slug),
@@ -229,7 +231,7 @@ export async function createHostedWorld(
   const world = row
   d.log.info({ worldId: world.id, slug: world.slug, address: world.address }, 'hosted world provisioning')
   const abort = new AbortController()
-  const promise = finishCreate(world, { worldKey: key.raw, adminCode }, d, abort.signal)
+  const promise = finishCreate(world, { worldKey: key.raw, worldSecret: worldSecret.raw, adminCode }, d, abort.signal)
   inFlight.set(world.id, { promise, abort })
   promise.finally(() => inFlight.delete(world.id))
   return { world: worldSummary(world), adminCode }
@@ -244,7 +246,7 @@ class Cancelled extends Error {
 /** Database, app, IPs, machine, health; then `running`. Any failure cleans up and marks the world `failed`. */
 async function finishCreate(
   world: HyperfyWorldRow,
-  secrets: { worldKey: string; adminCode: string },
+  secrets: { worldKey: string; worldSecret: string; adminCode: string },
   d: HostingDeps,
   signal: AbortSignal,
 ): Promise<void> {
@@ -252,7 +254,7 @@ async function finishCreate(
   const app = world.flyApp!
   const address = world.address!
   const ctx = { worldId: world.id, slug }
-  const hidden = [secrets.worldKey, secrets.adminCode]
+  const hidden = [secrets.worldKey, secrets.worldSecret, secrets.adminCode]
   const check = () => {
     if (signal.aborted) throw new Cancelled()
   }
@@ -306,7 +308,7 @@ async function finishCreate(
   }
 }
 
-function worldEnv(w: { slug: string; address: string; dbUri: string; schema: string; worldKey: string; adminCode: string }): Record<string, string> {
+function worldEnv(w: { slug: string; address: string; dbUri: string; schema: string; worldKey: string; worldSecret: string; adminCode: string }): Record<string, string> {
   const assetsUri = requireValue(config.hyperfyAssetsS3Uri, 'HYPERFY_ASSETS_S3_URI').replace(/\/+$/, '')
   const assetsBase = requireValue(config.hyperfyAssetsBaseUrl, 'HYPERFY_ASSETS_BASE_URL').replace(/\/+$/, '')
   return {
@@ -329,6 +331,8 @@ function worldEnv(w: { slug: string; address: string; dbUri: string; schema: str
     PUBLIC_MAX_UPLOAD_SIZE: '12', // MB; Hyperfy refuses to boot without it
     VLM_FEED_URL: config.publicUrl,
     VLM_WORLD_KEY: w.worldKey,
+    // Lets the world's server vouch for its players (POST /api/hyperfy/pairings/vouch). Not rotated with the key.
+    VLM_WORLD_SECRET: w.worldSecret,
   }
 }
 
@@ -511,7 +515,7 @@ export async function rotateHostedWorldKey(worldId: string, deps?: Partial<Hosti
 
 /** The secrets in a world machine's env, for redact(). */
 function secretEnvValues(env: Record<string, string>): string[] {
-  const values = ['VLM_WORLD_KEY', 'ADMIN_CODE', 'JWT_SECRET', 'DB_URI', 'ASSETS_S3_URI'].map((k) => env[k] ?? '')
+  const values = ['VLM_WORLD_KEY', 'VLM_WORLD_SECRET', 'ADMIN_CODE', 'JWT_SECRET', 'DB_URI', 'ASSETS_S3_URI'].map((k) => env[k] ?? '')
   return [...values, safeUrlPassword(env.DB_URI ?? '')]
 }
 

@@ -5,7 +5,8 @@ import { hyperfyWorlds, subscriptions } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { FlyError, type WorldMachineSpec } from '../src/hyperfy/fly.js'
 import { worldDbName, WorldDbJobFailed } from '../src/hyperfy/worlds-db.js'
-import { findWorldByKey } from '../src/hyperfy/worlds.js'
+import { createHash } from 'node:crypto'
+import { findWorldByKey, findWorldBySecret } from '../src/hyperfy/worlds.js'
 import {
   createHostedWorld,
   destroyHostedWorld,
@@ -174,6 +175,7 @@ describe('hosted Hyperfy worlds', () => {
       PUBLIC_MAX_UPLOAD_SIZE: '12',
       VLM_FEED_URL: 'https://api.staging.vlm.gg',
       VLM_WORLD_KEY: expect.stringMatching(/^vlmw_[0-9a-f]{64}$/),
+      VLM_WORLD_SECRET: expect.stringMatching(/^[0-9a-f]{64}$/),
     })
     expect((await findWorldByKey(machine.env.VLM_WORLD_KEY))?.id).toBe(world.id)
     // Hyperfy keys files under the URI's prefix; the CDN serves them at ASSETS_BASE_URL/<file>.
@@ -181,9 +183,27 @@ describe('hosted Hyperfy worlds', () => {
 
     expect(f.logs.length).toBeGreaterThan(0)
     const logText = f.logs.join('\n')
-    for (const secret of [machine.env.JWT_SECRET, adminCode, machine.env.VLM_WORLD_KEY, 'dbpw_moon-base_s3cr3t', 'r2s3cr3t', 'fm2_token_s3cr3t', 'adminpw']) {
+    for (const secret of [machine.env.JWT_SECRET, adminCode, machine.env.VLM_WORLD_KEY, machine.env.VLM_WORLD_SECRET, 'dbpw_moon-base_s3cr3t', 'r2s3cr3t', 'fm2_token_s3cr3t', 'adminpw']) {
       expect(logText).not.toContain(secret)
     }
+  })
+
+  it('world secret is stored only as a hash, and create sets VLM_WORLD_SECRET in the machine env', async () => {
+    await setTier(owner.id, 'pro')
+    const f = fakes()
+    const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Secret World', endsAt: null }, f.deps)
+    await hostedWorldSettled(world.id)
+    const secret = f.machines.get('vlm-w-secret-world')!.env.VLM_WORLD_SECRET
+    expect(secret).toMatch(/^[0-9a-f]{64}$/)
+    const stored = await row(world.id)
+    expect(stored.worldSecretHash).toBe(createHash('sha256').update(secret).digest('hex'))
+    expect(JSON.stringify(stored)).not.toContain(secret)
+    expect((await findWorldBySecret(world.id, secret))?.id).toBe(world.id)
+    expect(await findWorldBySecret(world.id, 'wrong')).toBeNull()
+    // rotating the key leaves the secret alone
+    await rotateHostedWorldKey(world.id, f.deps)
+    expect(f.machines.get('vlm-w-secret-world')!.env.VLM_WORLD_SECRET).toBe(secret)
+    expect((await row(world.id)).worldSecretHash).toBe(stored.worldSecretHash)
   })
 
   it('creator gets a fly.dev address and public IPs; pro gets a worlds.vlm.gg address and no IPs', async () => {

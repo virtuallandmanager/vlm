@@ -33,6 +33,7 @@ import organizationRoutes from './routes/organizations.js'
 import apiKeyRoutes from './routes/api-keys.js'
 import hyperfyWorldRoutes from './routes/hyperfy-worlds.js'
 import hyperfyFeedRoutes from './routes/hyperfy-feed.js'
+import hyperfyPairingRoutes from './routes/hyperfy-pairing.js'
 import adminRoutes from './routes/admin.js'
 import adminAdsRoutes from './routes/admin-ads.js'
 import advertiserLeadRoutes from './routes/advertiser-leads.js'
@@ -61,11 +62,11 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     bodyLimit: config.maxUploadSize, // default 100MB, set MAX_UPLOAD_MB to override
   })
 
-  // CORS — lock down origins in production, allow all in development
-  const isProduction = process.env.NODE_ENV === 'production'
+  // CORS: any origin, never credentials. Every API caller (the dashboard, a Hyperfy HUD in someone's world) sends a bearer
+  // token or a secret in the request itself; no route reads a cookie, so no origin can ride on a browser's ambient login.
   await app.register(fastifyCors, {
-    origin: isProduction ? [...config.corsOrigins] : true,
-    credentials: true,
+    origin: true,
+    credentials: false,
   })
 
   // Rate limiting (global)
@@ -164,6 +165,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(apiKeyRoutes)
   await app.register(hyperfyWorldRoutes)
   await app.register(hyperfyFeedRoutes)
+  await app.register(hyperfyPairingRoutes)
   await app.register(adminRoutes)
   await app.register(adminAdsRoutes)
   await app.register(advertiserLeadRoutes)

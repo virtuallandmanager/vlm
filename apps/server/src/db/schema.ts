@@ -873,6 +873,8 @@ export const hyperfyWorlds = pgTable('hyperfy_worlds', {
   kind: text('kind').notNull().default('self'),
   keyHash: text('key_hash').notNull().unique(), // SHA-256 hash of the world key
   keyPrefix: text('key_prefix').notNull(), // first 12 chars, for display
+  // SHA-256 of VLM_WORLD_SECRET (hosted worlds only): proves a vouch comes from the world's own server. Never rotated with the key.
+  worldSecretHash: text('world_secret_hash'),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   // Hosted (Fly) worlds only; self-run rows leave these null and stay 'running'

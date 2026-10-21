@@ -4,7 +4,7 @@ import {
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
   sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
-  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings,
 } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { createVenue, createBooking, addGrant } from '../src/venues/service.js'
@@ -66,13 +66,16 @@ async function fixtures() {
   const location = await createAnalyticsScene({ claimedByUserId: b.id, claimStatus: 'active' })
   await createSetup(location.id, scene.id)
   const [world] = await db.insert(hyperfyWorlds).values({ sceneId: scene.id, ownerId: b.id, name: 'B world', keyHash: 'b-world-hash', keyPrefix: 'vlmw_b' }).returning()
+  const [pairing] = await db.insert(hyperfyPairings).values({
+    worldId: world.id, userId: b.id, secretHash: 'b-secret-hash', status: 'claimed', codeExpiresAt: new Date(Date.now() + H), expiresAt: new Date(Date.now() + H),
+  }).returning()
   const [bKey] = await db.insert(apiKeys).values({ userId: b.id, name: 'B key', keyHash: 'b-hash', keyPrefix: 'vlm_k1_b' }).returning()
 
   const aScene = (await createScene(a, 'A scene')).scene
   const [aEvent] = await db.insert(events).values({ ownerId: a.id, name: 'A event' }).returning()
   return {
     a, b, collaborator, scene, preset, element, instance, roleWallet, wallet, dcl, hyperfy, stream, event, giveaway, item,
-    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, world, aScene, aEvent,
+    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, world, pairing, aScene, aEvent,
   }
 }
 type F = Awaited<ReturnType<typeof fixtures>>
@@ -131,6 +134,8 @@ const CASES: Case[] = [
   // streaming
   { route: 'POST /api/streaming/provision', url: () => '/api/streaming/provision', body: (f) => ({ name: 'pwned', sceneId: f.scene.id }) },
   { route: 'POST /api/hyperfy/worlds/:id/rotate-key', url: (f) => `/api/hyperfy/worlds/${f.world.id}/rotate-key` },
+  { route: 'DELETE /api/hyperfy/pairings/:id', url: (f) => `/api/hyperfy/pairings/${f.pairing.id}` },
+  { route: 'POST /api/hyperfy/pairings/:id/renew', url: (f) => `/api/hyperfy/pairings/${f.pairing.id}/renew`, body: () => ({ secret: 'guess' }) },
   { route: 'DELETE /api/hyperfy/worlds/:id', url: (f) => `/api/hyperfy/worlds/${f.world.id}` },
   { route: 'PATCH /api/hyperfy/worlds/:id', url: (f) => `/api/hyperfy/worlds/${f.world.id}`, body: () => ({ endsAt: null }) },
   { route: 'POST /api/hyperfy/worlds/:id/restore', url: (f) => `/api/hyperfy/worlds/${f.world.id}/restore` },
@@ -195,6 +200,10 @@ const NOT_CROSS_ACCOUNT: Record<string, string> = {
   'GET /api/upload/:code/qr.png': 'the upload code is the auth (companion phone upload)',
   'POST /api/upload/:code/start': 'the upload code is the auth (companion phone upload)',
   'POST /api/upload/:code/:assetId': 'the upload code is the auth (companion phone upload)',
+  'GET /api/hyperfy/pair/:code/qr.png': 'the pairing code is the auth (QR of the approve link)',
+  'GET /api/hyperfy/pair/:code': 'the pairing code is the auth: any signed-in user holding it sees the approval page',
+  'POST /api/hyperfy/pair/:code/approve': 'the pairing code is the auth; approval checks the approver\'s own edit access to the world\'s scene (a stranger refuses the code, which is rate limited)',
+  'POST /api/hyperfy/pair/:code/claim': 'the pairing code plus the browser secret is the auth',
   'POST /api/orgs/accept-invite': 'invite token only; the token names the org',
   'GET /api/auth/google/callback': 'OAuth callback; no bearer',
   'GET /api/auth/discord/callback': 'OAuth callback; no bearer',
@@ -208,7 +217,7 @@ const TABLES = [
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
   sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
-  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings,
 ]
 async function snapshot(f: F) {
   const all = await Promise.all(TABLES.map((t) => db.select().from(t as any)))

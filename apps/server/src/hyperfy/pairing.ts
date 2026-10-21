@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto'
-import { and, eq, gt, inArray, isNull, or } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm'
 import { HYPERFY_PAIRING, type HyperfyPairingSummary, type PairClaimResponse, type PairRenewResponse } from 'vlm-shared'
 import { db } from '../db/connection.js'
 import { hyperfyPairings, hyperfyWorlds, scenes, users } from '../db/schema.js'
@@ -8,7 +8,7 @@ import { getSceneAccess, type SceneAccess } from '../auth/permissions.js'
 import type { Actor } from '../auth/actor.js'
 import { verifiedWalletsOf } from '../analytics/claims.js'
 import { issueHyperfyPass } from '../auth/scene-pass.js'
-import { findWorldByKey } from './worlds.js'
+import { findWorldByKey, type HyperfyWorldRow } from './worlds.js'
 
 /**
  * Pairing a Hyperfy player to a VLM user: the HUD gets a short code, the user approves it on vlm.gg, and the HUD
@@ -54,12 +54,16 @@ export async function startPairing(worldKey: string, secretHash: string | null, 
   if ((hyperfyPlayerId === null) !== (secretHash !== null)) throw new Error('invalid_pairing_kind')
   const world = await findWorldByKey(worldKey)
   if (!world) throw new Error('invalid_world_key')
+  return insertPending(world.id, secretHash, playerName, hyperfyPlayerId, now)
+}
+
+async function insertPending(worldId: string, secretHash: string | null, playerName: string | null, hyperfyPlayerId: string | null, now: Date): Promise<{ code: string; expiresAt: Date; pairingId: string }> {
   const expiresAt = new Date(now.getTime() + HYPERFY_PAIRING.codeTtlMs)
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = newCode()
     try {
-      await db.insert(hyperfyPairings).values({ worldId: world.id, codeHash: sha256(code), secretHash, hyperfyPlayerId, playerName, status: 'pending', codeExpiresAt: expiresAt, createdAt: now })
-      return { code, expiresAt }
+      const [row] = await db.insert(hyperfyPairings).values({ worldId, codeHash: sha256(code), secretHash, hyperfyPlayerId, playerName, status: 'pending', codeExpiresAt: expiresAt, createdAt: now }).returning({ id: hyperfyPairings.id })
+      return { code, expiresAt, pairingId: row.id }
     } catch (err) {
       // A live code collided with this one (unique code_hash): draw another.
       if (attempt === 4 || !/unique|duplicate/i.test(String((err as { message?: string }).message) + String((err as { cause?: { message?: string } }).cause?.message))) throw err
@@ -208,4 +212,53 @@ export async function pairingLive(pairingId: string): Promise<boolean> {
   const live = await pairingActive(pairingId)
   liveCache.set(pairingId, { live, until: Date.now() + LIVE_CACHE_MS })
   return live
+}
+
+export type VouchResponse =
+  | { status: 'linked'; pass: string; passExpiresAt: string; pairingId: string; user: { id: string; displayName: string } }
+  | { status: 'unlinked'; code: string; expiresAt: string; pairingId: string }
+
+/**
+ * A hosted world speaks for one of its players (the caller has already proved the world). No browser secret is involved:
+ * 1. an active hosted pairing for this player gets a fresh pass (this is also how hosted links renew) and a lastUsedAt bump;
+ * 2. else an approved, unclaimed one is claimed now (expiresAt stays null; a hosted pairing ages out by idleness) and gets a pass;
+ * 3. else a new pending hosted pairing is created and its code returned for the player's browser.
+ * Each step that changes a row is a conditional update, so a concurrent revoke or claim wins cleanly.
+ */
+export async function vouchPairing(app: FastifyInstance, world: Pick<HyperfyWorldRow, 'id' | 'sceneId'>, hyperfyPlayerId: string, playerName: string | null, now = new Date()): Promise<VouchResponse> {
+  const rows = await db
+    .select()
+    .from(hyperfyPairings)
+    .where(and(eq(hyperfyPairings.worldId, world.id), eq(hyperfyPairings.hyperfyPlayerId, hyperfyPlayerId), inArray(hyperfyPairings.status, ['claimed', 'approved'])))
+    .orderBy(desc(hyperfyPairings.lastUsedAt), desc(hyperfyPairings.createdAt))
+
+  const link = async (p: PairingRow): Promise<VouchResponse | null> => {
+    const minted = await mintPass(app, p, world.sceneId)
+    if (!minted) return null
+    return { status: 'linked', pass: minted.pass, passExpiresAt: minted.passExpiresAt.toISOString(), pairingId: p.id, user: { id: minted.user.id, displayName: minted.user.displayName } }
+  }
+
+  for (const row of rows.filter((r) => r.status === 'claimed' && activeAt(r, now))) {
+    const idleFloor = new Date(now.getTime() - HYPERFY_PAIRING.hostedIdleTtlMs)
+    const [bumped] = await db
+      .update(hyperfyPairings)
+      .set({ lastUsedAt: now })
+      .where(and(eq(hyperfyPairings.id, row.id), eq(hyperfyPairings.status, 'claimed'), sql`coalesce(${hyperfyPairings.lastUsedAt}, ${hyperfyPairings.createdAt}) > ${idleFloor.toISOString()}::timestamptz`))
+      .returning()
+    const linked = bumped && (await link(bumped))
+    if (linked) return linked
+  }
+
+  for (const row of rows.filter((r) => r.status === 'approved' && r.codeExpiresAt > now)) {
+    const [claimed] = await db
+      .update(hyperfyPairings)
+      .set({ status: 'claimed', codeHash: null, lastUsedAt: now })
+      .where(and(eq(hyperfyPairings.id, row.id), eq(hyperfyPairings.status, 'approved'), gt(hyperfyPairings.codeExpiresAt, now)))
+      .returning()
+    const linked = claimed && (await link(claimed))
+    if (linked) return linked
+  }
+
+  const pending = await insertPending(world.id, null, playerName, hyperfyPlayerId, now)
+  return { status: 'unlinked', code: pending.code, expiresAt: pending.expiresAt.toISOString(), pairingId: pending.pairingId }
 }
