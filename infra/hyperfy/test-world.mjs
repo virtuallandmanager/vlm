@@ -14,7 +14,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { randomBytes, createHash } from 'node:crypto'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const srcDir = path.resolve(process.argv[2] || '')
@@ -228,7 +228,8 @@ async function session(url, fn) {
 // Scripts that print `typeof app.vlmVouch` and `typeof app.vlmWorld` (removed; must stay undefined), prefixed
 // `[vlm-probe] <which> <server|client>`. The probe .hyp is the VLM app with its script swapped for the shipped probe, so
 // it is what patch 0002 installs. On the server the shipped probe vouches for every player who enters (as the relay
-// would), then for a player id that isn't in the world, then again with a pending pairing VLM answers 500 to.
+// would), then for a player id that isn't in the world, then with pending pairings VLM answers 500, 401 and a redirect
+// to, then with a 300-character name.
 const probeLine = (which) =>
   `console.log('[vlm-probe] ${which} ' + (world.isServer ? 'server' : 'client') + ' ' + typeof app.vlmVouch + ' ' + typeof app.vlmWorld)`
 const HOLD_PORT = 3212
@@ -242,6 +243,9 @@ if (world.isServer && app.vlmVouch) {
     show('vouch', await vouch({ hyperfyPlayerId: e.playerId, playerName: 'Probe Player' }))
     show('vouch-nobody', await vouch({ hyperfyPlayerId: 'nobody', playerName: 'X' }))
     show('vouch-500', await vouch({ hyperfyPlayerId: e.playerId, playerName: 'Probe Player', pendingPairingId: 'pair-500' }))
+    show('vouch-401', await vouch({ hyperfyPlayerId: e.playerId, playerName: 'Probe Player', pendingPairingId: 'pair-401' }))
+    show('vouch-302', await vouch({ hyperfyPlayerId: e.playerId, playerName: 'Probe Player', pendingPairingId: 'pair-302' }))
+    show('vouch-long', await vouch({ hyperfyPlayerId: e.playerId, playerName: 'x'.repeat(300) }))
   })
 }
 `)
@@ -292,9 +296,11 @@ async function connected({ waitFor, consoles, reload }) {
 }
 const worldReady = `!!(window.world?.blueprints?.get('vlm') && window.world.network?.id && [...window.world.entities.items.values()].some((e) => e.data?.blueprint === 'vlm'))`
 
-// A fake VLM: records every request, answers vouch with a linked player plus fields the image must strip, and 500 for
-// pendingPairingId `pair-500`.
+// A fake VLM: records every request, answers vouch with a linked player plus fields the image must strip; for
+// pendingPairingId `pair-500` 500, `pair-401` 401 (the world secret refused), `pair-302` a redirect to a path that would
+// answer linked if followed.
 const vlmRequests = []
+const REDIRECTED = '/api/hyperfy/pairings/vouch-redirected'
 const fakeVlm = createServer((req, res) => {
   let body = ''
   req.on('data', (d) => (body += d))
@@ -303,13 +309,29 @@ const fakeVlm = createServer((req, res) => {
     try { json = JSON.parse(body) } catch {}
     vlmRequests.push({ method: req.method, url: req.url, body: json, raw: body })
     res.setHeader('content-type', 'application/json')
-    if (req.url !== '/api/hyperfy/pairings/vouch') return res.writeHead(404).end('{}')
+    if (req.url !== '/api/hyperfy/pairings/vouch' && req.url !== REDIRECTED) return res.writeHead(404).end('{}')
     if (json?.pendingPairingId === 'pair-500') return res.writeHead(500).end('{"error":"boom"}')
+    if (json?.pendingPairingId === 'pair-401') return res.writeHead(401).end('{"error":"invalid_world_secret"}')
+    if (json?.pendingPairingId === 'pair-302' && req.url !== REDIRECTED) return res.writeHead(307, { location: REDIRECTED }).end()
     res.end(JSON.stringify({ status: 'linked', pass: 'PASS', passExpiresAt: 'x', pairingId: 'pair-1', sceneId: 'scene-1', user: { id: 'u1', displayName: 'Ada', email: 'leak@example' }, extra: 'junk' }))
   })
 })
 await new Promise((r) => fakeVlm.listen(VLM_PORT, '127.0.0.1', r))
 const LINKED = JSON.stringify({ status: 'linked', pass: 'PASS', passExpiresAt: 'x', pairingId: 'pair-1', sceneId: 'scene-1', user: { id: 'u1', displayName: 'Ada' } })
+
+// --- the patch module on its own -----------------------------------------------------------------------------------
+
+// Bundles src/server/vlm.js (packages left external, resolved from the Hyperfy tree) and imports a fresh copy.
+async function loadVlmModule() {
+  const { build } = createRequire(path.join(srcDir, 'package.json'))('esbuild')
+  const out = path.join(srcDir, `.vlm-unit-${randomBytes(4).toString('hex')}.mjs`)
+  await build({ entryPoints: [path.join(srcDir, 'src/server/vlm.js')], bundle: true, platform: 'node', format: 'esm', packages: 'external', outfile: out, logLevel: 'silent' })
+  try {
+    return await import(pathToFileURL(out).href)
+  } finally {
+    rmSync(out, { force: true })
+  }
+}
 
 // --- tests ---------------------------------------------------------------------------------------------------------
 
@@ -347,6 +369,44 @@ const userEntity = { id: 'userbox001', type: 'app', blueprint: 'user-box', posit
 
 console.log(`test-world: ${srcDir}`)
 try {
+  await test('unit: the option bags the patch hands Worker, postMessage and fetch have no prototype', async () => {
+    const m = await loadVlmModule()
+    const w = m.vouchWorkerOptions({ secret: 'vlmws_FAKE_UNIT', feedUrl: VLM_URL, worldKey: 'vlmw_unit' })
+    eq(Object.getPrototypeOf(w), null, 'Worker options prototype')
+    for (const k of ['env', 'resourceLimits', 'workerData']) eq(Object.getPrototypeOf(w[k]), null, `Worker options.${k} prototype`)
+    eq([w.eval, w.execArgv, w.argv, w.stdin, w.stdout, w.stderr], [true, [], [], false, false, false], 'Worker options set explicitly')
+    eq(Object.keys(w.env), [], 'the worker env (the config goes in workerData)')
+    const msg = m.vouchMessage(7, { hyperfyPlayerId: 'p1', playerName: 'Pip' })
+    eq(Object.getPrototypeOf(msg), null, 'postMessage payload prototype')
+    eq({ ...msg }, { id: 7, hyperfyPlayerId: 'p1', playerName: 'Pip' }, 'postMessage payload')
+    const init = m.vouchFetchInit('{}')
+    eq(Object.getPrototypeOf(init), null, 'fetch init prototype')
+    eq(Object.getPrototypeOf(init.headers), null, 'fetch headers prototype')
+    eq([init.method, init.redirect, init.body, { ...init.headers }], ['POST', 'error', '{}', { 'Content-Type': 'application/json' }], 'fetch init')
+  })
+
+  await test('unit: starting the vouch worker takes the world secret out of the main thread\'s env, and the worker still vouches with it', async () => {
+    const m = await loadVlmModule()
+    const UNIT_SECRET = `vlmws_FAKE_UNIT_${randomBytes(6).toString('hex')}`
+    const saved = { ...process.env }
+    Object.assign(process.env, { VLM_WORLD_SECRET: UNIT_SECRET, VLM_FEED_URL: VLM_URL, VLM_WORLD_KEY: 'vlmw_unit' })
+    try {
+      vlmRequests.length = 0
+      m.startVouchWorker()
+      eq('VLM_WORLD_SECRET' in process.env, false, 'VLM_WORLD_SECRET still in the main thread\'s env')
+      eq(m.vouchHosted(), true, 'hosted')
+      eq(JSON.stringify(await m.askVouchWorker({ hyperfyPlayerId: 'p1', playerName: 'Pip' })), LINKED, 'the worker\'s vouch')
+      eq(vlmRequests.map((r) => r.body), [{ worldKey: 'vlmw_unit', worldSecret: UNIT_SECRET, hyperfyPlayerId: 'p1', playerName: 'Pip' }], 'what VLM got')
+      eq(await m.askVouchWorker({ hyperfyPlayerId: 'p1', playerName: 'Pip', pendingPairingId: 'pair-401' }), { status: 'unauthorized' }, 'a 401')
+      eq(await m.askVouchWorker({ hyperfyPlayerId: 'p1', playerName: 'Pip', pendingPairingId: 'pair-302' }), { status: 'error' }, 'a redirect')
+      eq(vlmRequests.filter((r) => r.url === REDIRECTED), [], 'requests to the redirect target')
+    } finally {
+      m.stopVouchWorker()
+      for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]
+      Object.assign(process.env, saved)
+    }
+  })
+
   await test('fresh boot: blueprint vlm exists with the env\'s feedUrl and worldKey, one vlm entity, $scene is the default', async () => {
     await boot(world, { VLM_WORLD_KEY: KEY1 })
     const [bp] = rowsOf(sqlite(world, `select * from blueprints where id = 'vlm'`))
@@ -407,11 +467,14 @@ try {
     eq(probeReads('shipped', 'server'), ['function undefined'], 'typeof app.vlmVouch / app.vlmWorld in the vlm app\'s server script')
     await session(base, async ({ waitFor }) => {
       await waitFor(worldReady)
-      await until(() => probeReads('vouch-500', 'server').length, 'the probe\'s three vouches')
+      await until(() => probeReads('vouch-long', 'server').length, 'the probe\'s vouches')
     })
     const vouches = vlmRequests.filter((r) => r.url === '/api/hyperfy/pairings/vouch')
     eq(vlmRequests.length, vouches.length, 'only vouch requests reach VLM')
-    eq(vouches.length, 2, 'vouch requests (the absent player id is refused without one)')
+    eq(vouches.length, 5, 'vouch requests (the absent player id is refused without one)')
+    const lines = log.join('').split('\n')
+    const started = lines.findIndex((l) => l.startsWith('[vlm] vouch worker started'))
+    ok(started >= 0 && started < lines.findIndex((l) => l.startsWith('[vlm-probe]')), 'the vouch worker did not start before the first app script ran')
     const id = enteredId()
     ok(typeof id === 'string' && id.length > 0, `no player id in the vouch: ${JSON.stringify(vouches[0]?.body)}`)
     eq(vouches[0].method, 'POST', 'vouch method')
@@ -420,6 +483,11 @@ try {
     eq(probeReads('vouch', 'server'), [LINKED], 'the vouch answer the script gets (unexpected fields stripped)')
     eq(probeReads('vouch-nobody', 'server'), ['{"status":"error"}'], 'a player id that isn\'t in the world')
     eq(probeReads('vouch-500', 'server'), ['{"status":"error"}'], 'VLM answering 500')
+    eq(probeReads('vouch-401', 'server'), ['{"status":"unauthorized"}'], 'VLM refusing the world secret (401)')
+    eq(probeReads('vouch-302', 'server'), ['{"status":"error"}'], 'VLM answering with a redirect (not followed)')
+    eq(vlmRequests.filter((r) => r.url === REDIRECTED), [], 'requests to the redirect target')
+    eq(vouches[4].body, { worldKey: KEY1, worldSecret: SECRET, hyperfyPlayerId: id, playerName: 'x'.repeat(256) }, 'a 300-character name is truncated to 256')
+    eq(probeReads('vouch-long', 'server'), [LINKED], 'the vouch with a long name')
   })
 
   await test('client scripts and other apps see app.vlmVouch undefined', async () => {
@@ -448,10 +516,11 @@ try {
     await session(base, async ({ waitFor }) => {
       await waitFor(worldReady)
       await waitFor(`!!window.world.entities.player && !window.world.entities.player.isBuilder()`) // a visitor, not a builder
-      await until(() => probeReads('vouch-500', 'server').length, 'the probe\'s three vouches')
+      await until(() => probeReads('vouch-long', 'server').length, 'the probe\'s vouches')
     })
     eq(probeReads('vouch', 'server'), ['{"status":"error"}'], 'vouch for a visitor')
     eq(probeReads('vouch-500', 'server'), ['{"status":"error"}'], 'polling vouch for a visitor')
+    eq(probeReads('vouch-long', 'server'), ['{"status":"error"}'], 'long-named vouch for a visitor')
     eq(vlmRequests, [], 'requests to VLM')
   })
 
@@ -473,7 +542,7 @@ try {
       ok(!env.includes(SECRET), 'the secret is in /env.js')
       const { frames, consoles } = await session(base, async ({ waitFor }) => {
         await waitFor(worldReady)
-        await until(() => probeReads('vouch-500', 'server').length, 'the probe\'s three vouches')
+        await until(() => probeReads('vouch-long', 'server').length, 'the probe\'s vouches')
         await wait(2000)
       })
       ok(vlmRequests.some((r) => r.raw.includes(SECRET)), 'VLM never got the secret, so this proves nothing')
@@ -537,6 +606,7 @@ try {
     await boot(sworld, selfRun)
     await until(() => probeReads('shipped', 'server').length, 'the shipped probe on the server')
     eq(probeReads('shipped', 'server'), ['undefined undefined'], 'without VLM_WORLD_SECRET')
+    ok(!log.join('').includes('[vlm] vouch worker started'), 'a self-run world started the vouch worker')
   })
 
   await test('boots on Postgres as a world role that cannot CREATE on the database, and installs vlm in its schema', async () => {

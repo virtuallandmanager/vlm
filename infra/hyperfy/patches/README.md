@@ -16,18 +16,25 @@ re-run `infra/hyperfy/test-world.mjs`.
   already exists, because world roles have no CREATE on the database (VLM creates the schema first).
 - `0003-vlm-world-secret.patch`: VLM only, never for upstream. Hosted worlds vouch for their builders with VLM while
   the world secret stays out of every script. The server half of the shipped VLM app gets
-  `app.vlmVouch({ hyperfyPlayerId, playerName, pendingPairingId })`. Node checks that the player is connected and is a
-  builder or admin, POSTs `${VLM_FEED_URL}/api/hyperfy/pairings/vouch` with `VLM_WORLD_KEY` and `VLM_WORLD_SECRET`,
-  and resolves only the expected fields of VLM's answer, or `{ status: 'error' }`.
+  `app.vlmVouch({ hyperfyPlayerId, playerName, pendingPairingId })`.
+  - **What a vouch does:** Node refuses a player who isn't connected or isn't a builder or admin, and truncates names
+    to 256 characters. It then POSTs `${VLM_FEED_URL}/api/hyperfy/pairings/vouch` with `VLM_WORLD_KEY` and
+    `VLM_WORLD_SECRET`, without following redirects. It resolves only the expected fields of VLM's answer,
+    `{ status: 'unauthorized' }` on a 401 (the VLM app then pairs from the browser), or `{ status: 'error' }`.
   - **Who gets it:** `src/server/vlm.js` remembers, in server memory only, the script asset `installVlmApp` installed
     for blueprint `vlm`. `App.getScriptAppProxy` adds `vlmVouch` to a proxy made for that one script run, on the server
     only, for blueprint `vlm` only, and only while that blueprint's script is still that asset. A builder's edited
     script is a new asset, so it sees undefined, and so does any callback it leaves behind after the shipped script is
     restored. Clients, other apps and self-run worlds (any of the three env vars unset) also see undefined.
-  - **Why a worker thread:** the request runs in a worker thread, which reads the secret from its own copy of the env.
-    All app scripts share the server's realm, and Hyperfy's `lockdown()` (`__hardenTaming__: 'unsafe'`) leaves its
-    intrinsics mutable. A script can hook `Object.prototype.toJSON` or `JSON.stringify` and see any secret the main
-    thread serialises, even through references captured at load. The worker is a separate realm.
+  - **Why a worker thread:** the request runs in a worker thread, a separate realm. All app scripts share the server's
+    realm, and Hyperfy's `lockdown()` (`__hardenTaming__: 'unsafe'`) leaves its intrinsics mutable, so a script can
+    hook `Object.prototype.toJSON` or `JSON.stringify`.
+  - **How the worker gets the secret:** `installVlmApp` starts the worker before any script runs and hands it its
+    config in `workerData`; the module keeps that config only to restart the worker if it exits. It then deletes
+    `VLM_WORLD_SECRET` from the main thread's `process.env`, and the rest of the server sees only `vouchHosted()`, a
+    boolean.
+  - **Option bags:** every option bag handed to `Worker`, `postMessage` and `fetch` has no prototype, and every
+    `Worker` option is set explicitly, so nothing added to `Object.prototype` is read as an option.
   - **Never exposed:** the secret is never in blueprint props, entity state, snapshots, `/env.js`, any packet or any
     log.
 
