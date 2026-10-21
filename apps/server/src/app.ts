@@ -45,8 +45,15 @@ import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { register, httpRequestsTotal, httpRequestDurationSeconds } from './metrics.js'
 
-/** A pairing code in the URL path is a credential (and /claim is polled): log the route shape, never the code. */
-export const redactPairingCode = (url: string) => url.replace(/(\/api\/hyperfy\/pair\/)[^/?#]+/, '$1:code')
+/**
+ * A pairing code in the URL path is a credential (the API's /claim is polled, and every approve link and QR scan
+ * loads the web page /pair/<code>): log the route shape, never the code.
+ */
+export const redactPairingCode = (url: string) =>
+  url.replace(/^(\/api\/hyperfy\/pair\/)[^/?#]+/, '$1:code').replace(/^(\/pair\/)[^/?#]+/, '$1:code')
+
+/** The metric label for a request no route matched (404s, the SPA fallback): fixed, so a url never becomes a label. */
+export const UNMATCHED_ROUTE = 'unmatched'
 
 // Same fields as Fastify's default req serializer, with the url redacted.
 function serializeReq(request: FastifyRequest) {
@@ -231,7 +238,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     app.addHook('onResponse', async (request, reply) => {
       if (request.url === '/metrics') return
       const start: bigint | undefined = (request as any).__metricsStart
-      const route = request.routeOptions?.url || request.url
+      const route = request.routeOptions?.url || UNMATCHED_ROUTE
       const method = request.method
       const statusCode = String(reply.statusCode)
 

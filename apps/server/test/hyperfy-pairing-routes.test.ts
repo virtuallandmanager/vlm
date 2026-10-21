@@ -1,10 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHash } from 'node:crypto'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { HYPERFY_PAIRING } from 'vlm-shared'
 import { buildApp } from '../src/app.js'
 import { vouchLimiter } from '../src/routes/hyperfy-pairing.js'
 import { config } from '../src/config.js'
+import { register } from '../src/metrics.js'
 import { db } from '../src/db/connection.js'
 import { hyperfyPairings, hyperfyWorlds } from '../src/db/schema.js'
 import { createWorldKey } from '../src/hyperfy/worlds.js'
@@ -221,6 +225,44 @@ describe('Hyperfy pairing routes', () => {
       expect(all.toUpperCase()).not.toContain(`${code.slice(0, 3)}-${code.slice(3)}`)
     } finally {
       await logged.close()
+    }
+  })
+
+  it('approval page links (/pair/<code>) and unmatched urls never put a code in the request log or a metric label', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vlm-dash-'))
+    mkdirSync(join(dir, 'pair', '_'), { recursive: true })
+    writeFileSync(join(dir, 'pair', '_', 'index.html'), '<p>pair</p>')
+    writeFileSync(join(dir, 'index.html'), '<p>spa</p>')
+    const lines: string[] = []
+    const prev = { logLevel: config.logLevel, dashboardDir: config.dashboardDir, metricsEnabled: config.metricsEnabled }
+    Object.assign(config as any, { logLevel: 'info', dashboardDir: dir, metricsEnabled: true })
+    const logged = await buildApp({ rateLimit: false, backfill: false, logStream: { write: (m) => void lines.push(m) } })
+    Object.assign(config as any, prev)
+    await logged.ready()
+    try {
+      const code = 'K7Q4XP'
+      const page = await logged.inject({ method: 'GET', url: `/pair/${code}` })
+      expect(page.statusCode).toBe(200)
+      expect(page.body).toContain('pair')
+      for (const url of [`/pair/${code}/`, `/pair/${code.toLowerCase()}?from=qr`, `/pair/K7Q-4XP`]) {
+        await logged.inject({ method: 'GET', url })
+      }
+      // 404s and the SPA fallback match no route: their metric label is fixed, never the raw url
+      const stray = 'ZZ9WW8'
+      expect((await logged.inject({ method: 'GET', url: `/api/nope/${stray}` })).statusCode).toBe(404)
+      await logged.inject({ method: 'GET', url: `/somewhere/${stray}` })
+      const all = lines.join('\n')
+      expect(all).toContain('/pair/:code')
+      expect(all.toUpperCase()).not.toContain(code)
+      expect(all.toUpperCase()).not.toContain('K7Q-4XP')
+      const metrics = await register.metrics()
+      expect(metrics).toContain('route="/pair/:code"')
+      expect(metrics).toContain('route="unmatched"')
+      expect(metrics.toUpperCase()).not.toContain(code)
+      expect(metrics).not.toContain(stray)
+    } finally {
+      await logged.close()
+      rmSync(dir, { recursive: true, force: true })
     }
   })
 
