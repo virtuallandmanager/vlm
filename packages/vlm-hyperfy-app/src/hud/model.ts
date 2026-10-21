@@ -31,6 +31,14 @@ export const alertCouldntLoad = (reason: string) => `Couldn't load: ${reason}`
 export const PLACE_LABEL = 'Place in front of me'
 /** Shift is Hyperfy's run key, so L cycles the axis lock. */
 export const KEY_HINT = 'L: axis lock · ` or Esc: use the HUD · click the world: aim'
+/**
+ * Hyperfy's chat opens on '/' and Enter ahead of any app, so links (every one has a '/') come in through chat instead:
+ * a message starting with '/' is a command, kept off the chat log and handed to apps. Chat is a real text box, so
+ * pasting works there.
+ */
+export const CHAT_COMMAND = 'vlm'
+export const LINK_HINT = 'In chat, type /vlm and paste the link'
+export const SEARCH_PLACEHOLDER = 'Search the catalog'
 
 /** How far in front of the camera "Place in front of me" puts a model, in metres. */
 export const PLACE_DISTANCE = 2
@@ -40,7 +48,7 @@ export const PAGE_SIZE = 8
 export type Panel = 'layout' | 'streams' | 'assets' | null
 export type AssetTab = 'library' | 'catalog' | 'link'
 export type Axis = 'x' | 'y' | 'z'
-export type TypingTarget = Axis | 'link' | 'search'
+export type TypingTarget = Axis | 'search'
 
 export interface AssetEntry {
   id: string
@@ -140,7 +148,11 @@ export interface HudViewModel {
     entries: Array<AssetEntry & { chosen: boolean }>
     loading: boolean
     query: string
+    /** The search field: what is being typed (with a cursor), else the query or a placeholder. */
+    searchText: string
     linkUrl: string
+    /** The Link tab: the link, or how to send one from chat. */
+    linkText: string
     typing: TypingTarget | null
     canPlace: boolean
     placeLabel: string
@@ -291,7 +303,10 @@ export function hudModel(state: HudState): HudViewModel {
       entries,
       loading: ui.tab !== 'link' && list === null,
       query: ui.query,
+      searchText:
+        ui.typing?.target === 'search' ? `${ui.typing.text}_` : ui.query || SEARCH_PLACEHOLDER,
       linkUrl: ui.linkUrl,
+      linkText: ui.linkUrl || LINK_HINT,
       typing: ui.typing && !typingAxis ? ui.typing.target : null,
       canPlace: chosen && !!activePreset && !ui.placing,
       placeLabel: PLACE_LABEL,
@@ -369,6 +384,30 @@ export function typeKey(
   if (typeof char !== 'string' || char.length !== 1) return { text, action: 'none' }
   if (kind === 'number' && !/[0-9.\-]/.test(char)) return { text, action: 'none' }
   return { text: text + char, action: 'none' }
+}
+
+/** What `/vlm <text>` in chat fills: a web link goes to the Link tab, anything else searches the catalog. */
+export function chatEntry(
+  text: string,
+): { tab: 'link'; linkUrl: string } | { tab: 'catalog'; query: string } | null {
+  const t = text.trim()
+  if (!t) return null
+  return /^https?:\/\//i.test(t) ? { tab: 'link', linkUrl: t } : { tab: 'catalog', query: t }
+}
+
+/**
+ * The text after `/vlm` from Hyperfy's 'command' event, or null for any other command. The client's event carries
+ * `cmd` and `value` (the rest of the line as typed); the server's carries only `args`. Pressing '/' opens chat with a
+ * '/' already typed, so typing `/vlm` there sends `//vlm` (cmd '/vlm'): both count.
+ */
+export function chatCommandText(e: unknown): string | null {
+  if (!e || typeof e !== 'object') return null
+  const { cmd, value, args } = e as { cmd?: unknown; value?: unknown; args?: unknown }
+  const list = Array.isArray(args) ? args : []
+  const name = typeof cmd === 'string' ? cmd : list[0]
+  if (typeof name !== 'string' || name.replace(/^\/+/, '') !== CHAT_COMMAND) return null
+  if (typeof value === 'string') return value
+  return list.slice(1).filter((a): a is string => typeof a === 'string').join(' ')
 }
 
 type XYZ = { x: number; y: number; z: number }

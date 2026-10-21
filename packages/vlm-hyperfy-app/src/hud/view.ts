@@ -40,7 +40,7 @@ export interface HudActions {
   toggleLive(elementId: string, on: boolean): void
   setTab(tab: AssetTab): void
   choose(id: string): void
-  typeField(field: 'link' | 'search'): void
+  typeField(field: 'search'): void
   place(): void
 }
 
@@ -290,20 +290,14 @@ export class HudView {
         ]
         if (s.tab === 'link') {
           rows.push(
-            this.row([
-              this.button(
-                s.typing === 'link' ? `${s.linkUrl}_` : s.linkUrl || 'Type a GLB link',
-                () => a.typeField('link'),
-                s.typing === 'link',
-              ),
-            ]),
+            this.row([this.label(s.linkText, s.linkUrl ? C.text : C.dim)]),
           )
         } else {
           if (s.tab === 'catalog')
             rows.push(
               this.row([
                 this.button(
-                  s.typing === 'search' ? `${s.query}_` : s.query || 'Search the catalog',
+                  s.searchText,
                   () => a.typeField('search'),
                   s.typing === 'search',
                 ),

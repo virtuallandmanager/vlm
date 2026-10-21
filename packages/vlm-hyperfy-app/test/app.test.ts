@@ -154,10 +154,11 @@ function run(opts: {
   const sentTo: Array<{ playerId: string; name: string; data: any }> = []
   const controls: Fake[] = []
   const used: string[] = []
+  const worldHandlers = new Map<string, (e: any) => void>()
   const world = {
     isServer: opts.isServer,
     isClient: !opts.isServer,
-    on() {},
+    on: (name: string, cb: (e: any) => void) => worldHandlers.set(name, cb),
     getPlayers: () => opts.players ?? [],
     getPlayer: (id?: string) => (id === undefined ? (opts.me ?? null) : ((opts.players ?? []).find((p) => p.id === id) ?? null)),
     load: (_type: string, _url: string) => {
@@ -216,7 +217,7 @@ function run(opts: {
     await settle()
   }
   const update = () => handlers.get('update')?.(1 / 60)
-  return { timers, posts, requests, handlers, added, created, loads, sent, sentTo, controls, used, settle, tick, update }
+  return { timers, posts, requests, handlers, worldHandlers, added, created, loads, sent, sentTo, controls, used, settle, tick, update }
 }
 
 describe('the VLM app script', () => {
@@ -448,6 +449,31 @@ describe('the VLM app script', () => {
     c.update()
     expect(c.added.flatMap(texts)).toContain('Linked to VLM as Ada')
     expect(c.used).toEqual([])
+  })
+
+  it('linked: /vlm <link> in chat opens the Link tab with that link; other players and commands are ignored', async () => {
+    const claimed = { status: 'approved', pass: 'PASS', passExpiresAt: new Date(Date.now() + 900_000).toISOString(), pairingId: 'pair-1', sceneId: 'scene-1', user: { id: 'u1', displayName: 'Ada' } }
+    const c = run({
+      isServer: false,
+      me: admin('p1', 'Pip'),
+      route: (url) => (url.endsWith('/api/hyperfy/pair') ? res(200, START) : url.endsWith('/claim') ? res(200, claimed) : undefined),
+    })
+    c.update()
+    const command = c.worldHandlers.get('command')!
+    // not linked yet: nothing to fill
+    command({ playerId: 'p1', cmd: 'vlm', value: 'https://x.io/a.glb', args: ['vlm', 'https://x.io/a.glb'] })
+    expect(c.added.flatMap(texts)).not.toContain('https://x.io/a.glb')
+    button(c.added, 'Link to VLM')!.onPointerDown()
+    c.handlers.get('vlm:link')!({ status: 'self', attempt: c.sent.find((m) => m.name === 'vlm:link')!.data.attempt })
+    await c.settle()
+    for (let i = 0; i < 3 && !c.added.flatMap(texts).includes('Linked to VLM as Ada'); i++) await c.tick()
+    command({ playerId: 'p2', cmd: 'vlm', value: 'https://x.io/other.glb', args: ['vlm', 'https://x.io/other.glb'] })
+    command({ playerId: 'p1', cmd: 'spawn', value: 'https://x.io/spawn.glb', args: ['spawn', 'https://x.io/spawn.glb'] })
+    command({ playerId: 'p1', cmd: 'vlm', value: 'https://x.io/a.glb', args: ['vlm', 'https://x.io/a.glb'] })
+    const shown = c.added.flatMap(texts)
+    expect(shown).toContain('https://x.io/a.glb')
+    expect(shown).not.toContain('https://x.io/other.glb')
+    expect(shown).not.toContain('https://x.io/spawn.glb')
   })
 
   it('self-run: the server half never vouches and tells the player to pair from the browser', async () => {

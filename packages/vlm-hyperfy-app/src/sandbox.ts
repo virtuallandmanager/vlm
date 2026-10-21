@@ -46,6 +46,11 @@ export interface HWorld {
   isServer: boolean
   isClient: boolean
   on(name: 'enter' | 'leave', cb: (e: { playerId: string }) => void): void
+  /** A chat line starting with '/' (kept off the chat log). The client gets its own player's, with `cmd` and `value`. */
+  on(
+    name: 'command',
+    cb: (e: { playerId: string; cmd?: string; value?: string; args?: string[] }) => void,
+  ): void
   getPlayers(): HPlayer[]
   /** The local player (client) or the player with this id. */
   getPlayer(id?: string): HPlayer | null

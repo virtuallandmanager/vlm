@@ -22,6 +22,8 @@ import { toHyperfyTransform } from '../transform.js'
 import { VlmApi, type ApiResult } from '../vlm-api.js'
 import {
   alertsFromSnapshot,
+  chatCommandText,
+  chatEntry,
   failureAlert,
   loadFailureAlert,
   hudModel,
@@ -61,7 +63,9 @@ export interface HudSandbox {
  * - Panels (pointer unlocked with ` or Esc, Hyperfy's own toggles): the bar and panels are clickable; clicking the
  *   world locks the pointer again.
  * - Keys: L cycles the axis lock (Shift is Hyperfy's run key). While a field is being typed into, every key goes to
- *   it: digits, '-' and '.' for values, any character for links and searches, Enter commits, Escape cancels.
+ *   it: digits, '-' and '.' for values, any character for searches, Enter commits, Escape cancels.
+ * - Chat: Hyperfy's chat takes '/' and Enter ahead of apps, so a link can't be typed into the HUD. `/vlm <link>` in
+ *   chat opens the Link tab with it (and `/vlm <words>` searches the catalog).
  */
 export function runHud(hooks: ClientEditHooks, sandbox: HudSandbox): void {
   const { app, world, fetch, setTimeout, props, Matrix4, uuid } = sandbox
@@ -151,8 +155,7 @@ export function runHud(hooks: ClientEditHooks, sandbox: HudSandbox): void {
           void loadTab(tab)
         },
         choose: (id) => setUi({ chosen: id }),
-        typeField: (field) =>
-          setUi({ typing: { target: field, text: field === 'link' ? ui.linkUrl : ui.query } }),
+        typeField: (field) => setUi({ typing: { target: field, text: ui.query } }),
         place: () => void place(),
       },
     )
@@ -433,8 +436,7 @@ export function runHud(hooks: ClientEditHooks, sandbox: HudSandbox): void {
       if (isAxis) {
         const v = Number(r.text)
         if (r.text.trim() && Number.isFinite(v)) controller.setValue(typing.target as Axis, v)
-      } else if (typing.target === 'link') setUi({ linkUrl: r.text.trim() })
-      else {
+      } else {
         setUi({ query: r.text })
         void loadTab('catalog')
       }
@@ -452,6 +454,20 @@ export function runHud(hooks: ClientEditHooks, sandbox: HudSandbox): void {
     c.onButtonPress = (prop, text) => typeInto(prop, text)
     return c
   }
+
+  world.on('command', (e) => {
+    const me = world.getPlayer()
+    if (!visible || link.status !== 'linked' || !me || e.playerId !== me.id) return
+    const text = chatCommandText(e)
+    const entry = text === null ? null : chatEntry(text)
+    if (!entry) return
+    if (entry.tab === 'link')
+      setUi({ panel: 'assets', tab: 'link', linkUrl: entry.linkUrl, chosen: null, typing: null })
+    else {
+      setUi({ panel: 'assets', tab: 'catalog', query: entry.query, chosen: null, typing: null })
+      void loadTab('catalog')
+    }
+  })
 
   hooks.onPlan((prev, next, sc) => {
     if (link.status === 'linked') for (const a of alertsFromSnapshot(scene, sc)) pushAlert(a)

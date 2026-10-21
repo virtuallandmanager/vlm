@@ -7,7 +7,10 @@ import {
   ALERT_PLACED,
   ALERT_STREAM_LIVE,
   ALERT_STREAM_OFFLINE,
+  LINK_HINT,
   alertsFromSnapshot,
+  chatCommandText,
+  chatEntry,
   failureAlert,
   loadFailureAlert,
   hudModel,
@@ -468,5 +471,40 @@ describe('placeAsset', () => {
     expect(placed).toBe(false)
     expect(calls).toEqual(['placeModel'])
     expect(alerts).toEqual([{ kind: 'error', text: "You can't edit this right now" }])
+  })
+})
+
+describe('text fields', () => {
+  it('the catalog search shows what is being typed, then the committed query', () => {
+    const typing = hudModel(
+      state({ ui: { panel: 'assets', tab: 'catalog', catalog: [], query: 'old', typing: { target: 'search', text: 'cha' } } }),
+    )
+    expect(typing.assets.searchText).toBe('cha_')
+    expect(hudModel(state({ ui: { panel: 'assets', tab: 'catalog', catalog: [], query: 'chair' } })).assets.searchText).toBe('chair')
+    expect(hudModel(state({ ui: { panel: 'assets', tab: 'catalog', catalog: [] } })).assets.searchText).toBe('Search the catalog')
+  })
+
+  it('the Link tab shows the link, or how to paste one from chat', () => {
+    expect(hudModel(state({ ui: { panel: 'assets', tab: 'link' } })).assets.linkText).toBe(LINK_HINT)
+    expect(LINK_HINT).toBe('In chat, type /vlm and paste the link')
+    expect(hudModel(state({ ui: { panel: 'assets', tab: 'link', linkUrl: 'https://x/a.glb' } })).assets.linkText).toBe('https://x/a.glb')
+  })
+
+  it('/vlm in chat: a link fills the Link tab, anything else searches the catalog', () => {
+    expect(chatEntry(' https://x.io/a/b.glb ')).toEqual({ tab: 'link', linkUrl: 'https://x.io/a/b.glb' })
+    expect(chatEntry('HTTP://x.io/a.glb')).toEqual({ tab: 'link', linkUrl: 'HTTP://x.io/a.glb' })
+    expect(chatEntry('red chair')).toEqual({ tab: 'catalog', query: 'red chair' })
+    expect(chatEntry('   ')).toBeNull()
+  })
+
+  it("reads /vlm's text from Hyperfy's command event, and ignores other commands", () => {
+    expect(chatCommandText({ playerId: 'p1', cmd: 'vlm', value: 'red chair', args: ['vlm', 'red', 'chair'] })).toBe('red chair')
+    // the server's event has only args
+    expect(chatCommandText({ playerId: 'p1', args: ['vlm', 'https://x/a.glb'] })).toBe('https://x/a.glb')
+    expect(chatCommandText({ playerId: 'p1', cmd: 'spawn', value: 'x', args: ['spawn', 'x'] })).toBeNull()
+    // '/' opens chat with a '/' already typed, so typing /vlm there sends //vlm
+    expect(chatCommandText({ playerId: 'p1', cmd: '/vlm', value: 'https://x/a.glb', args: ['/vlm', 'https://x/a.glb'] })).toBe('https://x/a.glb')
+    expect(chatCommandText(null)).toBeNull()
+    expect(chatCommandText({ cmd: 'vlm' })).toBe('')
   })
 })

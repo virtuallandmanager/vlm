@@ -69,7 +69,8 @@ Press **Edit** to turn on edit mode, then **Save** to keep your changes, **Rever
 - With the pointer locked (normal play), click an object to select it. Click the selected object again and hold the mouse button to drag it; the drag follows where you look. Click a gizmo handle to drag along that axis.
 - Press **L** to cycle the axis lock (free, X, Y, Z). Shift is Hyperfy's run key, so it isn't used.
 - Press `` ` `` (backquote) or **Esc** to unlock the pointer and click the bar and panels. Click the world to lock the pointer again.
-- To type a value, a GLB link or a catalog search, click the field and type. Digits, `-` and `.` work in value fields. Enter confirms and Esc cancels.
+- To type a value or a catalog search, click the field and type. Digits, `-` and `.` work in value fields. Enter confirms and Esc cancels.
+- To place a model from a GLB link, type `/vlm` and the link in Hyperfy's chat, for example `/vlm https://example.com/chair.glb`. Pressing `/` opens chat with the slash already typed, so then type `vlm` and the link. Pasting works there. The **Link** tab opens with the link, and the message isn't shown in chat. `/vlm` followed by words searches the catalog.
 
 ### Revoking a link
 
