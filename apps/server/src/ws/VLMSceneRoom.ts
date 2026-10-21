@@ -18,7 +18,8 @@ import {
 } from '../services/scene-serializer.js'
 import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 import { config } from '../config.js'
-import { verifySessionToken } from '../auth/tokens.js'
+import { verifySessionToken, type SessionClaims } from '../auth/tokens.js'
+import { pairingActive } from '../hyperfy/pairing.js'
 import { ANONYMOUS, actorFromClaims, type Actor } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess, toVenueAccessMessage, type SceneAccess } from '../auth/permissions.js'
 import { authorizeSceneMessage, propertiesOf, type GuardResult, type GuardTarget } from './scene-guard.js'
@@ -76,12 +77,18 @@ export class VLMSceneRoom extends Room {
   private static DRAFT_LIMIT = 20
   private static DRAFT_WINDOW_MS = 1000
 
+  /** A Hyperfy pass lives only as long as its pairing; a missing pairing id fails closed. */
+  private static async hyperfyPassRevoked(claims: SessionClaims | null): Promise<boolean> {
+    return claims?.via === 'hyperfy' && !(claims.pairingId && (await pairingActive(claims.pairingId)))
+  }
+
   async onAuth(_client: Client, options: JoinOptions): Promise<Actor> {
     const claims = verifySessionToken(options?.sessionToken)
     // A scene pass acts as its user only in its own scene; anywhere else it's an anonymous visitor.
     // Compare against the room's own scene (set in onCreate from the creating client's options, which
     // runs before the first onAuth) — never a joining client's options.sceneId, which joinById can fake.
     if (claims?.kind === 'scene' && (!claims.sceneId || claims.sceneId !== this.sceneId)) return ANONYMOUS
+    if (await VLMSceneRoom.hyperfyPassRevoked(claims)) return ANONYMOUS
     if (claims?.kind === 'scene') this.passExpiry.set(_client.sessionId, ((claims as { exp?: number }).exp ?? 0) * 1000)
     return actorFromClaims(claims)
   }
@@ -100,11 +107,12 @@ export class VLMSceneRoom extends Room {
     if (this.sceneId) this.presence.subscribe(STREAMS_TOPIC, this.onStreamEventBound)
 
     // ── Scene pass renewal: a fresh pass for the same user and this scene extends the session ──
-    this.onMessage('auth_renew', (client: Client, message: any) => {
+    this.onMessage('auth_renew', async (client: Client, message: any) => {
       const claims = verifySessionToken(message?.sessionToken)
       const actor = client.auth as Actor
+      const revoked = await VLMSceneRoom.hyperfyPassRevoked(claims)
       const ok =
-        claims?.kind === 'scene' && claims.sceneId === this.sceneId && !!actor?.userId && claims.id === actor.userId && this.passExpiry.has(client.sessionId)
+        !revoked && claims?.kind === 'scene' && claims.sceneId === this.sceneId && !!actor?.userId && claims.id === actor.userId && this.passExpiry.has(client.sessionId)
       if (!ok) {
         client.send('vlm_error', { code: 'auth_renew_refused', messageType: 'auth_renew' })
         return

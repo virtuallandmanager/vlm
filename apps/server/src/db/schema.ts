@@ -914,6 +914,8 @@ export const hyperfyPairings = pgTable('hyperfy_pairings', {
 }, (t) => ({
   userIdx: index('hyperfy_pairings_user_idx').on(t.userId),
   worldIdx: index('hyperfy_pairings_world_idx').on(t.worldId),
+  // Self pairings have a browser secret; hosted ones have a vouched player id. Exactly one.
+  kindCheck: check('hyperfy_pairings_kind_check', sql`(${t.secretHash} IS NOT NULL) <> (${t.hyperfyPlayerId} IS NOT NULL)`),
 }))
 
 // ── Password Reset Tokens ───────────────────────────────────────────────────

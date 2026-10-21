@@ -185,6 +185,27 @@ describe('Hyperfy pairings and passes', () => {
     expect((await app.inject({ method: 'GET', url: `/api/scenes/${s.scene.id}/library`, headers: { authorization: `Bearer ${tokenFor(s.owner)}` } })).statusCode).toBe(200)
   })
 
+  it('startPairing needs exactly one of secretHash and hyperfyPlayerId', async () => {
+    const s = await seed()
+    await expect(startPairing(s.key, sha256(SECRET), 'Pip', 'player-1')).rejects.toThrow('invalid_pairing_kind')
+    await expect(startPairing(s.key, null, 'Pip', null)).rejects.toThrow('invalid_pairing_kind')
+    expect(await db.select().from(hyperfyPairings)).toHaveLength(0)
+    // the database refuses it too
+    await expect(db.insert(hyperfyPairings).values({ worldId: s.world.id, codeHash: 'x', secretHash: 'a', hyperfyPlayerId: 'p', status: 'pending', codeExpiresAt: new Date() })).rejects.toThrow()
+    await expect(db.insert(hyperfyPairings).values({ worldId: s.world.id, codeHash: 'y', secretHash: null, hyperfyPlayerId: null, status: 'pending', codeExpiresAt: new Date() })).rejects.toThrow()
+  })
+
+  it('a Hyperfy pass can\'t create a hand-off code', async () => {
+    const s = await seed()
+    const { code } = await pair(s)
+    await approvePairing(code, actor(s.owner))
+    const res = await claimPairing(code, SECRET, app)
+    if (res.status !== 'approved') throw new Error('not approved')
+    const out = await app.inject({ method: 'POST', url: '/api/auth/handoff', headers: { authorization: `Bearer ${res.pass}` } })
+    expect(out.statusCode).toBe(403)
+    expect(out.json()).toEqual({ error: 'hyperfy_pass_not_allowed' })
+  })
+
   it('codes and secrets are stored only as hashes', async () => {
     const s = await seed()
     const { code } = await pair(s)

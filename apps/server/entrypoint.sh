@@ -128,6 +128,8 @@ if [ -n "$DATABASE_URL" ]; then
         await sql\`CREATE TABLE IF NOT EXISTS hyperfy_pairings (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), world_id UUID NOT NULL REFERENCES hyperfy_worlds(id) ON DELETE CASCADE, user_id UUID REFERENCES users(id) ON DELETE CASCADE, code_hash TEXT UNIQUE, secret_hash TEXT, hyperfy_player_id TEXT, player_name TEXT, status TEXT NOT NULL DEFAULT 'pending', code_expires_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ, last_used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
         await sql\`CREATE INDEX IF NOT EXISTS hyperfy_pairings_user_idx ON hyperfy_pairings (user_id)\`;
         await sql\`CREATE INDEX IF NOT EXISTS hyperfy_pairings_world_idx ON hyperfy_pairings (world_id)\`;
+        await sql\`ALTER TABLE hyperfy_pairings DROP CONSTRAINT IF EXISTS hyperfy_pairings_kind_check\`;
+        await sql\`ALTER TABLE hyperfy_pairings ADD CONSTRAINT hyperfy_pairings_kind_check CHECK ((secret_hash IS NOT NULL) <> (hyperfy_player_id IS NOT NULL))\`;
         console.log('[vlm-server] hyperfy_pairings table ensured');
       } catch(e) { console.log('[vlm-server] hyperfy_pairings:', e.message); }
 

@@ -2,6 +2,9 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { Client } from 'colyseus.js'
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene, createElement, tokenFor } from './helpers/factories.js'
+import { db } from '../src/db/connection.js'
+import { hyperfyPairings, hyperfyWorlds } from '../src/db/schema.js'
+import { revokePairing } from '../src/hyperfy/pairing.js'
 import { startGameServer, joinScene, serverRoom } from './helpers/game-server.js'
 
 const actorsIn = (roomId: string) => serverRoom(roomId).clients.map((c: any) => c.auth)
@@ -92,6 +95,44 @@ describe('scene pass in rooms', () => {
         c.room.send('auth_renew', { sessionToken })
         expect((await c.waitFor('vlm_error')).code).toBe('auth_renew_refused')
       }
+      c.room.leave()
+    })
+  })
+
+  describe('Hyperfy passes', () => {
+    async function hyperfyJoin() {
+      const owner = await createUser()
+      const { scene } = await createScene(owner, 'H')
+      const [world] = await db.insert(hyperfyWorlds).values({ sceneId: scene.id, ownerId: owner.id, name: 'W', keyHash: crypto.randomUUID(), keyPrefix: 'vlmw_x' }).returning()
+      const [p] = await db.insert(hyperfyPairings).values({ worldId: world.id, userId: owner.id, secretHash: 'h', status: 'claimed', codeExpiresAt: new Date(), expiresAt: new Date(Date.now() + 3_600_000) }).returning()
+      const pass = (pairingId: string | undefined = p.id) => tokenFor(owner, { kind: 'scene', sceneId: scene.id, orgId: null, via: 'hyperfy', pairingId, worldId: world.id })
+      return { owner, scene, p, pass }
+    }
+
+    it('a live Hyperfy pass joins as its user; a revoked one joins as anonymous', async () => {
+      const { owner, scene, p, pass } = await hyperfyJoin()
+      const live = await joinScene(gs.url, scene.id, pass())
+      expect(actorsIn(live.room.roomId).at(-1).userId).toBe(owner.id)
+      live.room.leave()
+      expect(await revokePairing(p.id, owner.id)).toBe(true)
+      const revoked = await joinScene(gs.url, scene.id, pass())
+      expect(actorsIn(revoked.room.roomId).at(-1).userId).toBeNull()
+      revoked.room.leave()
+      const noId = await joinScene(gs.url, scene.id, pass(null as any))
+      expect(actorsIn(noId.room.roomId).at(-1).userId).toBeNull()
+      noId.room.leave()
+    })
+
+    it('auth_renew refuses a revoked Hyperfy pass', async () => {
+      const { owner, scene, p, pass } = await hyperfyJoin()
+      const c = await joinScene(gs.url, scene.id, pass())
+      c.room.send('auth_renew', { sessionToken: pass() })
+      await c.waitFor('auth_renew_ack')
+      await revokePairing(p.id, owner.id)
+      c.room.send('auth_renew', { sessionToken: pass() })
+      expect((await c.waitFor('vlm_error')).code).toBe('auth_renew_refused')
+      c.room.send('auth_renew', { sessionToken: pass(null as any) })
+      expect((await c.waitFor('vlm_error')).code).toBe('auth_renew_refused')
       c.room.leave()
     })
   })

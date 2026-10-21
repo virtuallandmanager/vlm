@@ -50,6 +50,8 @@ function activeAt(p: PairingRow, now: Date): boolean {
  * speaking for its player); never pass a value that came from a browser. A hosted pairing has no browser secret (`secretHash` null).
  */
 export async function startPairing(worldKey: string, secretHash: string | null, playerName: string | null, hyperfyPlayerId: string | null, now = new Date()): Promise<{ code: string; expiresAt: Date }> {
+  // Self pairing = browser secret, no player id; hosted pairing = vouched player id, no secret. Exactly one.
+  if ((hyperfyPlayerId === null) !== (secretHash !== null)) throw new Error('invalid_pairing_kind')
   const world = await findWorldByKey(worldKey)
   if (!world) throw new Error('invalid_world_key')
   const expiresAt = new Date(now.getTime() + HYPERFY_PAIRING.codeTtlMs)
