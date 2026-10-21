@@ -137,6 +137,7 @@ export function runHud(hooks: ClientEditHooks, sandbox: HudSandbox): void {
         done: () => controller.done(),
         typeAxis: (axis) =>
           controller.state.values && setUi({ typing: { target: axis, text: '' } }),
+        typeKey: (prop, char) => void typeInto(prop, char),
         openPanel: (p) => {
           setUi({ panel: ui.panel === p ? null : p, typing: null })
           if (ui.panel === 'layout') void loadPresets()
@@ -420,6 +421,27 @@ export function runHud(hooks: ClientEditHooks, sandbox: HudSandbox): void {
     setUi({ editing: on, typing: null })
   }
 
+  /** One key into the field being typed (the keyboard, or the exact-value panel's on-screen keys). */
+  function typeInto(prop: string, text: string): boolean {
+    const typing = ui.typing
+    if (!typing) return false
+    const isAxis = typing.target === 'x' || typing.target === 'y' || typing.target === 'z'
+    const r = typeKey(typing.text, prop, text, isAxis ? 'number' : 'text')
+    if (r.action === 'cancel') setUi({ typing: null })
+    else if (r.action === 'commit') {
+      setUi({ typing: null })
+      if (isAxis) {
+        const v = Number(r.text)
+        if (r.text.trim() && Number.isFinite(v)) controller.setValue(typing.target as Axis, v)
+      } else if (typing.target === 'link') setUi({ linkUrl: r.text.trim() })
+      else {
+        setUi({ query: r.text })
+        void loadTab('catalog')
+      }
+    } else setUi({ typing: { target: typing.target, text: r.text } })
+    return true
+  }
+
   function bindControl(): HControl {
     const c = app.control()
     c.keyL.onPress = () => {
@@ -427,25 +449,7 @@ export function runHud(hooks: ClientEditHooks, sandbox: HudSandbox): void {
       controller.cycleLock()
       return true
     }
-    c.onButtonPress = (prop, text) => {
-      const typing = ui.typing
-      if (!typing) return false
-      const isAxis = typing.target === 'x' || typing.target === 'y' || typing.target === 'z'
-      const r = typeKey(typing.text, prop, text, isAxis ? 'number' : 'text')
-      if (r.action === 'cancel') setUi({ typing: null })
-      else if (r.action === 'commit') {
-        setUi({ typing: null })
-        if (isAxis) {
-          const v = Number(r.text)
-          if (r.text.trim() && Number.isFinite(v)) controller.setValue(typing.target as Axis, v)
-        } else if (typing.target === 'link') setUi({ linkUrl: r.text.trim() })
-        else {
-          setUi({ query: r.text })
-          void loadTab('catalog')
-        }
-      } else setUi({ typing: { target: typing.target, text: r.text } })
-      return true
-    }
+    c.onButtonPress = (prop, text) => typeInto(prop, text)
     return c
   }
 

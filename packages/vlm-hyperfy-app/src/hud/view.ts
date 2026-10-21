@@ -32,6 +32,8 @@ export interface HudActions {
   revert(): void
   done(): void
   typeAxis(axis: Axis): void
+  /** An on-screen key of the exact-value panel, as the keyboard key `prop` with text `char`. */
+  typeKey(prop: string, char: string): void
   openPanel(panel: Exclude<Panel, null>): void
   toggleEnabled(elementId: string, enabled: boolean): void
   setPreset(presetId: string): void
@@ -238,6 +240,10 @@ export class HudView {
         }),
       ]),
     )
+    const pad = b.keypad ?? []
+    for (let i = 0; i < pad.length; i += 3) {
+      rows.push(this.row(pad.slice(i, i + 3).map((k) => this.button(k.label, () => a.typeKey(k.prop, k.char)))))
+    }
     if (b.prompt) rows.push(this.row([this.label('Unsaved changes: Save or Revert', C.error)]))
     rows.push(this.row([this.label(b.hint, C.dim, 12)], 20))
     return rows

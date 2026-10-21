@@ -119,6 +119,8 @@ export interface HudViewModel {
     prompt: boolean
     selectedName: string | null
     values: Array<{ axis: Axis; text: string; typing: boolean }> | null
+    /** On-screen keys while typing an axis value (there's no text input): each types like the key `prop`/`char`. */
+    keypad: KeypadKey[] | null
     hint: string
   }
   panel: Panel
@@ -157,6 +159,23 @@ const KINDS: Array<
   ['images', 'image', 'Image'],
   ['models', 'model', 'Model'],
   ['sounds', 'audio', 'Sound'],
+]
+/** One on-screen key of the exact-value panel: pressing it is the same as the keyboard key `prop` with text `char`. */
+export interface KeypadKey {
+  label: string
+  prop: string
+  char: string
+}
+const digit = (d: string): KeypadKey => ({ label: d, prop: `digit${d}`, char: d })
+/** Rows of three: 7 8 9 / 4 5 6 / 1 2 3 / - 0 . / ⌫ Enter Esc. */
+export const KEYPAD: KeypadKey[] = [
+  ...['7', '8', '9', '4', '5', '6', '1', '2', '3'].map(digit),
+  { label: '-', prop: 'minus', char: '-' },
+  digit('0'),
+  { label: '.', prop: 'period', char: '.' },
+  { label: '⌫', prop: 'backspace', char: 'Backspace' },
+  { label: 'Enter', prop: 'enter', char: 'Enter' },
+  { label: 'Esc', prop: 'escape', char: 'Escape' },
 ]
 const LOCK_LABEL: Record<MoveLock, string> = { free: 'Free', x: 'X', y: 'Y', z: 'Z' }
 const AXES: Axis[] = ['x', 'y', 'z']
@@ -259,6 +278,7 @@ export function hudModel(state: HudState): HudViewModel {
             prompt: e.prompt,
             selectedName: e.selectedName,
             values,
+            keypad: values && typingAxis ? KEYPAD : null,
             hint: KEY_HINT,
           }
         : null,

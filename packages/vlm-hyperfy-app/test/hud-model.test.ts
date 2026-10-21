@@ -338,6 +338,35 @@ describe('loadFailureAlert', () => {
   })
 })
 
+describe('exact-value keypad (no text input in Hyperfy)', () => {
+  const typingY = (text: string) =>
+    hudModel(state({ edit: edit({ selectedKey: 'm1:mi1', values: { x: 1, y: 2, z: 3 } }), ui: { editing: true, typing: { target: 'y', text } } }))
+
+  it('typing an axis shows on-screen digits, minus, point, backspace, Enter and Esc', () => {
+    const pad = typingY('').bar!.keypad!
+    expect(pad.map((k) => k.label)).toEqual(['7', '8', '9', '4', '5', '6', '1', '2', '3', '-', '0', '.', '⌫', 'Enter', 'Esc'])
+    expect(pad.find((k) => k.label === '⌫')).toEqual({ label: '⌫', prop: 'backspace', char: 'Backspace' })
+    expect(pad.find((k) => k.label === 'Enter')).toEqual({ label: 'Enter', prop: 'enter', char: 'Enter' })
+    expect(pad.find((k) => k.label === 'Esc')).toEqual({ label: 'Esc', prop: 'escape', char: 'Escape' })
+    // not typing an axis: no keypad
+    expect(hudModel(state({ edit: edit({ selectedKey: 'm1:mi1', values: { x: 1, y: 2, z: 3 } }), ui: { editing: true } })).bar!.keypad).toBeNull()
+    expect(hudModel(state({ ui: { editing: true, typing: { target: 'search', text: '' } } })).bar!.keypad).toBeNull()
+  })
+
+  it('pressing the on-screen keys types the value the same way the keyboard does', () => {
+    const pad = typingY('').bar!.keypad!
+    const press = (text: string, label: string) => {
+      const k = pad.find((x) => x.label === label)!
+      return typeKey(text, k.prop, k.char, 'number')
+    }
+    let text = ''
+    for (const label of ['-', '1', '.', '5', '⌫', '2']) text = press(text, label).text
+    expect(text).toBe('-1.2')
+    expect(press(text, 'Enter')).toEqual({ text: '-1.2', action: 'commit' })
+    expect(press(text, 'Esc')).toEqual({ text: '-1.2', action: 'cancel' })
+  })
+})
+
 describe('typeKey', () => {
   it('numbers take digits, a minus and a point; Enter commits, Escape cancels, Backspace deletes', () => {
     expect(typeKey('1', 'digit2', '2', 'number')).toEqual({ text: '12', action: 'none' })

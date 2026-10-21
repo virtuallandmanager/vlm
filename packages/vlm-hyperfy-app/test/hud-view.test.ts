@@ -70,4 +70,35 @@ describe('HudView', () => {
     expect(texts(bar)).toContain('X 2.50')
     expect(texts(bar)).not.toContain('X 1.00')
   })
+
+  it('the exact-value keypad draws its keys as buttons that type through typeKey', () => {
+    const h = host()
+    const pressed: Array<[string, string]> = []
+    const act = new Proxy({}, { get: (_t, name) => (name === 'typeKey' ? (prop: string, char: string) => void pressed.push([prop, char]) : () => {}) }) as HudActions
+    const view = new HudView(h, act)
+    const typing = hudModel({ ...vmState(), ui: { editing: true, typing: { target: 'x', text: '1' } } })
+    view.render(typing)
+    const bar = h.created.find((n) => n.type === 'ui')!
+    for (const label of ['7', '0', '-', '.', '⌫', 'Enter', 'Esc']) expect(texts(bar)).toContain(label)
+    const find = (n: Fake, label: string): Fake | undefined =>
+      n.onPointerDown && texts(n).includes(label) && texts(n).length === 1 ? n : n.children.map((c: Fake) => find(c, label)).find(Boolean)
+    find(bar, '7')!.onPointerDown()
+    find(bar, '⌫')!.onPointerDown()
+    find(bar, 'Enter')!.onPointerDown()
+    expect(pressed).toEqual([
+      ['digit7', '7'],
+      ['backspace', 'Backspace'],
+      ['enter', 'Enter'],
+    ])
+  })
 })
+
+function vmState() {
+  return {
+    pairing: { status: 'linked' as const, displayName: 'Ada', sceneId: 's' },
+    edit: { selectedKey: 'm1:i1', selectedName: 'Tree', mode: 'move' as const, lock: 'free' as const, snap: false, dirty: false, dragging: false, saving: false, prompt: false, values: { x: 1, y: 0, z: 0 } },
+    plan: planScene(null),
+    scene: null,
+    alerts: [],
+  }
+}
