@@ -379,6 +379,14 @@ try {
     const msg = m.vouchMessage(7, { hyperfyPlayerId: 'p1', playerName: 'Pip' })
     eq(Object.getPrototypeOf(msg), null, 'postMessage payload prototype')
     eq({ ...msg }, { id: 7, hyperfyPlayerId: 'p1', playerName: 'Pip' }, 'postMessage payload')
+    // only the request's own fields are read: one inherited from its prototype is not
+    const inherited = Object.assign(Object.create({ pendingPairingId: 'inherited' }), { hyperfyPlayerId: 'p1', playerName: 'Pip' })
+    eq({ ...m.vouchMessage(8, inherited) }, { id: 8, hyperfyPlayerId: 'p1', playerName: 'Pip' }, 'postMessage payload from a request with an inherited field')
+    // names are cut at 256 UTF-16 units without splitting a surrogate pair
+    eq(m.truncateName('x'.repeat(300)), 'x'.repeat(256), 'a long name')
+    eq(m.truncateName('x'.repeat(255) + '\u{1F600}y'), 'x'.repeat(255), 'a name whose 256th unit starts a surrogate pair')
+    eq(m.truncateName('x'.repeat(254) + '\u{1F600}y'), 'x'.repeat(254) + '\u{1F600}', 'a pair that fits')
+    eq(m.truncateName('Pip'), 'Pip', 'a short name')
     const init = m.vouchFetchInit('{}')
     eq(Object.getPrototypeOf(init), null, 'fetch init prototype')
     eq(Object.getPrototypeOf(init.headers), null, 'fetch headers prototype')
@@ -400,6 +408,11 @@ try {
       eq(await m.askVouchWorker({ hyperfyPlayerId: 'p1', playerName: 'Pip', pendingPairingId: 'pair-401' }), { status: 'unauthorized' }, 'a 401')
       eq(await m.askVouchWorker({ hyperfyPlayerId: 'p1', playerName: 'Pip', pendingPairingId: 'pair-302' }), { status: 'error' }, 'a redirect')
       eq(vlmRequests.filter((r) => r.url === REDIRECTED), [], 'requests to the redirect target')
+      // a worker that exits is respawned with the very option bag built at startup (never rebuilt once scripts run)
+      await m.endVouchWorkerForTest()
+      eq(JSON.stringify(await m.askVouchWorker({ hyperfyPlayerId: 'p2', playerName: 'Bo' })), LINKED, 'the vouch after the worker exited')
+      eq(vlmRequests.at(-1).body, { worldKey: 'vlmw_unit', worldSecret: UNIT_SECRET, hyperfyPlayerId: 'p2', playerName: 'Bo' }, 'what VLM got from the respawned worker')
+      eq(m.vouchWorkerStats(), { optionsBuilt: 1, spawns: 2 }, 'option bags built (once, at startup) and workers spawned')
     } finally {
       m.stopVouchWorker()
       for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]

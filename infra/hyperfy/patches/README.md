@@ -29,10 +29,13 @@ re-run `infra/hyperfy/test-world.mjs`.
   - **Why a worker thread:** the request runs in a worker thread, a separate realm. All app scripts share the server's
     realm, and Hyperfy's `lockdown()` (`__hardenTaming__: 'unsafe'`) leaves its intrinsics mutable, so a script can
     hook `Object.prototype.toJSON` or `JSON.stringify`.
-  - **How the worker gets the secret:** `installVlmApp` starts the worker before any script runs and hands it its
-    config in `workerData`; the module keeps that config only to restart the worker if it exits. It then deletes
-    `VLM_WORLD_SECRET` from the main thread's `process.env`, and the rest of the server sees only `vouchHosted()`, a
-    boolean.
+  - **How the worker gets the secret:** `installVlmApp` starts the worker before any script runs. The secret goes in
+    `workerData` inside a frozen `Worker` option bag, built once at startup and reused, unchanged, by every respawn.
+    `installVlmApp` then deletes `VLM_WORLD_SECRET` from the main thread's `process.env`, and the rest of the server
+    sees only `vouchHosted()`, a boolean.
+  - **Intrinsics after boot:** anything the module calls once scripts are running (`Object.freeze`, `Object.hasOwn`,
+    `String.prototype.slice`/`charCodeAt`) is captured when the module loads. Null-prototype objects are
+    `{ __proto__: null }` literals. Names are cut to 256 UTF-16 units without splitting a surrogate pair.
   - **Option bags:** every option bag handed to `Worker`, `postMessage` and `fetch` has no prototype, and every
     `Worker` option is set explicitly, so nothing added to `Object.prototype` is read as an option.
   - **Never exposed:** the secret is never in blueprint props, entity state, snapshots, `/env.js`, any packet or any
