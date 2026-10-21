@@ -34,7 +34,7 @@ Project 1 is testable on a locally run Hyperfy world before hosting exists. Proj
 - A region picker. Every world starts in US East (`iad`), where the streaming server runs.
 - Wallet sign-in inside Hyperfy. Hyperfy players have Hyperfy accounts, so their visits count as unverified analytics.
 - Ads in Hyperfy worlds. The ad platform's step 1 is Decentraland only.
-- Editing the scene from inside the Hyperfy world. Edit in the dashboard; the world follows.
+- Editing the scene from inside the Hyperfy world. Designed separately: see `docs/superpowers/specs/2026-10-21-hyperfy-hud-design.md`.
 
 ## Anti-goals
 

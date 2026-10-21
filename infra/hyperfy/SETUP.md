@@ -32,27 +32,27 @@ You need: `flyctl`, `docker`, `railway`, a Cloudflare account, and access to you
    fly apps create vlm-worlds-db-jobs -o vlm-worlds
    ```
 
-## 2. The worlds database (Fly Managed Postgres)
+## 2. The worlds database (self-run Fly Postgres)
 
 Every world gets a schema `world_<slug>` and a Postgres role of the same name that can use only that schema. All worlds share one cluster.
 
-Managed Postgres is reachable only inside Fly's private network, so the VLM server (on Railway) never connects to it. It
+The database is the self-run Fly Postgres app `vlm-worlds-pg` (Postgres 18, database `worlds`). It is reachable only inside Fly's private network, so the VLM server (on Railway) never connects to it. Database admin SQL runs in Fly job machines (`vlm-worlds-db-jobs`, `HYPERFY_WORLDS_DB_MODE=fly-job`). The server
 builds the SQL for a world's role and schema and runs it in a one-shot machine of `vlm-worlds-db-jobs`, using the world
 image (`node /app/vlm/db-job.mjs`). Each create or drop runs as one transaction. The job exits 0 when it committed, 1
 when a statement failed and the whole batch rolled back (nothing changed), and 2 when COMMIT itself failed, so the outcome
 is unknown. After exit 2 (or a Fly error or timeout) VLM drops the world's role and schema to be safe.
 
-1. Create a Managed Postgres cluster **in the org `vlm-worlds`** (the job machines and worlds reach it only over that org's private network), region `iad`, plan **Basic** (about $38 per month, see fly.io/docs/mpg). It must be **Postgres 15 or newer**: the server refuses older versions with `worlds database must run Postgres 15 or newer`.
-2. From the cluster's page take two connection strings:
-   - **Admin URL**: the cluster's **private** address with its admin user, which can create and drop roles and schemas. That user needs `CREATEROLE` and `CREATE` on the database, not superuser (Managed Postgres doesn't hand out superuser). On Postgres 16+ a `CREATEROLE` user isn't a member of the roles it creates, and `CREATE SCHEMA … AUTHORIZATION` needs it to be, so VLM's statements grant the admin each world's role (`GRANT … TO CURRENT_USER`) before creating the world's schema, and again before dropping it. It is stored only as a Fly secret of the jobs app, which Fly injects into every job machine; the VLM server never sees it:
+1. Run the Postgres app `vlm-worlds-pg` **in the org `vlm-worlds`** (the job machines and worlds reach it only over that org's private network), region `iad`, with database `worlds`. It is Postgres 18, and must be **Postgres 15 or newer**: the server refuses older versions with `worlds database must run Postgres 15 or newer`.
+2. Take two connection strings for the app:
+   - **Admin URL**: the cluster's **private** address with its admin user, which can create and drop roles and schemas. That user needs `CREATEROLE` and `CREATE` on the database, not superuser. On Postgres 16+ a `CREATEROLE` user isn't a member of the roles it creates, and `CREATE SCHEMA … AUTHORIZATION` needs it to be, so VLM's statements grant the admin each world's role (`GRANT … TO CURRENT_USER`) before creating the world's schema, and again before dropping it. It is stored only as a Fly secret of the jobs app, which Fly injects into every job machine; the VLM server never sees it:
 
      ```sh
      fly secrets set -a vlm-worlds-db-jobs DB_ADMIN_URL='<admin url>'
      ```
 
      (Type it at the prompt or paste from a password manager rather than leaving it in shell history.)
-   - **Pooled URL**: the pooled (PgBouncer) address that is reachable on Fly's private network. This is what the worlds connect with. Replace the user and password in it with the literal placeholders `{user}` and `{password}`, giving something like `postgres://{user}:{password}@<pooled-host>:5432/<database>`. That becomes `HYPERFY_WORLDS_DB_URL_TEMPLATE`. The server fills the placeholders in with each world's own role and a random password.
-3. Don't make the cluster public: nothing outside Fly needs to reach it. If a world database create or drop fails, the world's error says `worlds database job failed with exit code …`, and the job's one-line Postgres error (never the SQL) is in `fly logs -a vlm-worlds-db-jobs`. Exit code 1 means the batch rolled back; any other code (or a Fly error) means the outcome is unknown, and the server drops the world's role and schema as part of the cleanup. Job machines are deleted when they stop; the 5-minute sweep force-deletes any left behind (named `db-job-…`, stopped, older than 10 minutes).
+   - **Pooled URL**: the address on Fly's private network that the worlds can reach. This is what the worlds connect with. Replace the user and password in it with the literal placeholders `{user}` and `{password}`, giving something like `postgres://{user}:{password}@<pooled-host>:5432/<database>`. That becomes `HYPERFY_WORLDS_DB_URL_TEMPLATE`. The server fills the placeholders in with each world's own role and a random password.
+3. Don't make the database public: nothing outside Fly needs to reach it. If a world database create or drop fails, the world's error says `worlds database job failed with exit code …`, and the job's one-line Postgres error (never the SQL) is in `fly logs -a vlm-worlds-db-jobs`. Exit code 1 means the batch rolled back; any other code (or a Fly error) means the outcome is unknown, and the server drops the world's role and schema as part of the cleanup. Job machines are deleted when they stop; the 5-minute sweep force-deletes any left behind (named `db-job-…`, stopped, older than 10 minutes).
 
 ## 3. The files bucket (Cloudflare R2)
 
@@ -121,6 +121,8 @@ Build the VLM app first so `packages/vlm-hyperfy-app/dist/vlm.hyp` exists and is
 
 New worlds use the current `HYPERFY_IMAGE`. Existing worlds keep their image until their next key rotation or restore, either of which moves them to the current one.
 
+Hosted worlds get `VLM_WORLD_SECRET` automatically when they are created. It lets the world's server half vouch for builders who press **Link to VLM** in the HUD. Worlds that already exist get it on their next key rotation or restore. Patch 0003 keeps the secret out of app scripts: vouching runs in a Node worker, so scripts never see it.
+
 ## 7. Railway variables
 
 Set these on the `vlm-server` service:
@@ -165,6 +167,6 @@ If creation fails, the row shows the error and the world is cleaned up; the serv
 
 ## Running costs and housekeeping
 
-- Worlds stop when idle (`autostop`) and wake on the next visit, so a quiet world costs little. The Managed Postgres Basic plan is the fixed cost.
+- Worlds stop when idle (`autostop`) and wake on the next visit, so a quiet world costs little. The worlds database is the fixed cost.
 - A sweep runs every 5 minutes: it ends temporary worlds at their end date (stopping them and freeing the slot) and, 30 days after that, deletes the schema, bucket files and Fly app.
 - Rotate the Fly token before it expires (step 1).

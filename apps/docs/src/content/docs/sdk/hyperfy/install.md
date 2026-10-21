@@ -41,6 +41,44 @@ Media Hyperfy can't play, such as gifs and webm videos, is skipped and the rest 
 
 Not yet supported: ad spaces and ad modes, NFTs, widgets and claim points.
 
+## Editing from inside Hyperfy
+
+Admins and builders in a Hyperfy world get a VLM bar at the top of the screen. It lets you change the scene without leaving the world. Visitors see nothing.
+
+### Link the world to your VLM account
+
+1. In the world, press **Link to VLM** in the bar.
+2. The HUD shows a code (like `ABC-123`) and a link and QR code to `vlm.gg/pair/<code>`.
+3. Open the link, sign in on vlm.gg and approve.
+
+Only people with editing access to the world's VLM scene can approve: the scene's owner, an admin, cohost or editor, or a booking host during their booking.
+
+Hosted worlds remember the link for that browser until you revoke it or it goes unused for 90 days. Worlds you run yourself pair on each visit, and a link lasts 12 hours at most.
+
+### What you can do
+
+- **Move, rotate and resize** objects with the gizmo.
+- **Show or hide** objects, and **switch presets**, in **Scene layout**.
+- **Go live or offline** on video screens, in **Streams**.
+- **Place models** from the scene library, the catalog or a GLB link, in **Assets**. The model is placed 2 m in front of you. Models added this way need a Decentraland redeploy to appear there, and the HUD says so.
+
+Press **Edit** to turn on edit mode, then **Save** to keep your changes, **Revert** to drop them or **Done** to leave.
+
+### Controls
+
+- With the pointer locked (normal play), click an object to select it. Click the selected object again and hold the mouse button to drag it; the drag follows where you look. Click a gizmo handle to drag along that axis.
+- Press **L** to cycle the axis lock (free, X, Y, Z). Shift is Hyperfy's run key, so it isn't used.
+- Press `` ` `` (backquote) or **Esc** to unlock the pointer and click the bar and panels. Click the world to lock the pointer again.
+- To type a value, a GLB link or a catalog search, click the field and type. Digits, `-` and `.` work in value fields. Enter confirms and Esc cancels.
+
+### Revoking a link
+
+Go to your account settings and find **Linked Hyperfy sessions**. Choose **Revoke** on a session. It stops working immediately.
+
+### Who to make a builder
+
+Hyperfy builders can edit app scripts and props in a world, so only give builder rights to people you trust with your VLM scene. The world's VLM secret itself never reaches scripts.
+
 ## Analytics
 
 Visitors show up in [VLM Analytics](/dashboard/analytics) under a **Hyperfy** location for that world. Hyperfy players have no wallets, so they count as unverified guests, and no names are recorded.
