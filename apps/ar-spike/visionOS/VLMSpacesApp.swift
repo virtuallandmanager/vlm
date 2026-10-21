@@ -10,7 +10,7 @@ struct VLMSpacesApp: App {
             ContentView(model: model)
                 .onAppear { model.connect() }
         }
-        .defaultSize(width: 560, height: 640)
+        .defaultSize(width: 600, height: 760)
 
         ImmersiveSpace(id: ImmersiveSpaceID.vlm) {
             ImmersiveView(model: model)
@@ -32,7 +32,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                SettingsForm(model: model)
+                // At the top so a short window can't push it out of sight below the settings.
                 Button(inSpace ? "Leave space" : "Enter space") {
                     Task {
                         if inSpace {
@@ -44,7 +44,9 @@ struct ContentView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
                 .padding()
+                SettingsForm(model: model)
             }
             .navigationTitle("VLM Spaces")
         }
