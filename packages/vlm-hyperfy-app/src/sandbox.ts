@@ -80,8 +80,11 @@ export interface VlmVouchRequest {
   playerName: string | null
   pendingPairingId?: string
 }
-/** VLM's vouch answer as the image passes it on (only the expected fields), or `error` on any failure. */
-export type VlmVouchResult = HyperfyVouchResponse | { status: 'error' }
+/**
+ * VLM's vouch answer as the image passes it on (only the expected fields): `unauthorized` when VLM refuses the world's
+ * secret (HTTP 401), `error` on any other failure.
+ */
+export type VlmVouchResult = HyperfyVouchResponse | { status: 'unauthorized' } | { status: 'error' }
 export type VlmVouch = (req: VlmVouchRequest) => Promise<VlmVouchResult>
 export type Matrix4Ctor = new () => Matrix & { copy(m: Matrix): Matrix & { invert(): Matrix } }
 export type AppProps = { feedUrl?: string; worldKey?: string }

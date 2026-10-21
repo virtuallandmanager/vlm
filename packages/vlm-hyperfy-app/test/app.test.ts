@@ -318,6 +318,18 @@ describe('the VLM app script', () => {
     expect(JSON.stringify([v.calls, s.sentTo, s.sent, s.requests])).not.toMatch(/secret/i)
   })
 
+  it('hosted: VLM not knowing the world secret (unauthorized) falls back to pairing from the browser', async () => {
+    const v = hostedVouch(() => ({ status: 'unauthorized' }))
+    const s = run({ isServer: true, players: [admin('p1', 'Pip')], vlmVouch: v.vlmVouch, route: () => res(200, { status: 'pending' }) })
+    s.handlers.get('vlm:link')!({ attempt: 3 }, 'p1')
+    await s.settle()
+    expect(v.calls).toHaveLength(1)
+    expect(s.sentTo).toEqual([{ playerId: 'p1', name: 'vlm:link', data: { status: 'self', attempt: 3 } }])
+    // nothing is pending: a later request vouches afresh
+    await s.tick()
+    expect(v.calls).toHaveLength(1)
+  })
+
   it('hosted: a sender who is neither admin nor builder gets no vouch and no reply', async () => {
     const v = hostedVouch(() => ({ status: 'pending' }))
     const s = run({ isServer: true, players: [{ id: 'p3', name: 'Vi', admin: false, builder: false, position: new Vector3() }], vlmVouch: v.vlmVouch, route: () => res(200, { status: 'pending' }) })

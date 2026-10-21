@@ -92,6 +92,10 @@ export function runLinkRelay({ app, world, setTimeout, vouch: vlmVouch }: LinkRe
     } else if (status === 'refused' || status === 'expired') {
       pending.delete(playerId)
       answer({ status: 'expired' })
+    } else if (status === 'unauthorized') {
+      // VLM doesn't know this world's secret (bad or cleared): the browser can still pair with a code.
+      pending.delete(playerId)
+      answer({ status: 'self' })
     } else if (entry.pairingId) {
       // Lost while a code is out: keep polling, backing off.
       again(Math.min(Math.max(failDelay * 2, HYPERFY_FEED.retryMinMs), HYPERFY_FEED.retryMaxMs))
