@@ -374,7 +374,8 @@ try {
     const w = m.vouchWorkerOptions({ secret: 'vlmws_FAKE_UNIT', feedUrl: VLM_URL, worldKey: 'vlmw_unit' })
     eq(Object.getPrototypeOf(w), null, 'Worker options prototype')
     for (const k of ['env', 'resourceLimits', 'workerData']) eq(Object.getPrototypeOf(w[k]), null, `Worker options.${k} prototype`)
-    eq([w.eval, w.execArgv, w.argv, w.stdin, w.stdout, w.stderr], [true, [], [], false, false, false], 'Worker options set explicitly')
+    eq([w.eval, w.execArgv, w.stdin, w.stdout, w.stderr], [true, [], false, false, false], 'Worker options set explicitly')
+    eq(Object.hasOwn(w, 'argv'), false, 'Worker options leave argv unset (with no prototype it reads undefined)')
     eq(Object.keys(w.env), [], 'the worker env (the config goes in workerData)')
     const msg = m.vouchMessage(7, { hyperfyPlayerId: 'p1', playerName: 'Pip' })
     eq(Object.getPrototypeOf(msg), null, 'postMessage payload prototype')
@@ -382,6 +383,17 @@ try {
     // only the request's own fields are read: one inherited from its prototype is not
     const inherited = Object.assign(Object.create({ pendingPairingId: 'inherited' }), { hyperfyPlayerId: 'p1', playerName: 'Pip' })
     eq({ ...m.vouchMessage(8, inherited) }, { id: 8, hyperfyPlayerId: 'p1', playerName: 'Pip' }, 'postMessage payload from a request with an inherited field')
+    // vlmVouch reads the script's request through vouchRequestFields: own fields only, and nothing from a non-object
+    const fields = (r) => ({ ...m.vouchRequestFields(r) })
+    eq(Object.getPrototypeOf(m.vouchRequestFields({ hyperfyPlayerId: 'p1' })), null, 'request fields prototype')
+    eq(fields({ hyperfyPlayerId: 'p1', playerName: 'Pip', pendingPairingId: 'pair-1' }), { hyperfyPlayerId: 'p1', playerName: 'Pip', pendingPairingId: 'pair-1' }, 'own request fields')
+    const inheritedAll = Object.assign(Object.create({ hyperfyPlayerId: 'p9', playerName: 'Mallory', pendingPairingId: 'inherited' }), {})
+    eq(fields(inheritedAll), {}, 'a request whose fields are all inherited')
+    eq(fields(Object.assign(Object.create({ pendingPairingId: 'inherited' }), { hyperfyPlayerId: 'p1' })), { hyperfyPlayerId: 'p1' }, 'a request with an inherited pendingPairingId')
+    for (const r of [null, undefined, 'p1', 42, true, () => {}]) eq(fields(r), {}, `a non-object request (${typeof r})`)
+    const vouchSrc = m.vlmVouchFor.toString()
+    ok(!/\.\s*(hyperfyPlayerId|playerName|pendingPairingId)\b/.test(vouchSrc), 'vlmVouchFor reads a request field by ordinary lookup')
+    ok(/vouchRequestFields\(/.test(vouchSrc), 'vlmVouchFor reads the request through vouchRequestFields')
     // names are cut at 256 UTF-16 units without splitting a surrogate pair
     eq(m.truncateName('x'.repeat(300)), 'x'.repeat(256), 'a long name')
     eq(m.truncateName('x'.repeat(255) + '\u{1F600}y'), 'x'.repeat(255), 'a name whose 256th unit starts a surrogate pair')

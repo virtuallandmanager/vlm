@@ -37,7 +37,11 @@ re-run `infra/hyperfy/test-world.mjs`.
     `String.prototype.slice`/`charCodeAt`) is captured when the module loads. Null-prototype objects are
     `{ __proto__: null }` literals. Names are cut to 256 UTF-16 units without splitting a surrogate pair.
   - **Option bags:** every option bag handed to `Worker`, `postMessage` and `fetch` has no prototype, and every
-    `Worker` option is set explicitly, so nothing added to `Object.prototype` is read as an option.
+    `Worker` option is set explicitly (except `argv`, left unset), so nothing added to `Object.prototype` is read as
+    an option.
+  - **The script's request:** `vlmVouch` reads `hyperfyPlayerId`, `playerName` and `pendingPairingId` only as the
+    request's own fields (the captured `Object.hasOwn`); a request that isn't an object reads as an empty,
+    null-prototype one.
   - **Never exposed:** the secret is never in blueprint props, entity state, snapshots, `/env.js`, any packet or any
     log.
 
