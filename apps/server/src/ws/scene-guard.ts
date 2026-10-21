@@ -43,6 +43,22 @@ function liveScope(access: SceneAccess, scope: SceneScope): GuardResult {
   return OK_BROADCAST
 }
 
+/**
+ * Who may drive a screen's live controls (the room's scene_video_update and the REST live toggle share this):
+ * the 'screens' scope during the live window, and for grant holders only a rentable screen in their own booking preset.
+ */
+export async function authorizeVideoControl(access: SceneAccess, sceneId: string, elementId: unknown): Promise<GuardResult> {
+  const live = liveScope(access, 'screens')
+  if (!live.ok || access.level !== 'grant') return live
+  // Crew may only drive rentable screens in their own booking preset.
+  const el = typeof elementId === 'string' && elementId ? await db.query.sceneElements.findFirst({ where: eq(sceneElements.id, elementId), with: { preset: true } }) : undefined
+  if (!el || el.preset.sceneId !== sceneId) return NOT_FOUND
+  const rentable = access.booking!.rentableElementIds
+  if (el.presetId !== access.booking!.bookingPresetId) return FORBIDDEN
+  if (!rentable.has(el.id) && !(el.clonedFromId && rentable.has(el.clonedFromId))) return FORBIDDEN
+  return OK_BROADCAST
+}
+
 const OPEN = new Set(['scene_sound_locator', 'user_message'])
 
 export async function authorizeSceneMessage(access: SceneAccess, sceneId: string, type: string, message: any): Promise<GuardResult> {
@@ -50,18 +66,8 @@ export async function authorizeSceneMessage(access: SceneAccess, sceneId: string
   switch (type) {
     case 'scene_setting_update':
       return hasScope(access, 'scene.edit') ? OK_BROADCAST : FORBIDDEN
-    case 'scene_video_update': {
-      const live = liveScope(access, 'screens')
-      if (!live.ok || access.level !== 'grant') return live
-      // Crew may only drive rentable screens in their own booking preset.
-      const elementId = message?.sk || message?.id || message?.elementId
-      const el = elementId && (await db.query.sceneElements.findFirst({ where: eq(sceneElements.id, elementId), with: { preset: true } }))
-      if (!el || el.preset.sceneId !== sceneId) return NOT_FOUND
-      const rentable = access.booking!.rentableElementIds
-      if (el.presetId !== access.booking!.bookingPresetId) return FORBIDDEN
-      if (!rentable.has(el.id) && !(el.clonedFromId && rentable.has(el.clonedFromId))) return FORBIDDEN
-      return OK_BROADCAST
-    }
+    case 'scene_video_update':
+      return authorizeVideoControl(access, sceneId, message?.sk || message?.id || message?.elementId)
     case 'scene_moderator_message':
     case 'scene_moderator_crash':
       return hasScope(access, 'moderation') ? OK_BROADCAST : FORBIDDEN

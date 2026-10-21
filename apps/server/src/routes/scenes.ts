@@ -20,6 +20,7 @@ import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 import { serializeSingleElement } from '../services/scene-serializer.js'
 import { getSubscription } from '../integrations/stripe.js'
 import { hostedWorldsBlockingDelete } from '../hyperfy/hosting.js'
+import { authorizeVideoControl } from '../ws/scene-guard.js'
 import { boundScene, fromElement, fromInstance, fromParam, fromPreset, isScenePass } from '../auth/scene-from.js'
 
 type ElementChange = Parameters<typeof publishElementChanged>[0]
@@ -430,6 +431,39 @@ export default async function sceneRoutes(app: FastifyInstance) {
         elementType: updated.type,
         deleted: false,
       })
+      return reply.send({ element: updated })
+    },
+  )
+
+  // ── POST /api/elements/:elementId/live — turn a screen's live stream on or off ──
+
+  app.post<{ Params: { elementId: string }; Body: { enabled?: unknown } }>(
+    '/api/elements/:elementId/live',
+    { config: { scenePass: { sceneFrom: fromElement } } },
+    async (request, reply) => {
+      const { elementId } = request.params
+      const enabled = request.body?.enabled
+      if (typeof enabled !== 'boolean') return reply.status(400).send({ error: 'enabled must be a boolean' })
+
+      const element = await db.query.sceneElements.findFirst({
+        where: eq(sceneElements.id, elementId),
+        with: { preset: true },
+      })
+      if (!element) return reply.status(404).send({ error: 'Element not found' })
+      // The same rules as the room's scene_video_update
+      const sceneId = element.preset.sceneId
+      const auth = await authorizeVideoControl(await accessFor(request, sceneId), sceneId, elementId)
+      if (!auth.ok) return reply.status(auth.code === 'not_found' ? 404 : 403).send({ error: auth.code === 'not_found' ? 'Element not found' : 'Forbidden' })
+      if (element.type !== 'video') return reply.status(400).send({ error: 'Only video elements have a live stream' })
+
+      const [updated] = await db
+        .update(sceneElements)
+        .set({ properties: { ...((element.properties as Record<string, unknown> | null) ?? {}), enableLiveStream: enabled }, updatedAt: new Date() })
+        .where(eq(sceneElements.id, elementId))
+        .returning()
+
+      // Rooms push the element's full state (enableLiveStream included) to connected clients
+      await elementChanged({ sceneId, presetId: element.presetId, elementId, elementType: updated.type, deleted: false })
       return reply.send({ element: updated })
     },
   )

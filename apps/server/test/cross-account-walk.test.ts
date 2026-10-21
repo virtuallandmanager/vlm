@@ -93,6 +93,7 @@ const CASES: Case[] = [
   { route: 'POST /api/presets/:presetId/elements', url: (f) => `/api/presets/${f.preset.id}/elements`, body: () => ({ type: 'image', name: 'pwned' }) },
   { route: 'PUT /api/elements/:elementId', url: (f) => `/api/elements/${f.element.id}`, body: () => ({ name: 'pwned' }) },
   { route: 'DELETE /api/elements/:elementId', url: (f) => `/api/elements/${f.element.id}` },
+  { route: 'POST /api/elements/:elementId/live', url: (f) => `/api/elements/${f.element.id}/live`, body: () => ({ enabled: true }) },
   { route: 'POST /api/elements/:elementId/instances', url: (f) => `/api/elements/${f.element.id}/instances`, body: () => ({ position: { x: 0, y: 0, z: 0 } }) },
   { route: 'PUT /api/instances/:instanceId', url: (f) => `/api/instances/${f.instance.id}`, body: () => ({ enabled: false }) },
   { route: 'DELETE /api/instances/:instanceId', url: (f) => `/api/instances/${f.instance.id}` },

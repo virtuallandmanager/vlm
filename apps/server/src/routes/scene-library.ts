@@ -5,7 +5,7 @@ import { assetLibraryItems, mediaAssets, sceneLibrary } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess } from '../auth/permissions.js'
-import { fromParam, isUuid } from '../auth/scene-from.js'
+import { fromParam, isScenePass, isUuid } from '../auth/scene-from.js'
 import { getSceneLibraryItem, linkToScene, listSceneLibrary, uploadDestination } from '../library/scene-library.js'
 import { storeMedia, StoreMediaError } from '../media/store.js'
 import { publishLibraryChanged } from '../realtime/bus.js'
@@ -25,10 +25,11 @@ export default async function sceneLibraryRoutes(app: FastifyInstance) {
     return reply.send({ items: await listSceneLibrary(request.params.sceneId) })
   })
 
-  // Account tokens only: no scenePass config, so authenticate refuses passes by default deny (a pass can't pull files out of the owner's account).
-  app.post<{ Params: { sceneId: string }; Body: { mediaAssetId?: string; assetItemId?: string } }>('/api/scenes/:sceneId/library', async (request, reply) => {
+  // A scene pass (the Hyperfy HUD) may add public catalog models only: it can't pull the account's own files into a scene.
+  app.post<{ Params: { sceneId: string }; Body: { mediaAssetId?: string; assetItemId?: string } }>('/api/scenes/:sceneId/library', { config: { scenePass: { sceneFrom: fromParam('sceneId') } } }, async (request, reply) => {
     const { sceneId } = request.params
     const { mediaAssetId, assetItemId } = request.body ?? {}
+    if (isScenePass(request.user) && !assetItemId) return reply.status(403).send({ error: 'forbidden' })
     if (!!mediaAssetId === !!assetItemId) return reply.status(400).send({ error: 'Give exactly one of mediaAssetId or assetItemId' })
     if (!isUuid(mediaAssetId ?? assetItemId)) return reply.status(400).send({ error: 'Invalid id' })
     if (!hasScope(await access(request, sceneId), 'scene.edit')) return reply.status(403).send({ error: 'forbidden' })
@@ -38,7 +39,7 @@ export default async function sceneLibraryRoutes(app: FastifyInstance) {
           // Your own upload, or a public catalog model (linkToScene refuses one in a switched-off pack)
           where: and(
             eq(assetLibraryItems.id, assetItemId!),
-            or(eq(assetLibraryItems.uploadedBy, request.user.id), and(eq(assetLibraryItems.isPublic, true), isNotNull(assetLibraryItems.packId))),
+            or(...(isScenePass(request.user) ? [] : [eq(assetLibraryItems.uploadedBy, request.user.id)]), and(eq(assetLibraryItems.isPublic, true), isNotNull(assetLibraryItems.packId))),
           ),
         })
     if (!owns) return reply.status(403).send({ error: 'forbidden' })
