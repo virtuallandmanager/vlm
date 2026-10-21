@@ -82,6 +82,10 @@ export function hyperfyErrorMessage(err: unknown): string {
       return e.body?.message || "The world couldn't be updated. Try again in a moment."
   }
   if (e?.status === 502) return "The world couldn't start. Try again in a moment."
-  if (e?.status === 400) return 'Give the world a name of 100 characters or fewer.'
+  if (e?.status === 400) {
+    const why = String(e.body?.error ?? e.message ?? '')
+    if (why.startsWith('name is required')) return 'Give the world a name of 100 characters or fewer.'
+    if (why.startsWith('endsAt must be')) return 'Pick an end date in the future, or leave it empty.'
+  }
   return 'Something went wrong. Try again in a moment.'
 }

@@ -1,5 +1,5 @@
 'use client'
-import { deployErrorMessage } from '@/lib/deploy'
+import { deployErrorMessage, listedDeployments } from '@/lib/deploy'
 import { useApi } from '@/lib/api'
 import { API_URL } from '@/lib/config'
 import { destroyWorldPrompt, hyperfyErrorMessage, lastSeenLabel, noSlotsLine, removeWorldPrompt, setupSteps, shortDate, slotLine, worldStatusLabel } from '@/lib/hyperfy'
@@ -487,7 +487,7 @@ function DeployContent() {
     }
     setLoadingDeployments(true)
     api.getDeployments(selectedSceneId).then((data) => {
-      setDeployments(data.deployments)
+      setDeployments(listedDeployments(data.deployments))
       setLoadingDeployments(false)
     }).catch(() => {
       setDeployments([])
