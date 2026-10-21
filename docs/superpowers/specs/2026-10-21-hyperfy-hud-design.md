@@ -1,6 +1,6 @@
 # Hyperfy HUD: design
 
-Status: for the owner's approval, 2026-10-21. The builder check is done, and the owner has answered the API-access and link-persistence questions.
+Status: approved by the owner, 2026-10-21.
 
 ## Intent
 
