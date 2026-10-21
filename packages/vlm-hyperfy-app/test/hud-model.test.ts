@@ -9,6 +9,7 @@ import {
   ALERT_STREAM_OFFLINE,
   alertsFromSnapshot,
   failureAlert,
+  loadFailureAlert,
   hudModel,
   inFrontOf,
   pairingAlert,
@@ -318,6 +319,22 @@ describe('pairingAlert and failureAlert', () => {
     })
     expect(failureAlert('server')).toEqual({ kind: 'error', text: "Couldn't save: server" })
     expect(failureAlert('auth')).toBeNull()
+  })
+})
+
+describe('loadFailureAlert', () => {
+  it('a failed library or catalog load says it could not load, not save', () => {
+    expect(loadFailureAlert('server')).toEqual({ kind: 'error', text: "Couldn't load: server" })
+    expect(loadFailureAlert('invalid')).toEqual({ kind: 'error', text: "Couldn't load: invalid" })
+    expect(loadFailureAlert('lost')).toEqual({
+      kind: 'error',
+      text: 'Lost connection to VLM. Retrying…',
+    })
+    expect(loadFailureAlert('no_access')).toEqual({
+      kind: 'error',
+      text: "You can't edit this right now",
+    })
+    expect(loadFailureAlert('auth')).toBeNull()
   })
 })
 

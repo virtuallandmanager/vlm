@@ -69,6 +69,10 @@ export class HudView {
   private readonly panel: UiNode
   private readonly alerts: UiNode
   private shown = false
+  /** The last full render's layout (see `valuesless`) and its value labels, in axis order. */
+  private layout = ''
+  private valueLabels: UiNode[] = []
+  private lastLabel: UiNode | null = null
 
   constructor(
     private readonly host: UiHost,
@@ -114,6 +118,20 @@ export class HudView {
   /** Draws the model, or removes the HUD for null (a visitor who is neither admin nor builder). */
   render(vm: HudViewModel | null): void {
     if (!vm) return this.hide()
+    // A drag changes only the values: retext those labels instead of rebuilding every node each frame.
+    const layout = valuesless(vm)
+    const values = vm.bar?.values
+    if (
+      this.shown &&
+      layout === this.layout &&
+      values &&
+      values.length === this.valueLabels.length
+    ) {
+      values.forEach((v, i) => (this.valueLabels[i].value = valueText(v)))
+      return
+    }
+    this.layout = layout
+    this.valueLabels = []
     this.fill(this.bar, this.barRows(vm))
     const panelRows = this.panelRows(vm)
     this.fill(this.panel, panelRows)
@@ -213,9 +231,11 @@ export class HudView {
     rows.push(
       this.row([
         this.label(sel),
-        ...(b.values ?? []).map((v) =>
-          this.button(`${v.axis.toUpperCase()} ${v.text}`, () => a.typeAxis(v.axis), v.typing),
-        ),
+        ...(b.values ?? []).map((v) => {
+          const n = this.button(valueText(v), () => a.typeAxis(v.axis), v.typing)
+          this.valueLabels.push(this.lastLabel!)
+          return n
+        }),
       ]),
     )
     if (b.prompt) rows.push(this.row([this.label('Unsaved changes: Save or Revert', C.error)]))
@@ -337,7 +357,17 @@ export class HudView {
       cursor: 'pointer',
     })
     n.onPointerDown = onPress
-    n.add(this.label(text))
+    this.lastLabel = this.label(text)
+    n.add(this.lastLabel)
     return n
   }
 }
+
+type Value = NonNullable<NonNullable<HudViewModel['bar']>['values']>[number]
+const valueText = (v: Value) => `${v.axis.toUpperCase()} ${v.text}`
+/** The view model without the value texts: equal when only a drag's values changed. */
+const valuesless = (vm: HudViewModel) =>
+  JSON.stringify({
+    ...vm,
+    bar: vm.bar && { ...vm.bar, values: vm.bar.values?.map((v) => [v.axis, v.typing]) ?? null },
+  })

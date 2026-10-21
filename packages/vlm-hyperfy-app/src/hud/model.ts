@@ -27,6 +27,7 @@ export const ALERT_LINK_EXPIRED = 'Link expired. Pair again.'
 export const ALERT_STREAM_LIVE = 'Stream is live'
 export const ALERT_STREAM_OFFLINE = 'Stream went offline'
 export const ALERT_PLACED = 'Added here. Decentraland needs a redeploy to show it.'
+export const alertCouldntLoad = (reason: string) => `Couldn't load: ${reason}`
 export const PLACE_LABEL = 'Place in front of me'
 /** Shift is Hyperfy's run key, so L cycles the axis lock. */
 export const KEY_HINT = 'L: axis lock · ` or Esc: use the HUD · click the world: aim'
@@ -324,6 +325,12 @@ export function failureAlert(reason: ApiFailure): HudAlert | null {
     default:
       return { kind: 'error', text: alertCouldntSave(reason) }
   }
+}
+
+/** The alert for a failed library or catalog load. 'auth' has none: the link state shows "Link expired". */
+export function loadFailureAlert(reason: ApiFailure): HudAlert | null {
+  if (reason === 'auth' || reason === 'no_access' || reason === 'lost') return failureAlert(reason)
+  return { kind: 'error', text: alertCouldntLoad(reason) }
 }
 
 /**

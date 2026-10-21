@@ -1,0 +1,115 @@
+/**
+ * The Hyperfy 0.16 script globals as the VLM app uses them, and the messages its two halves exchange. Only types:
+ * the modules that need a global take it as an argument, so app.ts stays the one place that reads the sandbox.
+ */
+import type { SerializedScene } from 'vlm-shared'
+import type { RenderedItem } from './edit/controller.js'
+import type { GizmoNode } from './edit/gizmo.js'
+import type { RenderItem } from './plan.js'
+import type { ScriptFetch, ScriptSetTimeout } from './poller.js'
+import type { VlmTransform } from './vlm-api.js'
+
+export type Vec = { x: number; y: number; z: number; fromArray(a: number[]): unknown }
+export interface HNode {
+  position: Vec
+  rotation: { set(x: number, y: number, z: number, order: string): unknown }
+  scale: Vec
+  onPointerDown?: (() => void) | undefined
+  play?: () => void
+  add(child: HNode): void
+  [prop: string]: unknown
+}
+export interface HPlayer {
+  id: string
+  name?: string
+  admin?: boolean
+  builder?: boolean
+  position: { x: number; y: number; z: number }
+}
+export type XYZ = { x: number; y: number; z: number }
+export interface HButton {
+  onPress: (() => boolean | void) | null
+  down: boolean
+  released: boolean
+}
+/** What the HUD uses of `app.control()` (client only). */
+export interface HControl {
+  keyL: HButton
+  mouseLeft: HButton
+  pointer: { locked: boolean; coords: XYZ }
+  camera: { position: XYZ; quaternion: XYZ & { w: number }; zoom: number }
+  screen: { width: number; height: number }
+  /** Every key press, with its text (`e.key`); returning true captures it. */
+  onButtonPress?: (prop: string, text: string) => boolean
+}
+export interface HWorld {
+  isServer: boolean
+  isClient: boolean
+  on(name: 'enter' | 'leave', cb: (e: { playerId: string }) => void): void
+  getPlayers(): HPlayer[]
+  /** The local player (client) or the player with this id. */
+  getPlayer(id?: string): HPlayer | null
+  load(type: 'model', url: string): Promise<HNode>
+  open(url: string, newWindow?: boolean): void
+}
+export type Matrix = { elements: ArrayLike<number> }
+export interface HApp {
+  /** The app root's world matrix (Hyperfy forwards unknown app props to the root node). */
+  matrixWorld: Matrix
+  /** A VLM-hosted world's server half only (from its machine env); undefined anywhere else (self-run worlds, clients). */
+  vlmWorld?: VlmWorld
+  configure(fields: Array<{ key: string; type: 'text'; label: string; initial: string }>): void
+  on(name: string, cb: (data: unknown, networkId?: string) => void): void
+  send(name: string, data: unknown): void
+  sendTo(playerId: string, name: string, data: unknown): void
+  create(type: 'video' | 'image' | 'audio' | 'group'): HNode
+  create(
+    type: 'ui' | 'uiview' | 'uitext' | 'uiimage' | 'prim',
+    data?: Record<string, unknown>,
+  ): HNode
+  add(node: HNode | GizmoNode | object): void
+  remove(node: HNode | GizmoNode | object): void
+  control(): HControl
+}
+/**
+ * The server-only VLM world a hosted image hands the VLM app's server half (Task 9): VLM_WORLD_SECRET, VLM_FEED_URL
+ * and VLM_WORLD_KEY. Never props, which builders can edit, and never sent to a browser.
+ */
+export interface VlmWorld {
+  secret?: string
+  apiUrl?: string
+  worldKey?: string
+}
+export type Matrix4Ctor = new () => Matrix & { copy(m: Matrix): Matrix & { invert(): Matrix } }
+export type AppProps = { feedUrl?: string; worldKey?: string }
+export type { ScriptFetch, ScriptSetTimeout }
+
+/** Client asks its server half to link it (and, linked, for a fresh pass); the server half answers that player only. */
+export const LINK = 'vlm:link'
+/** What the client sends on LINK: its attempt number, which every answer echoes. */
+export type LinkRequest = { attempt: number }
+/** What the server half sends back on LINK (plus the request's `attempt`). 'self': this world can't vouch, pair from the browser. */
+export type LinkReply =
+  | { status: 'self' }
+  | {
+      status: 'linked'
+      pass: string
+      passExpiresAt: string
+      pairingId: string
+      sceneId: string
+      displayName: string
+    }
+  | { status: 'unlinked'; code: string; approveUrl: string; qrUrl: string; expiresAt: string }
+  | { status: 'expired' }
+  | { status: 'lost' }
+
+/** What the client half offers edit mode and the HUD. */
+export interface ClientEditHooks {
+  /** Swaps every VLM node's click: select (while editing) or open its link. */
+  setEditing(on: boolean, select: (key: string) => void): void
+  items(): Map<string, RenderedItem>
+  preview(key: string, t: VlmTransform): void
+  restore(key: string): void
+  /** Called after each snapshot is applied, with the previous and the new plan and the new scene. */
+  onPlan(cb: (prev: RenderItem[], next: RenderItem[], scene: SerializedScene | null) => void): void
+}

@@ -66,6 +66,9 @@ function button(roots: Fake[], label: string): Fake | undefined {
 
 type Res = { ok: boolean; status: number; json(): Promise<unknown> } | undefined
 const res = (status: number, body: unknown): Res => ({ ok: status < 400, status, json: async () => body })
+const HOSTED = { secret: 's3cret', apiUrl: 'https://vlm.example/', worldKey: 'vlmw_env' }
+const admin = (id: string, name: string) => ({ id, name, admin: true, builder: false, position: new Vector3() })
+const START = { code: 'SLF234', approveUrl: 'https://vlm.gg/pair/SLF234', qrUrl: 'https://q', expiresAt: new Date(Date.now() + 600_000).toISOString() }
 
 /** Globals the sandbox doesn't have: any use is recorded. */
 function forbiddenGlobals(used: string[]) {
@@ -88,7 +91,8 @@ function run(opts: {
   /** The client's local player (world.getPlayer()). */
   me?: Fake
   matrixWorld?: Matrix4
-  worldSecret?: string
+  /** The server-only VLM world (Task 9 provides it from the machine env). */
+  vlmWorld?: { secret?: string; apiUrl?: string; worldKey?: string }
   route?: (url: string, body: any) => Res | undefined
 }) {
   const timers: Array<() => void> = []
@@ -117,7 +121,7 @@ function run(opts: {
   }
   const app = {
     matrixWorld: opts.matrixWorld ?? new Matrix4(),
-    vlmWorldSecret: opts.worldSecret,
+    vlmWorld: opts.vlmWorld,
     configure() {},
     on: (name: string, cb: (data: unknown, id?: string) => void) => handlers.set(name, cb),
     send: (name: string, data: unknown) => void sent.push({ name, data }),
@@ -229,13 +233,13 @@ describe('the VLM app script', () => {
 
   it('the sandbox build runs the client and server halves without forbidden globals', async () => {
     const me = { id: 'p1', name: 'Pip', admin: true, builder: true, position: new Vector3() }
-    const server = run({ isServer: true, players: [me], worldSecret: 's3cret', route: () => res(200, { status: 'pending' }) })
+    const server = run({ isServer: true, players: [me], vlmWorld: HOSTED, route: () => res(200, { status: 'pending' }) })
     server.handlers.get('vlm:link')!(null, 'p1')
     for (let i = 0; i < 3; i++) await server.tick()
     const client = run({ isServer: false, me, route: () => res(200, { code: 'ABC234', approveUrl: 'a', qrUrl: 'q', expiresAt: new Date(Date.now() + 600_000).toISOString() }) })
     client.update()
     button(client.added, 'Link to VLM')!.onPointerDown()
-    client.handlers.get('vlm:link')!({ status: 'self' })
+    client.handlers.get('vlm:link')!({ status: 'self', attempt: client.sent.find((m) => m.name === 'vlm:link')!.data.attempt })
     for (let i = 0; i < 3; i++) await client.tick()
     client.update()
     expect([...server.used, ...client.used]).toEqual([])
@@ -261,7 +265,7 @@ describe('the VLM app script', () => {
     expect(link).toBeDefined()
     link!.onPointerDown()
     expect(c.sent.filter((m) => m.name === 'vlm:link')).toHaveLength(1)
-    c.handlers.get('vlm:link')!({ status: 'self' })
+    c.handlers.get('vlm:link')!({ status: 'self', attempt: c.sent.find((m) => m.name === 'vlm:link')!.data.attempt })
     await c.settle()
     expect(c.requests.find((r) => r.url === 'https://api.example/api/hyperfy/pair')?.body).toMatchObject({ worldKey: 'vlmw_k', playerName: 'Pip' })
     c.update()
@@ -269,17 +273,16 @@ describe('the VLM app script', () => {
   })
 
   it('hosted: a vlm:link request is answered with the vouch result for that player only', async () => {
-    const players = [
-      { id: 'p1', name: 'Pip', position: new Vector3() },
-      { id: 'p2', name: 'Bo', position: new Vector3() },
-    ]
+    const players = [admin('p1', 'Pip'), admin('p2', 'Bo')]
     const vouches: any[] = []
     const s = run({
       isServer: true,
       players,
-      worldSecret: 's3cret',
+      vlmWorld: HOSTED,
       route: (url, body) => {
         if (!url.endsWith('/api/hyperfy/pairings/vouch')) return undefined
+        // only VLM's own API, from the server-only world, never the builder-editable props.feedUrl
+        expect(url).toBe('https://vlm.example/api/hyperfy/pairings/vouch')
         vouches.push(body)
         if (vouches.length === 1) return res(200, { status: 'unlinked', code: 'ABC234', approveUrl: 'https://vlm.gg/pair/ABC234', qrUrl: 'https://q', expiresAt: 'e', pairingId: 'pair-1' })
         if (vouches.length === 2) return res(200, { status: 'pending' })
@@ -287,29 +290,98 @@ describe('the VLM app script', () => {
       },
     })
     // The body can't pick the player: the sender's id does.
-    s.handlers.get('vlm:link')!({ hyperfyPlayerId: 'p2', playerName: 'Mallory' }, 'p1')
+    s.handlers.get('vlm:link')!({ hyperfyPlayerId: 'p2', playerName: 'Mallory', attempt: 4 }, 'p1')
     await s.settle()
-    expect(vouches[0]).toEqual({ worldKey: 'vlmw_k', worldSecret: 's3cret', hyperfyPlayerId: 'p1', playerName: 'Pip' })
-    expect(s.sentTo).toEqual([{ playerId: 'p1', name: 'vlm:link', data: { status: 'unlinked', code: 'ABC234', approveUrl: 'https://vlm.gg/pair/ABC234', qrUrl: 'https://q', expiresAt: 'e' } }])
+    expect(vouches[0]).toEqual({ worldKey: 'vlmw_env', worldSecret: 's3cret', hyperfyPlayerId: 'p1', playerName: 'Pip' })
+    expect(s.sentTo).toEqual([{ playerId: 'p1', name: 'vlm:link', data: { status: 'unlinked', code: 'ABC234', approveUrl: 'https://vlm.gg/pair/ABC234', qrUrl: 'https://q', expiresAt: 'e', attempt: 4 } }])
     // polls with the pending pairing until it's approved
     await s.tick()
     expect(vouches[1]).toMatchObject({ hyperfyPlayerId: 'p1', pendingPairingId: 'pair-1' })
     expect(s.sentTo).toHaveLength(1)
     await s.tick()
     expect(vouches[2]).toMatchObject({ hyperfyPlayerId: 'p1', pendingPairingId: 'pair-1' })
-    expect(s.sentTo.at(-1)).toEqual({ playerId: 'p1', name: 'vlm:link', data: { status: 'linked', pass: 'PASS', passExpiresAt: 'x', pairingId: 'pair-1', sceneId: 'scene-1', displayName: 'Ada' } })
+    expect(s.sentTo.at(-1)).toEqual({ playerId: 'p1', name: 'vlm:link', data: { status: 'linked', pass: 'PASS', passExpiresAt: 'x', pairingId: 'pair-1', sceneId: 'scene-1', displayName: 'Ada', attempt: 4 } })
     // linked: polling stops, and nothing was broadcast
     await s.tick()
     expect(vouches).toHaveLength(3)
     expect(s.sentTo.every((m) => m.playerId === 'p1')).toBe(true)
     expect(s.sent.filter((m) => m.name === 'vlm:link')).toEqual([])
+    // the world secret never reaches a player
+    expect(JSON.stringify([s.sentTo, s.sent])).not.toContain('s3cret')
+    expect(s.requests.filter((r) => r.url.includes('api.example') && r.url.includes('vouch'))).toEqual([])
+  })
+
+  it('hosted: a sender who is neither admin nor builder gets no vouch and no reply', async () => {
+    const s = run({ isServer: true, players: [{ id: 'p3', name: 'Vi', admin: false, builder: false, position: new Vector3() }], vlmWorld: HOSTED, route: () => res(200, { status: 'pending' }) })
+    s.handlers.get('vlm:link')!({ attempt: 1 }, 'p3')
+    s.handlers.get('vlm:link')!({ attempt: 1 }, 'nobody')
+    await s.tick()
+    expect(s.requests.filter((r) => r.url.includes('vouch'))).toEqual([])
+    expect(s.sentTo).toEqual([])
+  })
+
+  it('a server-only world with missing fields is self-run: no vouch', async () => {
+    for (const vlmWorld of [undefined, { secret: 's3cret', worldKey: 'vlmw_env' }, { secret: '', apiUrl: 'https://vlm.example', worldKey: 'vlmw_env' }, { secret: 's3cret', apiUrl: 'https://vlm.example' }]) {
+      const s = run({ isServer: true, players: [admin('p1', 'Pip')], vlmWorld, route: () => res(200, { status: 'pending' }) })
+      s.handlers.get('vlm:link')!({ attempt: 2 }, 'p1')
+      await s.settle()
+      expect(s.requests.filter((r) => r.url.includes('vouch'))).toEqual([])
+      expect(s.sentTo).toEqual([{ playerId: 'p1', name: 'vlm:link', data: { status: 'self', attempt: 2 } }])
+    }
+  })
+
+  it('client: a late reply to an older link attempt is ignored', async () => {
+    const c = run({ isServer: false, me: admin('p1', 'Pip'), route: (url) => (url.endsWith('/api/hyperfy/pair') ? res(200, START) : undefined) })
+    c.update()
+    button(c.added, 'Link to VLM')!.onPointerDown()
+    const attempt = c.sent.find((m) => m.name === 'vlm:link')!.data.attempt
+    expect(typeof attempt).toBe('number')
+    await c.tick() // no answer: falls back to pairing from the browser
+    c.update()
+    expect(c.added.flatMap(texts)).toContain('SLF-234')
+    c.handlers.get('vlm:link')!({ status: 'unlinked', code: 'LAT234', approveUrl: 'a', qrUrl: 'q', expiresAt: 'e', attempt })
+    c.update()
+    expect(c.added.flatMap(texts)).toContain('SLF-234')
+    expect(c.added.flatMap(texts)).not.toContain('LAT-234')
+  })
+
+  it('client: a self answer while a hosted code is showing switches to pairing from the browser', async () => {
+    const c = run({ isServer: false, me: admin('p1', 'Pip'), route: (url) => (url.endsWith('/api/hyperfy/pair') ? res(200, START) : undefined) })
+    c.update()
+    button(c.added, 'Link to VLM')!.onPointerDown()
+    const attempt = c.sent.find((m) => m.name === 'vlm:link')!.data.attempt
+    c.handlers.get('vlm:link')!({ status: 'unlinked', code: 'HOS234', approveUrl: 'a', qrUrl: 'q', expiresAt: 'e', attempt })
+    c.update()
+    expect(c.added.flatMap(texts)).toContain('HOS-234')
+    c.handlers.get('vlm:link')!({ status: 'self', attempt })
+    await c.settle()
+    c.update()
+    expect(c.requests.some((r) => r.url === 'https://api.example/api/hyperfy/pair')).toBe(true)
+    expect(c.added.flatMap(texts)).not.toContain('HOS-234')
+    expect(c.added.flatMap(texts)).toContain('SLF-234')
+  })
+
+  it('client: losing admin and builder stops the link, so no more pass renewals', async () => {
+    const me = admin('p1', 'Pip')
+    const c = run({ isServer: false, me })
+    c.update()
+    button(c.added, 'Link to VLM')!.onPointerDown()
+    const attempt = c.sent.find((m) => m.name === 'vlm:link')!.data.attempt
+    // A pass that is due for renewal at once.
+    c.handlers.get('vlm:link')!({ status: 'linked', pass: 'P', passExpiresAt: new Date(Date.now() + 60_000).toISOString(), pairingId: 'pair-1', sceneId: 'scene-1', displayName: 'Ada', attempt })
+    await c.settle()
+    me.admin = false
+    c.update()
+    const before = c.sent.filter((m) => m.name === 'vlm:link').length
+    for (let i = 0; i < 3; i++) await c.tick()
+    expect(c.sent.filter((m) => m.name === 'vlm:link').length).toBe(before)
   })
 
   it('self-run: the server half never vouches and tells the player to pair from the browser', async () => {
-    const s = run({ isServer: true, players: [{ id: 'p1', name: 'Pip', position: new Vector3() }] })
+    const s = run({ isServer: true, players: [admin('p1', 'Pip')] })
     s.handlers.get('vlm:link')!(null, 'p1')
     await s.settle()
     expect(s.requests.filter((r) => r.url.includes('vouch'))).toEqual([])
-    expect(s.sentTo).toEqual([{ playerId: 'p1', name: 'vlm:link', data: { status: 'self' } }])
+    expect(s.sentTo).toEqual([{ playerId: 'p1', name: 'vlm:link', data: { status: 'self', attempt: 0 } }])
   })
 })
