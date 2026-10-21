@@ -200,6 +200,24 @@ describe('companion uploads', () => {
       expect(res.body).toContain('UPLOAD')
     }
   })
+
+  it('serves the pairing approval page for /pair/:code, leaving the API routes alone', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vlm-dash-'))
+    writeFileSync(join(dir, 'index.html'), 'HOME')
+    mkdirSync(join(dir, 'pair', '_'), { recursive: true })
+    writeFileSync(join(dir, 'pair', '_', 'index.html'), 'PAIR')
+    ;(config as any).dashboardDir = dir
+    await app.close()
+    app = await testApp()
+    for (const url of ['/pair/ABC-234', '/pair/ABC-234/']) {
+      const res = await app.inject({ method: 'GET', url })
+      expect(res.statusCode).toBe(200)
+      expect(res.body).toContain('PAIR')
+    }
+    const api = await app.inject({ method: 'GET', url: '/api/hyperfy/pair/ABC-234' })
+    expect(api.statusCode).toBe(401)
+    expect(api.body).not.toContain('PAIR')
+  })
 })
 
 describe('renaming library files', () => {
