@@ -420,6 +420,40 @@ describe('hosted Hyperfy worlds', () => {
     expect(f.machines.get('vlm-w-local')!.env.PUBLIC_SCRIPT_WEBSOCKET_ORIGINS).toBe('ws://localhost:3010')
   })
 
+  it('rotate-key on a world with no secret yet sets a hash and VLM_WORLD_SECRET; with a secret it leaves both alone', async () => {
+    await setTier(owner.id, 'pro')
+    const f = fakes()
+    const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Legacy', endsAt: null }, f.deps)
+    await hostedWorldSettled(world.id)
+    // make it a pre-secret world
+    await db.update(hyperfyWorlds).set({ worldSecretHash: null }).where(eq(hyperfyWorlds.id, world.id))
+    delete f.machines.get('vlm-w-legacy')!.env.VLM_WORLD_SECRET
+    await rotateHostedWorldKey(world.id, f.deps)
+    const secret = f.machines.get('vlm-w-legacy')!.env.VLM_WORLD_SECRET
+    expect(secret).toMatch(/^[0-9a-f]{64}$/)
+    const hash = (await row(world.id)).worldSecretHash
+    expect(hash).toBe(createHash('sha256').update(secret).digest('hex'))
+    await rotateHostedWorldKey(world.id, f.deps)
+    expect(f.machines.get('vlm-w-legacy')!.env.VLM_WORLD_SECRET).toBe(secret)
+    expect((await row(world.id)).worldSecretHash).toBe(hash)
+  })
+
+  it('rotate-key whose machine update fails does not leave a secret hash the env lacks', async () => {
+    await setTier(owner.id, 'pro')
+    const f = fakes()
+    const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Flaky', endsAt: null }, f.deps)
+    await hostedWorldSettled(world.id)
+    await db.update(hyperfyWorlds).set({ worldSecretHash: null }).where(eq(hyperfyWorlds.id, world.id))
+    delete f.machines.get('vlm-w-flaky')!.env.VLM_WORLD_SECRET
+    const real = f.deps.fly!.updateMachine
+    f.deps.fly!.updateMachine = async () => { throw new Error('fly down') }
+    await expect(rotateHostedWorldKey(world.id, f.deps)).rejects.toThrow()
+    expect((await row(world.id)).worldSecretHash).toBeNull()
+    f.deps.fly!.updateMachine = real
+    await rotateHostedWorldKey(world.id, f.deps)
+    expect((await row(world.id)).worldSecretHash).not.toBeNull()
+  })
+
   it('rotate updates the machine env and old key stops working', async () => {
     await setTier(owner.id, 'pro')
     const f = fakes()

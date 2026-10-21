@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify'
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify'
 import fastifyCors from '@fastify/cors'
 import fastifyStatic from '@fastify/static'
 import fastifySwagger from '@fastify/swagger'
@@ -45,6 +45,20 @@ import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { register, httpRequestsTotal, httpRequestDurationSeconds } from './metrics.js'
 
+/** A pairing code in the URL path is a credential (and /claim is polled): log the route shape, never the code. */
+export const redactPairingCode = (url: string) => url.replace(/(\/api\/hyperfy\/pair\/)[^/?#]+/, '$1:code')
+
+// Same fields as Fastify's default req serializer, with the url redacted.
+function serializeReq(request: FastifyRequest) {
+  return {
+    method: request.method,
+    url: redactPairingCode(request.url ?? ''),
+    host: request.host,
+    remoteAddress: request.ip,
+    remotePort: request.socket?.remotePort,
+  }
+}
+
 export interface BuildAppOptions {
   rateLimit?: boolean
   /** Set false to skip the one-time scene library backfill at startup (tests). */
@@ -56,7 +70,7 @@ export interface BuildAppOptions {
 
 export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: opts.logger === false ? false : { level: config.logLevel, ...(opts.logStream ? { stream: opts.logStream } : {}) },
+    logger: opts.logger === false ? false : { level: config.logLevel, serializers: { req: serializeReq }, ...(opts.logStream ? { stream: opts.logStream } : {}) },
     trustProxy: config.trustProxyHops, // request.ip = real client behind the proxy (per-IP ingest limits)
     genReqId: () => randomUUID(),
     bodyLimit: config.maxUploadSize, // default 100MB, set MAX_UPLOAD_MB to override

@@ -217,6 +217,7 @@ export async function pairingLive(pairingId: string): Promise<boolean> {
 export type VouchResponse =
   | { status: 'linked'; pass: string; passExpiresAt: string; pairingId: string; user: { id: string; displayName: string } }
   | { status: 'unlinked'; code: string; expiresAt: string; pairingId: string }
+  | { status: 'pending' | 'refused' | 'expired' }
 
 /**
  * A hosted world speaks for one of its players (the caller has already proved the world). No browser secret is involved:
@@ -225,7 +226,19 @@ export type VouchResponse =
  * 3. else a new pending hosted pairing is created and its code returned for the player's browser.
  * Each step that changes a row is a conditional update, so a concurrent revoke or claim wins cleanly.
  */
-export async function vouchPairing(app: FastifyInstance, world: Pick<HyperfyWorldRow, 'id' | 'sceneId'>, hyperfyPlayerId: string, playerName: string | null, now = new Date()): Promise<VouchResponse> {
+export async function vouchPairing(app: FastifyInstance, world: Pick<HyperfyWorldRow, 'id' | 'sceneId'>, hyperfyPlayerId: string, playerName: string | null, pendingPairingId?: string, now = new Date()): Promise<VouchResponse> {
+  if (pendingPairingId !== undefined) {
+    // Polling for a pairing created by an earlier vouch: report it, never mint another code.
+    const [mine] = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pendingPairingId)
+      ? await db.select().from(hyperfyPairings).where(and(eq(hyperfyPairings.id, pendingPairingId), eq(hyperfyPairings.worldId, world.id), eq(hyperfyPairings.hyperfyPlayerId, hyperfyPlayerId)))
+      : []
+    if (!mine) return { status: 'expired' }
+    if (mine.status === 'refused') return { status: 'refused' }
+    if (mine.status === 'pending') return mine.codeExpiresAt > now ? { status: 'pending' } : { status: 'expired' }
+    if (mine.status === 'approved' && mine.codeExpiresAt <= now) return { status: 'expired' }
+    if (mine.status !== 'approved' && mine.status !== 'claimed') return { status: 'expired' }
+    // approved or claimed: the normal path below links it
+  }
   const rows = await db
     .select()
     .from(hyperfyPairings)

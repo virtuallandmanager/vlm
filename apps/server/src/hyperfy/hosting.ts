@@ -487,21 +487,26 @@ export async function rotateHostedWorldKey(worldId: string, deps?: Partial<Hosti
   if (!machine) throw new HostingError('world_not_running', 'the world has no machine')
   const env = await d.fly.getMachineEnv(app, machine.id)
   const key = createWorldKey()
+  // A world made before secrets existed gets one now (ruling R7); one that has a hash keeps its env value untouched.
+  let newSecret = null as { raw: string; hash: string } | null
   const updateError = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hyperfy-hosted:${w.ownerId}`}))`)
-    const [cur] = await tx.select({ status: hyperfyWorlds.status }).from(hyperfyWorlds).where(eq(hyperfyWorlds.id, worldId))
+    const [cur] = await tx.select({ status: hyperfyWorlds.status, worldSecretHash: hyperfyWorlds.worldSecretHash }).from(hyperfyWorlds).where(eq(hyperfyWorlds.id, worldId))
     if (cur?.status !== 'running') throw new HostingError('world_not_running')
+    if (!cur.worldSecretHash) newSecret = createWorldSecret()
     // Stored before the update: a machine update that fails may still have applied.
-    await tx.update(hyperfyWorlds).set({ keyHash: key.hash, keyPrefix: key.prefix }).where(eq(hyperfyWorlds.id, worldId))
+    await tx.update(hyperfyWorlds).set({ keyHash: key.hash, keyPrefix: key.prefix, ...(newSecret ? { worldSecretHash: newSecret.hash } : {}) }).where(eq(hyperfyWorlds.id, worldId))
     try {
-      await d.fly.updateMachine(app, machine.id, { image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'), env: { ...env, VLM_WORLD_KEY: key.raw } })
+      await d.fly.updateMachine(app, machine.id, { image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'), env: { ...env, VLM_WORLD_KEY: key.raw, ...(newSecret ? { VLM_WORLD_SECRET: newSecret.raw } : {}) } })
       return null
     } catch (err) {
+      // The env may or may not have the new secret; a hash with no matching env would stick forever, so drop it (the next rotate makes another).
+      if (newSecret) await tx.update(hyperfyWorlds).set({ worldSecretHash: null }).where(eq(hyperfyWorlds.id, worldId))
       return err
     }
   })
   if (updateError) {
-    const hidden = [key.raw, ...secretEnvValues(env), config.hyperfyAssetsS3Uri ?? '', config.flyApiToken ?? '']
+    const hidden = [key.raw, newSecret?.raw ?? '', ...secretEnvValues(env), config.hyperfyAssetsS3Uri ?? '', config.flyApiToken ?? '']
     const message = redact(updateError instanceof Error ? updateError.message : String(updateError), hidden).slice(0, 500)
     d.log.error({ worldId, slug: w.slug, error: message }, 'hosted world key rotation: machine update failed')
     throw new HostingError(
@@ -547,11 +552,19 @@ export async function restoreHostedWorld(worldId: string, deps?: Partial<Hosting
     if (!updated) throw new HostingError('not_restorable', "This world can't be restored")
     return { before: cur, after: updated }
   })
+  // A world made before secrets existed gets one now (ruling R7); only the writer that finds the hash empty adds it.
+  let newSecret: { raw: string; hash: string } | null = null
+  if (!restored.after.worldSecretHash) {
+    const made = createWorldSecret()
+    const [set] = await db.update(hyperfyWorlds).set({ worldSecretHash: made.hash }).where(and(eq(hyperfyWorlds.id, worldId), isNull(hyperfyWorlds.worldSecretHash))).returning({ id: hyperfyWorlds.id })
+    if (set) newSecret = made
+  }
   try {
     const app = restored.after.flyApp!
     for (const m of await d.fly.listMachines(app)) {
       // Ending turned autostart off; turn it back on before the machine can serve again.
       const env = await d.fly.getMachineEnv(app, m.id)
+      if (newSecret) env.VLM_WORLD_SECRET = newSecret.raw
       await d.fly.updateMachine(app, m.id, { image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'), env, autostart: true })
       await d.fly.startMachine(app, m.id)
     }
@@ -559,7 +572,7 @@ export async function restoreHostedWorld(worldId: string, deps?: Partial<Hosting
     d.log.error({ worldId, slug: w.slug, error: err instanceof Error ? err.message : String(err) }, 'hosted world restore: machine start failed')
     const { endsAt, endedAt, purgeAfter } = restored.before
     // Autostart may be on again, so the sweep must quiesce the world afresh.
-    await db.update(hyperfyWorlds).set({ status: 'ended', endsAt, endedAt, purgeAfter, quiescedAt: null }).where(eq(hyperfyWorlds.id, worldId))
+    await db.update(hyperfyWorlds).set({ status: 'ended', endsAt, endedAt, purgeAfter, quiescedAt: null, ...(newSecret ? { worldSecretHash: null } : {}) }).where(eq(hyperfyWorlds.id, worldId))
     throw new HostingError('world_update_failed', "The world couldn't be started; try restoring it again")
   }
   d.log.info({ worldId, slug: w.slug }, 'hosted world restored')

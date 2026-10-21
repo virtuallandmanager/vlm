@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { HYPERFY_PAIRING } from 'vlm-shared'
 import { buildApp } from '../src/app.js'
+import { vouchLimiter } from '../src/routes/hyperfy-pairing.js'
 import { config } from '../src/config.js'
 import { db } from '../src/db/connection.js'
 import { hyperfyPairings, hyperfyWorlds } from '../src/db/schema.js'
@@ -188,5 +189,98 @@ describe('Hyperfy pairing routes', () => {
     } finally {
       await limited.close()
     }
+  })
+
+  it('pairing codes never reach the request log', async () => {
+    const lines: string[] = []
+    const prevLevel = config.logLevel
+    ;(config as any).logLevel = 'info'
+    const logged = await buildApp({ rateLimit: false, backfill: false, logStream: { write: (m) => void lines.push(m) } })
+    ;(config as any).logLevel = prevLevel
+    await logged.ready()
+    try {
+      const s = await seed()
+      const { code } = (await logged.inject({ method: 'POST', url: '/api/hyperfy/pair', payload: { worldKey: s.key, secretHash: sha256(SECRET) } })).json()
+      for (const url of [`/api/hyperfy/pair/${code}/claim`, `/api/hyperfy/pair/${code.toLowerCase()}/qr.png`, `/api/hyperfy/pair/${code.slice(0, 3)}-${code.slice(3)}`, `/api/hyperfy/pair/${code}/claim?x=1`]) {
+        await logged.inject({ method: url.endsWith('claim') || url.includes('claim?') ? 'POST' : 'GET', url, payload: url.includes('claim') ? { secret: SECRET } : undefined })
+      }
+      const all = lines.join('\n')
+      expect(all).toContain('/api/hyperfy/pair/')
+      expect(all.toUpperCase()).not.toContain(code)
+      expect(all.toUpperCase()).not.toContain(`${code.slice(0, 3)}-${code.slice(3)}`)
+    } finally {
+      await logged.close()
+    }
+  })
+
+  describe('vouch rate limit', () => {
+    const prev = { ...vouchLimiter }
+    afterEach(() => Object.assign(vouchLimiter, prev))
+
+    it('is per world, after the secret check, and the IP limit does not throttle it', async () => {
+      const a = await seed(true)
+      const b = await seed(true)
+      vouchLimiter.max = 3
+      for (let i = 0; i < 3; i++) expect((await vouch(a, { hyperfyPlayerId: `p${i}` })).statusCode).toBe(200)
+      expect((await vouch(a, { hyperfyPlayerId: 'p9' })).statusCode).toBe(429)
+      // another world from the same IP is unaffected
+      expect((await vouch(b)).statusCode).toBe(200)
+      // a bad secret is refused before it counts or is limited
+      expect((await vouch(a, { worldSecret: 'x'.repeat(64) })).statusCode).toBe(401)
+      expect((await vouch(b, { worldSecret: 'x'.repeat(64) })).statusCode).toBe(401)
+      expect((await vouch(b, { hyperfyPlayerId: 'q2' })).statusCode).toBe(200)
+    })
+
+    it('is not throttled by the per-IP limiter', async () => {
+      const limited = await buildApp({ rateLimit: true, logger: false, backfill: false })
+      await limited.ready()
+      try {
+        const s = await seed(true)
+        for (let i = 0; i < config.rateLimitMax + 5; i++) {
+          const r = await limited.inject({ method: 'POST', url: '/api/hyperfy/pairings/vouch', payload: { worldId: s.world.id, worldSecret: WORLD_SECRET, hyperfyPlayerId: 'same', playerName: 'P' } })
+          if (r.statusCode !== 200) throw new Error(`call ${i} -> ${r.statusCode}`)
+        }
+      } finally {
+        await limited.close()
+      }
+    })
+  })
+
+  it('vouch with pendingPairingId polls without minting codes, then links once approved', async () => {
+    const s = await seed(true)
+    const first = (await vouch(s)).json()
+    expect(first.status).toBe('unlinked')
+    for (let i = 0; i < 3; i++) {
+      const poll = await vouch(s, { pendingPairingId: first.pairingId })
+      expect(poll.json()).toEqual({ status: 'pending' })
+    }
+    expect(await db.select().from(hyperfyPairings)).toHaveLength(1)
+    // another player's pairing id, or an id of another world, is not this player's pending pairing
+    expect((await vouch(s, { hyperfyPlayerId: 'player-2', pendingPairingId: first.pairingId })).json()).toEqual({ status: 'expired' })
+    expect((await vouch(s, { pendingPairingId: 'not-a-uuid' })).json()).toEqual({ status: 'expired' })
+    await app.inject({ method: 'POST', url: `/api/hyperfy/pair/${first.code}/approve`, headers: bearer(tokenFor(s.owner)) })
+    const linked = (await vouch(s, { pendingPairingId: first.pairingId })).json()
+    expect(linked).toMatchObject({ status: 'linked', pairingId: first.pairingId, user: { id: s.owner.id } })
+    // once claimed, the same call is just a normal vouch
+    expect((await vouch(s, { pendingPairingId: first.pairingId })).json()).toMatchObject({ status: 'linked', pairingId: first.pairingId })
+    expect(await db.select().from(hyperfyPairings)).toHaveLength(1)
+  })
+
+  it('vouch poll reports refused and expired pairings', async () => {
+    const s = await seed(true)
+    const stranger = await createUser({ wallet: randomWallet() })
+    const refused = (await vouch(s)).json()
+    await app.inject({ method: 'POST', url: `/api/hyperfy/pair/${refused.code}/approve`, headers: bearer(tokenFor(stranger)) })
+    expect((await vouch(s, { pendingPairingId: refused.pairingId })).json()).toEqual({ status: 'refused' })
+
+    const stale = (await vouch(s, { hyperfyPlayerId: 'player-3' })).json()
+    await db.update(hyperfyPairings).set({ codeExpiresAt: new Date(Date.now() - 1000) }).where(eq(hyperfyPairings.id, stale.pairingId))
+    expect((await vouch(s, { hyperfyPlayerId: 'player-3', pendingPairingId: stale.pairingId })).json()).toEqual({ status: 'expired' })
+
+    // approved, then its code window passes before the poll: expired, no pass
+    const late = (await vouch(s, { hyperfyPlayerId: 'player-4' })).json()
+    await app.inject({ method: 'POST', url: `/api/hyperfy/pair/${late.code}/approve`, headers: bearer(tokenFor(s.owner)) })
+    await db.update(hyperfyPairings).set({ codeExpiresAt: new Date(Date.now() - 1000) }).where(eq(hyperfyPairings.id, late.pairingId))
+    expect((await vouch(s, { hyperfyPlayerId: 'player-4', pendingPairingId: late.pairingId })).json()).toEqual({ status: 'expired' })
   })
 })

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import { hyperfyWorlds, subscriptions } from '../src/db/schema.js'
@@ -229,6 +230,14 @@ describe('hosted world sweep', () => {
     expect((await row(w.id)).status).toBe('running')
   })
 
+  it('restore leaves an existing world secret (hash and env) alone', async () => {
+    const w = await insert('back-secret', { status: 'ended', endedAt: now, purgeAfter: new Date(Date.now() + DAY), worldSecretHash: 'h'.repeat(64) })
+    const f = fakes()
+    await restoreHostedWorld(w.id, f.deps)
+    expect(f.updates[0].env).toEqual({ VLM_WORLD_KEY: 'k' })
+    expect((await row(w.id)).worldSecretHash).toBe('h'.repeat(64))
+  })
+
   it('logs an ended world that has no Fly app', async () => {
     await insert('no-app', { endsAt: new Date(now.getTime() - MIN), flyApp: null })
     const f = fakes()
@@ -240,7 +249,10 @@ describe('hosted world sweep', () => {
     const w = await insert('back-world', { status: 'ended', endedAt: now, purgeAfter: new Date(Date.now() + DAY) })
     const f = fakes({ asleep: new Set(['vlm-w-back-world']) })
     await restoreHostedWorld(w.id, f.deps)
-    expect(f.updates).toEqual([{ app: 'vlm-w-back-world', autostart: true, env: { VLM_WORLD_KEY: 'k' }, image: CONFIG.hyperfyImage }])
+    // An existing world with no secret yet gets one on this update (ruling R7)
+    const stored = (await row(w.id)).worldSecretHash
+    expect(f.updates).toEqual([{ app: 'vlm-w-back-world', autostart: true, env: { VLM_WORLD_KEY: 'k', VLM_WORLD_SECRET: expect.stringMatching(/^[0-9a-f]{64}$/) }, image: CONFIG.hyperfyImage }])
+    expect(stored).toBe(createHash('sha256').update(f.updates[0].env.VLM_WORLD_SECRET).digest('hex'))
     expect(f.started).toEqual(['vlm-w-back-world'])
     expect((await row(w.id)).status).toBe('running')
   })
