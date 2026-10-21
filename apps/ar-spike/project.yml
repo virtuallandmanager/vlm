@@ -1,0 +1,89 @@
+name: VLMSpaces
+options:
+  bundleIdPrefix: gg.vlm.spaces
+  deploymentTarget:
+    iOS: "18.0"
+    visionOS: "2.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+
+packages:
+  GLTFKit2:
+    url: https://github.com/warrenm/GLTFKit2
+    exactVersion: 0.5.15
+
+targets:
+  VLMSpaces-iOS:
+    type: application
+    platform: iOS
+    sources: [Shared, iOS]
+    dependencies:
+      - package: GLTFKit2
+    info:
+      path: iOS/Info.plist
+      properties:
+        CFBundleDisplayName: VLM Spaces
+        NSCameraUsageDescription: VLM Spaces uses the camera to show your VLM scene in augmented reality.
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UIRequiredDeviceCapabilities: [arkit]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoadsForMedia: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: gg.vlm.spaces.ios
+        TARGETED_DEVICE_FAMILY: "1"
+
+  VLMSpaces-visionOS:
+    type: application
+    platform: visionOS
+    sources: [Shared, visionOS]
+    dependencies:
+      - package: GLTFKit2
+    info:
+      path: visionOS/Info.plist
+      properties:
+        CFBundleDisplayName: VLM Spaces
+        UIApplicationSceneManifest:
+          UIApplicationPreferredDefaultSceneSessionRole: UIWindowSceneSessionRoleApplication
+          UIApplicationSupportsMultipleScenes: true
+          UISceneConfigurations: {}
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoadsForMedia: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: gg.vlm.spaces.visionos
+        TARGETED_DEVICE_FAMILY: "7"
+
+  VLMSpacesTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+      - Shared/Mapping.swift
+      - Shared/ScenePlan.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: gg.vlm.spaces.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  VLMSpaces-iOS:
+    build:
+      targets:
+        VLMSpaces-iOS: all
+    test:
+      targets: [VLMSpacesTests]
+  VLMSpaces-visionOS:
+    build:
+      targets:
+        VLMSpaces-visionOS: all
