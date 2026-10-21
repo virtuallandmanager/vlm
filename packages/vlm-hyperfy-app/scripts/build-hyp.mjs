@@ -6,20 +6,11 @@ import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
+import { bundleOptions } from './bundle-options.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
-const bundled = await build({
-  entryPoints: [join(root, 'src/app.ts')],
-  bundle: true,
-  format: 'iife',
-  platform: 'neutral',
-  target: 'es2020',
-  write: false,
-  legalComments: 'none',
-  // Only the Hyperfy feed constants are needed; the self-contained source keeps the rest of vlm-shared out.
-  alias: { 'vlm-shared': join(root, '../vlm-shared/src/hyperfy.ts') },
-})
+const bundled = await build(bundleOptions(root, join(root, 'src/app.ts')))
 const js = Buffer.from(bundled.outputFiles[0].contents)
 const glb = readFileSync(join(root, 'assets/empty.glb'))
 

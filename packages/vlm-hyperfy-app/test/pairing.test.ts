@@ -137,7 +137,7 @@ describe('Pairing', () => {
     expect(JSON.parse(t.calls.find((c) => c.url.endsWith('/renew'))!.init.body!).secret).toHaveLength(108)
   })
 
-  it('a revoked pairing is lost; a failed renew backs off and retries', async () => {
+  it('a revoked pairing is expired; a failed renew backs off and retries', async () => {
     const t = make({
       'POST /api/hyperfy/pair': [res(200, START)],
       'POST /api/hyperfy/pair/ABC234/claim': [approved('PASS1', 15 * 60_000)],
@@ -147,10 +147,10 @@ describe('Pairing', () => {
     await t.advance(HYPERFY_PAIRING.claimPollMs)
     await t.advance(15 * 60_000 - HYPERFY_PAIRING.renewBeforeMs - HYPERFY_PAIRING.claimPollMs + 100)
     expect(t.calls.filter((c) => c.url.endsWith('/renew')).length).toBe(1)
-    expect(t.states.at(-1)).toEqual({ status: 'linked', displayName: 'Ada' })
+    expect(t.states.at(-1)).toEqual({ status: 'lost' })
     await t.advance(5_000)
     expect(t.calls.filter((c) => c.url.endsWith('/renew')).length).toBe(2)
-    expect(t.states.at(-1)).toEqual({ status: 'lost' })
+    expect(t.states.at(-1)).toEqual({ status: 'expired' })
     expect(t.p.pass()).toBeNull()
   })
 
@@ -185,6 +185,111 @@ describe('Pairing', () => {
     expect(t.calls.length).toBe(n)
   })
 })
+
+
+const MIN = 60_000
+const iso = (ms: number) => new Date(ms).toISOString()
+
+describe('Pairing: fix round 1', () => {
+  it('a 401-triggered renew does not leave the old renew timer running: one renew per pass lifetime', async () => {
+    let t!: ReturnType<typeof make>
+    const fresh = (): Res => res(200, { pass: 'P' + t.calls.length, passExpiresAt: iso(t.now() + 15 * MIN) })
+    t = make({
+      'POST /api/hyperfy/pair': [res(200, START)],
+      'POST /api/hyperfy/pair/ABC234/claim': [approved('P1', 15 * MIN)],
+      'POST /api/hyperfy/pairings/pid-1/renew': [fresh],
+    })
+    t.p.start('Ada')
+    await t.advance(HYPERFY_PAIRING.claimPollMs)
+    await t.advance(MIN)
+    await t.p.renewNow() // what onAuthFailure does
+    await t.advance(60 * MIN)
+    // renews at 1, 14, 27, 40, 53 minutes after the 401
+    expect(t.calls.filter((c) => c.url.endsWith('/renew')).length).toBe(5)
+  })
+
+  it('renew 401 is expired; network failures are lost while retrying, and expired once the pass runs out', async () => {
+    const t = make({
+      'POST /api/hyperfy/pair': [res(200, START)],
+      'POST /api/hyperfy/pair/ABC234/claim': [approved('P1', 15 * MIN)],
+      'POST /api/hyperfy/pairings/pid-1/renew': [undefined],
+    })
+    t.p.start('Ada')
+    await t.advance(HYPERFY_PAIRING.claimPollMs)
+    await t.advance(14 * MIN)
+    expect(t.states.at(-1)).toEqual({ status: 'lost' })
+    expect(t.p.pass()).toBe('P1')
+    await t.advance(2 * MIN)
+    expect(t.states.at(-1)).toEqual({ status: 'expired' })
+    expect(t.states.filter((s) => s.status === 'expired')).toHaveLength(1)
+    expect(t.p.pass()).toBeNull()
+  })
+
+  it('after the pass really expires, a failing renew then a successful one lets Save succeed', async () => {
+    let ok = false
+    const t = make({
+      'POST /api/hyperfy/pair': [res(200, START)],
+      'POST /api/hyperfy/pair/ABC234/claim': [approved('OLD', 15 * MIN)],
+      'POST /api/hyperfy/pairings/pid-1/renew': [(): Res => (ok ? res(200, { pass: 'NEW', passExpiresAt: iso(T0 + 60 * MIN) }) : undefined)],
+      'PUT /api/instances/i1': [(): Res => res(200, { instance: {} })],
+    })
+    const api = new VlmApi({ feedUrl: 'https://api.example', fetch: t.fetch, getPass: () => t.p.pass(), onAuthFailure: () => void t.p.renewNow() })
+    t.p.start('Ada')
+    await t.advance(HYPERFY_PAIRING.claimPollMs)
+    await t.advance(16 * MIN)
+    expect(t.p.pass()).toBeNull()
+    const draft = { position: { x: 1, y: 2, z: 3 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }
+    expect(await api.saveTransform('i1', draft)).toEqual({ ok: false, reason: 'auth' })
+    ok = true
+    await t.advance(HYPERFY_FEED_MAX)
+    expect(t.p.pass()).toBe('NEW')
+    expect((await api.saveTransform('i1', draft)).ok).toBe(true)
+    expect(t.states.at(-1)).toEqual({ status: 'linked', displayName: 'Ada' })
+  })
+
+  it('a failed pair start retries with back-off; invalid_world_key is a terminal error', async () => {
+    const t = make({ 'POST /api/hyperfy/pair': [undefined, res(500), res(200, START)], 'POST /api/hyperfy/pair/ABC234/claim': [res(200, { status: 'pending' })] })
+    t.p.start('Ada')
+    await t.advance(0)
+    expect(t.states.at(-1)).toEqual({ status: 'lost' })
+    await t.advance(10_000)
+    expect(t.calls.filter((c) => c.url.endsWith('/pair')).length).toBe(3)
+    expect(t.states.some((s) => s.status === 'waiting')).toBe(true)
+
+    const bad = make({ 'POST /api/hyperfy/pair': [res(401, { error: 'invalid_world_key' })] })
+    bad.p.start('Ada')
+    await bad.advance(60_000)
+    expect(bad.states.at(-1)).toEqual({ status: 'error', reason: 'invalid_world_key' })
+    expect(bad.calls).toHaveLength(1)
+  })
+
+  it('claim failure back-off never polls faster than claimPollMs', async () => {
+    const t = make({ 'POST /api/hyperfy/pair': [res(200, START)], 'POST /api/hyperfy/pair/ABC234/claim': [undefined] })
+    t.p.start('Ada')
+    await t.advance(HYPERFY_PAIRING.claimPollMs)
+    const times = t.timers.map((x) => x.at - t.now())
+    expect(times.length).toBe(1)
+    expect(times[0]).toBeGreaterThanOrEqual(HYPERFY_PAIRING.claimPollMs)
+  })
+
+  it('renewNow is a no-op for a hosted link without a renewer; a malformed expiry is ignored', async () => {
+    const t = make({})
+    t.p.adopt({ pass: 'H1', passExpiresAt: iso(T0 + 10 * MIN), displayName: 'Bo' })
+    expect(await t.p.renewNow()).toBe(false)
+    expect(t.calls).toHaveLength(0)
+    const u = make({})
+    u.p.adopt({ pass: 'X', passExpiresAt: 'not a date', displayName: 'Bo' })
+    expect(u.p.pass()).toBeNull()
+    expect(u.states).toHaveLength(0)
+
+    const bad = make({}, { renewer: async () => ({ pass: 'Y', passExpiresAt: 'garbage' }) })
+    bad.p.adopt({ pass: 'H1', passExpiresAt: iso(T0 + 10 * MIN), displayName: 'Bo' })
+    expect(await bad.p.renewNow()).toBe(false)
+    expect(bad.p.pass()).toBe('H1')
+  })
+})
+
+const HYPERFY_FEED_MAX = 30_000
 
 describe('VlmApi with Pairing', () => {
   it('an expired pass keeps the draft and Save succeeds after renew', async () => {

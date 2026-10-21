@@ -8,6 +8,7 @@ export type PairingState =
   | { status: 'linked'; displayName: string }
   | { status: 'expired' }
   | { status: 'lost' }
+  | { status: 'error'; reason: 'invalid_world_key' }
 
 /** A scene pass and when it stops working (ISO time). pairingId/displayName come with a first link. */
 export interface PassLink {
@@ -52,6 +53,9 @@ export class Pairing {
   private state: PairingState = { status: 'idle' }
   private renewDelay = 0
   private renewing: Promise<boolean> | null = null
+  /** Only the latest renew timer acts: the sandbox has no clearTimeout, so stale timers must see they're stale. */
+  private renewToken = 0
+  private expiryToken = 0
 
   constructor(private readonly opts: PairingOptions) {}
 
@@ -70,6 +74,7 @@ export class Pairing {
 
   /** Installs a pass from a hosted `linked` result, or a renewal of one. */
   adopt(link: PassLink): void {
+    if (!Number.isFinite(Date.parse(link.passExpiresAt))) return
     if (link.pairingId) this.pairingId = link.pairingId
     if (link.displayName) this.name = link.displayName
     this.install(link.pass, link.passExpiresAt, this.gen)
@@ -77,6 +82,7 @@ export class Pairing {
 
   /** Renews now (after a 401, say). Resolves true when a fresh pass was installed. */
   renewNow(): Promise<boolean> {
+    if (!this.canRenew()) return Promise.resolve(false)
     return (this.renewing ??= this.renewOnce(this.gen).finally(() => {
       this.renewing = null
     }))
@@ -84,6 +90,10 @@ export class Pairing {
 
   stop(): void {
     this.reset()
+  }
+
+  private canRenew(): boolean {
+    return !!this.opts.renewer || !!(this.pairingId && this.secret)
   }
 
   private now(): number {
@@ -98,6 +108,8 @@ export class Pairing {
     this.secret = ''
     this.renewDelay = 0
     this.renewing = null
+    this.renewToken++
+    this.expiryToken++
   }
 
   private emit(s: PairingState): void {
@@ -127,7 +139,7 @@ export class Pairing {
     }
   }
 
-  private async begin(gen: number, playerName: string): Promise<void> {
+  private async begin(gen: number, playerName: string, failDelay = 0): Promise<void> {
     const r = await this.post<PairStartResponse>('/api/hyperfy/pair', {
       worldKey: this.opts.worldKey,
       secretHash: sha256Hex(this.secret),
@@ -135,8 +147,17 @@ export class Pairing {
     })
     if (gen !== this.gen) return
     const b = r?.body
+    if (r?.status === 401) {
+      this.emit({ status: 'error', reason: 'invalid_world_key' })
+      return
+    }
     if (!b || typeof b.code !== 'string') {
+      // Could not start: show lost and try again, backing off
       this.emit({ status: 'lost' })
+      const next = Math.min(Math.max(failDelay * 2, HYPERFY_FEED.retryMinMs), HYPERFY_FEED.retryMaxMs)
+      this.opts.setTimeout(() => {
+        if (gen === this.gen) void this.begin(gen, playerName, next)
+      }, next)
       return
     }
     this.emit({ status: 'waiting', code: b.code, approveUrl: b.approveUrl, qrUrl: b.qrUrl, expiresAt: b.expiresAt })
@@ -152,7 +173,7 @@ export class Pairing {
     const r = await this.post<PairClaimResponse>(`/api/hyperfy/pair/${encodeURIComponent(code)}/claim`, { secret: this.secret })
     if (gen !== this.gen) return
     const b = r?.body
-    if (b?.status === 'approved') {
+    if (b?.status === 'approved' && Number.isFinite(Date.parse(b.passExpiresAt))) {
       this.pairingId = b.pairingId
       this.name = b.user.displayName
       this.install(b.pass, b.passExpiresAt, gen)
@@ -160,7 +181,7 @@ export class Pairing {
       this.emit({ status: 'expired' })
     } else {
       // pending polls at claimPollMs; a failed poll backs off (doubling, up to retryMaxMs)
-      const next = b?.status === 'pending' ? 0 : Math.min(Math.max(failDelay * 2, HYPERFY_FEED.retryMinMs), HYPERFY_FEED.retryMaxMs)
+      const next = b?.status === 'pending' ? 0 : Math.min(Math.max(failDelay * 2, HYPERFY_PAIRING.claimPollMs), HYPERFY_FEED.retryMaxMs)
       this.pollClaim(gen, code, codeExpiresAt, next)
     }
   }
@@ -171,12 +192,17 @@ export class Pairing {
     this.renewDelay = 0
     this.emit({ status: 'linked', displayName: this.name })
     this.scheduleRenew(gen, Math.max(0, this.passExpiresAtMs - HYPERFY_PAIRING.renewBeforeMs - this.now()))
+    const token = ++this.expiryToken
+    this.opts.setTimeout(() => {
+      if (gen === this.gen && token === this.expiryToken && this.passValue && this.now() >= this.passExpiresAtMs) this.emit({ status: 'expired' })
+    }, Math.max(0, this.passExpiresAtMs - this.now()))
   }
 
   private scheduleRenew(gen: number, ms: number): void {
-    if (!this.opts.renewer && !(this.pairingId && this.secret)) return
+    if (!this.canRenew()) return
+    const token = ++this.renewToken
     this.opts.setTimeout(() => {
-      if (gen === this.gen) void this.renewNow()
+      if (gen === this.gen && token === this.renewToken) void this.renewNow()
     }, ms)
   }
 
@@ -191,13 +217,16 @@ export class Pairing {
     if (gen !== this.gen) return false
     if (out === 'revoked') {
       this.passValue = null
-      this.emit({ status: 'lost' })
+      this.renewToken++
+      this.emit({ status: 'expired' })
       return false
     }
-    if (out) {
+    if (out && Number.isFinite(Date.parse(out.passExpiresAt))) {
       this.install(out.pass, out.passExpiresAt, gen)
       return true
     }
+    // Temporary failure: retry with back-off. Lost while the pass still works, expired once it has run out.
+    this.emit(this.now() < this.passExpiresAtMs ? { status: 'lost' } : { status: 'expired' })
     this.renewDelay = Math.min(Math.max(this.renewDelay * 2, HYPERFY_FEED.retryMinMs), HYPERFY_FEED.retryMaxMs)
     this.scheduleRenew(gen, this.renewDelay)
     return false
