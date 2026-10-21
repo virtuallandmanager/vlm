@@ -1,7 +1,8 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
-import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
+import { createContext, runInContext } from 'node:vm'
+import { Euler, Matrix4, Object3D, Quaternion, Vector3 } from 'three'
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { HyperfyFeedResponse } from 'vlm-shared'
 // @ts-expect-error plain .mjs shared with the build script
@@ -76,18 +77,59 @@ function hostedVouch(answer: (req: VouchReq, n: number) => unknown) {
 const admin = (id: string, name: string) => ({ id, name, admin: true, builder: false, position: new Vector3() })
 const START = { code: 'SLF234', approveUrl: 'https://vlm.gg/pair/SLF234', qrUrl: 'https://q', expiresAt: new Date(Date.now() + 600_000).toISOString() }
 
-/** Globals the sandbox doesn't have: any use is recorded. */
-function forbiddenGlobals(used: string[]) {
+/**
+ * Host globals a browser or Node has but Hyperfy's script compartment doesn't: any use is recorded. (Anything else
+ * missing simply isn't defined in the vm context, so using it throws.)
+ */
+function forbiddenGlobals(used: string[]): Record<string, unknown> {
   const trap = (name: string) =>
     new Proxy(function () {}, {
       get: () => (used.push(name), undefined),
       apply: () => (used.push(name), undefined),
       construct: () => (used.push(name), {}),
     })
-  const names = ['setInterval', 'clearTimeout', 'clearInterval', 'localStorage', 'crypto', 'TextEncoder', 'WebSocket', 'require']
-  const values = names.map(trap)
-  const URL = { createObjectURL: () => 'blob:x' }
-  return { names: [...names, 'URL'], values: [...values, URL] }
+  const names = ['setInterval', 'clearTimeout', 'clearInterval', 'setImmediate', 'queueMicrotask', 'structuredClone', 'localStorage', 'crypto', 'TextEncoder', 'TextDecoder', 'performance', 'process', 'Buffer', 'require', 'window', 'document', 'navigator', 'WebSocket']
+  return Object.fromEntries(names.map((n) => [n, trap(n)]))
+}
+
+/**
+ * Exactly the endowments Hyperfy 0.16's Scripts system gives its compartment (src/core/systems/Scripts.js): note
+ * Date is `{ now }` only and URL is `{ createObjectURL }` only. The vm context adds just the ECMAScript intrinsics,
+ * as SES does; the intrinsic Date is shadowed by the endowment, as in Hyperfy.
+ */
+function hyperfyEndowments(uuid: () => string): Record<string, unknown> {
+  class Placeholder {}
+  return {
+    console: {
+      log: (...a: unknown[]) => console.log(...a),
+      warn: (...a: unknown[]) => console.warn(...a),
+      error: (...a: unknown[]) => console.error(...a),
+      time: (...a: unknown[]) => console.time(...(a as [string])),
+      timeEnd: (...a: unknown[]) => console.timeEnd(...(a as [string])),
+    },
+    Date: { now: () => Date.now() },
+    URL: { createObjectURL: () => 'blob:x' },
+    Math,
+    eval: undefined,
+    harden: undefined,
+    lockdown: undefined,
+    num: (min: number, max: number) => min + (max - min) / 2,
+    prng: () => () => 0.5,
+    clamp: (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n)),
+    Object3D,
+    Quaternion,
+    Vector3,
+    Euler,
+    Matrix4,
+    LerpVector3: Placeholder,
+    LerpQuaternion: Placeholder,
+    BufferedLerpVector3: Placeholder,
+    BufferedLerpQuaternion: Placeholder,
+    Curve: Placeholder,
+    DEG2RAD: Math.PI / 180,
+    RAD2DEG: 180 / Math.PI,
+    uuid,
+  }
 }
 
 /** Runs the bundled script with only the sandbox globals it may use. */
@@ -158,19 +200,13 @@ function run(opts: {
   const props = { feedUrl: 'https://api.example', worldKey: 'vlmw_k' }
   let n = 0
   const uuid = () => `uuid-${++n}`
-  const bad = forbiddenGlobals(used)
-  new Function('world', 'app', 'fetch', 'props', 'setTimeout', 'Matrix4', 'Vector3', 'Quaternion', 'uuid', ...bad.names, js)(
-    world,
-    app,
-    fetch,
-    props,
-    setTimeout,
-    Matrix4,
-    Vector3,
-    Quaternion,
-    uuid,
-    ...bad.values,
-  )
+  const context = createContext({ ...hyperfyEndowments(uuid), ...forbiddenGlobals(used) })
+  // Hyperfy's wrapRawCode: the script body runs inside (world, app, fetch, props, setTimeout, WebSocket) => { … }.
+  const wrapped = runInContext(
+    `(function() { const shared = {}; return (world, app, fetch, props, setTimeout, WebSocket) => { const config = props\n${js}\n} })()`,
+    context,
+  ) as (...args: unknown[]) => void
+  wrapped(world, app, fetch, props, setTimeout, context.WebSocket)
   const settle = async () => {
     for (let i = 0; i < 20; i++) await Promise.resolve()
   }
@@ -393,6 +429,25 @@ describe('the VLM app script', () => {
     const before = c.sent.filter((m) => m.name === 'vlm:link').length
     for (let i = 0; i < 3; i++) await c.tick()
     expect(c.sent.filter((m) => m.name === 'vlm:link').length).toBe(before)
+  })
+
+  it('self-run: after approval the HUD claims the code and links (in the sandbox, Date is only { now })', async () => {
+    const claimed = { status: 'approved', pass: 'PASS', passExpiresAt: new Date(Date.now() + 900_000).toISOString(), pairingId: 'pair-1', sceneId: 'scene-1', user: { id: 'u1', displayName: 'Ada' } }
+    const c = run({
+      isServer: false,
+      me: admin('p1', 'Pip'),
+      route: (url) => (url.endsWith('/api/hyperfy/pair') ? res(200, START) : url.endsWith('/claim') ? res(200, claimed) : undefined),
+    })
+    c.update()
+    button(c.added, 'Link to VLM')!.onPointerDown()
+    c.handlers.get('vlm:link')!({ status: 'self', attempt: c.sent.find((m) => m.name === 'vlm:link')!.data.attempt })
+    await c.settle()
+    const claims = () => c.requests.filter((r) => r.url === 'https://api.example/api/hyperfy/pair/SLF234/claim')
+    for (let i = 0; i < 3 && !claims().length; i++) await c.tick()
+    expect(claims()).toHaveLength(1)
+    c.update()
+    expect(c.added.flatMap(texts)).toContain('Linked to VLM as Ada')
+    expect(c.used).toEqual([])
   })
 
   it('self-run: the server half never vouches and tells the player to pair from the browser', async () => {

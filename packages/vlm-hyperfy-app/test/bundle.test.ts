@@ -22,6 +22,10 @@ describe('production bundling of the pure modules', () => {
         ['import', /\bimport\b/],
         ['URL', /\bnew\s+URL\b|(?<![\w$.])URL\s*[.(]/],
         ['new Date', /\bnew\s+Date\b/],
+        // Hyperfy's sandbox Date is { now } only (Scripts.js): no parse, UTC, or calling Date.
+        ['a Date member other than now', /(?<![\w$.])Date\s*(?:\.\s*(?!now\b)[\w$]+|\[|\()/],
+        // The sandbox's globalThis has no timers, fetch or other host globals.
+        ['globalThis', /\bglobalThis\b/],
       ]
       for (const [name, re] of forbidden) expect(re.test(js), name).toBe(false)
     })

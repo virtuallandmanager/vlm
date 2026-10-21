@@ -1,5 +1,6 @@
 import { HYPERFY_FEED, HYPERFY_PAIRING, type PairClaimResponse, type PairRenewResponse, type PairStartResponse } from 'vlm-shared'
 import type { ScriptFetch, ScriptSetTimeout } from './poller.js'
+import { parseIsoTime } from './iso-time.js'
 import { sha256Hex } from './sha256.js'
 
 export type PairingState =
@@ -33,7 +34,7 @@ export interface PairingOptions {
   setTimeout: ScriptSetTimeout
   uuid: () => string
   onState: (s: PairingState) => void
-  /** Milliseconds now; defaults to Date.now. */
+  /** Milliseconds now; defaults to the sandbox clock. */
   now?: () => number
   renewer?: PassRenewer
 }
@@ -76,7 +77,7 @@ export class Pairing {
 
   /** Installs a pass from a hosted `linked` result, or a renewal of one. */
   adopt(link: PassLink): void {
-    if (!Number.isFinite(Date.parse(link.passExpiresAt))) return
+    if (!Number.isFinite(parseIsoTime(link.passExpiresAt))) return
     if (link.pairingId) this.pairingId = link.pairingId
     if (link.displayName) this.name = link.displayName
     if (link.sceneId) this.sceneId = link.sceneId
@@ -165,7 +166,7 @@ export class Pairing {
       return
     }
     this.emit({ status: 'waiting', code: b.code, approveUrl: b.approveUrl, qrUrl: b.qrUrl, expiresAt: b.expiresAt })
-    this.pollClaim(gen, b.code, Date.parse(b.expiresAt), 0)
+    this.pollClaim(gen, b.code, parseIsoTime(b.expiresAt), 0)
   }
 
   private pollClaim(gen: number, code: string, codeExpiresAt: number, failDelay: number): void {
@@ -177,7 +178,7 @@ export class Pairing {
     const r = await this.post<PairClaimResponse>(`/api/hyperfy/pair/${encodeURIComponent(code)}/claim`, { secret: this.secret })
     if (gen !== this.gen) return
     const b = r?.body
-    if (b?.status === 'approved' && Number.isFinite(Date.parse(b.passExpiresAt))) {
+    if (b?.status === 'approved' && Number.isFinite(parseIsoTime(b.passExpiresAt))) {
       this.pairingId = b.pairingId
       this.name = b.user.displayName
       if (typeof b.sceneId === 'string') this.sceneId = b.sceneId
@@ -193,7 +194,7 @@ export class Pairing {
 
   private install(pass: string, passExpiresAt: string, gen: number): void {
     this.passValue = pass
-    this.passExpiresAtMs = Date.parse(passExpiresAt)
+    this.passExpiresAtMs = parseIsoTime(passExpiresAt)
     this.renewDelay = 0
     this.emit({ status: 'linked', displayName: this.name, sceneId: this.sceneId })
     this.scheduleRenew(gen, Math.max(0, this.passExpiresAtMs - HYPERFY_PAIRING.renewBeforeMs - this.now()))
@@ -226,7 +227,7 @@ export class Pairing {
       this.emit({ status: 'expired' })
       return false
     }
-    if (out && Number.isFinite(Date.parse(out.passExpiresAt))) {
+    if (out && Number.isFinite(parseIsoTime(out.passExpiresAt))) {
       if (typeof out.sceneId === 'string' && out.sceneId) this.sceneId = out.sceneId
       this.install(out.pass, out.passExpiresAt, gen)
       return true

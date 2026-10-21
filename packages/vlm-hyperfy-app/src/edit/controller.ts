@@ -53,8 +53,8 @@ export interface EditControllerOptions {
   rootInverse?: () => { elements: ArrayLike<number> }
   /** Called after any change the HUD or gizmo shows. */
   onChange?: () => void
-  /** The sandbox's setTimeout, for retrying a save after a lost connection. Default: the global one. */
-  setTimeout?: (fn: () => void, ms: number) => unknown
+  /** The sandbox's setTimeout (a script argument, not a global), for retrying a save after a lost connection. */
+  setTimeout: (fn: () => void, ms: number) => unknown
 }
 
 export const ALERT_SAVED = 'Saved'
@@ -121,7 +121,7 @@ export class EditController {
   private readonly timeout: (fn: () => void, ms: number) => unknown
 
   constructor(private readonly opts: EditControllerOptions) {
-    this.timeout = opts.setTimeout ?? ((fn, ms) => (globalThis as { setTimeout: (f: () => void, ms: number) => unknown }).setTimeout(fn, ms))
+    this.timeout = opts.setTimeout
   }
 
   get state(): EditState {
