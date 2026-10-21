@@ -54,6 +54,11 @@ declare const props: { feedUrl?: string; worldKey?: string }
 declare const Matrix4: new () => Matrix & { copy(m: Matrix): Matrix & { invert(): Matrix } }
 
 const SCENE = 'vlm:scene'
+
+type V3 = { x: number; y: number; z: number }
+const closeV = (a: V3, b: V3) => Math.abs(a.x - b.x) < 1e-4 && Math.abs(a.y - b.y) < 1e-4 && Math.abs(a.z - b.z) < 1e-4
+const sameTransform = (a: VlmTransform, b: VlmTransform) =>
+  closeV(a.position, b.position) && closeV(a.rotation, b.rotation) && closeV(a.scale, b.scale)
 const HELLO = 'vlm:hello'
 
 app.configure([
@@ -223,7 +228,11 @@ function runClient(): ClientEditHooks {
       add(item)
     }
     for (const item of d.add) add(item)
-    for (const key of [...previews.keys()]) if (!shown.has(key)) previews.delete(key)
+    // A preview ends with its item, or once the feed carries it (a save came back).
+    for (const [key, t] of [...previews]) {
+      const entry = shown.get(key)
+      if (!entry || sameTransform(entry.item.vlm, t)) previews.delete(key)
+    }
     const prev = plan
     plan = next
     for (const cb of planListeners) cb(prev, next)

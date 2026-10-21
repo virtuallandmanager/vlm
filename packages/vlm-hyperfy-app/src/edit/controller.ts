@@ -53,16 +53,26 @@ export interface EditControllerOptions {
   rootInverse?: () => { elements: ArrayLike<number> }
   /** Called after any change the HUD or gizmo shows. */
   onChange?: () => void
+  /** The sandbox's setTimeout, for retrying a save after a lost connection. Default: the global one. */
+  setTimeout?: (fn: () => void, ms: number) => unknown
 }
 
 export const ALERT_SAVED = 'Saved'
 export const ALERT_NO_ACCESS = "You can't edit this right now"
 export const ALERT_LOST = 'Lost connection to VLM. Retrying…'
+export const ALERT_RECONNECTED = 'Reconnected'
 export const alertCouldntSave = (reason: string) => `Couldn't save: ${reason}`
 
 const LOCKS: MoveLock[] = ['free', 'x', 'y', 'z']
 const ELEMENT: Record<RenderItem['kind'], ElementKind> = { video: 'video', image: 'image', model: 'model', audio: 'sound' }
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+const RETRY_FIRST_MS = 2_000
+const RETRY_MAX_MS = 30_000
+const EPSILON = 1e-4
+const closeVec = (a: Vec3, b: Vec3) => Math.abs(a.x - b.x) < EPSILON && Math.abs(a.y - b.y) < EPSILON && Math.abs(a.z - b.z) < EPSILON
+/** Equal within float noise (a value that went through VLM's API may not round-trip exactly). */
+const closeTransform = (a: VlmTransform, b: VlmTransform) =>
+  closeVec(a.position, b.position) && closeVec(a.rotation, b.rotation) && closeVec(a.scale, b.scale)
 
 /** The instance id half of a RenderItem key. */
 export const instanceIdOf = (key: string): string => key.slice(key.indexOf(':') + 1)
@@ -97,8 +107,22 @@ export class EditController {
   private pending: string | null = null
   /** Done was pressed while dirty: deselect once the prompt is answered. */
   private doneAfterPrompt = false
+  /**
+   * Saves the feed hasn't brought back yet, by key: `before` is the feed's value when the save landed. Until a
+   * snapshot moves the item off `before` (or onto the saved value), the saved transform stands in for the feed's:
+   * it stays previewed and is the baseline for the next drag.
+   */
+  private readonly saved = new Map<string, { transform: VlmTransform; before: VlmTransform }>()
+  /** Bumped to cancel a scheduled save retry (the sandbox has no clearTimeout). */
+  private retryToken = 0
+  private retryDelay = 0
+  /** A save failed with 'lost' and no save has gone through since. */
+  private lost = false
+  private readonly timeout: (fn: () => void, ms: number) => unknown
 
-  constructor(private readonly opts: EditControllerOptions) {}
+  constructor(private readonly opts: EditControllerOptions) {
+    this.timeout = opts.setTimeout ?? ((fn, ms) => (globalThis as { setTimeout: (f: () => void, ms: number) => unknown }).setTimeout(fn, ms))
+  }
 
   get state(): EditState {
     const s = this.opts.session
@@ -128,7 +152,7 @@ export class EditController {
       this.changed()
       return 'dirty'
     }
-    const item = this.opts.items().get(key)
+    const item = this.feedValue(key)
     if (!item) return 'missing'
     this.deselect()
     this.take(item)
@@ -145,6 +169,7 @@ export class EditController {
     this.endDrag()
     const h: GizmoHandle = handle ?? { kind: 'body' }
     if (!this.fits(h)) return
+    this.cancelRetry()
     // A clean selection may be stale (the feed moved it since): start from the feed's value.
     if (!s.dirty) this.refresh()
     if (h.kind === 'arrow') {
@@ -200,21 +225,32 @@ export class EditController {
     if (!this.selectedKey || this.saving) return false
     this.endDrag()
     if (!this.opts.session.setValue(axis, value)) return false
+    this.cancelRetry()
     this.show()
     return true
   }
 
   /**
-   * Saves the draft with PUT /api/instances/:id. On success the feed's next value is the truth. A 403 alerts and
-   * reverts; an expired pass ('auth') keeps the draft quietly (the pairing shows "Link expired" and Save can be
-   * pressed again after it renews); a lost connection or other failure keeps the draft with an alert.
+   * Saves the draft with PUT /api/instances/:id.
+   * - Success: the saved value stands in for the feed's until the feed brings it (see `saved`).
+   * - 'no_access': alerts and reverts.
+   * - 'auth' (expired pass): keeps the draft quietly; the pairing shows "Link expired" and Save works after it renews.
+   * - 'lost': keeps the draft, alerts once, and retries with back-off (2 s doubling to 30 s) while the draft is
+   *   unchanged; a later success alerts "Reconnected" then "Saved".
+   * - Anything else: keeps the draft with "Couldn't save: <reason>".
    */
   async save(): Promise<void> {
-    const s = this.opts.session
     const key = this.selectedKey
-    if (!key || this.saving || !s.dirty) return
+    if (!key || this.saving || !this.opts.session.dirty) return
+    this.retryToken++ // this attempt replaces any scheduled retry
+    await this.send(key)
+  }
+
+  private async send(key: string): Promise<void> {
+    const s = this.opts.session
     this.endDrag()
     const draft = s.draft!
+    const before = this.opts.items().get(key)?.transform
     this.saving = true
     this.changed()
     let r: ApiResult<unknown>
@@ -225,21 +261,48 @@ export class EditController {
     }
     this.saving = false
     const current = this.selectedKey === key
+    if (!r.ok && r.reason === 'lost') {
+      if (!this.lost) this.opts.alert({ kind: 'error', text: ALERT_LOST })
+      this.lost = true
+      this.scheduleRetry(key, draft)
+      return this.changed()
+    }
+    const wasLost = this.lost
+    this.lost = false
+    this.retryDelay = 0
     if (r.ok) {
-      // Committed only if the draft is still what was sent (no edit landed while saving). The preview stays until
-      // the feed brings the saved value (onSnapshot restores a clean selection).
-      if (current && same(s.draft, draft)) s.takeSave()
+      // Committed only if the draft is still what was sent (no edit landed while saving).
+      if (current && same(s.draft, draft)) {
+        s.takeSave()
+        if (before && !closeTransform(before, draft)) this.saved.set(key, { transform: draft, before })
+      }
+      if (wasLost) this.opts.alert({ kind: 'info', text: ALERT_RECONNECTED })
       this.opts.alert({ kind: 'info', text: ALERT_SAVED })
       if (current && !s.dirty) return this.answerPrompt()
     } else if (r.reason === 'no_access') {
       this.opts.alert({ kind: 'error', text: ALERT_NO_ACCESS })
       if (current) return this.revert()
-    } else if (r.reason === 'lost') {
-      this.opts.alert({ kind: 'error', text: ALERT_LOST })
     } else if (r.reason !== 'auth') {
       this.opts.alert({ kind: 'error', text: alertCouldntSave(r.reason) })
     }
     this.changed()
+  }
+
+  private scheduleRetry(key: string, draft: VlmTransform): void {
+    this.retryDelay = this.retryDelay ? Math.min(this.retryDelay * 2, RETRY_MAX_MS) : RETRY_FIRST_MS
+    const token = ++this.retryToken
+    this.timeout(() => {
+      const s = this.opts.session
+      if (token !== this.retryToken || this.saving || this.selectedKey !== key || !s.dirty || !same(s.draft, draft)) return
+      void this.send(key)
+    }, this.retryDelay)
+  }
+
+  /** A new edit, revert or deselect: a scheduled retry would send a stale draft. */
+  private cancelRetry(): void {
+    this.retryToken++
+    this.retryDelay = 0
+    this.lost = false
   }
 
   /** Drops the draft: the item goes back to the feed's newest value. Also answers a pending prompt. */
@@ -247,9 +310,10 @@ export class EditController {
     const key = this.selectedKey
     if (!key || this.saving) return
     this.endDrag()
+    this.cancelRetry()
     this.opts.session.revert()
     this.refresh()
-    this.opts.restore(key)
+    this.showFeed(key)
     this.answerPrompt()
   }
 
@@ -268,14 +332,24 @@ export class EditController {
   }
 
   /**
-   * Called after the app applies a new feed snapshot (its nodes now show the feed). A selection that is gone is
-   * dropped. A clean, idle selection takes the new value. A draft (or a drag) is kept and shown again; Revert then
-   * goes to the newest feed value.
+   * Called after the app applies a new feed snapshot (its nodes now show the feed, or a pending save's preview).
+   * - A pending save ends once the feed moves the item off its pre-save value (or onto the saved one).
+   * - A selection that is gone is dropped.
+   * - A clean, idle selection takes the new value.
+   * - A draft (or a drag) is kept and shown again; Revert then goes to the newest feed value.
    */
   onSnapshot(prevPlan: readonly RenderItem[], nextPlan: readonly RenderItem[]): void {
+    const nextByKey = new Map(nextPlan.map((i) => [i.key, i]))
+    for (const [k, p] of [...this.saved]) {
+      const item = nextByKey.get(k)
+      if (item && closeTransform(item.vlm, p.before) && !closeTransform(item.vlm, p.transform)) continue
+      this.saved.delete(k)
+      // The feed is the truth again; the selected item is handled below.
+      if (k !== this.selectedKey && item) this.opts.restore(k)
+    }
     const key = this.selectedKey
     if (!key) return
-    const next = nextPlan.find((i) => i.key === key)
+    const next = nextByKey.get(key)
     if (!next || !this.opts.items().has(key)) {
       this.deselect()
       this.changed()
@@ -285,9 +359,8 @@ export class EditController {
     if (prev && same(prev, next)) return
     if (this.opts.session.dirty || this.dragging) this.show()
     else {
-      // Clean: the feed is the truth, so drop any preview left from a save.
       this.refresh()
-      this.opts.restore(key)
+      this.showFeed(key)
       this.changed()
     }
   }
@@ -317,9 +390,23 @@ export class EditController {
     this.selectedKey = item.key
   }
 
+  /** The item as the feed has it, or with a pending save's transform until the feed brings it. */
+  private feedValue(key: string): RenderedItem | undefined {
+    const item = this.opts.items().get(key)
+    const pending = this.saved.get(key)
+    return item && pending ? { ...item, transform: pending.transform } : item
+  }
+
+  /** Shows the feed's value on the item's node: a pending save stays previewed, anything else is restored. */
+  private showFeed(key: string): void {
+    const pending = this.saved.get(key)
+    if (pending) this.opts.preview(key, pending.transform)
+    else this.opts.restore(key)
+  }
+
   /** Re-takes the selected item's feed value as the baseline, keeping mode, lock and snap. */
   private refresh(): void {
-    const item = this.selectedKey ? this.opts.items().get(this.selectedKey) : undefined
+    const item = this.selectedKey ? this.feedValue(this.selectedKey) : undefined
     if (item && !this.opts.session.dirty) this.take(item)
   }
 
@@ -335,10 +422,11 @@ export class EditController {
     if (!s.dirty) this.refresh()
   }
 
-  /** Drops the selection; its node goes back to the feed's value (a just-saved draft stays shown until then). */
+  /** Drops the selection; its node goes back to the feed's value, except a pending save, which stays shown. */
   private deselect(): void {
     this.endDrag()
-    if (this.selectedKey) this.opts.restore(this.selectedKey)
+    this.cancelRetry()
+    if (this.selectedKey && !this.saved.has(this.selectedKey)) this.opts.restore(this.selectedKey)
     this.opts.session.clear()
     this.selectedKey = null
     this.prompt = false
