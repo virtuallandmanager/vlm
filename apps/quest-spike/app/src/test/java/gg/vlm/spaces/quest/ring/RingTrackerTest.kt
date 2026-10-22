@@ -5,7 +5,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RingTrackerTest {
-  private fun det(id: Long) = RingDetection(id, 0, 0, 640.0, 480.0, 50.0, 45.0, 0.0, 0.0)
+  private fun det(id: Long, version: Int = 0) =
+      RingDetection(id, version, 0, 640.0, 480.0, 50.0, 45.0, 0.0, 0.0)
 
   @Test
   fun needsThreeFrames() {
@@ -50,5 +51,13 @@ class RingTrackerTest {
     assertTrue(t.update(listOf(det(7), det(7))).isEmpty())
     assertTrue(t.update(listOf(det(7))).isEmpty())
     assertEquals(listOf(7L), t.update(listOf(det(7), det(7))).map { it.id })
+  }
+
+  @Test
+  fun unsupportedVersionIgnored() {
+    val t = RingTracker(setOf(7L))
+    repeat(10) { assertTrue(t.update(listOf(det(7, version = 1))).isEmpty()) }
+    repeat(2) { t.update(listOf(det(7, version = 3), det(7))) }
+    assertEquals(listOf(0), t.update(listOf(det(7, version = 15), det(7))).map { it.version })
   }
 }
