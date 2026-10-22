@@ -147,6 +147,11 @@ def _berlekamp_massey(s: list[int]) -> list[int]:
 
 
 def decode(cells: list[bool | None]) -> Decoded | None:
+    return _decode(cells)[0]
+
+
+def _decode(cells: list[bool | None]) -> tuple[Decoded | None, str]:
+    """Returns (result, reason); reason names the first rule that rejected."""
     if len(cells) != CELLS:
         raise ValueError("expected 72 cells")
     raw = [None if c is None else (c != m) for c, m in zip(cells, MASK)]
@@ -165,7 +170,7 @@ def decode(cells: list[bool | None]) -> Decoded | None:
         recv[j] = 0
     e = len(erased)
     if e > NSYM:
-        return None
+        return None, "too_many_erasures"
     loc = [EXP[(N - 1 - j) % 63] for j in range(N)]  # X_j = alpha^(11-j)
     syn = [0] * NSYM
     for t in range(NSYM):
@@ -183,8 +188,12 @@ def decode(cells: list[bool | None]) -> Decoded | None:
     nerr = len(sigma) - 1
     while nerr > 0 and sigma[nerr] == 0:
         nerr -= 1
-    if nerr > 2 or 2 * nerr + e > NSYM or len(sigma) - 1 != nerr:
-        return None
+    if len(sigma) - 1 != nerr:
+        return None, "degree_deficient_locator"
+    if nerr > 2:
+        return None, "too_many_errors"
+    if 2 * nerr + e > NSYM:
+        return None, "over_budget"
     lam = pmul(gamma, sigma[: nerr + 1])
     omega = pmul(syn, lam)[:NSYM]
     dlam = [lam[i] if i % 2 == 1 else 0 for i in range(1, len(lam))]  # derivative
@@ -198,19 +207,19 @@ def decode(cells: list[bool | None]) -> Decoded | None:
         roots += 1
         den = peval(dlam, xinv)
         if den == 0:
-            return None
+            return None, "zero_derivative"
         fixed[j] ^= gmul(loc[j], gmul(peval(omega, xinv), ginv(den)))
     if roots != len(lam) - 1:
-        return None
+        return None, "root_count"
 
-    # The repaired word must be a true codeword (parity re-derives from data).
+    # Safety net: expected unreachable once the degree and root-count checks pass.
     if _rs_encode(fixed[:K]) != fixed:
-        return None
+        return None, "not_codeword"
     value = 0
     for s in fixed[:K]:
         value = (value << 6) | s
     nbad = sum(1 for j in range(N) if j not in erased and fixed[j] != recv[j])
-    return Decoded(value & 0xFFFFFFFF, value >> 32, nbad + e)
+    return Decoded(value & 0xFFFFFFFF, value >> 32, nbad + e), "ok"
 
 
 def code_of(marker_id: int) -> str:
@@ -254,22 +263,31 @@ def build_vectors() -> dict:
         return SYMBOL_CELLS[j]
 
     rng = random.Random(7)
+    def seeded(reason):
+        r = random.Random(11)
+        while True:
+            c = [r.random() < 0.5 for _ in range(72)]
+            if _decode(c)[1] == reason:
+                return c
+
     cases = [
-        list(base),                                              # clean
-        encode(0, 0),                                            # id 0 clean
-        encode(0xFFFFFFFF, 15),                                  # max clean
-        flipped([sym(3)[0]]),                                    # 1 error
-        flipped([sym(0)[2], sym(7)[4]]),                         # 2 errors
-        flipped([sym(0)[1], sym(5)[1], sym(9)[1]]),              # 3 errors
-        flipped(sym(10)),                                        # whole parity symbol wrong
-        erased([c for j in range(1, 7) for c in sym(j)]),        # 6 erased symbols
-        erased([c for j in range(1, 6) for c in sym(j)], flipped([sym(8)[0]])),  # 5 erased + 1 error
-        erased([r * 24 + c for r in range(3) for c in (5, 6, 7)]),  # radial wedge
-        erased([c for j in (2, 4) for c in sym(j)], flipped([sym(8)[3]])),  # 2 erased + 1 error
-        [rng.random() < 0.5 for _ in range(72)],                 # noise
+        ("clean", list(base)),
+        ("clean, max id and version", encode(0xFFFFFFFF, 15)),
+        ("1 error corrected", flipped([sym(3)[0]])),
+        ("2 errors corrected (limit)", flipped([sym(0)[2], sym(7)[4]])),
+        ("whole parity symbol wrong, 1 error", flipped(sym(10))),
+        ("3 errors rejected (errors > 2)", flipped([sym(0)[1], sym(5)[1], sym(9)[1]])),
+        ("6 erased symbols (erasure limit)", erased([c for j in range(1, 7) for c in sym(j)])),
+        ("7 erased symbols rejected (erasures > 6)", erased([c for j in range(1, 8) for c in sym(j)])),
+        ("5 erased + 1 error rejected (2*errors+erasures > 6)",
+         erased([c for j in range(1, 6) for c in sym(j)], flipped([sym(8)[0]]))),
+        ("radial wedge, 3 cells on every ring erased", erased([r * 24 + c for r in range(3) for c in (5, 6, 7)])),
+        ("2 erased + 1 error", erased([c for j in (2, 4) for c in sym(j)], flipped([sym(8)[3]]))),
+        ("noise rejected only by locator degree deficiency", seeded("degree_deficient_locator")),
+        ("noise rejected only by root count (roots != locator degree)", seeded("root_count")),
     ]
     decode_vectors = [
-        {"cells": _bits(c), "expect": _expect(decode(c))} for c in cases
+        {"rule": rule, "cells": _bits(c), "expect": _expect(decode(c))} for rule, c in cases
     ]
     return {"encode": encode_vectors, "decode": decode_vectors}
 

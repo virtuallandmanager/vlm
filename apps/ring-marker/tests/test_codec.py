@@ -73,6 +73,15 @@ def test_radial_scratch_hits_few_symbols():
     assert decode(bad) == Decoded(0x2E3D4C5B, 0, 4)
 
 
+def test_two_erased_symbols_plus_one_error_counts_three():
+    bad = list(encode(0x2E3D4C5B))
+    for j in (2, 4):
+        for c in symbol_cells(j):
+            bad[c] = None
+    bad[symbol_cells(8)[3]] = not bad[symbol_cells(8)[3]]
+    assert decode(bad) == Decoded(0x2E3D4C5B, 0, 3)
+
+
 def test_random_cells_rarely_decode():
     rng = random.Random(1)
     hits = sum(
@@ -100,7 +109,7 @@ def from_bits(s):
 
 def test_vectors_file_matches():
     data = json.loads(VECTORS.read_text())
-    assert len(data["encode"]) == 12 and len(data["decode"]) == 12
+    assert len(data["encode"]) == 12 and len(data["decode"]) == 13
     for e in data["encode"]:
         assert to_bits(encode(e["id"], e["version"])) == e["cells"]
     for d in data["decode"]:
@@ -109,3 +118,10 @@ def test_vectors_file_matches():
             assert got is None
         else:
             assert got == Decoded(d["expect"]["id"], d["expect"]["version"], d["expect"]["corrected"])
+
+
+def test_vectors_cover_rejection_rules():
+    from ringmarker.codec import _decode
+    reasons = {_decode(from_bits(d["cells"]))[1] for d in json.loads(VECTORS.read_text())["decode"]}
+    assert {"too_many_erasures", "degree_deficient_locator", "too_many_errors",
+            "over_budget", "root_count"} <= reasons
