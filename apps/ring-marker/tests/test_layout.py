@@ -63,14 +63,37 @@ def _rects(i, d):
     return [s for s in marker_shapes(i, d) if isinstance(s, Rect)]
 
 
+def corner_cell_grids(rects, d):
+    """The four corners (TL, TR, BR, BL) as 3x3 on/off grids in a common frame: row 0 / col 0 is the square at the plaque corner."""
+    sc = d / 140
+    half, step, inset = plaque_side(d) / 2, 4 * sc, 3 * sc
+    grids = {q: [[False] * 3 for _ in range(3)] for q in range(4)}
+    for r in rects:
+        right, top = r.x0 > 0, r.y0 > 0
+        q = {(False, True): 0, (True, True): 1, (True, False): 2, (False, False): 3}[(right, top)]
+        col = (half - inset - r.x1 if right else r.x0 + half - inset) / step
+        row = (half - inset - r.y1 if top else r.y0 + half - inset) / step
+        grids[q][round(row)][round(col)] = True
+    return [grids[q] for q in range(4)]
+
+
+def test_corner_grid_helper_detects_identical_corners():
+    base = [Rect(-72, 60, -68, 64), Rect(-68, 56, -64, 60)]  # two squares at the top-left, plaque half 75, inset 3
+    mirrored = base + [Rect(-r.x1, r.y0, -r.x0, r.y1) for r in base]
+    mirrored += [Rect(r.x0, -r.y1, r.x1, -r.y0) for r in mirrored]
+    grids = corner_cell_grids(mirrored, 140)
+    assert grids[0] == grids[1] == grids[2] == grids[3] and grids[0][0][0] and grids[0][1][1]
+    # and the real marker's corners are not all equal
+    assert len({str(g) for g in corner_cell_grids(_rects(ID140, D140), D140)}) > 1
+
+
 def test_corner_marks_differ():
     a, b = _rects(ID140, D140), _rects(ID140 ^ 1, D140)
     assert a != b  # same diameter: only the ID differs
     assert any(a != _rects(i, D140) for i in range(ID140 + 1, ID140 + 6))
-    # the four corners of one marker are not all the same pattern
-    half = plaque_side(D140) / 2
-    pats = {q: frozenset((round(r.x0 - (half if q[0] else -half)), round(r.y0 - (half if q[1] else -half))) for r in a if (r.x0 > 0, r.y0 > 0) == q) for q in [(0, 1), (1, 1), (1, 0), (0, 0)]}
-    assert len(set(pats.values())) > 1
+    grids = corner_cell_grids(a, D140)
+    assert all(g[0][0] for g in grids)  # the outermost square is always on
+    assert any(g != grids[0] for g in grids[1:])  # corners differ in content, not just position
     for r in _rects(ID120, D120) + a:
         near = min(abs(r.x0), abs(r.x1)), min(abs(r.y0), abs(r.y1))
         assert math.hypot(*near) >= 72 - 1e-9
