@@ -60,4 +60,12 @@ class RingTrackerTest {
     repeat(2) { t.update(listOf(det(7, version = 3), det(7))) }
     assertEquals(listOf(0), t.update(listOf(det(7, version = 15), det(7))).map { it.version })
   }
+
+  @Test
+  fun nearestToCentrePicksTheMiddleMarker() {
+    fun at(id: Long, x: Double, y: Double) = RingDetection(id, 0, 0, x, y, 50.0, 45.0, 0.0, 0.0)
+    val picked = nearestToCentre(listOf(at(1, 100.0, 100.0), at(2, 650.0, 470.0), at(3, 1200.0, 900.0)), 1280, 960)
+    assertEquals(2L, picked?.id)
+    assertEquals(null, nearestToCentre(emptyList(), 1280, 960))
+  }
 }

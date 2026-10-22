@@ -14,4 +14,16 @@ class CameraStatusTest {
     )
     CameraStatus.values().forEach { assertTrue(it.name, cameraStatusText(it).isNotBlank()) }
   }
+
+  @Test
+  fun failureStreakReportsOnceAtTheLimit() {
+    val f = FailureStreak(3)
+    assertEquals(listOf(false, false, true, false), List(4) { f.fail() })
+    f.succeed()
+    assertEquals(listOf(false, false, true), List(3) { f.fail() })
+    f.succeed()
+    f.fail()
+    f.succeed()
+    assertEquals(listOf(false, false, true), List(3) { f.fail() })
+  }
 }

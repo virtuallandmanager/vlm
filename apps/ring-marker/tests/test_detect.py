@@ -10,7 +10,7 @@ from ringmarker import detect as D
 from ringmarker.detect import detect
 from ringmarker.layout import CODE_RINGS_REF
 from ringmarker.render import render
-from ringmarker.testset import generate
+from ringmarker.testset import FOCAL_PX, generate
 
 # Range images allowed to give no detection at all (never a wrong id). Only d = 1.8 m may appear here.
 KNOWN_MISSES: set[str] = set()
@@ -62,6 +62,22 @@ def test_testset_cases(testset, detections):
             if err > 3:
                 failures.append((e["name"], "centre error", round(err, 2)))
     assert not failures, failures
+
+
+def test_distance_from_finder_size(testset, detections):
+    """FOCAL_PX * (D / 2) / semi-major recovers each marker's distance to within 3 cm."""
+    manifest, _ = testset
+    diameter_m = {i: d / 1000 for i, d in TEST_MARKERS.values()}
+    errors = []
+    for e in manifest:
+        if e["expect"] != "ids" or e["name"] in KNOWN_MISSES:
+            continue
+        for m in e["markers"]:
+            (d,) = [d for d in detections[e["name"]] if d.marker_id == m["id"]]
+            est = FOCAL_PX * (diameter_m[m["id"]] / 2) / d.ellipse[2]
+            if abs(est - m["distance_m"]) > 0.03:
+                errors.append((e["name"], round(est, 3), m["distance_m"]))
+    assert not errors, errors
 
 
 def test_non_finite_samples_are_off_image():

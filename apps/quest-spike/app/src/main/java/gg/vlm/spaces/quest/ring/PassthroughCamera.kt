@@ -62,7 +62,9 @@ data class CameraIntrinsics(
  * [onFrame] and [onRunStart] run on one frame thread that lives as long as this object, so they never overlap,
  * across every [start] and [stop]: state they share (a RingDetector, a RingTracker) needs no locking. Frames that
  * arrive while [onFrame] is busy are dropped. Its `gray` array is reused for the next frame, so it is only valid during
- * the call (row j starts at j * `stride`). An exception from [onFrame] is logged and that frame skipped.
+ * the call (row j starts at j * `stride`). An exception from [onFrame] is logged (the first one per run) and that
+ * frame skipped; after [FAILURES_TO_ERROR] such frames in a row the status is [CameraStatus.ERROR] until a frame
+ * succeeds, which reports [CameraStatus.RUNNING] again. RUNNING is reported after the first frame [onFrame] handles.
  * [onStatus] runs on a background thread. Every failure (no permission, no camera, open errors, disconnects) ends in a
  * [CameraStatus], never an exception. Call [close] when done to end the threads.
  */
@@ -103,6 +105,7 @@ class PassthroughCamera(
     /** Only touched on the frame thread. */
     var reportedRunning = false
     var loggedFrameError = false
+    val failures = FailureStreak(FAILURES_TO_ERROR)
   }
 
   /** Opens the camera and starts delivering frames. Does nothing if it is already running or starting. */
@@ -346,19 +349,30 @@ class PassthroughCamera(
     } finally {
       image.close()
     }
+    if (!current(r)) return
+    val ok =
+        try {
+          onFrame(gray, width, height, stride, timestamp)
+          true
+        } catch (e: Exception) {
+          if (!r.loggedFrameError) {
+            r.loggedFrameError = true
+            Log.w(TAG, "Frame processing failed; skipping such frames", e)
+          }
+          false
+        }
     // Re-checked so a run that failed or stopped meanwhile never reports RUNNING after its ERROR.
     if (!current(r)) return
-    if (!r.reportedRunning) {
-      r.reportedRunning = true
-      onStatus(CameraStatus.RUNNING)
-    }
-    try {
-      onFrame(gray, width, height, stride, timestamp)
-    } catch (e: Exception) {
-      if (!r.loggedFrameError) {
-        r.loggedFrameError = true
-        Log.w(TAG, "Frame processing failed; skipping such frames", e)
+    if (ok) {
+      r.failures.succeed()
+      if (!r.reportedRunning) {
+        r.reportedRunning = true
+        onStatus(CameraStatus.RUNNING)
       }
+    } else if (r.failures.fail()) {
+      Log.w(TAG, "$FAILURES_TO_ERROR frames in a row failed: reporting a camera error until one succeeds")
+      r.reportedRunning = false
+      onStatus(CameraStatus.ERROR)
     }
   }
 
@@ -393,10 +407,23 @@ class PassthroughCamera(
     const val HEIGHT = 960
     private const val TAG = "VLMSpaces"
     private const val MAX_IMAGES = 2
+    /** Consecutive failed frames (an exception from onFrame) before the status turns to ERROR. */
+    const val FAILURES_TO_ERROR = 30
     const val PERMISSION_HEADSET_CAMERA = "horizonos.permission.HEADSET_CAMERA"
     private const val KEY_SOURCE = "com.meta.extra_metadata.camera_source"
     private const val KEY_POSITION = "com.meta.extra_metadata.position"
     private const val SOURCE_PASSTHROUGH = 0
     private const val POSITION_LEFT = 0
+  }
+}
+
+/** Counts failures in a row: [fail] is true once, on the failure that reaches [limit]; [succeed] restarts the count. */
+class FailureStreak(private val limit: Int) {
+  private var count = 0
+
+  fun fail(): Boolean = ++count == limit
+
+  fun succeed() {
+    count = 0
   }
 }

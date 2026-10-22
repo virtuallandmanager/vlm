@@ -1,5 +1,7 @@
 package gg.vlm.spaces.quest.ring
 
+import kotlin.math.hypot
+
 /**
  * Turns per-frame ring detections into trusted ones: an ID counts only if it is [registered], its
  * format version is in [SUPPORTED_VERSIONS], and it was detected in [framesToAgree] frames in a row. A frame that misses an ID resets its count, so one bad
@@ -30,3 +32,7 @@ class RingTracker(private val registered: Set<Long>, private val framesToAgree: 
     val SUPPORTED_VERSIONS = setOf(0)
   }
 }
+
+/** The detection whose centre is nearest the middle of a [width] x [height] image, or null if there are none. */
+fun nearestToCentre(detections: List<RingDetection>, width: Int, height: Int): RingDetection? =
+    detections.minByOrNull { hypot(it.cx - width / 2.0, it.cy - height / 2.0) }

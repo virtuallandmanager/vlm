@@ -44,6 +44,7 @@ import gg.vlm.spaces.quest.ring.WALL_TOLERANCE_M
 import gg.vlm.spaces.quest.ring.WallPlane
 import gg.vlm.spaces.quest.ring.cameraToWorld
 import gg.vlm.spaces.quest.ring.markerInCamera
+import gg.vlm.spaces.quest.ring.nearestToCentre
 import gg.vlm.spaces.quest.ring.wallHeading
 import java.io.File
 import kotlin.math.atan2
@@ -76,7 +77,8 @@ class MainActivity : AppSystemActivity(), PanelActions {
   private var lastUiUpdate = 0L
   /**
    * Each test marker's recent world positions, one per camera frame while it's tracked, cleared when it's lost (main
-   * thread); and which marker was tracked most recently.
+   * thread); and the marker Align uses: of those tracked in the latest calibrated frame, the one nearest the image
+   * centre (kept when none is tracked, so Align can still say it was lost).
    */
   private val markerPositions = RING_TEST_MARKERS.associate { it.id to PoseAverager(AVERAGE_FRAMES, MIN_FRAMES) }
   private var lastMarkerId: Long? = null
@@ -212,12 +214,16 @@ class MainActivity : AppSystemActivity(), PanelActions {
   }
 
   /**
-   * Puts the scene centre on the floor under the last tracked test marker, with VLM north perpendicular to the scanned
-   * wall the marker is on, pointing into the wall (away from you, as before). Without a wall near the marker, north
-   * points from you through the marker, and the panel says so. A spike stand-in for the real alignment, which stores a
+   * Puts the scene centre on the floor under the tracked test marker nearest the middle of the camera view, with VLM
+   * north perpendicular to the scanned wall the marker is on, pointing into the wall (away from you, as before).
+   * Without a wall near the marker, north points from you through the marker, and the panel says so. A spike stand-in for the real alignment, which stores a
    * position and a heading per marker.
    */
   override fun alignToMarker() {
+    if (camera.intrinsics == null) {
+      state.placement = "No camera calibration: marker positions are unknown, so Align can't place the scene"
+      return
+    }
     val id = lastMarkerId
     val avg = id?.let { markerPositions.getValue(it) }
     if (id == null || avg == null || avg.count == 0) {
@@ -307,11 +313,14 @@ class MainActivity : AppSystemActivity(), PanelActions {
         val w = cameraToWorld(p, head, k)
         markerPositions.getValue(id).add(Vec3(w.x.toDouble(), w.y.toDouble(), w.z.toDouble()))
       }
-      lastMarkerId = id
+    }
+    if (k != null) {
+      nearestToCentre(frame.tracked.filter { it.id in readings }, PassthroughCamera.WIDTH, PassthroughCamera.HEIGHT)
+          ?.let { lastMarkerId = it.id }
     }
     frame.last?.let { d ->
       state.lastRing =
-          "Last ring: ${nameOf(d.id)} at (${"%.0f".format(d.cx)}, ${"%.0f".format(d.cy)}) px, " +
+          "Last raw ring (one frame, not yet trusted): ${nameOf(d.id)} at (${"%.0f".format(d.cx)}, ${"%.0f".format(d.cy)}) px, " +
               "${"%.0f".format(2 * d.semiMajor)} px across, turned ${"%.0f".format(d.rotationDeg)}°, " +
               "${d.corrected} fixed"
     }

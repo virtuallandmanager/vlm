@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RingCodecTest {
@@ -61,8 +62,32 @@ class RingCodecTest {
     assertEquals("3ZZZZZZ", RingCodec.codeOf(0xFFFFFFFFL))
   }
 
+  /** Each test marker's id and diameter match the Python test set's range images and the encode vectors. */
   @Test
   fun testMarkersAreThePythonOnes() {
-    assertEquals(0x2E3D4C5BL, RING_TEST_MARKERS.first { it.name == "RING140" }.id)
+    assertEquals(listOf("RING120", "RING140", "RING170"), RING_TEST_MARKERS.map { it.name })
+    val manifest =
+        Json.parseToJsonElement(File("../../ring-marker/testset/manifest.json").readText()).jsonArray
+    val encodedIds =
+        Json.parseToJsonElement(File("../../ring-marker/vectors/codec.json").readText())
+            .jsonObject["encode"]!!
+            .jsonArray
+            .map { it.jsonObject }
+            .filter { it["version"]!!.jsonPrimitive.content == "0" }
+            .map { it["id"]!!.jsonPrimitive.content.toLong() }
+    for (m in RING_TEST_MARKERS) {
+      val drawn =
+          manifest
+              .map { it.jsonObject }
+              .filter { it["name"]!!.jsonPrimitive.content.startsWith("range-${m.name}-") }
+              .flatMap { it["markers"]!!.jsonArray }
+              .map { it.jsonObject }
+      assertTrue("${m.name} has range images", drawn.isNotEmpty())
+      for (d in drawn) {
+        assertEquals(m.name, m.id, d["id"]!!.jsonPrimitive.content.toLong())
+        assertEquals(m.name, m.diameter * 1000, d["diameter_mm"]!!.jsonPrimitive.content.toDouble(), 1e-9)
+      }
+      assertTrue("${m.name} in the encode vectors", m.id in encodedIds)
+    }
   }
 }
