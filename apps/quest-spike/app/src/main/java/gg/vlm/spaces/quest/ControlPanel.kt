@@ -91,6 +91,10 @@ fun ControlPanel(s: AppState, act: PanelActions) {
         }
       }
       Line(s.occlusionStatus)
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Switch(s.showWalls, act::setShowWalls)
+        Line("Show scanned walls (check they match the real ones)")
+      }
 
       Section("Marker test")
       Line(s.markerStatus)

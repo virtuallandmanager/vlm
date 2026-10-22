@@ -22,8 +22,10 @@ class AppState {
   var poseLines by mutableStateOf(RING_TEST_MARKERS.map { "  not in view" })
   var wallStatus by mutableStateOf("Room scan not loaded yet")
   var lastRing by mutableStateOf("No ring marker read yet")
-  var occlusion by mutableStateOf(Occlusion.OFF)
-  var occlusionStatus by mutableStateOf("Virtual things show through real walls")
+  var occlusion by mutableStateOf(Occlusion.DEPTH)
+  var occlusionStatus by mutableStateOf("Hidden behind anything real the headset's depth sees")
+  /** Tints the room scan's walls and ceiling, to check they line up with the real ones. */
+  var showWalls by mutableStateOf(false)
 }
 
 /** What hides the virtual scene where something real is in front of it. */
@@ -44,4 +46,5 @@ interface PanelActions {
   fun setModelTurn(on: Boolean)
   fun resetReadings()
   fun setOcclusion(o: Occlusion)
+  fun setShowWalls(on: Boolean)
 }

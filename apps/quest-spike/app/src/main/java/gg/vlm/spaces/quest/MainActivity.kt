@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.compose.ui.platform.ComposeView
 import com.meta.spatial.compose.ComposeFeature
 import com.meta.spatial.compose.ComposeViewPanelRegistration
+import com.meta.spatial.core.Color4
 import com.meta.spatial.core.Entity
 import com.meta.spatial.core.Pose
 import com.meta.spatial.core.Quaternion
@@ -23,6 +24,7 @@ import com.meta.spatial.mruk.MRUKPlane
 import com.meta.spatial.mruk.MRUKSpawnMode
 import com.meta.spatial.mruk.hasLabel
 import com.meta.spatial.okhttp3.OkHttpAssetFetcher
+import com.meta.spatial.runtime.AlphaMode
 import com.meta.spatial.runtime.EnvironmentDepthMode
 import com.meta.spatial.runtime.NetworkedAssetLoader
 import com.meta.spatial.runtime.ReferenceSpace
@@ -30,6 +32,7 @@ import com.meta.spatial.runtime.SceneMaterial
 import com.meta.spatial.toolkit.AppSystemActivity
 import com.meta.spatial.toolkit.DpPerMeterDisplayOptions
 import com.meta.spatial.toolkit.Grabbable
+import com.meta.spatial.toolkit.Material
 import com.meta.spatial.toolkit.PanelRegistration
 import com.meta.spatial.toolkit.PanelStyleOptions
 import com.meta.spatial.toolkit.QuadShapeOptions
@@ -99,6 +102,8 @@ class MainActivity : AppSystemActivity(), PanelActions {
   private var roomAttempts = 0
   /** The room scan's walls and ceiling drawn as passthrough, while [Occlusion.WALLS] is on (main thread). */
   private var occluders: AnchorProceduralMesh? = null
+  /** The same surfaces tinted, while [AppState.showWalls] is on (main thread). */
+  private var wallTint: AnchorProceduralMesh? = null
   private var sceneReady = false
 
   private lateinit var camera: PassthroughCamera
@@ -123,7 +128,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
     val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
     state.feedUrl = intent.getStringExtra("feedUrl") ?: prefs.getString("feedUrl", null) ?: state.feedUrl
     state.worldKey = intent.getStringExtra("worldKey") ?: prefs.getString("worldKey", null) ?: ""
-    state.occlusion = prefs.getString("occlusion", null)?.let { n -> Occlusion.entries.firstOrNull { it.name == n } } ?: Occlusion.OFF
+    state.occlusion = prefs.getString("occlusion", null)?.let { n -> Occlusion.entries.firstOrNull { it.name == n } } ?: Occlusion.DEPTH
 
     camera =
         PassthroughCamera(
@@ -224,6 +229,11 @@ class MainActivity : AppSystemActivity(), PanelActions {
   override fun setOcclusion(o: Occlusion) {
     state.occlusion = o
     getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("occlusion", o.name).apply()
+    applyOcclusion()
+  }
+
+  override fun setShowWalls(on: Boolean) {
+    state.showWalls = on
     applyOcclusion()
   }
 
@@ -424,6 +434,15 @@ class MainActivity : AppSystemActivity(), PanelActions {
           AnchorProceduralMesh(mruk, mapOf(MRUKLabel.WALL_FACE to config, MRUKLabel.CEILING to config), MRUKSpawnMode.NONE)
               .also { it.spawnMeshes(mruk.rooms) }
     }
+    if (!state.showWalls) {
+      wallTint?.destroy()
+      wallTint = null
+    } else if (wallTint == null && roomLoaded) {
+      val tint = AnchorProceduralMeshConfig(Material(baseColor = Color4(0.3f, 0.8f, 1f, 0.35f), unlit = true, alphaMode = AlphaMode.TRANSLUCENT.mode), false)
+      wallTint =
+          AnchorProceduralMesh(mruk, mapOf(MRUKLabel.WALL_FACE to tint, MRUKLabel.CEILING to tint), MRUKSpawnMode.NONE)
+              .also { it.spawnMeshes(mruk.rooms) }
+    }
     state.occlusionStatus =
         when (o) {
           Occlusion.OFF -> "Virtual things show through real walls"
@@ -485,6 +504,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
 
   override fun onSpatialShutdown() {
     occluders?.destroy()
+    wallTint?.destroy()
     camera.close()
     feed.stop()
     scope.cancel()
