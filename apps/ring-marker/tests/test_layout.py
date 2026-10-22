@@ -78,7 +78,7 @@ def corner_cell_grids(rects, d):
 
 
 def test_corner_grid_helper_detects_identical_corners():
-    base = [Rect(-72, 60, -68, 64), Rect(-68, 56, -64, 60)]  # two squares at the top-left, plaque half 75, inset 3
+    base = [Rect(-72, 68, -68, 72), Rect(-68, 64, -64, 68)]  # two squares at the top-left, plaque half 75, inset 3
     mirrored = base + [Rect(-r.x1, r.y0, -r.x0, r.y1) for r in base]
     mirrored += [Rect(r.x0, -r.y1, r.x1, -r.y0) for r in mirrored]
     grids = corner_cell_grids(mirrored, 140)
