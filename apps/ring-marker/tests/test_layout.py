@@ -1,5 +1,7 @@
 import math
 
+import pytest
+
 from ringmarker.codec import TEST_MARKERS, encode
 from ringmarker.layout import RING_RADII, Disc, Rect, Sector, marker_shapes, plaque_side
 from ringmarker.render import render
@@ -36,10 +38,12 @@ def test_shapes_inside_plaque():
             assert s.r <= D140 / 2
 
 
-def test_runs_match_cells():
-    shapes = marker_shapes(ID140, D140)
-    cells = encode(ID140)
-    for ring, (r0, r1) in enumerate(RING_RADII(D140)):
+@pytest.mark.parametrize("name", list(TEST_MARKERS))
+def test_runs_match_cells(name):
+    mid, dia = TEST_MARKERS[name]
+    shapes = marker_shapes(mid, dia)
+    cells = encode(mid)
+    for ring, (r0, r1) in enumerate(RING_RADII(dia)):
         rm = (r0 + r1) / 2
         for k in range(24):
             a = math.radians(15 * k + 7.5)
@@ -55,15 +59,27 @@ def test_finder_gap():
         assert not covers(finder[0], r * math.sin(math.radians(a)), r * math.cos(math.radians(a)))
 
 
-def test_corner_marks_differ():
-    def rects(i, d):
-        return [s for s in marker_shapes(i, d) if isinstance(s, Rect)]
+def _rects(i, d):
+    return [s for s in marker_shapes(i, d) if isinstance(s, Rect)]
 
-    a, b = rects(ID120, D120), rects(ID140, D140)
-    assert a != b
-    for r in a + b:
-        near = min(abs(r.x0), abs(r.x1)) , min(abs(r.y0), abs(r.y1))
+
+def test_corner_marks_differ():
+    a, b = _rects(ID140, D140), _rects(ID140 ^ 1, D140)
+    assert a != b  # same diameter: only the ID differs
+    assert any(a != _rects(i, D140) for i in range(ID140 + 1, ID140 + 6))
+    # the four corners of one marker are not all the same pattern
+    half = plaque_side(D140) / 2
+    pats = {q: frozenset((round(r.x0 - (half if q[0] else -half)), round(r.y0 - (half if q[1] else -half))) for r in a if (r.x0 > 0, r.y0 > 0) == q) for q in [(0, 1), (1, 1), (1, 0), (0, 0)]}
+    assert len(set(pats.values())) > 1
+    for r in _rects(ID120, D120) + a:
+        near = min(abs(r.x0), abs(r.x1)), min(abs(r.y0), abs(r.y1))
         assert math.hypot(*near) >= 72 - 1e-9
+
+
+def test_diameter_limit():
+    with pytest.raises(ValueError):
+        marker_shapes(ID140, 256.5)
+    marker_shapes(ID140, 256)
 
 
 def test_scales_with_diameter():
@@ -77,11 +93,13 @@ def test_render_samples():
     assert img.getpixel((300, 300 - 66 * 4)) > 180
 
 
-def test_render_matches_cells():
-    img = render(ID140, D140, 4)
-    cells = encode(ID140)
+@pytest.mark.parametrize("name", list(TEST_MARKERS))
+def test_render_matches_cells(name):
+    mid, dia = TEST_MARKERS[name]
+    img = render(mid, dia, 4)
+    cells = encode(mid)
     c = img.width / 2
-    for ring, (r0, r1) in enumerate(RING_RADII(D140)):
+    for ring, (r0, r1) in enumerate(RING_RADII(dia)):
         rm = (r0 + r1) / 2
         for k in range(24):
             a = math.radians(15 * k + 7.5)

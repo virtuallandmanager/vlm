@@ -2,20 +2,24 @@ import struct
 import zipfile
 from collections import Counter
 
+import pytest
+
 from ringmarker.codec import TEST_MARKERS
 from ringmarker.printfiles import build_meshes, write_print_files
 
 ID140, D140 = TEST_MARKERS["RING140"]
 
 
-def test_stl_is_watertight():
-    for mesh in build_meshes(ID140, D140):
-        edges = Counter()
+@pytest.mark.parametrize("name", list(TEST_MARKERS))
+def test_stl_is_watertight(name):
+    mid, dia = TEST_MARKERS[name]
+    for mesh in build_meshes(mid, dia):
+        directed = Counter()
         for a, b, c in mesh.tris:
             for e in ((a, b), (b, c), (c, a)):
-                edges[frozenset(e)] += 1
-        assert all(n == 2 for n in edges.values())
-        # outward winding: signed volume is positive
+                directed[e] += 1
+        # every edge is used once in each direction (closed, consistently oriented)
+        assert all(n == 1 and directed.get((e[1], e[0])) == 1 for e, n in directed.items())
         vol = 0.0
         for a, b, c in mesh.tris:
             pa, pb, pc = (mesh.verts[i] for i in (a, b, c))
@@ -30,6 +34,7 @@ def test_files_written(tmp_path):
     )
     for p in paths:
         assert p.stat().st_size > 0
+    assert b"DCTDecode" not in (tmp_path / "RING140-paper.pdf").read_bytes()
     assert zipfile.is_zipfile(tmp_path / "RING140.3mf")
     data = (tmp_path / "RING140-raised.stl").read_bytes()
     assert struct.unpack("<I", data[80:84])[0] * 50 + 84 == len(data)

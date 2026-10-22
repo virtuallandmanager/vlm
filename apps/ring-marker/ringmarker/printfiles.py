@@ -207,7 +207,7 @@ def paper_pdf(marker_id: int, diameter_mm: float, name: str, path: Path) -> None
         d.rectangle([mm(15) + round(t / 25.4 * DPI) - (2 if t else 0), bar_y - mm(2), mm(15) + round(t / 25.4 * DPI) + 1, bar_y], fill=0)
     d.text((mm(118), bar_y - mm(1)), "100 mm", font=small, fill=0)
     d.text((mm(15), bar_y + mm(8)), f"{name}   {code_of(marker_id)}   vlm.gg/s/{code_of(marker_id)}", font=small, fill=0)
-    page.save(path, "PDF", resolution=DPI)
+    page.convert("1", dither=Image.NONE).save(path, "PDF", resolution=DPI)  # 1-bit: lossless (CCITT/flate), no JPEG
 
 
 def write_print_files(marker_id: int, diameter_mm: float, out_dir: Path, name: str) -> list[Path]:

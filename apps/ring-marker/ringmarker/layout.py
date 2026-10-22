@@ -19,6 +19,7 @@ PER_RING = 24
 CELL_DEG = 360.0 / PER_RING
 CORNER_SQUARE_REF = 4.0
 CORNER_INSET_REF = 3.0
+MAX_DIAMETER = 256.0
 
 
 @dataclass(frozen=True)
@@ -110,6 +111,8 @@ def corner_grids(marker_id: int, diameter_mm: float) -> list[tuple[float, float,
 
 
 def marker_shapes(marker_id: int, diameter_mm: float, version: int = 0) -> list[Sector | Disc | Rect]:
+    if diameter_mm > MAX_DIAMETER:
+        raise ValueError(f"diameter {diameter_mm} mm exceeds the {MAX_DIAMETER:.0f} mm limit")
     cells = encode(marker_id, version)
     shapes: list[Sector | Disc | Rect] = []
     f0, f1 = finder_radii(diameter_mm)
