@@ -58,6 +58,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
 
   private val readings = TestMarker.ALL.associate { it.code to MarkerReading() }
   private var lastUiUpdate = 0L
+  private var lastQrLog = 0L
   private var lastMarkerPose: Pose? = null
 
   override fun registerFeatures(): List<SpatialFeature> {
@@ -202,10 +203,18 @@ class MainActivity : AppSystemActivity(), PanelActions {
 
   private fun trackMarkers(head: Pose) {
     val seen = mutableSetOf<String>()
-    for (e in Query.where { has(TrackedQrCode.id) }.eval()) {
+    val qrs = Query.where { has(TrackedQrCode.id) }.eval().toList()
+    val logNow = System.currentTimeMillis() - lastQrLog > 1000
+    if (logNow) {
+      lastQrLog = System.currentTimeMillis()
+      Log.i(TAG, "qr entities: ${qrs.size}")
+    }
+    for (e in qrs) {
       val payload = e.getComponent<TrackedQrCode>().payload
       val tracked = e.tryGetComponent<TrackingStatus>()?.isTracked ?: true
-      val pose = e.tryGetComponent<Transform>()?.transform ?: continue
+      val pose = e.tryGetComponent<Transform>()?.transform
+      if (logNow) Log.i(TAG, "qr '$payload' tracked=$tracked pose=$pose")
+      if (pose == null) continue
       val distance = (pose.t - head.t).length().toDouble()
       if (tracked) state.lastQr = "Last QR: $payload at ${"%.2f".format(distance)} m"
       val code = TestMarker.codeFromQr(payload) ?: continue
