@@ -31,8 +31,9 @@ fun cameraStatusText(s: CameraStatus): String =
     }
 
 /**
- * The camera's calibration, as Camera2 reports it: [fx], [fy], [cx], [cy] in pixels from
- * `LENS_INTRINSIC_CALIBRATION`, and the lens pose from `LENS_POSE_TRANSLATION` (metres) and
+ * The camera's calibration: [fx], [fy], [cx], [cy] in pixels from `LENS_INTRINSIC_CALIBRATION` (in
+ * [PassthroughCamera.intrinsics], scaled to the [PassthroughCamera.WIDTH] × [PassthroughCamera.HEIGHT] stream by
+ * [scaleIntrinsics]), and the lens pose from `LENS_POSE_TRANSLATION` (metres) and
  * `LENS_POSE_ROTATION` (quaternion x, y, z, w).
  */
 data class CameraIntrinsics(
@@ -75,7 +76,7 @@ class PassthroughCamera(
   private val context = context.applicationContext
   private val manager = context.getSystemService(CameraManager::class.java)
 
-  /** The chosen camera's calibration, once [start] has found it. */
+  /** The chosen camera's calibration at the stream size, once [start] has found it. */
   @Volatile
   var intrinsics: CameraIntrinsics? = null
     private set
@@ -187,21 +188,50 @@ class PassthroughCamera(
       val k = chars.get(CameraCharacteristics.LENS_INTRINSIC_CALIBRATION)
       val t = chars.get(CameraCharacteristics.LENS_POSE_TRANSLATION)
       val q = chars.get(CameraCharacteristics.LENS_POSE_ROTATION)
-      intrinsics =
+      val raw =
           if (k != null && k.size >= 4)
               CameraIntrinsics(k[0].toDouble(), k[1].toDouble(), k[2].toDouble(), k[3].toDouble(),
                   t ?: FloatArray(0), q ?: FloatArray(0))
           else null
+      // Android gives LENS_INTRINSIC_CALIBRATION against the pre-correction active array (the active array when
+      // distortion correction is on); Meta's passthrough samples scale it from the pre-correction array to the stream.
+      val preCorrection = chars.get(CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE)
+      val active = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
+      val ref = preCorrection ?: active
+      intrinsics =
+          if (raw != null && ref != null && ref.width() > 0 && ref.height() > 0)
+              scaleIntrinsics(raw, ref.width(), ref.height(), WIDTH, HEIGHT)
+          else raw
       if (!loggedCamera) {
         loggedCamera = true
-        val active = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
-        Log.i(TAG, "Passthrough camera $id at ${WIDTH}x$HEIGHT, active array $active, intrinsics: ${intrinsics ?: "none"}")
+        val reference = chars.get(CameraCharacteristics.LENS_POSE_REFERENCE)
+        val refText =
+            when {
+              ref == null -> "none, so intrinsics are used unscaled"
+              ref === preCorrection -> "pre-correction active array $ref"
+              else -> "active array $ref (no pre-correction array)"
+            }
+        Log.i(TAG, "Passthrough camera $id at ${WIDTH}x$HEIGHT; pre-correction array $preCorrection, active array $active")
+        Log.i(TAG, "Intrinsics reference: $refText")
+        Log.i(TAG, "Raw intrinsics: ${raw ?: "none"}")
+        Log.i(TAG, "Intrinsics at ${WIDTH}x$HEIGHT: ${intrinsics ?: "none"}")
+        Log.i(TAG, "Lens pose reference: ${lensPoseReferenceName(reference)}")
       }
       return id
     }
     Log.i(TAG, "No left passthrough camera; cameras: ${seen.joinToString().ifEmpty { "none" }}")
     return null
   }
+
+  private fun lensPoseReferenceName(r: Int?): String =
+      when (r) {
+        null -> "not reported"
+        CameraCharacteristics.LENS_POSE_REFERENCE_PRIMARY_CAMERA -> "PRIMARY_CAMERA ($r)"
+        CameraCharacteristics.LENS_POSE_REFERENCE_GYROSCOPE -> "GYROSCOPE ($r)"
+        CameraCharacteristics.LENS_POSE_REFERENCE_UNDEFINED -> "UNDEFINED ($r)"
+        CameraCharacteristics.LENS_POSE_REFERENCE_AUTOMOTIVE -> "AUTOMOTIVE ($r)"
+        else -> "unknown ($r)"
+      }
 
   /** A Meta vendor key's value, or null where the device doesn't know the key (any non-Meta device). */
   private fun vendorKey(chars: CameraCharacteristics, name: String): Int? =

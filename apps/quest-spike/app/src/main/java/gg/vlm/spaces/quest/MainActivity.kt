@@ -13,7 +13,12 @@ import com.meta.spatial.core.Pose
 import com.meta.spatial.core.Quaternion
 import com.meta.spatial.core.SpatialFeature
 import com.meta.spatial.core.Vector3
+import com.meta.spatial.mruk.MRUKAnchor
 import com.meta.spatial.mruk.MRUKFeature
+import com.meta.spatial.mruk.MRUKLabel
+import com.meta.spatial.mruk.MRUKLoadDeviceResult
+import com.meta.spatial.mruk.MRUKPlane
+import com.meta.spatial.mruk.hasLabel
 import com.meta.spatial.okhttp3.OkHttpAssetFetcher
 import com.meta.spatial.runtime.NetworkedAssetLoader
 import com.meta.spatial.runtime.ReferenceSpace
@@ -24,6 +29,7 @@ import com.meta.spatial.toolkit.PanelRegistration
 import com.meta.spatial.toolkit.PanelStyleOptions
 import com.meta.spatial.toolkit.QuadShapeOptions
 import com.meta.spatial.toolkit.Transform
+import com.meta.spatial.toolkit.TransformParent
 import com.meta.spatial.toolkit.UIPanelSettings
 import com.meta.spatial.toolkit.createPanelEntity
 import com.meta.spatial.vr.VRFeature
@@ -33,6 +39,11 @@ import gg.vlm.spaces.quest.ring.RING_TEST_MARKERS
 import gg.vlm.spaces.quest.ring.RingDetection
 import gg.vlm.spaces.quest.ring.RingDetector
 import gg.vlm.spaces.quest.ring.RingTracker
+import gg.vlm.spaces.quest.ring.WALL_TOLERANCE_M
+import gg.vlm.spaces.quest.ring.WallPlane
+import gg.vlm.spaces.quest.ring.cameraToWorld
+import gg.vlm.spaces.quest.ring.markerInCamera
+import gg.vlm.spaces.quest.ring.wallHeading
 import java.io.File
 import kotlin.math.atan2
 import kotlin.math.sqrt
@@ -44,7 +55,8 @@ import kotlinx.coroutines.cancel
 /**
  * VLM Spaces for Meta Quest 3 / 3S (spike). Shows a VLM scene life-size in passthrough, fed by the same long-poll feed
  * as the Hyperfy app, and runs the marker detection-range test with VLM's ring markers, found in the left passthrough
- * camera's frames by [RingDetector].
+ * camera's frames by [RingDetector]. A marker's position comes from its size and place in the image; its heading comes
+ * from the scanned wall it's on (MRUK), not from the ellipse's squash.
  */
 class MainActivity : AppSystemActivity(), PanelActions {
   private lateinit var mruk: MRUKFeature
@@ -61,8 +73,14 @@ class MainActivity : AppSystemActivity(), PanelActions {
 
   private val readings = RING_TEST_MARKERS.associate { it.id to MarkerReading() }
   private var lastUiUpdate = 0L
-  /** The last tracked test marker's pose. Null until Task 8 turns ring detections into poses. */
-  private var lastMarkerPose: Pose? = null
+  /** Each test marker's last world position (main thread), and which marker was tracked most recently. */
+  private val markerPositions = HashMap<Long, Vector3>()
+  private var lastMarkerId: Long? = null
+
+  /** The room scan's walls, re-read from MRUK on each panel update once the room has loaded (main thread). */
+  private var walls: List<WallPlane> = emptyList()
+  private var roomRequested = false
+  private var roomLoaded = false
 
   private lateinit var camera: PassthroughCamera
   /** Only used on the camera's frame thread (PassthroughCamera runs one frame at a time). */
@@ -120,6 +138,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
     scene.updateIBLEnvironment("environment.env")
     renderer.place(centre, yaw)
     panel = Entity.createPanelEntity(R.id.control_panel, Transform(Pose(Vector3(-0.5f, 1.3f, 0.8f))), Grabbable())
+    if (checkSelfPermission(PERMISSION_USE_SCENE) == PackageManager.PERMISSION_GRANTED) loadRoom()
   }
 
   override fun registerPanels(): List<PanelRegistration> =
@@ -187,23 +206,33 @@ class MainActivity : AppSystemActivity(), PanelActions {
   }
 
   /**
-   * Puts the scene centre on the floor under the last tracked test marker, with north pointing through the marker
-   * away from you. A spike stand-in for the real alignment (which stores a position and a heading per marker).
+   * Puts the scene centre on the floor under the last tracked test marker, with VLM north perpendicular to the scanned
+   * wall the marker is on, pointing into the wall (away from you, as before). Without a wall near the marker, north
+   * points from you through the marker, and the panel says so. A spike stand-in for the real alignment, which stores a
+   * position and a heading per marker.
    */
   override fun alignToMarker() {
-    val m = lastMarkerPose ?: run {
+    val id = lastMarkerId
+    val m = id?.let { markerPositions[it] } ?: run {
       state.placement = "No marker tracked yet: look at a printed marker first"
       return
     }
     val head = scene.getViewerPose()
-    val toMarker = flat(m.t - head.t) ?: Vector3(0f, 0f, 1f)
-    // The marker's normal, flattened; a marker lying flat has none, so fall back to its up axis.
-    var dir = flat(m.q.times(Vector3(0f, 0f, 1f))) ?: flat(m.q.times(Vector3(0f, 1f, 0f))) ?: toMarker
-    if (dir.dot(toMarker) < 0) dir = -dir
-    centre = Vector3(m.t.x, 0f, m.t.z)
-    yaw = atan2(dir.x.toDouble(), dir.z.toDouble())
+    if (roomLoaded) walls = readWalls()
+    val heading = wallHeading(m, walls, head.t)
+    centre = Vector3(m.x, 0f, m.z)
+    if (heading != null) {
+      // wallHeading points into the room; north points into the wall.
+      yaw = Math.toRadians(heading + 180.0)
+      state.placement = "Aligned to ${nameOf(id)}: centre under it, north into its wall (wall faces ${"%.1f".format(heading)}°)"
+    } else {
+      val toMarker = flat(m - head.t) ?: Vector3(0f, 0f, 1f)
+      yaw = atan2(toMarker.x.toDouble(), toMarker.z.toDouble())
+      state.placement =
+          "Aligned to ${nameOf(id)} without a wall (${noWallReason()}): centre under it, north from you through it"
+    }
     renderer.place(centre, yaw)
-    state.placement = "Aligned to the marker (centre under it, north through it)"
+    Log.i(TAG, "Aligned to ${nameOf(id)} at $m, yaw ${"%.2f".format(Math.toDegrees(yaw))}°, wall heading $heading")
   }
 
   override fun setModelTurn(on: Boolean) {
@@ -217,6 +246,8 @@ class MainActivity : AppSystemActivity(), PanelActions {
       r.lostAt.clear()
     }
     readings.values.forEach { r -> if (r.tracked) r.observe(false, 0.0) }
+    markerPositions.clear()
+    lastMarkerId = null
     state.lastRing = "No ring marker read yet"
     lastUiUpdate = 0
   }
@@ -232,17 +263,31 @@ class MainActivity : AppSystemActivity(), PanelActions {
   }
 
   /**
-   * Feeds the newest camera frame's trusted rings into the test markers' readings. The distance stays 0.0 until
-   * Task 8 turns a detection into a position.
+   * Feeds the newest camera frame's trusted rings into the test markers' readings, with each one's distance from the
+   * camera, and turns each into a world position with the current head pose (see [cameraToWorld]). Without the
+   * camera's calibration the distance is unknown and recorded as 0.
    */
   private fun trackRings(head: Pose) {
     // A frame older than STALE_NS (camera stalled or stopped) tracks nothing.
     val frame = latestRings?.takeIf { SystemClock.elapsedRealtimeNanos() - it.receivedNs < STALE_NS } ?: NO_RINGS
-    val seen = frame.tracked.mapTo(HashSet()) { it.id }
+    val k = camera.intrinsics
+    val seen = frame.tracked.associateBy { it.id }
     for ((id, r) in readings) {
-      val tracked = id in seen
-      if (tracked && !r.tracked) Log.i(TAG, "Ring ${nameOf(id)} tracked")
-      if (tracked || r.tracked) r.observe(tracked, 0.0)
+      val d = seen[id]
+      if (d == null) {
+        if (r.tracked) r.observe(false, 0.0)
+        continue
+      }
+      if (!r.tracked) Log.i(TAG, "Ring ${nameOf(id)} tracked")
+      val diameter = RING_TEST_MARKERS.first { it.id == id }.diameter
+      if (k == null) {
+        r.observe(true, 0.0)
+        continue
+      }
+      val p = markerInCamera(d, k, diameter)
+      r.observe(true, sqrt(p.x * p.x + p.y * p.y + p.z * p.z))
+      markerPositions[id] = cameraToWorld(p, head, k)
+      lastMarkerId = id
     }
     frame.last?.let { d ->
       state.lastRing =
@@ -254,8 +299,81 @@ class MainActivity : AppSystemActivity(), PanelActions {
     val now = System.currentTimeMillis()
     if (now - lastUiUpdate < 100) return
     lastUiUpdate = now
+    if (roomLoaded) walls = readWalls()
     state.markerLines =
         RING_TEST_MARKERS.map { m -> "${m.name} (${(m.diameter * 1000).toInt()} mm): ${readings.getValue(m.id).summary}" }
+    state.poseLines = RING_TEST_MARKERS.map { m -> poseLine(m.id, head, k != null) }
+  }
+
+  /** The panel's position and wall line for one test marker. */
+  private fun poseLine(id: Long, head: Pose, calibrated: Boolean): String {
+    if (!calibrated) return "  no camera calibration: position unknown"
+    val p = markerPositions[id] ?: return "  position not known yet"
+    val wall = wallHeading(p, walls, head.t)?.let { "wall faces ${"%.1f".format(it)}°" } ?: "no wall"
+    return "  at (${"%.2f".format(p.x)}, ${"%.2f".format(p.y)}, ${"%.2f".format(p.z)}) m · $wall"
+  }
+
+  // ── room scan ────────────────────────────────────────────────────────
+
+  /**
+   * Loads the room scan from the headset, once. It doesn't ask for a new scan when there is none (that would start
+   * Space Setup unprompted); the panel says how to make one instead.
+   */
+  private fun loadRoom() {
+    if (roomRequested) return
+    roomRequested = true
+    state.wallStatus = "Loading the room scan…"
+    mruk.loadSceneFromDevice(false).whenComplete { result, error ->
+      runOnUiThread {
+        if (error != null) Log.w(TAG, "Room scan failed to load", error)
+        val ok = error == null && result == MRUKLoadDeviceResult.SUCCESS
+        walls = if (ok) readWalls() else emptyList()
+        roomLoaded = ok
+        state.wallStatus =
+            when {
+              ok && walls.isNotEmpty() -> "Room scan loaded: ${walls.size} walls"
+              ok || result == MRUKLoadDeviceResult.ERROR_NO_ROOMS_FOUND -> NO_ROOM_SCAN
+              else -> "Room scan failed to load (${result ?: error?.javaClass?.simpleName}): no wall heading"
+            }
+        Log.i(TAG, "Room scan: $result, ${walls.size} walls")
+      }
+    }
+  }
+
+  private fun noWallReason(): String =
+      when {
+        !roomLoaded -> "no room scan"
+        walls.isEmpty() -> "the room scan has no walls"
+        else -> "the marker isn't within ${"%.0f".format(WALL_TOLERANCE_M * 100)} cm of a wall"
+      }
+
+  /** Every wall face in the loaded rooms, in world space. MRUK walls are planes in their anchor's local x-y. */
+  private fun readWalls(): List<WallPlane> =
+      mruk.rooms.flatMap { it.walls }.mapNotNull { e ->
+        val anchor = e.tryGetComponent<MRUKAnchor>()
+        if (anchor != null && !anchor.hasLabel(MRUKLabel.WALL_FACE)) return@mapNotNull null
+        val plane = e.tryGetComponent<MRUKPlane>() ?: return@mapNotNull null
+        val pose = worldPose(e) ?: return@mapNotNull null
+        val mid = Vector3((plane.min.x + plane.max.x) / 2, (plane.min.y + plane.max.y) / 2, 0f)
+        WallPlane(
+            pose.times(mid),
+            pose.q.times(Vector3(0f, 0f, 1f)),
+            (plane.max.x - plane.min.x) / 2,
+            (plane.max.y - plane.min.y) / 2,
+        )
+      }
+
+  /** [e]'s pose in world space: its Transform, under its TransformParent chain (MRUK parents child anchors). */
+  private fun worldPose(e: Entity): Pose? {
+    var pose = e.tryGetComponent<Transform>()?.transform ?: return null
+    var parent = e.tryGetComponent<TransformParent>()?.entity
+    var depth = 0
+    while (parent != null && parent != Entity.nullEntity() && depth++ < 8) {
+      val up = parent.tryGetComponent<Transform>()?.transform ?: break
+      pose = up.times(pose)
+      parent = parent.tryGetComponent<TransformParent>()?.entity
+    }
+    return pose
   }
 
   private fun nameOf(id: Long): String =
@@ -266,6 +384,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
     if (requestCode != REQUEST_PERMISSIONS) return
     val sceneGranted = checkSelfPermission(PERMISSION_USE_SCENE) == PackageManager.PERMISSION_GRANTED
     state.markerStatus = if (sceneGranted) HOLD_MARKER else "Spatial data permission denied: room walls are unavailable"
+    if (sceneGranted) loadRoom() else state.wallStatus = "Spatial data permission denied: no wall heading"
     if (cameraPermitted()) camera.start() else state.cameraStatus = CameraStatus.NO_PERMISSION
   }
 
@@ -297,6 +416,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
     private const val REQUEST_PERMISSIONS = 1
     private const val STALE_NS = 250_000_000L
     private val NO_RINGS = RingFrame(emptyList(), null, 0, 0)
+    private const val NO_ROOM_SCAN = "No room scan: set up your space in Quest settings to get wall heading"
     private const val HOLD_MARKER = "Hold a printed ring marker in view, then walk away and back"
   }
 }

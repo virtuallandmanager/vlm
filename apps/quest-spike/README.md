@@ -7,19 +7,22 @@ What it does:
 - Long-polls `GET {feedUrl}/api/hyperfy/feed` with a world key, like the Hyperfy app and the Apple spikes.
 - **Images** are unlit, double-sided textured quads. **Videos** are video panels (ExoPlayer, muted, mp4 and HLS). **Models** load straight from their URL; only `.glb` works, anything else shows a pink box. **Sounds** aren't played yet.
 - Puts the scene's centre, VLM (8, 0, 8), on the floor 2 m ahead of you with VLM north pointing away from you. The panel has **Place 2 m ahead**, **Turn ±15°** and **Align to the marker**.
-- **Marker test:** Horizon OS tracks QR codes itself (MRUK trackables, Horizon OS v78+). The panel shows, per test marker, where tracking started ("found at"), where it stopped, and the QR size the headset measured, with a warning when it's more than 3% off the print.
+- **Marker test:** VLM's ring markers (`../ring-marker`) are found in the left passthrough camera's frames (Camera2, 1280 × 960, Horizon OS v74+). The distance comes from the ring's size in the image, the position from that and the head pose, and the heading from the scanned wall the marker is on. The panel shows, per test marker, where tracking started ("found at"), where it stopped, the current distance, the position and the wall heading.
 
 Code:
 
 - `ScenePlan.kt` ports `packages/vlm-hyperfy-app/src/plan.ts` (via the Swift spike). `Mapping.kt` is the transform. Spatial SDK is left-handed, Y up, +Z forward, the same frame as Decentraland, so positions and scales carry over unchanged and rotations are Decentraland's Euler degrees in YXZ order. `MappingTest` checks that Spatial SDK's own `Quaternion` agrees.
 - `FeedClient.kt`, `SceneRenderer.kt`, `MainActivity.kt`, `ControlPanel.kt` (Compose), `MarkerReadings.kt`.
+- `ring/`: `RingCodec.kt` and `RingDetector.kt` port `../ring-marker/ringmarker/codec.py` and `detect.py`, and their tests run against that folder's vectors and synthetic test set. `RingTracker.kt` trusts an ID after 3 frames in a row. `PassthroughCamera.kt` is the camera. `RingPose.kt` turns a detection into a position and finds the wall heading.
 
 Spike shortcuts and open questions:
 
 - The world key is kept in plain `SharedPreferences`.
 - **Model facing is unverified.** Decentraland shows a glTF x-mirrored; RealityKit and three.js needed a half turn about Y to match. Spatial SDK converts glTFs to its own frame, and its docs don't say how. The **Turn models half a turn** switch (on by default) flips between the two. Compare a model with an obvious front against the same scene in Decentraland and keep whichever matches.
 - **Image facing is also unverified.** Images are double-sided, so they always show, but one side may read mirrored. Check text on an image from the front.
-- The QR tracking pose's axes aren't documented. **Align to the marker** doesn't rely on them: it puts the centre under the marker and points north through the marker, away from you.
+- **The lens pose's frame is unconfirmed.** `cameraToWorld` reads `LENS_POSE_ROTATION` and `LENS_POSE_TRANSLATION` as Android defines them, relative to the head pose Spatial SDK reports. The app logs the raw values and `LENS_POSE_REFERENCE` once at start; the headset check below confirms or corrects this.
+- The camera's intrinsics are scaled from the sensor's pre-correction active array to the 1280 × 960 stream (centre crop, then scale, as in Meta's passthrough samples). Both raw and scaled values are logged.
+- The marker's world position uses the head pose at the moment the panel updates, not at the frame's capture time, so it lags while you move your head. Stand still before pressing **Align to the marker**.
 - Clicks, sounds and analytics aren't implemented.
 
 ## Build
@@ -55,7 +58,7 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties   # once
    adb shell am start -n gg.vlm.spaces.quest/.MainActivity
    ```
    The app is also listed in the headset's library under **Unknown sources**.
-4. On first launch, allow **spatial data**: QR tracking needs it.
+4. On first launch, allow the **camera** (marker detection) and **spatial data** (the room's walls, for heading). Heading also needs a room scan: if the panel says "No room scan", set up your space in the Quest settings (**Physical space** → **Space setup**) and restart the app.
 5. **Connect a scene.** Paste a world key into the panel (vlm.gg → **Deploy** → **Your Hyperfy worlds** → **Connect a world**) and press **Connect**. The status should read `Live · version xxxxxxxx · N items`. Typing a long key with the headset keyboard is slow, so you can also pass it once from the Mac; the app saves it:
    ```sh
    adb shell am start -n gg.vlm.spaces.quest/.MainActivity --es worldKey 'vlmw_…'
@@ -74,10 +77,43 @@ adb reverse tcp:8787 tcp:8787
 adb shell am start -n gg.vlm.spaces.quest/.MainActivity --es feedUrl http://127.0.0.1:8787 --es worldKey fixture
 ```
 
-## Marker detection-range test
+## Ring marker test
 
-Use the same printed markers as the Apple spikes (`../ar-spike/markers/`, see that README). Quest tracks the QR code inside the marker, which is 25 of the marker's 33 modules across: 91 mm on `TEST12` and 129 mm on `TEST17`.
+Print the test markers from `../ring-marker` (see its README: print at actual size, check the 100 mm bar, matte filament). There are three sizes: `RING120`, `RING140` and `RING170`. Only these IDs count, and only after 3 frames in a row agree.
 
-- Mount the marker at about 1.5 m, in good light. Walk back until it's lost, then walk toward it until it's found again. **"Found at"** is the number that matters. **Reset readings** clears them.
-- Meta's notes: QR tracking works best close up and in good light, updates slowly, and doesn't read codes with logos. Our codes are plain version 2, so they're fine.
-- **Align to the marker** then drops the scene where the marker is, as a rough preview of marker alignment.
+What the panel shows, per marker:
+
+- **found at / lost at:** the distance when tracking started and stopped. **Reset readings** clears them.
+- **tracking at:** the current distance from the camera, from the ring's size in the image (`fx × radius / semi-major axis`).
+- **at (x, y, z) m:** the marker's world position.
+- **wall faces …° / no wall:** the heading of the scanned wall within 10 cm of the marker, or "no wall".
+
+**Align to the marker** puts the scene centre on the floor under the last tracked marker, with VLM north perpendicular to its wall, pointing into the wall. Without a wall it falls back to north pointing from you through the marker, and the panel says why.
+
+Logs worth checking (`adb logcat -s VLMSpaces`): the camera's raw and scaled intrinsics, the lens pose and its reference, the room scan's wall count, and each alignment.
+
+### Headset check
+
+1. Tape `RING140` at 1.5 m on a wall.
+2. Stand 1.0 m away, measured with a tape measure. The panel's distance should read 1.00 ± 0.02 m. If it's off by a constant factor, the lens pose or fx is wrong: check the logged values.
+3. Press **Align to the marker**. The scene's north should be perpendicular to the wall within 1°. Check it against a floor tile line or a tape line on the floor.
+
+### Range test
+
+For each size, walk back from the marker head-on, at 30° and at 45° off its face. Record "found at" (walking in) and "lost at" (walking out). The targets are found from 0.6–1.8 m, up to 45° off the face, with heading within 1° and position within 2 cm at 1.8 m.
+
+The table is filled in from the range test on the headset; it hasn't been run yet.
+
+| Marker | Angle | Found at | Lost at |
+|---|---|---|---|
+| `RING120` (120 mm) | 0° | — | — |
+| `RING120` (120 mm) | 30° | — | — |
+| `RING120` (120 mm) | 45° | — | — |
+| `RING140` (140 mm) | 0° | — | — |
+| `RING140` (140 mm) | 30° | — | — |
+| `RING140` (140 mm) | 45° | — | — |
+| `RING170` (170 mm) | 0° | — | — |
+| `RING170` (170 mm) | 30° | — | — |
+| `RING170` (170 mm) | 45° | — | — |
+
+Distance at 1.0 m (tape measure): —. Heading error after **Align to the marker**: —.

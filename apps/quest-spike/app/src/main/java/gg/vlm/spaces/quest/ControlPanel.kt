@@ -87,7 +87,11 @@ fun ControlPanel(s: AppState, act: PanelActions) {
       Line(s.markerStatus)
       val cam = s.cameraStatus
       if (cam != null) Line(cameraStatusText(cam), if (cam == CameraStatus.STARTING || cam == CameraStatus.RUNNING) Color(0xFFE0E0E0) else Color(0xFFFF8A80))
-      s.markerLines.forEach { Line(it, mono = true) }
+      Line(s.wallStatus)
+      s.markerLines.forEachIndexed { i, line ->
+        Line(line, mono = true)
+        s.poseLines.getOrNull(i)?.let { Line(it, Color(0xFFB0BEC5), mono = true) }
+      }
       Line(s.lastRing, mono = true)
       OutlinedButton(onClick = act::resetReadings) { Text("Reset readings") }
     }
