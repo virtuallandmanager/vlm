@@ -64,6 +64,16 @@ def test_testset_cases(testset, detections):
     assert not failures, failures
 
 
+def test_non_finite_samples_are_off_image():
+    mask = np.full((4, 5), 2, np.int8)
+    xs = np.array([1.0, np.nan, 1.0, np.inf, -np.inf])
+    ys = np.array([1.0, 1.0, np.nan, 1.0, 1.0])
+    with np.errstate(all="raise"):
+        assert D._nearest(mask, xs, ys).tolist() == [2, 0, 0, 0, 0]
+    assert D._inside(xs, ys, 5, 4).tolist() == [True, False, False, False, False]
+    assert D._inside(np.array([0.0, 4.0, 4.01]), np.array([3.0, 0.0, 0.0]), 5, 4).tolist() == [True, True, False]
+
+
 def test_known_misses_only_far():
     for name in KNOWN_MISSES:
         assert name.startswith("range-") and "-1.8-" in name

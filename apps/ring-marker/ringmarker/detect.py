@@ -54,7 +54,7 @@ marker; 1 "ref mm" is a millimetre at the 140 mm reference size (layout.py), so 
    light - dark < 14 (2 x the threshold offset). Ring i (CODE_RINGS_REF, 0 outermost) has mid radius m = (r0 + r1) / 2;
    cell k is centred at mu = beta_g + 15 k + 7.5. v = mean of 5 bilinear samples at (m/70, mu), (m/70, mu - 3),
    (m/70, mu + 3), ((m - 1)/70, mu), ((m + 1)/70, mu). If any of the 5 sample points lies outside
-   [0, W - 1] x [0, H - 1], the cell can't be judged and is erased (None) without reading it. Bilinear: clamp x to [0, W - 1 - 1e-6] (y likewise),
+   [0, W - 1] x [0, H - 1] (or is NaN / infinite), the cell can't be judged and is erased (None) without reading it. Bilinear: clamp x to [0, W - 1 - 1e-6] (y likewise),
    x0 = floor(x), fx = x - x0, the usual 4-pixel blend. t = (v - dark) / (light - dark): on if t < 0.4, off if
    t > 0.6, else erased (None). Cell index = ring * 24 + k.
 7. Decode with codec.decode; drop the candidate unless it decodes.
@@ -76,7 +76,8 @@ Implementation choices beyond the brief's wording (needed at every range, not on
 - Trimmed refits (10% of the median radius, 3 passes) remove the remaining stray edges (the gap's rays,
   background). One pass is enough for the test set; a marker cut by the image border needs 3 (a cluster of inner
   edges on the cut side drags the first fit, and the frame was then up to 11 px off; with 3 passes <= 0.5 px).
-- Rays that leave the image are kept; off-image samples are undecided. Cells with any sample off the image are
+- Rays that leave the image are kept; off-image samples are undecided, and so are non-finite ones (NaN or
+  infinite coordinates, as from a degenerate frame). Cells with any sample off the image are
   erasures (step 6).
 - Rejections: a singular normal matrix (step 4), an all-LIGHT / no-LIGHT / no-DARK gap ring (step 5) and
   light - dark < 14 (step 6) reject the candidate; nothing raises.
@@ -187,13 +188,20 @@ def dot_candidates(dark: np.ndarray, with_order: bool = False):
 # ---- sampling --------------------------------------------------------------------------------------------------
 
 def _nearest(mask: np.ndarray, xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
-    """Mask value at the nearest pixel; 0 off the image."""
+    """Mask value at the nearest pixel; 0 off the image (non-finite coordinates are off the image)."""
     h, w = mask.shape
+    finite = np.isfinite(xs) & np.isfinite(ys)
+    xs, ys = np.where(finite, xs, -1.0), np.where(finite, ys, -1.0)
     xi, yi = np.floor(xs + 0.5).astype(np.int64), np.floor(ys + 0.5).astype(np.int64)
-    inside = (xi >= 0) & (xi < w) & (yi >= 0) & (yi < h)
+    inside = finite & (xi >= 0) & (xi < w) & (yi >= 0) & (yi < h)
     out = np.zeros(xs.shape, np.int8)
     out[inside] = mask[yi[inside], xi[inside]]
     return out
+
+
+def _inside(xs: np.ndarray, ys: np.ndarray, w: int, h: int) -> np.ndarray:
+    """Sample points within [0, W - 1] x [0, H - 1]; non-finite coordinates are outside."""
+    return np.isfinite(xs) & np.isfinite(ys) & (xs >= 0) & (xs <= w - 1) & (ys >= 0) & (ys <= h - 1)
 
 
 def _bilinear(gray: np.ndarray, xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
@@ -394,7 +402,7 @@ def read_cells(gray, masks, dot):
             mu = beta_g + k * CELL_DEG + CELL_DEG / 2
             beta = np.array([mu, mu - CELL_DELTA_DEG, mu + CELL_DELTA_DEG, mu, mu])
             sx, sy = fr.to_image(rho, beta)
-            if (sx < 0).any() or (sx > w - 1).any() or (sy < 0).any() or (sy > h - 1).any():
+            if not _inside(sx, sy, w, h).all():
                 cells.append(None)  # can't be judged: erasure
                 continue
             t = (_bilinear(gray, sx, sy).mean() - dark) / (light - dark)

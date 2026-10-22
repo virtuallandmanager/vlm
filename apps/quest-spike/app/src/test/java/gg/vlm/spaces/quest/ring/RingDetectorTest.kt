@@ -158,6 +158,20 @@ class RingDetectorTest {
   }
 
   @Test
+  fun nonFiniteSamplesAreOffImage() {
+    val nan = Double.NaN
+    val inf = Double.POSITIVE_INFINITY
+    assertEquals(6, RingDetector.nearestIndex(1.0, 1.0, 5, 4))
+    for ((x, y) in listOf(nan to 1.0, 1.0 to nan, inf to 1.0, -inf to 1.0, 1.0 to inf)) {
+      assertEquals("nearest ($x, $y)", -1, RingDetector.nearestIndex(x, y, 5, 4))
+      assertTrue("inside ($x, $y)", !RingDetector.inside(x, y, 5, 4))
+    }
+    assertEquals(-1, RingDetector.nearestIndex(4.6, 1.0, 5, 4))
+    assertTrue(RingDetector.inside(0.0, 3.0, 5, 4) && RingDetector.inside(4.0, 0.0, 5, 4))
+    assertTrue(!RingDetector.inside(4.01, 0.0, 5, 4))
+  }
+
+  @Test
   fun blobOrderIsRasterOrder() {
     val w = 60
     val img = ByteArray(w * 60) { 200.toByte() }

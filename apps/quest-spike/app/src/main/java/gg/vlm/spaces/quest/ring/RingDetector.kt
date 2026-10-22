@@ -448,12 +448,10 @@ class RingDetector {
 
   // ---- sampling ---------------------------------------------------------------------------------
 
-  /** Mask state at the nearest pixel; undecided (0) off the image. */
+  /** Mask state at the nearest pixel; undecided (0) off the image or at non-finite coordinates. */
   private fun nearest(x: Double, y: Double): Byte {
-    val xi = floor(x + 0.5)
-    val yi = floor(y + 0.5)
-    if (xi < 0 || yi < 0 || xi >= w || yi >= h) return 0
-    return state[yi.toInt() * w + xi.toInt()]
+    val i = nearestIndex(x, y, w, h)
+    return if (i < 0) 0 else state[i]
   }
 
   private fun px(x: Int, y: Int): Double = (gray[y * stride + x].toInt() and 0xFF).toDouble()
@@ -621,9 +619,7 @@ class RingDetector {
         sample(fr, 3, rIn, mu)
         sample(fr, 4, rOut, mu)
         var off = false
-        for (q in 0 until 5) {
-          if (cellX[q] < 0 || cellX[q] > w - 1 || cellY[q] < 0 || cellY[q] > h - 1) off = true
-        }
+        for (q in 0 until 5) if (!inside(cellX[q], cellY[q], w, h)) off = true
         if (off) continue // can't be judged: erasure
         var v = 0.0
         for (q in 0 until 5) v += bilinear(cellX[q], cellY[q])
@@ -641,6 +637,22 @@ class RingDetector {
   }
 
   internal companion object {
+    /**
+     * Index of the pixel nearest (x, y) in a [w] x [h] image, or -1 off the image. NaN or infinite
+     * coordinates are off the image (NaN.toInt() would otherwise be pixel 0).
+     */
+    fun nearestIndex(x: Double, y: Double, w: Int, h: Int): Int {
+      if (!x.isFinite() || !y.isFinite()) return -1
+      val xi = floor(x + 0.5)
+      val yi = floor(y + 0.5)
+      if (xi < 0 || yi < 0 || xi >= w || yi >= h) return -1
+      return yi.toInt() * w + xi.toInt()
+    }
+
+    /** Whether (x, y) lies in [0, w - 1] x [0, h - 1]; NaN or infinite coordinates do not. */
+    fun inside(x: Double, y: Double, w: Int, h: Int): Boolean =
+        x.isFinite() && y.isFinite() && x >= 0 && x <= w - 1 && y >= 0 && y <= h - 1
+
     private const val DARK: Byte = 1
     private const val LIGHT: Byte = -1
     private const val OFFSET = 7
