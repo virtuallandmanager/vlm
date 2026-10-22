@@ -22,7 +22,7 @@ Spike shortcuts and open questions:
 - **Image facing is also unverified.** Images are double-sided, so they always show, but one side may read mirrored. Check text on an image from the front.
 - **The lens pose's frame is unconfirmed.** `cameraToWorld` reads `LENS_POSE_ROTATION` and `LENS_POSE_TRANSLATION` as Android defines them, relative to the head pose Spatial SDK reports. The app logs the raw values and `LENS_POSE_REFERENCE` once at start; the headset check below confirms or corrects this.
 - The camera's intrinsics are scaled from the sensor's pre-correction active array to the 1280 × 960 stream (centre crop, then scale, as in Meta's passthrough samples). Both raw and scaled values are logged.
-- The marker's world position uses the head pose at the moment the panel updates, not at the frame's capture time, so it lags while you move your head. Stand still before pressing **Align to the marker**.
+- The marker's world position uses the head pose at the tick after the frame, not at the frame's capture time, so it lags while you move your head. Averaging over 15 frames smooths noise but not lag: stand still before pressing **Align to the marker**.
 - Clicks, sounds and analytics aren't implemented.
 
 ## Build
@@ -85,10 +85,10 @@ What the panel shows, per marker:
 
 - **found at / lost at:** the distance when tracking started and stopped. **Reset readings** clears them.
 - **tracking at:** the current distance from the camera, from the ring's size in the image (`fx × radius / semi-major axis`).
-- **at (x, y, z) m:** the marker's world position.
+- **at (x, y, z) m ±N cm over K:** the marker's world position, averaged over its last 15 camera frames, and the spread (the largest distance of one frame's position from that mean). It clears when the marker is lost.
 - **wall faces …° / no wall:** the heading of the scanned wall within 10 cm of the marker, or "no wall".
 
-**Align to the marker** puts the scene centre on the floor under the last tracked marker, with VLM north perpendicular to its wall, pointing into the wall. Without a wall it falls back to north pointing from you through the marker, and the panel says why.
+**Align to the marker** needs the marker in view for at least 5 frames (otherwise it says "Hold still, gathering frames"). It puts the scene centre on the floor under the averaged position, with VLM north perpendicular to its wall, pointing into the wall. Without a wall it falls back to north pointing from you through the marker, and the panel says why.
 
 Logs worth checking (`adb logcat -s VLMSpaces`): the camera's raw and scaled intrinsics, the lens pose and its reference, the room scan's wall count, and each alignment.
 

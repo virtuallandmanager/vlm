@@ -115,3 +115,40 @@ private fun flatUnit(v: Vector3): Vec3? {
   val len = sqrt((v.x * v.x + v.z * v.z).toDouble())
   return if (len < 1e-3) null else Vec3(v.x / len, 0.0, v.z / len)
 }
+
+/**
+ * The last [capacity] world positions of one marker, averaged before the scene snaps to it: one sample carries head
+ * pose noise and lag, the mean of several far less. [ready] once there are at least [minCount]. Clear it when the
+ * marker is lost, so a mean always comes from the current sighting. Not thread-safe (main thread only).
+ */
+class PoseAverager(private val capacity: Int = 15, private val minCount: Int = 5) {
+  private val samples = ArrayDeque<Vec3>()
+
+  val count: Int
+    get() = samples.size
+
+  val ready: Boolean
+    get() = samples.size >= minCount
+
+  fun add(p: Vec3) {
+    if (samples.size == capacity) samples.removeFirst()
+    samples.addLast(p)
+  }
+
+  fun clear() {
+    samples.clear()
+  }
+
+  /** The mean position, or null with no samples. */
+  fun mean(): Vec3? {
+    if (samples.isEmpty()) return null
+    val n = samples.size.toDouble()
+    return Vec3(samples.sumOf { it.x } / n, samples.sumOf { it.y } / n, samples.sumOf { it.z } / n)
+  }
+
+  /** The largest distance of a sample from the [mean], in metres, or null with no samples. */
+  fun spread(): Double? {
+    val m = mean() ?: return null
+    return samples.maxOf { sqrt((it.x - m.x) * (it.x - m.x) + (it.y - m.y) * (it.y - m.y) + (it.z - m.z) * (it.z - m.z)) }
+  }
+}

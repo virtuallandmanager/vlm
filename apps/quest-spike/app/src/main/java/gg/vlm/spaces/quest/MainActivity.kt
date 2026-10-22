@@ -35,6 +35,7 @@ import com.meta.spatial.toolkit.createPanelEntity
 import com.meta.spatial.vr.VRFeature
 import gg.vlm.spaces.quest.ring.CameraStatus
 import gg.vlm.spaces.quest.ring.PassthroughCamera
+import gg.vlm.spaces.quest.ring.PoseAverager
 import gg.vlm.spaces.quest.ring.RING_TEST_MARKERS
 import gg.vlm.spaces.quest.ring.RingDetection
 import gg.vlm.spaces.quest.ring.RingDetector
@@ -73,9 +74,14 @@ class MainActivity : AppSystemActivity(), PanelActions {
 
   private val readings = RING_TEST_MARKERS.associate { it.id to MarkerReading() }
   private var lastUiUpdate = 0L
-  /** Each test marker's last world position (main thread), and which marker was tracked most recently. */
-  private val markerPositions = HashMap<Long, Vector3>()
+  /**
+   * Each test marker's recent world positions, one per camera frame while it's tracked, cleared when it's lost (main
+   * thread); and which marker was tracked most recently.
+   */
+  private val markerPositions = RING_TEST_MARKERS.associate { it.id to PoseAverager(AVERAGE_FRAMES, MIN_FRAMES) }
   private var lastMarkerId: Long? = null
+  /** The camera frame ([RingFrame.receivedNs]) whose rings were last added to [markerPositions]. */
+  private var lastAveragedNs = 0L
 
   /** The room scan's walls, re-read from MRUK on each panel update once the room has loaded (main thread). */
   private var walls: List<WallPlane> = emptyList()
@@ -213,10 +219,17 @@ class MainActivity : AppSystemActivity(), PanelActions {
    */
   override fun alignToMarker() {
     val id = lastMarkerId
-    val m = id?.let { markerPositions[it] } ?: run {
-      state.placement = "No marker tracked yet: look at a printed marker first"
+    val avg = id?.let { markerPositions.getValue(it) }
+    if (id == null || avg == null || avg.count == 0) {
+      state.placement = "No marker in view: look at a printed marker first"
       return
     }
+    if (!avg.ready) {
+      state.placement = "Hold still, gathering frames (${avg.count} of $MIN_FRAMES)"
+      return
+    }
+    val mean = avg.mean()!!
+    val m = Vector3(mean.x.toFloat(), mean.y.toFloat(), mean.z.toFloat())
     val head = scene.getViewerPose()
     if (roomLoaded) walls = readWalls()
     val heading = wallHeading(m, walls, head.t)
@@ -232,7 +245,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
           "Aligned to ${nameOf(id)} without a wall (${noWallReason()}): centre under it, north from you through it"
     }
     renderer.place(centre, yaw)
-    Log.i(TAG, "Aligned to ${nameOf(id)} at $m, yaw ${"%.2f".format(Math.toDegrees(yaw))}°, wall heading $heading")
+    Log.i(TAG, "Aligned to ${nameOf(id)} at $m (mean of ${avg.count}, spread ${"%.1f".format(avg.spread()!! * 100)} cm), yaw ${"%.2f".format(Math.toDegrees(yaw))}°, wall heading $heading")
   }
 
   override fun setModelTurn(on: Boolean) {
@@ -246,7 +259,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
       r.lostAt.clear()
     }
     readings.values.forEach { r -> if (r.tracked) r.observe(false, 0.0) }
-    markerPositions.clear()
+    markerPositions.values.forEach { it.clear() }
     lastMarkerId = null
     state.lastRing = "No ring marker read yet"
     lastUiUpdate = 0
@@ -272,10 +285,14 @@ class MainActivity : AppSystemActivity(), PanelActions {
     val frame = latestRings?.takeIf { SystemClock.elapsedRealtimeNanos() - it.receivedNs < STALE_NS } ?: NO_RINGS
     val k = camera.intrinsics
     val seen = frame.tracked.associateBy { it.id }
+    // Ticks outnumber camera frames: each frame adds one sample per marker, not one per tick.
+    val newFrame = frame.receivedNs != lastAveragedNs
+    lastAveragedNs = frame.receivedNs
     for ((id, r) in readings) {
       val d = seen[id]
       if (d == null) {
         if (r.tracked) r.observe(false, 0.0)
+        markerPositions.getValue(id).clear()
         continue
       }
       if (!r.tracked) Log.i(TAG, "Ring ${nameOf(id)} tracked")
@@ -286,7 +303,10 @@ class MainActivity : AppSystemActivity(), PanelActions {
       }
       val p = markerInCamera(d, k, diameter)
       r.observe(true, sqrt(p.x * p.x + p.y * p.y + p.z * p.z))
-      markerPositions[id] = cameraToWorld(p, head, k)
+      if (newFrame) {
+        val w = cameraToWorld(p, head, k)
+        markerPositions.getValue(id).add(Vec3(w.x.toDouble(), w.y.toDouble(), w.z.toDouble()))
+      }
       lastMarkerId = id
     }
     frame.last?.let { d ->
@@ -308,9 +328,12 @@ class MainActivity : AppSystemActivity(), PanelActions {
   /** The panel's position and wall line for one test marker. */
   private fun poseLine(id: Long, head: Pose, calibrated: Boolean): String {
     if (!calibrated) return "  no camera calibration: position unknown"
-    val p = markerPositions[id] ?: return "  position not known yet"
-    val wall = wallHeading(p, walls, head.t)?.let { "wall faces ${"%.1f".format(it)}°" } ?: "no wall"
-    return "  at (${"%.2f".format(p.x)}, ${"%.2f".format(p.y)}, ${"%.2f".format(p.z)}) m · $wall"
+    val avg = markerPositions.getValue(id)
+    val p = avg.mean() ?: return "  not in view"
+    val wall = wallHeading(Vector3(p.x.toFloat(), p.y.toFloat(), p.z.toFloat()), walls, head.t)
+        ?.let { "wall faces ${"%.1f".format(it)}°" } ?: "no wall"
+    val spread = "±${"%.1f".format(avg.spread()!! * 100)} cm over ${avg.count}"
+    return "  at (${"%.2f".format(p.x)}, ${"%.2f".format(p.y)}, ${"%.2f".format(p.z)}) m $spread · $wall"
   }
 
   // ── room scan ────────────────────────────────────────────────────────
@@ -415,6 +438,9 @@ class MainActivity : AppSystemActivity(), PanelActions {
     private val PERMISSIONS = listOf(PERMISSION_USE_SCENE) + CAMERA_PERMISSIONS
     private const val REQUEST_PERMISSIONS = 1
     private const val STALE_NS = 250_000_000L
+    /** Frames averaged per marker position, and how many Align to the marker needs. */
+    private const val AVERAGE_FRAMES = 15
+    private const val MIN_FRAMES = 5
     private val NO_RINGS = RingFrame(emptyList(), null, 0, 0)
     private const val NO_ROOM_SCAN = "No room scan: set up your space in Quest settings to get wall heading"
     private const val HOLD_MARKER = "Hold a printed ring marker in view, then walk away and back"

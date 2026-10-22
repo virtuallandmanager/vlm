@@ -19,7 +19,7 @@ class AppState {
   var cameraStatus by mutableStateOf<CameraStatus?>(null)
   var markerLines by mutableStateOf(RING_TEST_MARKERS.map { "${it.name}: not seen yet" })
   /** One line per test marker, after its [markerLines] entry: its world position and wall heading. */
-  var poseLines by mutableStateOf(RING_TEST_MARKERS.map { "  position not known yet" })
+  var poseLines by mutableStateOf(RING_TEST_MARKERS.map { "  not in view" })
   var wallStatus by mutableStateOf("Room scan not loaded yet")
   var lastRing by mutableStateOf("No ring marker read yet")
 }
