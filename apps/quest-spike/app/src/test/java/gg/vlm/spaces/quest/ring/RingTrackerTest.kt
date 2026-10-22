@@ -33,4 +33,22 @@ class RingTrackerTest {
     repeat(2) { t.update(listOf(det(7), det(9))) }
     assertEquals(listOf(7L), t.update(listOf(det(7), det(9))).map { it.id })
   }
+
+  @Test
+  fun resetForgetsStreaks() {
+    val t = RingTracker(setOf(7L))
+    repeat(2) { t.update(listOf(det(7))) }
+    t.reset()
+    assertTrue(t.update(listOf(det(7))).isEmpty())
+    assertTrue(t.update(listOf(det(7))).isEmpty())
+    assertEquals(listOf(7L), t.update(listOf(det(7))).map { it.id })
+  }
+
+  @Test
+  fun sameIdTwiceInOneFrameCountsOnce() {
+    val t = RingTracker(setOf(7L))
+    assertTrue(t.update(listOf(det(7), det(7))).isEmpty())
+    assertTrue(t.update(listOf(det(7))).isEmpty())
+    assertEquals(listOf(7L), t.update(listOf(det(7), det(7))).map { it.id })
+  }
 }

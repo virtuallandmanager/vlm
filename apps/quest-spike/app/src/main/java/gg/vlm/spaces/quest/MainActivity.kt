@@ -3,6 +3,7 @@ package gg.vlm.spaces.quest
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.ui.platform.ComposeView
 import com.meta.spatial.compose.ComposeFeature
@@ -69,8 +70,6 @@ class MainActivity : AppSystemActivity(), PanelActions {
   private val tracker = RingTracker(RING_TEST_MARKERS.map { it.id }.toSet())
   /** The newest frame's result, written on the frame thread and read by [trackRings] on the main thread. */
   @Volatile private var latestRings: RingFrame? = null
-  /** Whether the camera should run while the activity is in front (permissions granted). */
-  private var cameraWanted = false
 
   override fun registerFeatures(): List<SpatialFeature> {
     mruk = MRUKFeature(this, systemManager)
@@ -93,17 +92,17 @@ class MainActivity : AppSystemActivity(), PanelActions {
             this,
             onFrame = { gray, w, h, stride, t ->
               val raw = detector.detect(gray, w, h, stride)
-              latestRings = RingFrame(tracker.update(raw), raw.lastOrNull(), t)
+              latestRings = RingFrame(tracker.update(raw), raw.lastOrNull(), t, SystemClock.elapsedRealtimeNanos())
             },
             onStatus = { st -> runOnUiThread { onCameraStatus(st) } },
+            onRunStart = { tracker.reset() },
         )
     val missing = PERMISSIONS.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
     if (missing.isNotEmpty()) {
       state.markerStatus = "Waiting for the camera and spatial data permissions"
       requestPermissions(missing.toTypedArray(), REQUEST_PERMISSIONS)
     } else {
-      state.markerStatus = HOLD_MARKER
-      startCamera()
+      state.markerStatus = HOLD_MARKER // onResume starts the camera
     }
     if (state.worldKey.isNotBlank()) connect()
   }
@@ -152,7 +151,8 @@ class MainActivity : AppSystemActivity(), PanelActions {
 
   override fun onResume() {
     super.onResume()
-    if (cameraWanted) camera.start()
+    // Also catches permissions granted later in Settings.
+    if (cameraPermitted()) camera.start()
   }
 
   override fun onPause() {
@@ -223,10 +223,8 @@ class MainActivity : AppSystemActivity(), PanelActions {
 
   // ── markers ──────────────────────────────────────────────────────────
 
-  private fun startCamera() {
-    cameraWanted = true
-    camera.start()
-  }
+  private fun cameraPermitted(): Boolean =
+      CAMERA_PERMISSIONS.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
 
   private fun onCameraStatus(st: CameraStatus) {
     state.cameraStatus = st
@@ -238,7 +236,8 @@ class MainActivity : AppSystemActivity(), PanelActions {
    * Task 8 turns a detection into a position.
    */
   private fun trackRings(head: Pose) {
-    val frame = latestRings ?: RingFrame(emptyList(), null, 0)
+    // A frame older than STALE_NS (camera stalled or stopped) tracks nothing.
+    val frame = latestRings?.takeIf { SystemClock.elapsedRealtimeNanos() - it.receivedNs < STALE_NS } ?: NO_RINGS
     val seen = frame.tracked.mapTo(HashSet()) { it.id }
     for ((id, r) in readings) {
       val tracked = id in seen
@@ -265,16 +264,13 @@ class MainActivity : AppSystemActivity(), PanelActions {
   override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
     super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     if (requestCode != REQUEST_PERMISSIONS) return
-    val cameraGranted =
-        CAMERA_PERMISSIONS.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
     val sceneGranted = checkSelfPermission(PERMISSION_USE_SCENE) == PackageManager.PERMISSION_GRANTED
     state.markerStatus = if (sceneGranted) HOLD_MARKER else "Spatial data permission denied: room walls are unavailable"
-    if (cameraGranted) startCamera() else state.cameraStatus = CameraStatus.NO_PERMISSION
+    if (cameraPermitted()) camera.start() else state.cameraStatus = CameraStatus.NO_PERMISSION
   }
 
   override fun onSpatialShutdown() {
-    cameraWanted = false
-    camera.stop()
+    camera.close()
     feed.stop()
     scope.cancel()
     super.onSpatialShutdown()
@@ -299,9 +295,19 @@ class MainActivity : AppSystemActivity(), PanelActions {
     private val CAMERA_PERMISSIONS = listOf(Manifest.permission.CAMERA, PassthroughCamera.PERMISSION_HEADSET_CAMERA)
     private val PERMISSIONS = listOf(PERMISSION_USE_SCENE) + CAMERA_PERMISSIONS
     private const val REQUEST_PERMISSIONS = 1
+    private const val STALE_NS = 250_000_000L
+    private val NO_RINGS = RingFrame(emptyList(), null, 0, 0)
     private const val HOLD_MARKER = "Hold a printed ring marker in view, then walk away and back"
   }
 }
 
-/** One camera frame's result: the trusted test-marker rings, and the last raw detection (any ID) for the panel. */
-private class RingFrame(val tracked: List<RingDetection>, val last: RingDetection?, val timestampNs: Long)
+/**
+ * One camera frame's result: the trusted test-marker rings, the last raw detection (any ID) for the panel, the
+ * frame's camera timestamp, and when it was processed (SystemClock.elapsedRealtimeNanos).
+ */
+private class RingFrame(
+    val tracked: List<RingDetection>,
+    val last: RingDetection?,
+    val timestampNs: Long,
+    val receivedNs: Long,
+)

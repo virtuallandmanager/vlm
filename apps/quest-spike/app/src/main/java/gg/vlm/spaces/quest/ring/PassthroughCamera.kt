@@ -58,15 +58,19 @@ data class CameraIntrinsics(
 /**
  * The Quest 3/3S left passthrough camera at [WIDTH] × [HEIGHT], handing out the Y (grey) plane of each frame.
  *
- * [onFrame] runs on a background thread, one frame at a time; frames that arrive while it is busy are dropped. Its
- * `gray` array is reused for the next frame, so it is only valid during the call (row j starts at j * `stride`).
- * [onStatus] also runs on a background thread. Every failure (no permission, no camera, open errors, disconnects)
- * ends in a [CameraStatus], never an exception.
+ * [onFrame] and [onRunStart] run on one frame thread that lives as long as this object, so they never overlap,
+ * across every [start] and [stop]: state they share (a RingDetector, a RingTracker) needs no locking. Frames that
+ * arrive while [onFrame] is busy are dropped. Its `gray` array is reused for the next frame, so it is only valid during
+ * the call (row j starts at j * `stride`). An exception from [onFrame] is logged and that frame skipped.
+ * [onStatus] runs on a background thread. Every failure (no permission, no camera, open errors, disconnects) ends in a
+ * [CameraStatus], never an exception. Call [close] when done to end the threads.
  */
 class PassthroughCamera(
     context: Context,
     private val onFrame: (gray: ByteArray, width: Int, height: Int, stride: Int, timestampNs: Long) -> Unit,
     private val onStatus: (CameraStatus) -> Unit,
+    /** Runs on the frame thread before a new run's first frame: reset per-run frame state here. */
+    private val onRunStart: () -> Unit = {},
 ) {
   private val context = context.applicationContext
   private val manager = context.getSystemService(CameraManager::class.java)
@@ -79,20 +83,30 @@ class PassthroughCamera(
   private val lock = Any()
   /** The current run, or null when stopped. Callbacks from an older run see a different object and back out. */
   private var run: Run? = null
+  private var closed = false
   private var loggedCamera = false
 
-  /** One open-to-close run of the camera: its threads, Camera2 objects and frame buffer. */
-  private class Run(val camThread: HandlerThread, val frameThread: HandlerThread, val reader: ImageReader) {
+  /** Camera2 callbacks, for the life of this object. */
+  private val camThread = HandlerThread("VLMSpacesCamera").apply { start() }
+  private val camHandler = Handler(camThread.looper)
+  /** Frame copies, [onFrame] and [onRunStart], for the life of this object: one frame at a time, ever. */
+  private val frameThread = HandlerThread("VLMSpacesFrames").apply { start() }
+  private val frameHandler = Handler(frameThread.looper)
+  /** Only touched on [frameThread]. */
+  private var gray = ByteArray(0)
+
+  /** One open-to-close run of the camera: its reader and Camera2 objects. */
+  private class Run(val reader: ImageReader) {
     var device: CameraDevice? = null
     var session: CameraCaptureSession? = null
-    /** Only touched on [frameThread]. */
-    var gray = ByteArray(0)
+    /** Only touched on the frame thread. */
     var reportedRunning = false
+    var loggedFrameError = false
   }
 
   /** Opens the camera and starts delivering frames. Does nothing if it is already running or starting. */
   fun start() {
-    synchronized(lock) { if (run != null) return }
+    synchronized(lock) { if (run != null || closed) return }
     if (!hasPermission()) return onStatus(CameraStatus.NO_PERMISSION)
     val id =
         try {
@@ -103,23 +117,25 @@ class PassthroughCamera(
         } ?: return onStatus(CameraStatus.NO_CAMERA)
 
     val r =
-        Run(
-            HandlerThread("VLMSpacesCamera").apply { start() },
-            HandlerThread("VLMSpacesFrames").apply { start() },
-            ImageReader.newInstance(WIDTH, HEIGHT, ImageFormat.YUV_420_888, MAX_IMAGES),
-        )
+        try {
+          Run(ImageReader.newInstance(WIDTH, HEIGHT, ImageFormat.YUV_420_888, MAX_IMAGES))
+        } catch (e: Exception) {
+          Log.w(TAG, "Camera image reader failed", e)
+          return onStatus(CameraStatus.ERROR)
+        }
     synchronized(lock) {
-      if (run != null) {
+      if (run != null || closed) {
         release(r)
         return
       }
       run = r
     }
     onStatus(CameraStatus.STARTING)
-    val camHandler = Handler(r.camThread.looper)
-    r.reader.setOnImageAvailableListener({ deliver(r) }, Handler(r.frameThread.looper))
     try {
-      manager.openCamera(id, Executor { camHandler.post(it) }, deviceCallback(r, camHandler))
+      // Queued ahead of any frame from this run, on the same thread as onFrame.
+      frameHandler.post { if (current(r)) onRunStart() }
+      r.reader.setOnImageAvailableListener({ deliver(r) }, frameHandler)
+      manager.openCamera(id, Executor { camHandler.post(it) }, deviceCallback(r))
     } catch (e: SecurityException) {
       Log.w(TAG, "Camera permission refused on open", e)
       fail(r, CameraStatus.NO_PERMISSION)
@@ -130,12 +146,20 @@ class PassthroughCamera(
   }
 
   /**
-   * Closes the camera and its threads, waiting briefly for a frame in progress so a following [start] never runs
-   * [onFrame] alongside it. Safe to call at any time, and more than once.
+   * Closes the camera, without waiting for a frame in progress (it finishes on the frame thread, and a following
+   * [start]'s frames queue behind it). Safe to call at any time, and more than once.
    */
   fun stop() {
     val r = synchronized(lock) { run.also { run = null } } ?: return
     release(r)
+  }
+
+  /** Stops the camera for good and ends its threads. [start] does nothing afterwards. */
+  fun close() {
+    synchronized(lock) { closed = true }
+    stop()
+    frameThread.quitSafely()
+    camThread.quitSafely()
   }
 
   private fun current(r: Run): Boolean = synchronized(lock) { run === r }
@@ -187,7 +211,7 @@ class PassthroughCamera(
         null
       }
 
-  private fun deviceCallback(r: Run, handler: Handler) =
+  private fun deviceCallback(r: Run) =
       object : CameraDevice.StateCallback() {
         override fun onOpened(camera: CameraDevice) {
           synchronized(lock) {
@@ -202,7 +226,7 @@ class PassthroughCamera(
                 SessionConfiguration(
                     SessionConfiguration.SESSION_REGULAR,
                     listOf(OutputConfiguration(r.reader.surface)),
-                    Executor { handler.post(it) },
+                    Executor { camHandler.post(it) },
                     sessionCallback(r, camera),
                 )
             camera.createCaptureSession(config)
@@ -251,7 +275,7 @@ class PassthroughCamera(
       }
 
   /**
-   * Runs on [Run.frameThread]: takes the newest frame (older ones queued behind it are dropped), copies its Y plane,
+   * Runs on the frame thread: takes the newest frame (older ones queued behind it are dropped), copies its Y plane,
    * closes it, then runs [onFrame]. Frames that arrive during [onFrame] wait in the reader and all but the newest
    * are dropped by the next call.
    */
@@ -275,15 +299,15 @@ class PassthroughCamera(
       val buf = plane.buffer
       if (plane.pixelStride == 1) {
         stride = plane.rowStride
-        if (r.gray.size < stride * height) r.gray = ByteArray(stride * height)
+        if (gray.size < stride * height) gray = ByteArray(stride * height)
         buf.rewind()
-        buf.get(r.gray, 0, minOf(buf.remaining(), r.gray.size))
+        buf.get(gray, 0, minOf(buf.remaining(), gray.size))
       } else {
         // Not expected for a Y plane; pack it so the detector still gets one byte per pixel.
         stride = width
-        if (r.gray.size < width * height) r.gray = ByteArray(width * height)
+        if (gray.size < width * height) gray = ByteArray(width * height)
         for (y in 0 until height) for (x in 0 until width) {
-          r.gray[y * width + x] = buf.get(y * plane.rowStride + x * plane.pixelStride)
+          gray[y * width + x] = buf.get(y * plane.rowStride + x * plane.pixelStride)
         }
       }
     } catch (e: Exception) {
@@ -292,11 +316,20 @@ class PassthroughCamera(
     } finally {
       image.close()
     }
+    // Re-checked so a run that failed or stopped meanwhile never reports RUNNING after its ERROR.
+    if (!current(r)) return
     if (!r.reportedRunning) {
       r.reportedRunning = true
       onStatus(CameraStatus.RUNNING)
     }
-    onFrame(r.gray, width, height, stride, timestamp)
+    try {
+      onFrame(gray, width, height, stride, timestamp)
+    } catch (e: Exception) {
+      if (!r.loggedFrameError) {
+        r.loggedFrameError = true
+        Log.w(TAG, "Frame processing failed; skipping such frames", e)
+      }
+    }
   }
 
   /** Shuts run [r] down and reports [status], unless a [stop] or a newer [start] has already replaced it. */
@@ -321,12 +354,8 @@ class PassthroughCamera(
     } catch (e: Exception) {
       Log.w(TAG, "Closing the camera", e)
     }
-    // Close the reader on its own thread, after any frame in progress there, then let both threads end.
-    Handler(r.frameThread.looper).post { r.reader.close() }
-    r.frameThread.quitSafely()
-    r.camThread.quitSafely()
-    // Wait briefly for a frame in progress, so a following start() never runs onFrame alongside this run.
-    if (Thread.currentThread() != r.frameThread) r.frameThread.join(STOP_WAIT_MS)
+    // Close the reader on the frame thread, after any frame in progress there.
+    if (!frameHandler.post { r.reader.close() }) r.reader.close()
   }
 
   companion object {
@@ -334,7 +363,6 @@ class PassthroughCamera(
     const val HEIGHT = 960
     private const val TAG = "VLMSpaces"
     private const val MAX_IMAGES = 2
-    private const val STOP_WAIT_MS = 500L
     const val PERMISSION_HEADSET_CAMERA = "horizonos.permission.HEADSET_CAMERA"
     private const val KEY_SOURCE = "com.meta.extra_metadata.camera_source"
     private const val KEY_POSITION = "com.meta.extra_metadata.position"

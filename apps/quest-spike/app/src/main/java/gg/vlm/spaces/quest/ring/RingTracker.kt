@@ -16,4 +16,9 @@ class RingTracker(private val registered: Set<Long>, private val framesToAgree: 
     for (id in ids) streak[id] = (streak[id] ?: 0) + 1
     return seen.filter { streak.getValue(it.id) >= framesToAgree }
   }
+
+  /** Forgets every streak, as at a new camera run, so frames before a gap never count toward agreement. */
+  fun reset() {
+    streak.clear()
+  }
 }
