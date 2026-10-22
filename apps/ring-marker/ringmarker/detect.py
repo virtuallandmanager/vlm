@@ -10,6 +10,8 @@ marker; 1 "ref mm" is a millimetre at the 140 mm reference size (layout.py), so 
    undecided. `win = max(51, W // 25) | 1` (51 at 1280 wide) -- see Tuning. Blobs (step 2) use DARK only; ray
    edges (step 4) and the gap (step 5) use DARK / LIGHT / undecided.
 2. Label blobs: 8-connected components of DARK (cv2.connectedComponentsWithStats; the port uses union-find).
+   Blobs are then ordered by the raster index (y * W + x) of their first pixel in row-major scan, independent of
+   the labelling algorithm; this order is the tie-break in step 8.
 3. Dot candidates. Blobs with n >= 30 pixels. Moments over the blob's pixel coordinates: mean (mx, my) and
    population covariance cxx, cyy, cxy (divide by n). Eigenvalues l1 >= l2 = (cxx+cyy)/2 +- sqrt((cxx-cyy)^2/4 +
    cxy^2); semi-axes a = 2 sqrt(l1), b = 2 sqrt(l2) (a filled ellipse has variance a^2/4 along its axis); angle
@@ -25,7 +27,9 @@ marker; 1 "ref mm" is a millimetre at the 140 mm reference size (layout.py), so 
      last DARK sample directly followed by a LIGHT one, at rho_e = (rho_dark + rho_light) / 2, and the edge point is
      frame(rho_e, beta_i) - c. A ray with no such pair has no edge.
    - Conic. With fewer than 60 edges, reject. Scale the points by 1/L (L = RMS distance of the points from c),
-     solve the 5x5 normal equations for u^2, uv, v^2, u, v against 1, then A = A'/L^2, B = B'/L^2, C = C'/L^2,
+     solve the 5x5 normal equations (M^T M) x = M^T 1 for u^2, uv, v^2, u, v by Gaussian elimination with
+     partial pivoting -- if a pivot's magnitude is below 1e-9 the matrix is singular and the candidate is rejected
+     (no exception) -- then A = A'/L^2, B = B'/L^2, C = C'/L^2,
      D = D'/L, E = E'/L: A x^2 + B xy + C y^2 + D x + E y = 1 with (x, y) relative to c. It is an ellipse iff
      A > 0 and 4AC - B^2 > 0.
    - Fitted frame (the projective map of the unit circle onto the fitted ellipse that keeps c fixed):
@@ -33,22 +37,28 @@ marker; 1 "ref mm" is a millimetre at the 140 mm reference size (layout.py), so 
      Minv = V diag(1/sqrt(w1), 1/sqrt(w2)) V^T. It is exact for a planar circle seen in perspective whose centre
      images to c (any other such map differs by a rotation, which the gap fixes). The inverse is
      rho(d) = |M d| / |1 - l.d| for a point d relative to c, with M = Minv^-1.
-   - Trim once. rho_k = rho(edge_k) under the fitted frame; keep the edges with |rho_k / median(rho) - 1| <= 0.10
-     (median of an even count = mean of the middle two); with fewer than 60 left, reject; refit the conic and the
-     frame from the kept edges (same rejections). The final conic gives `ellipse`; the final frame is used below.
+   - Trim, 3 passes. Each pass: rho_k = rho(edge_k) for ALL the edges under the current frame; keep the edges with
+     |rho_k / median(rho) - 1| <= 0.10 (median of an even count = mean of the middle two); with fewer than 60 kept,
+     reject; refit the conic and the frame from the kept edges (same rejections). The final frame is used below.
+   - `ellipse` from the final conic: Q = [[A, B/2], [B/2, C]], centre x0 = -1/2 Q^-1 (D, E) (relative to c),
+     kappa = 1 + x0^T Q x0, Q = V diag(w1, w2) V^T with w1 <= w2; semi-major = sqrt(kappa / w1), semi-minor =
+     sqrt(kappa / w2); angle = atan2(v1y, v1x) in degrees mod 180 for the eigenvector v1 of w1 (from +x toward +y,
+     image y down); centre reported as c + x0 + 0.5.
 5. Gap. 720 samples at rho = 66/70, beta_j = 0.5 j degrees, read nearest-pixel from the masks and bilinearly from
-   the grey image (step 6). Circular runs of LIGHT samples, scanning from the first non-LIGHT sample: the longest
+   the grey image (step 6). Reject if no sample is LIGHT, if every sample is LIGHT (no ring at all), or if no sample
+   is DARK. Circular runs of LIGHT samples, scanning from the first non-LIGHT sample: the longest
    (the first one found, on a tie) must be 10-22 degrees (count * 0.5) and every other run must be <= 4 degrees.
    Gap centre beta_g = (start + (count - 1) / 2) * 0.5 degrees, and with (gx, gy) = frame(66/70, beta_g),
    rotation_deg = atan2(gx - cx, -(gy - cy)) in degrees, normalised to [0, 360).
-6. Cells. dark = mean grey of the DARK gap-ring samples, light = mean grey of the gap run's samples; reject if there
-   are no DARK samples or light <= dark. Ring i (CODE_RINGS_REF, 0 outermost) has mid radius m = (r0 + r1) / 2;
+6. Cells. dark = mean grey of the DARK gap-ring samples, light = mean grey of the gap run's samples; reject if
+   light - dark < 14 (2 x the threshold offset). Ring i (CODE_RINGS_REF, 0 outermost) has mid radius m = (r0 + r1) / 2;
    cell k is centred at mu = beta_g + 15 k + 7.5. v = mean of 5 bilinear samples at (m/70, mu), (m/70, mu - 3),
-   (m/70, mu + 3), ((m - 1)/70, mu), ((m + 1)/70, mu). Bilinear: clamp x to [0, W - 1 - 1e-6] (y likewise),
+   (m/70, mu + 3), ((m - 1)/70, mu), ((m + 1)/70, mu). If any of the 5 sample points lies outside
+   [0, W - 1] x [0, H - 1], the cell can't be judged and is erased (None) without reading it. Bilinear: clamp x to [0, W - 1 - 1e-6] (y likewise),
    x0 = floor(x), fx = x - x0, the usual 4-pixel blend. t = (v - dark) / (light - dark): on if t < 0.4, off if
    t > 0.6, else erased (None). Cell index = ring * 24 + k.
 7. Decode with codec.decode; drop the candidate unless it decodes.
-8. Duplicates. Sort the detections by `corrected` (stable, so ties keep blob-label order) and keep one unless its
+8. Duplicates. Sort the detections by (`corrected`, first-pixel raster index from step 2) and keep one unless its
    centre is within 0.5 sqrt(a b) of an already kept detection, sqrt(a b) being that kept detection's dot radius.
 
 Tuning (brief step 3), in the brief's order:
@@ -63,8 +73,13 @@ Implementation choices beyond the brief's wording (needed at every range, not on
 - Three-level threshold (LIGHT needs v > mean + 7). With "light = not dark", the flat background just outside the
   plaque (which sits inside the +-20% search, only 7% past the finder edge) flickers between dark and not-dark in
   the noise and gives spurious "outermost" transitions; demanding a real LIGHT sample removes them.
-- One trimmed refit (10% of the median radius) removes the remaining stray edges (the gap's rays, background).
-- Rays that leave the image are kept; off-image samples are undecided.
+- Trimmed refits (10% of the median radius, 3 passes) remove the remaining stray edges (the gap's rays,
+  background). One pass is enough for the test set; a marker cut by the image border needs 3 (a cluster of inner
+  edges on the cut side drags the first fit, and the frame was then up to 11 px off; with 3 passes <= 0.5 px).
+- Rays that leave the image are kept; off-image samples are undecided. Cells with any sample off the image are
+  erasures (step 6).
+- Rejections: a singular normal matrix (step 4), an all-LIGHT / no-LIGHT / no-DARK gap ring (step 5) and
+  light - dark < 14 (step 6) reject the candidate; nothing raises.
 """
 from __future__ import annotations
 
@@ -85,6 +100,7 @@ RAYS = 90
 MIN_EDGE_RAYS = 60
 EDGE_SLACK = 0.20
 TRIM = 0.10
+TRIM_PASSES = 3
 GAP_RHO = 66.0 / 70.0
 GAP_STEP_DEG = 0.5
 GAP_DEG = (10.0, 22.0)
@@ -92,6 +108,8 @@ OTHER_LIGHT_MAX_DEG = 4.0
 T_ON, T_OFF = 0.4, 0.6
 CELL_DELTA_DEG = 3.0
 CELL_DELTA_MM = 1.0
+MIN_CONTRAST = 2 * OFFSET
+PIVOT_EPS = 1e-9
 
 
 @dataclass
@@ -129,14 +147,18 @@ def threshold(gray: np.ndarray, win: int) -> tuple[np.ndarray, np.ndarray]:
 
 # ---- 2, 3. blobs and dot candidates ----------------------------------------------------------------------------
 
-def dot_candidates(dark: np.ndarray) -> list[tuple[float, float, float, float, float]]:
-    """(mx, my, a, b, phi) for every blob that passes the dot test, in label order."""
+def dot_candidates(dark: np.ndarray, with_order: bool = False):
+    """(mx, my, a, b, phi) for every blob that passes the dot test, ordered by the raster index (y * W + x) of
+    each blob's first pixel, so the order does not depend on the labelling algorithm. With `with_order`, items are
+    (first_pixel_index, dot)."""
     n, labels, _, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
     h, w = dark.shape
     lab = labels.ravel()
     yy, xx = np.indices((h, w))
     x, y = xx.ravel().astype(np.float64), yy.ravel().astype(np.float64)
     cnt = np.bincount(lab, minlength=n).astype(np.float64)
+    first = np.full(n, lab.size, np.int64)
+    np.minimum.at(first, lab, np.arange(lab.size))
     sx, sy = np.bincount(lab, x, n), np.bincount(lab, y, n)
     sxx, syy, sxy = np.bincount(lab, x * x, n), np.bincount(lab, y * y, n), np.bincount(lab, x * y, n)
     out = []
@@ -157,8 +179,9 @@ def dot_candidates(dark: np.ndarray) -> list[tuple[float, float, float, float, f
         fill = area / (math.pi * a * b)
         if not (FILL_RANGE[0] <= fill <= FILL_RANGE[1]) or b / a < MIN_AXIS_RATIO:
             continue
-        out.append((mx, my, a, b, 0.5 * math.atan2(2 * cxy, cxx - cyy)))
-    return out
+        out.append((int(first[i]), (mx, my, a, b, 0.5 * math.atan2(2 * cxy, cxx - cyy))))
+    out.sort(key=lambda o: o[0])
+    return out if with_order else [d for _, d in out]
 
 
 # ---- sampling --------------------------------------------------------------------------------------------------
@@ -204,6 +227,8 @@ class Frame:
 
     @staticmethod
     def from_conic(conic, cx: float, cy: float) -> "Frame | None":
+        if conic is None:
+            return None
         A, B, C, D, E = conic
         if A <= 0 or 4 * A * C - B * B <= 0:
             return None
@@ -256,8 +281,28 @@ def fit_conic(pts: np.ndarray) -> tuple[float, float, float, float, float]:
     L = float(np.sqrt((pts ** 2).sum(1).mean()))
     u, v = pts[:, 0] / L, pts[:, 1] / L
     m = np.stack([u * u, u * v, v * v, u, v], 1)
-    a_, b_, c_, d_, e_ = np.linalg.solve(m.T @ m, m.sum(0))
+    sol = _solve(m.T @ m, m.sum(0))
+    if sol is None:
+        return None
+    a_, b_, c_, d_, e_ = sol
     return a_ / L ** 2, b_ / L ** 2, c_ / L ** 2, d_ / L, e_ / L
+
+
+def _solve(a: np.ndarray, b: np.ndarray):
+    """Gaussian elimination with partial pivoting; None if a pivot's magnitude is below PIVOT_EPS."""
+    n = len(b)
+    m = np.hstack([np.asarray(a, float), np.asarray(b, float)[:, None]])
+    for c in range(n):
+        p = c + int(np.argmax(np.abs(m[c:, c])))
+        if abs(m[p, c]) < PIVOT_EPS:
+            return None
+        m[[c, p]] = m[[p, c]]
+        for r in range(c + 1, n):
+            m[r, c:] -= (m[r, c] / m[c, c]) * m[c, c:]
+    x = np.zeros(n)
+    for r in range(n - 1, -1, -1):
+        x[r] = (m[r, n] - m[r, r + 1:n] @ x[r + 1:]) / m[r, r]
+    return x
 
 
 def conic_ellipse(conic, cx: float, cy: float) -> tuple[float, float, float, float, float]:
@@ -276,15 +321,17 @@ def finder(masks, dot):
     pts = ray_edges(masks, dot)
     if len(pts) < MIN_EDGE_RAYS:
         return None, None
-    fr = Frame.from_conic(fit_conic(pts), dot[0], dot[1])
-    if fr is None:
-        return None, None
-    rad = fr.radius_of(pts)
-    kept = pts[np.abs(rad / np.median(rad) - 1) <= TRIM]
-    if len(kept) < MIN_EDGE_RAYS:
-        return None, None
-    conic = fit_conic(kept)
+    conic = fit_conic(pts)
     fr = Frame.from_conic(conic, dot[0], dot[1])
+    for _ in range(TRIM_PASSES):
+        if fr is None:
+            return None, None
+        rad = fr.radius_of(pts)
+        kept = pts[np.abs(rad / np.median(rad) - 1) <= TRIM]
+        if len(kept) < MIN_EDGE_RAYS:
+            return None, None
+        conic = fit_conic(kept)
+        fr = Frame.from_conic(conic, dot[0], dot[1])
     return (fr, conic) if fr is not None else (None, None)
 
 
@@ -311,7 +358,8 @@ def light_runs(light: np.ndarray) -> list[tuple[int, int]]:
 
 # ---- per candidate ---------------------------------------------------------------------------------------------
 
-def read_candidate(gray, masks, dot) -> Detection | None:
+def read_cells(gray, masks, dot):
+    """Steps 4-6 for one dot: (cells, conic, rotation_deg), or None if the candidate is rejected."""
     fr, conic = finder(masks, dot)
     if fr is None:
         return None
@@ -319,26 +367,25 @@ def read_candidate(gray, masks, dot) -> Detection | None:
     xs, ys = fr.to_image(GAP_RHO, np.arange(nb) * GAP_STEP_DEG)
     is_dark = _nearest(masks[0], xs, ys) == 1
     is_light = _nearest(masks[1], xs, ys) == 1
-    runs = light_runs(is_light)
-    if not runs:
+    if not is_light.any() or is_light.all() or not is_dark.any():
         return None
+    runs = light_runs(is_light)
     best = max(range(len(runs)), key=lambda i: runs[i][1])  # first of the longest
     start, length = runs[best]
     if not (GAP_DEG[0] <= length * GAP_STEP_DEG <= GAP_DEG[1]):
         return None
     if any(r[1] * GAP_STEP_DEG > OTHER_LIGHT_MAX_DEG for i, r in enumerate(runs) if i != best):
         return None
-    if not is_dark.any():
-        return None
     vals = _bilinear(gray, xs, ys)
     dark = vals[is_dark].mean()
     light = vals[(start + np.arange(length)) % nb].mean()
-    if light <= dark:
+    if light - dark < MIN_CONTRAST:
         return None
     beta_g = (start + (length - 1) / 2) * GAP_STEP_DEG
     gx, gy = fr.to_image(GAP_RHO, beta_g)
     rotation = math.degrees(math.atan2(float(gx) - dot[0], -(float(gy) - dot[1]))) % 360.0
 
+    h, w = gray.shape
     cells: list[bool | None] = []
     for r0, r1 in CODE_RINGS_REF:
         m = (r0 + r1) / 2
@@ -347,8 +394,19 @@ def read_candidate(gray, masks, dot) -> Detection | None:
             mu = beta_g + k * CELL_DEG + CELL_DEG / 2
             beta = np.array([mu, mu - CELL_DELTA_DEG, mu + CELL_DELTA_DEG, mu, mu])
             sx, sy = fr.to_image(rho, beta)
+            if (sx < 0).any() or (sx > w - 1).any() or (sy < 0).any() or (sy > h - 1).any():
+                cells.append(None)  # can't be judged: erasure
+                continue
             t = (_bilinear(gray, sx, sy).mean() - dark) / (light - dark)
             cells.append(True if t < T_ON else False if t > T_OFF else None)
+    return cells, conic, rotation
+
+
+def read_candidate(gray, masks, dot) -> Detection | None:
+    got = read_cells(gray, masks, dot)
+    if got is None:
+        return None
+    cells, conic, rotation = got
     d = decode(cells)
     if d is None:
         return None
@@ -362,13 +420,13 @@ def detect(gray: np.ndarray) -> list[Detection]:
         raise ValueError("detect expects a 2-D uint8 grey image")
     masks = threshold(gray, window_size(gray.shape[1]))
     found = []
-    for dot in dot_candidates(masks[0]):
+    for first, dot in dot_candidates(masks[0], with_order=True):
         det = read_candidate(gray, masks, dot)
         if det is not None:
-            found.append((det, math.sqrt(dot[2] * dot[3])))
-    found.sort(key=lambda f: f[0].corrected)
+            found.append((det, math.sqrt(dot[2] * dot[3]), first))
+    found.sort(key=lambda f: (f[0].corrected, f[2]))
     kept: list[tuple[Detection, float]] = []
-    for det, r in found:
+    for det, r, _ in found:
         if all(math.dist(det.center_px, k.center_px) >= 0.5 * kr for k, kr in kept):
             kept.append((det, r))
     return [k for k, _ in kept]
