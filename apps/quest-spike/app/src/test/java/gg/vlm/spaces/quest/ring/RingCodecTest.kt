@@ -24,7 +24,7 @@ class RingCodecTest {
     val encodes = root["encode"]!!.jsonArray
     val decodes = root["decode"]!!.jsonArray
     assertEquals(12, encodes.size)
-    assertEquals(13, decodes.size)
+    assertEquals(15, decodes.size)
 
     for (v in encodes) {
       val o = v.jsonObject

@@ -45,13 +45,46 @@ def test_rejects_three_symbol_errors():
     assert decode(bad) is None
 
 
+def erase(cells, symbols):
+    out = list(cells)
+    for j in symbols:
+        for c in symbol_cells(j):
+            out[c] = None
+    return out
+
+
 def test_erasures():
     base = encode(0x2E3D4C5B, 3)
-    bad = list(base)
-    for j in range(1, 7):
-        for c in symbol_cells(j):
-            bad[c] = None
-    assert decode(bad) == Decoded(0x2E3D4C5B, 3, 6)
+    assert decode(erase(base, range(1, 5))) == Decoded(0x2E3D4C5B, 3, 4)
+
+
+def test_five_erasures_over_budget():
+    assert decode(erase(encode(0x2E3D4C5B), range(1, 6))) is None
+
+
+def test_six_erasures_over_budget():
+    assert decode(erase(encode(0x2E3D4C5B), range(1, 7))) is None
+
+
+def test_six_erasures_plus_one_flipped_cell_is_rejected():
+    # At a budget of 6 this decoded to a wrong id: 6 erasures leave no check symbols.
+    mid = TEST_MARKERS["RING140"][0]
+    bad = erase(encode(mid), range(1, 7))
+    bad = flip(bad, [symbol_cells(8)[0]])
+    assert decode(bad) is None
+
+
+def test_four_erasures_plus_two_errors_never_wrong_id():
+    mid = TEST_MARKERS["RING140"][0]
+    base = encode(mid)
+    rng = random.Random(5)
+    for _ in range(500):
+        er = rng.sample(range(12), 4)
+        bad = erase(base, er)
+        for j in rng.sample([k for k in range(12) if k not in er], 2):
+            bad = flip(bad, [rng.choice(symbol_cells(j))])
+        got = decode(bad)
+        assert got is None or (got.marker_id, got.version) == (mid, 0)
 
 
 def test_erasures_plus_error_over_limit():
@@ -109,7 +142,7 @@ def from_bits(s):
 
 def test_vectors_file_matches():
     data = json.loads(VECTORS.read_text())
-    assert len(data["encode"]) == 12 and len(data["decode"]) == 13
+    assert len(data["encode"]) == 12 and len(data["decode"]) == 15
     for e in data["encode"]:
         assert to_bits(encode(e["id"], e["version"])) == e["cells"]
     for d in data["decode"]:

@@ -28,6 +28,12 @@ object RingCodec {
   private const val N = 12
   private const val K = 6
   private const val NSYM = 6
+  private const val MAX_ERRORS = 2
+  /**
+   * 2 * errors + erasures may spend at most 4 of the 6 check symbols, so a wrong id needs at least
+   * 3 symbol errors beyond what is corrected (the rest of the code spots damage).
+   */
+  private const val BUDGET = 4
   private val OFFSET = intArrayOf(0, 2, 4)
   private const val CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
@@ -140,7 +146,7 @@ object RingCodec {
 
   /**
    * Decodes 72 cells in transmitted order; null entries are erasures. Returns null unless the word
-   * is a codeword within the correction budget (errors <= 2 and 2 * errors + erasures <= 6).
+   * is a codeword within the correction budget (errors <= 2 and 2 * errors + erasures <= 4).
    */
   fun decode(cells: Array<Boolean?>): RingDecoded? {
     require(cells.size == CELLS) { "expected 72 cells" }
@@ -178,8 +184,8 @@ object RingCodec {
     var nerr = sigma.size - 1
     while (nerr > 0 && sigma[nerr] == 0) nerr--
     if (sigma.size - 1 != nerr) return null // degree-deficient locator
-    if (nerr > 2) return null
-    if (2 * nerr + e > NSYM) return null
+    if (nerr > MAX_ERRORS) return null
+    if (2 * nerr + e > BUDGET) return null
     val lam = pmul(gamma, sigma.copyOfRange(0, nerr + 1))
     val omega = pmul(syn, lam).let { p -> IntArray(NSYM) { if (it < p.size) p[it] else 0 } }
     val dlam = IntArray(lam.size - 1) { k -> if ((k + 1) % 2 == 1) lam[k + 1] else 0 }

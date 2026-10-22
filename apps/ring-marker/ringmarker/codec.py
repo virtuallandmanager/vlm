@@ -14,6 +14,10 @@ CELLS = 72
 RINGS = 3
 PER_RING = 24
 N, K, NSYM = 12, 6, 6
+MAX_ERRORS = 2
+# 2 * errors + erasures may spend at most 4 of the 6 check symbols, so a wrong id needs
+# at least 3 symbol errors beyond what is corrected (the rest of the code spots damage).
+BUDGET = 4
 OFFSET = (0, 2, 4)
 CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
@@ -190,9 +194,9 @@ def _decode(cells: list[bool | None]) -> tuple[Decoded | None, str]:
         nerr -= 1
     if len(sigma) - 1 != nerr:
         return None, "degree_deficient_locator"
-    if nerr > 2:
+    if nerr > MAX_ERRORS:
         return None, "too_many_errors"
-    if 2 * nerr + e > NSYM:
+    if 2 * nerr + e > BUDGET:
         return None, "over_budget"
     lam = pmul(gamma, sigma[: nerr + 1])
     omega = pmul(syn, lam)[:NSYM]
@@ -277,10 +281,12 @@ def build_vectors() -> dict:
         ("2 errors corrected (limit)", flipped([sym(0)[2], sym(7)[4]])),
         ("whole parity symbol wrong, 1 error", flipped(sym(10))),
         ("3 errors rejected (errors > 2)", flipped([sym(0)[1], sym(5)[1], sym(9)[1]])),
-        ("6 erased symbols (erasure limit)", erased([c for j in range(1, 7) for c in sym(j)])),
+        ("4 erased symbols (erasure limit)", erased([c for j in range(1, 5) for c in sym(j)])),
+        ("5 erased symbols rejected (2*errors+erasures > 4)", erased([c for j in range(1, 6) for c in sym(j)])),
+        ("6 erased symbols rejected (2*errors+erasures > 4)", erased([c for j in range(1, 7) for c in sym(j)])),
         ("7 erased symbols rejected (erasures > 6)", erased([c for j in range(1, 8) for c in sym(j)])),
-        ("5 erased + 1 error rejected (2*errors+erasures > 6)",
-         erased([c for j in range(1, 6) for c in sym(j)], flipped([sym(8)[0]]))),
+        ("3 erased + 1 error rejected (2*errors+erasures > 4)",
+         erased([c for j in range(1, 4) for c in sym(j)], flipped([sym(8)[0]]))),
         ("radial wedge, 3 cells on every ring erased", erased([r * 24 + c for r in range(3) for c in (5, 6, 7)])),
         ("2 erased + 1 error", erased([c for j in (2, 4) for c in sym(j)], flipped([sym(8)[3]]))),
         ("noise rejected only by locator degree deficiency", seeded("degree_deficient_locator")),
