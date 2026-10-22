@@ -197,25 +197,27 @@ class SceneRenderer(private val activity: AppSystemActivity) {
     val src = uri.getQueryParameter("src") ?: ""
     val w = uri.getQueryParameter("w")?.toFloatOrNull() ?: 1f
     val h = uri.getQueryParameter("h")?.toFloatOrNull() ?: 1f
-    val material =
+    // Download off the main thread; textures and meshes have to be made on it (the renderer asserts otherwise).
+    val bitmap =
         try {
-          val bitmap =
-              withContext(Dispatchers.IO) {
-                val c = URL(src).openConnection() as HttpURLConnection
-                try {
-                  c.inputStream.use { BitmapFactory.decodeStream(it) }
-                } finally {
-                  c.disconnect()
-                }
-              } ?: error("could not decode image")
-          SceneMaterial(SceneTexture(bitmap), AlphaMode.TRANSLUCENT, SceneMaterial.UNLIT_SHADER)
+          withContext(Dispatchers.IO) {
+            val c = URL(src).openConnection() as HttpURLConnection
+            try {
+              c.inputStream.use { BitmapFactory.decodeStream(it) }
+            } finally {
+              c.disconnect()
+            }
+          } ?: error("could not decode image")
         } catch (e: Exception) {
           Log.w(TAG, "image failed: $src ${e.message}")
-          SceneMaterial(SceneTexture(android.graphics.Color.valueOf(0.5f, 0.5f, 0.5f, 0.4f)), AlphaMode.TRANSLUCENT,
-              SceneMaterial.UNLIT_SHADER)
+          null
         }
-    material.setSidedness(MaterialSidedness.DOUBLE_SIDED)
-    return SceneMesh.quad(Vector3(-w / 2, -h / 2, 0f), Vector3(w / 2, h / 2, 0f), material)
+    return withContext(Dispatchers.Main) {
+      val texture = bitmap?.let { SceneTexture(it) } ?: SceneTexture(android.graphics.Color.valueOf(0.5f, 0.5f, 0.5f, 0.4f))
+      val material = SceneMaterial(texture, AlphaMode.TRANSLUCENT, SceneMaterial.UNLIT_SHADER)
+      material.setSidedness(MaterialSidedness.DOUBLE_SIDED)
+      SceneMesh.quad(Vector3(-w / 2, -h / 2, 0f), Vector3(w / 2, h / 2, 0f), material)
+    }
   }
 
   private fun imageMeshUri(item: RenderItem): Uri =
