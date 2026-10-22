@@ -96,7 +96,8 @@ As in the AR spaces design: a light base 4 mm thick with the finder ring, arcs a
 - **iPhone:** the same detector on ARKit's camera frames. ARKit world tracking keeps the scene placed between markers.
 - **Apple Vision Pro:** apps can't read the main camera (Apple keeps that for enterprise apps), so it can't run VLM's detector.
   - It uses visionOS image tracking with the shortlist from the AR spaces design. Each marker's reference image is rendered from its ID.
-  - Ring art with few corners may track poorly. That is this design's biggest risk; see Risks.
+  - **Why a shortlist:** Apple's image tracking only handles a short list of reference images (around 100 on iPhone, with no firm number published for Vision Pro, and it gets slower and less reliable as the list grows). So Vision Pro can never recognise every marker, only the few near you, yours, or ones you opened from a link or notification. A visitor with location off and no link has an empty shortlist and opens the space from the app instead. Quest and iPhone decode IDs directly, so any marker works there.
+  - Ring art with few corners may track poorly; the corner marks are there for this. That is this design's biggest risk; see Risks.
 - **One detector, two ports.** Kotlin on Quest and Swift on iPhone, both checked against one shared set of test images with known IDs and poses. The generator also renders those test images (tilted, blurred, shadowed) and a small Python reference decoder defines the expected results, so both ports have a target before either exists. The Swift port comes after the Quest spike proves the range.
 - **Viewing angle (Claude's call):** the marker must be found up to 45° off its face, which covers walking past an entrance wall. The range test checks 0°, 30° and 45°.
 - **What the detector does:**
