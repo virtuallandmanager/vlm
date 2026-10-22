@@ -13,15 +13,20 @@ import com.meta.spatial.core.Pose
 import com.meta.spatial.core.Quaternion
 import com.meta.spatial.core.SpatialFeature
 import com.meta.spatial.core.Vector3
+import com.meta.spatial.mruk.AnchorProceduralMesh
+import com.meta.spatial.mruk.AnchorProceduralMeshConfig
 import com.meta.spatial.mruk.MRUKAnchor
 import com.meta.spatial.mruk.MRUKFeature
 import com.meta.spatial.mruk.MRUKLabel
 import com.meta.spatial.mruk.MRUKLoadDeviceResult
 import com.meta.spatial.mruk.MRUKPlane
+import com.meta.spatial.mruk.MRUKSpawnMode
 import com.meta.spatial.mruk.hasLabel
 import com.meta.spatial.okhttp3.OkHttpAssetFetcher
+import com.meta.spatial.runtime.EnvironmentDepthMode
 import com.meta.spatial.runtime.NetworkedAssetLoader
 import com.meta.spatial.runtime.ReferenceSpace
+import com.meta.spatial.runtime.SceneMaterial
 import com.meta.spatial.toolkit.AppSystemActivity
 import com.meta.spatial.toolkit.DpPerMeterDisplayOptions
 import com.meta.spatial.toolkit.Grabbable
@@ -53,6 +58,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * VLM Spaces for Meta Quest 3 / 3S (spike). Shows a VLM scene life-size in passthrough, fed by the same long-poll feed
@@ -89,6 +96,10 @@ class MainActivity : AppSystemActivity(), PanelActions {
   private var walls: List<WallPlane> = emptyList()
   private var roomRequested = false
   private var roomLoaded = false
+  private var roomAttempts = 0
+  /** The room scan's walls and ceiling drawn as passthrough, while [Occlusion.WALLS] is on (main thread). */
+  private var occluders: AnchorProceduralMesh? = null
+  private var sceneReady = false
 
   private lateinit var camera: PassthroughCamera
   /** Only used on the camera's frame thread (PassthroughCamera runs one frame at a time). */
@@ -112,6 +123,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
     val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
     state.feedUrl = intent.getStringExtra("feedUrl") ?: prefs.getString("feedUrl", null) ?: state.feedUrl
     state.worldKey = intent.getStringExtra("worldKey") ?: prefs.getString("worldKey", null) ?: ""
+    state.occlusion = prefs.getString("occlusion", null)?.let { n -> Occlusion.entries.firstOrNull { it.name == n } } ?: Occlusion.OFF
 
     camera =
         PassthroughCamera(
@@ -146,6 +158,8 @@ class MainActivity : AppSystemActivity(), PanelActions {
     scene.updateIBLEnvironment("environment.env")
     renderer.place(centre, yaw)
     panel = Entity.createPanelEntity(R.id.control_panel, Transform(Pose(Vector3(-0.5f, 1.3f, 0.8f))), Grabbable())
+    sceneReady = true
+    applyOcclusion()
     if (checkSelfPermission(PERMISSION_USE_SCENE) == PackageManager.PERMISSION_GRANTED) loadRoom()
   }
 
@@ -205,6 +219,12 @@ class MainActivity : AppSystemActivity(), PanelActions {
     yaw = atan2(fwd.x.toDouble(), fwd.z.toDouble())
     renderer.place(centre, yaw)
     state.placement = "Scene centre 2 m ahead, north pointing away from you"
+  }
+
+  override fun setOcclusion(o: Occlusion) {
+    state.occlusion = o
+    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("occlusion", o.name).apply()
+    applyOcclusion()
   }
 
   override fun turn(degrees: Double) {
@@ -348,12 +368,13 @@ class MainActivity : AppSystemActivity(), PanelActions {
   // ── room scan ────────────────────────────────────────────────────────
 
   /**
-   * Loads the room scan from the headset, once. It doesn't ask for a new scan when there is none (that would start
+   * Loads the room scan from the headset, retrying a failed load a few times. It doesn't ask for a new scan when there is none (that would start
    * Space Setup unprompted); the panel says how to make one instead.
    */
   private fun loadRoom() {
     if (roomRequested) return
     roomRequested = true
+    roomAttempts++
     state.wallStatus = "Loading the room scan…"
     mruk.loadSceneFromDevice(false).whenComplete { result, error ->
       runOnUiThread {
@@ -361,6 +382,18 @@ class MainActivity : AppSystemActivity(), PanelActions {
         val ok = error == null && result == MRUKLoadDeviceResult.SUCCESS
         walls = if (ok) readWalls() else emptyList()
         roomLoaded = ok
+        val retry = !ok && result != MRUKLoadDeviceResult.ERROR_NO_ROOMS_FOUND && roomAttempts < ROOM_ATTEMPTS
+        if (retry) {
+          // Right after the headset wakes, tracking is still recovering and the load fails; try again shortly.
+          Log.i(TAG, "Room scan: $result, retrying (attempt $roomAttempts of $ROOM_ATTEMPTS)")
+          state.wallStatus = "Room scan not ready yet, trying again…"
+          roomRequested = false
+          scope.launch {
+            delay(ROOM_RETRY_MS)
+            loadRoom()
+          }
+          return@runOnUiThread
+        }
         state.wallStatus =
             when {
               ok && walls.isNotEmpty() -> "Room scan loaded: ${walls.size} walls"
@@ -368,8 +401,38 @@ class MainActivity : AppSystemActivity(), PanelActions {
               else -> "Room scan failed to load (${result ?: error?.javaClass?.simpleName}): no wall heading"
             }
         Log.i(TAG, "Room scan: $result, ${walls.size} walls")
+        applyOcclusion()
       }
     }
+  }
+
+  /**
+   * Turns on what [AppState.occlusion] asks for and off the rest. Walls are the room scan's wall faces and ceiling,
+   * drawn with a material that shows passthrough and writes depth, so anything virtual behind them isn't drawn. Live
+   * depth is the SDK's environment depth occlusion.
+   */
+  private fun applyOcclusion() {
+    if (!sceneReady) return
+    val o = state.occlusion
+    scene.setEnvironmentDepthMode(if (o == Occlusion.DEPTH) EnvironmentDepthMode.OCCLUSION else EnvironmentDepthMode.OFF)
+    if (o != Occlusion.WALLS) {
+      occluders?.destroy()
+      occluders = null
+    } else if (occluders == null && roomLoaded) {
+      val config = AnchorProceduralMeshConfig(SceneMaterial.passthrough(), false)
+      occluders =
+          AnchorProceduralMesh(mruk, mapOf(MRUKLabel.WALL_FACE to config, MRUKLabel.CEILING to config), MRUKSpawnMode.NONE)
+              .also { it.spawnMeshes(mruk.rooms) }
+    }
+    state.occlusionStatus =
+        when (o) {
+          Occlusion.OFF -> "Virtual things show through real walls"
+          Occlusion.WALLS ->
+              if (occluders != null) "Hidden behind the room scan's ${walls.size} walls and ceiling"
+              else "Walls need the room scan (${state.wallStatus})"
+          Occlusion.DEPTH -> "Hidden behind anything real the headset's depth sees"
+        }
+    Log.i(TAG, "Occlusion: $o (${state.occlusionStatus})")
   }
 
   private fun noWallReason(): String =
@@ -421,6 +484,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
   }
 
   override fun onSpatialShutdown() {
+    occluders?.destroy()
     camera.close()
     feed.stop()
     scope.cancel()
@@ -447,6 +511,8 @@ class MainActivity : AppSystemActivity(), PanelActions {
     private val PERMISSIONS = listOf(PERMISSION_USE_SCENE) + CAMERA_PERMISSIONS
     private const val REQUEST_PERMISSIONS = 1
     private const val STALE_NS = 250_000_000L
+    private const val ROOM_ATTEMPTS = 5
+    private const val ROOM_RETRY_MS = 3000L
     /** Frames averaged per marker position, and how many Align to the marker needs. */
     private const val AVERAGE_FRAMES = 15
     private const val MIN_FRAMES = 5

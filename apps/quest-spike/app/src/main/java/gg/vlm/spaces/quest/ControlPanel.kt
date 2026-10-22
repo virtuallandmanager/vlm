@@ -83,6 +83,15 @@ fun ControlPanel(s: AppState, act: PanelActions) {
         Line("Turn models half a turn (check against Decentraland)")
       }
 
+      Section("Hide behind real things")
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Occlusion.entries.forEach { o ->
+          if (o == s.occlusion) Button(onClick = { act.setOcclusion(o) }) { Text(o.label) }
+          else OutlinedButton(onClick = { act.setOcclusion(o) }) { Text(o.label) }
+        }
+      }
+      Line(s.occlusionStatus)
+
       Section("Marker test")
       Line(s.markerStatus)
       val cam = s.cameraStatus

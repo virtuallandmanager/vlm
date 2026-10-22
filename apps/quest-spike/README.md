@@ -7,6 +7,7 @@ What it does:
 - Long-polls `GET {feedUrl}/api/hyperfy/feed` with a world key, like the Hyperfy app and the Apple spikes.
 - **Images** are unlit, double-sided textured quads. **Videos** are video panels (ExoPlayer, muted, mp4 and HLS). **Models** load straight from their URL; only `.glb` works, anything else shows a pink box. **Sounds** aren't played yet.
 - Puts the scene's centre, VLM (8, 0, 8), on the floor 2 m ahead of you with VLM north pointing away from you. The panel has **Place 2 m ahead**, **Turn ±15°** and **Align to the marker**.
+- **Hide behind real things:** a panel switch. **Walls** draws the room scan's wall faces and ceiling (MRUK `AnchorProceduralMesh`) with `SceneMaterial.passthrough()`, so they show the real room and hide anything virtual behind them. **Live depth** turns on Spatial SDK's environment depth occlusion (`EnvironmentDepthMode.OCCLUSION`), which also hides behind furniture and people. The choice is remembered.
 - **Marker test:** VLM's ring markers (`../ring-marker`) are found in the left passthrough camera's frames (Camera2, 1280 × 960, Horizon OS v74+). The distance comes from the ring's size in the image, the position from that and the head pose, and the heading from the scanned wall the marker is on. The panel shows, per test marker, where tracking started ("found at"), where it stopped, the current distance, the position and the wall heading.
 
 Code:
@@ -20,8 +21,9 @@ Spike shortcuts and open questions:
 - The world key is kept in plain `SharedPreferences`.
 - **Model facing is unverified.** Decentraland shows a glTF x-mirrored; RealityKit and three.js needed a half turn about Y to match. Spatial SDK converts glTFs to its own frame, and its docs don't say how. The **Turn models half a turn** switch (on by default) flips between the two. Compare a model with an obvious front against the same scene in Decentraland and keep whichever matches.
 - **Image facing is also unverified.** Images are double-sided, so they always show, but one side may read mirrored. Check text on an image from the front.
-- **The lens pose's frame is unconfirmed.** `cameraToWorld` reads `LENS_POSE_ROTATION` and `LENS_POSE_TRANSLATION` as Android defines them, relative to the head pose Spatial SDK reports. The app logs the raw values and `LENS_POSE_REFERENCE` once at start; the headset check below confirms or corrects this.
-- The camera's intrinsics are scaled from the sensor's pre-correction active array to the 1280 × 960 stream (centre crop, then scale, as in Meta's passthrough samples). Both raw and scaled values are logged.
+- **The lens pose** is read as Android defines it, relative to the head pose Spatial SDK reports. On a Quest 3 (2026-10-22) `LENS_POSE_REFERENCE` is `GYROSCOPE`, and the 1.0 m distance and Align checks passed with it as is.
+- The camera's intrinsics are scaled from the sensor's pre-correction active array to the 1280 × 960 stream (centre crop, then scale, as in Meta's passthrough samples). On a Quest 3 the array is 1280 × 1280 and fx = fy = 866.9 px, so the stream is the middle 960 rows at unchanged scale. The synthetic test set assumes fx = 760 px, about 14% short; at the real fx a marker spans 14% more pixels.
+- The room scan sometimes fails to load right after the headset wakes, while tracking recovers (`ERROR_UNKNOWN`). The app retries it 5 times, 3 s apart.
 - The marker's world position uses the head pose at the tick after the frame, not at the frame's capture time, so it lags while you move your head. Averaging over 15 frames smooths noise but not lag: stand still before pressing **Align to the marker**.
 - Clicks, sounds and analytics aren't implemented.
 
@@ -116,4 +118,4 @@ The table is filled in from the range test on the headset; it hasn't been run ye
 | `RING170` (170 mm) | 30° | — | — |
 | `RING170` (170 mm) | 45° | — | — |
 
-Distance at 1.0 m (tape measure): —. Heading error after **Align to the marker**: —.
+Headset check on a Quest 3, 2026-10-22: `RING140` (paper) was tracked within seconds; the distance at 1.0 m and the heading after **Align to the marker** looked right by eye (not yet measured to ±2 cm and 1°). **Walls** and **Live depth** both hid scene content behind real surfaces.

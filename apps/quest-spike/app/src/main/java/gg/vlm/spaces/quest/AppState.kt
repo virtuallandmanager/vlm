@@ -22,6 +22,17 @@ class AppState {
   var poseLines by mutableStateOf(RING_TEST_MARKERS.map { "  not in view" })
   var wallStatus by mutableStateOf("Room scan not loaded yet")
   var lastRing by mutableStateOf("No ring marker read yet")
+  var occlusion by mutableStateOf(Occlusion.OFF)
+  var occlusionStatus by mutableStateOf("Virtual things show through real walls")
+}
+
+/** What hides the virtual scene where something real is in front of it. */
+enum class Occlusion(val label: String) {
+  OFF("Off"),
+  /** The room scan's walls and ceiling, as surfaces that show passthrough. */
+  WALLS("Walls"),
+  /** The headset's live depth: anything real, people and furniture included. */
+  DEPTH("Live depth"),
 }
 
 /** What the panel's buttons do. */
@@ -32,4 +43,5 @@ interface PanelActions {
   fun alignToMarker()
   fun setModelTurn(on: Boolean)
   fun resetReadings()
+  fun setOcclusion(o: Occlusion)
 }
