@@ -1,5 +1,6 @@
 package gg.vlm.spaces.quest
 
+import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
@@ -9,15 +10,9 @@ import com.meta.spatial.compose.ComposeViewPanelRegistration
 import com.meta.spatial.core.Entity
 import com.meta.spatial.core.Pose
 import com.meta.spatial.core.Quaternion
-import com.meta.spatial.core.Query
 import com.meta.spatial.core.SpatialFeature
 import com.meta.spatial.core.Vector3
 import com.meta.spatial.mruk.MRUKFeature
-import com.meta.spatial.mruk.MRUKPlane
-import com.meta.spatial.mruk.MRUKStartTrackerResult
-import com.meta.spatial.mruk.TrackedQrCode
-import com.meta.spatial.mruk.Tracker
-import com.meta.spatial.mruk.TrackingStatus
 import com.meta.spatial.okhttp3.OkHttpAssetFetcher
 import com.meta.spatial.runtime.NetworkedAssetLoader
 import com.meta.spatial.runtime.ReferenceSpace
@@ -31,6 +26,12 @@ import com.meta.spatial.toolkit.Transform
 import com.meta.spatial.toolkit.UIPanelSettings
 import com.meta.spatial.toolkit.createPanelEntity
 import com.meta.spatial.vr.VRFeature
+import gg.vlm.spaces.quest.ring.CameraStatus
+import gg.vlm.spaces.quest.ring.PassthroughCamera
+import gg.vlm.spaces.quest.ring.RING_TEST_MARKERS
+import gg.vlm.spaces.quest.ring.RingDetection
+import gg.vlm.spaces.quest.ring.RingDetector
+import gg.vlm.spaces.quest.ring.RingTracker
 import java.io.File
 import kotlin.math.atan2
 import kotlin.math.sqrt
@@ -41,7 +42,8 @@ import kotlinx.coroutines.cancel
 
 /**
  * VLM Spaces for Meta Quest 3 / 3S (spike). Shows a VLM scene life-size in passthrough, fed by the same long-poll feed
- * as the Hyperfy app, and runs the marker detection-range test with Horizon OS's QR code tracking (MRUK trackables).
+ * as the Hyperfy app, and runs the marker detection-range test with VLM's ring markers, found in the left passthrough
+ * camera's frames by [RingDetector].
  */
 class MainActivity : AppSystemActivity(), PanelActions {
   private lateinit var mruk: MRUKFeature
@@ -56,10 +58,19 @@ class MainActivity : AppSystemActivity(), PanelActions {
   private var yaw = 0.0
   private var placedOnce = false
 
-  private val readings = TestMarker.ALL.associate { it.code to MarkerReading() }
+  private val readings = RING_TEST_MARKERS.associate { it.id to MarkerReading() }
   private var lastUiUpdate = 0L
-  private var lastQrLog = 0L
+  /** The last tracked test marker's pose. Null until Task 8 turns ring detections into poses. */
   private var lastMarkerPose: Pose? = null
+
+  private lateinit var camera: PassthroughCamera
+  /** Only used on the camera's frame thread (PassthroughCamera runs one frame at a time). */
+  private val detector = RingDetector()
+  private val tracker = RingTracker(RING_TEST_MARKERS.map { it.id }.toSet())
+  /** The newest frame's result, written on the frame thread and read by [trackRings] on the main thread. */
+  @Volatile private var latestRings: RingFrame? = null
+  /** Whether the camera should run while the activity is in front (permissions granted). */
+  private var cameraWanted = false
 
   override fun registerFeatures(): List<SpatialFeature> {
     mruk = MRUKFeature(this, systemManager)
@@ -77,11 +88,22 @@ class MainActivity : AppSystemActivity(), PanelActions {
     state.feedUrl = intent.getStringExtra("feedUrl") ?: prefs.getString("feedUrl", null) ?: state.feedUrl
     state.worldKey = intent.getStringExtra("worldKey") ?: prefs.getString("worldKey", null) ?: ""
 
-    if (checkSelfPermission(PERMISSION_USE_SCENE) != PackageManager.PERMISSION_GRANTED) {
-      state.markerStatus = "Waiting for the spatial data permission"
-      requestPermissions(arrayOf(PERMISSION_USE_SCENE), REQUEST_USE_SCENE)
+    camera =
+        PassthroughCamera(
+            this,
+            onFrame = { gray, w, h, stride, t ->
+              val raw = detector.detect(gray, w, h, stride)
+              latestRings = RingFrame(tracker.update(raw), raw.lastOrNull(), t)
+            },
+            onStatus = { st -> runOnUiThread { onCameraStatus(st) } },
+        )
+    val missing = PERMISSIONS.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+    if (missing.isNotEmpty()) {
+      state.markerStatus = "Waiting for the camera and spatial data permissions"
+      requestPermissions(missing.toTypedArray(), REQUEST_PERMISSIONS)
     } else {
-      startTracking()
+      state.markerStatus = HOLD_MARKER
+      startCamera()
     }
     if (state.worldKey.isNotBlank()) connect()
   }
@@ -125,7 +147,18 @@ class MainActivity : AppSystemActivity(), PanelActions {
       placeAhead()
       panel?.setComponent(Transform(panelPose(head)))
     }
-    trackMarkers(head)
+    trackRings(head)
+  }
+
+  override fun onResume() {
+    super.onResume()
+    if (cameraWanted) camera.start()
+  }
+
+  override fun onPause() {
+    camera.stop()
+    latestRings = null
+    super.onPause()
   }
 
   // ── panel actions ────────────────────────────────────────────────────
@@ -164,7 +197,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
     }
     val head = scene.getViewerPose()
     val toMarker = flat(m.t - head.t) ?: Vector3(0f, 0f, 1f)
-    // The QR code's normal, flattened; a code lying flat has none, so fall back to its up axis.
+    // The marker's normal, flattened; a marker lying flat has none, so fall back to its up axis.
     var dir = flat(m.q.times(Vector3(0f, 0f, 1f))) ?: flat(m.q.times(Vector3(0f, 1f, 0f))) ?: toMarker
     if (dir.dot(toMarker) < 0) dir = -dir
     centre = Vector3(m.t.x, 0f, m.t.z)
@@ -183,78 +216,67 @@ class MainActivity : AppSystemActivity(), PanelActions {
       r.foundAt.clear()
       r.lostAt.clear()
     }
-    TestMarker.ALL.forEach { readings[it.code]?.let { r -> if (r.tracked) r.observe(false, 0.0) } }
-    state.lastQr = "No QR code read yet"
+    readings.values.forEach { r -> if (r.tracked) r.observe(false, 0.0) }
+    state.lastRing = "No ring marker read yet"
     lastUiUpdate = 0
   }
 
   // ── markers ──────────────────────────────────────────────────────────
 
-  private fun startTracking() {
-    state.markerStatus = "Starting QR code tracking…"
-    mruk.configureTrackers(setOf(Tracker.QrCode)).whenComplete { result, err ->
-      runOnUiThread {
-        state.markerStatus =
-            if (result == MRUKStartTrackerResult.SUCCESS) "Tracking QR codes: look at a printed marker"
-            else "QR tracking failed to start: ${result ?: err?.message} (needs Quest 3/3S, Horizon OS v78+)"
-      }
-    }
+  private fun startCamera() {
+    cameraWanted = true
+    camera.start()
   }
 
-  private fun trackMarkers(head: Pose) {
-    val seen = mutableSetOf<String>()
-    val qrs = Query.where { has(TrackedQrCode.id) }.eval().toList()
-    val logNow = System.currentTimeMillis() - lastQrLog > 1000
-    if (logNow) {
-      lastQrLog = System.currentTimeMillis()
-      Log.i(TAG, "qr entities: ${qrs.size}")
+  private fun onCameraStatus(st: CameraStatus) {
+    state.cameraStatus = st
+    if (st != CameraStatus.STARTING && st != CameraStatus.RUNNING) latestRings = null
+  }
+
+  /**
+   * Feeds the newest camera frame's trusted rings into the test markers' readings. The distance stays 0.0 until
+   * Task 8 turns a detection into a position.
+   */
+  private fun trackRings(head: Pose) {
+    val frame = latestRings ?: RingFrame(emptyList(), null, 0)
+    val seen = frame.tracked.mapTo(HashSet()) { it.id }
+    for ((id, r) in readings) {
+      val tracked = id in seen
+      if (tracked && !r.tracked) Log.i(TAG, "Ring ${nameOf(id)} tracked")
+      if (tracked || r.tracked) r.observe(tracked, 0.0)
     }
-    for (e in qrs) {
-      val payload = e.getComponent<TrackedQrCode>().payload
-      val tracked = e.tryGetComponent<TrackingStatus>()?.isTracked ?: true
-      val pose = e.tryGetComponent<Transform>()?.transform
-      if (logNow) Log.i(TAG, "qr '$payload' tracked=$tracked pose=$pose")
-      if (pose == null) continue
-      val distance = (pose.t - head.t).length().toDouble()
-      if (tracked) state.lastQr = "Last QR: $payload at ${"%.2f".format(distance)} m"
-      val code = TestMarker.codeFromQr(payload) ?: continue
-      val reading = readings[code] ?: continue
-      if (tracked) {
-        seen.add(code)
-        lastMarkerPose = pose
-        e.tryGetComponent<MRUKPlane>()?.let { p ->
-          reading.measuredSide = maxOf(p.max.x - p.min.x, p.max.y - p.min.y).toDouble()
-        }
-      }
-      if (tracked || reading.tracked) reading.observe(tracked, distance)
+    frame.last?.let { d ->
+      state.lastRing =
+          "Last ring: ${nameOf(d.id)} at (${"%.0f".format(d.cx)}, ${"%.0f".format(d.cy)}) px, " +
+              "${"%.0f".format(2 * d.semiMajor)} px across, turned ${"%.0f".format(d.rotationDeg)}°, " +
+              "${d.corrected} fixed"
     }
-    for ((code, r) in readings) if (code !in seen && r.tracked) r.observe(false, 0.0)
 
     val now = System.currentTimeMillis()
     if (now - lastUiUpdate < 100) return
     lastUiUpdate = now
     state.markerLines =
-        TestMarker.ALL.map { m ->
-          val r = readings.getValue(m.code)
-          val size = r.measuredSide?.let { side ->
-            val off = (side / m.qrSide - 1) * 100
-            " · QR ${"%.0f".format(side * 1000)} mm" + if (Math.abs(off) > 3) " (${"%+.0f".format(off)}%: check print scale)" else ""
-          } ?: ""
-          "${m.code} (${(m.width * 1000).toInt()} mm): ${r.summary}$size"
-        }
+        RING_TEST_MARKERS.map { m -> "${m.name} (${(m.diameter * 1000).toInt()} mm): ${readings.getValue(m.id).summary}" }
   }
+
+  private fun nameOf(id: Long): String =
+      RING_TEST_MARKERS.firstOrNull { it.id == id }?.name ?: "id %08X (not a test marker)".format(id)
 
   override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
     super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-    if (requestCode != REQUEST_USE_SCENE) return
-    if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) startTracking()
-    else state.markerStatus = "Spatial data permission denied: QR tracking is off"
+    if (requestCode != REQUEST_PERMISSIONS) return
+    val cameraGranted =
+        CAMERA_PERMISSIONS.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+    val sceneGranted = checkSelfPermission(PERMISSION_USE_SCENE) == PackageManager.PERMISSION_GRANTED
+    state.markerStatus = if (sceneGranted) HOLD_MARKER else "Spatial data permission denied: room walls are unavailable"
+    if (cameraGranted) startCamera() else state.cameraStatus = CameraStatus.NO_PERMISSION
   }
 
   override fun onSpatialShutdown() {
+    cameraWanted = false
+    camera.stop()
     feed.stop()
     scope.cancel()
-    mruk.stopTrackers()
     super.onSpatialShutdown()
   }
 
@@ -274,6 +296,12 @@ class MainActivity : AppSystemActivity(), PanelActions {
     private const val TAG = "VLMSpaces"
     private const val PREFS = "vlm-spaces"
     private const val PERMISSION_USE_SCENE = "com.oculus.permission.USE_SCENE"
-    private const val REQUEST_USE_SCENE = 1
+    private val CAMERA_PERMISSIONS = listOf(Manifest.permission.CAMERA, PassthroughCamera.PERMISSION_HEADSET_CAMERA)
+    private val PERMISSIONS = listOf(PERMISSION_USE_SCENE) + CAMERA_PERMISSIONS
+    private const val REQUEST_PERMISSIONS = 1
+    private const val HOLD_MARKER = "Hold a printed ring marker in view, then walk away and back"
   }
 }
+
+/** One camera frame's result: the trusted test-marker rings, and the last raw detection (any ID) for the panel. */
+private class RingFrame(val tracked: List<RingDetection>, val last: RingDetection?, val timestampNs: Long)

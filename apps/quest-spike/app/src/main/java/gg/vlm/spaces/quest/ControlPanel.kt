@@ -28,6 +28,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import gg.vlm.spaces.quest.ring.CameraStatus
+import gg.vlm.spaces.quest.ring.cameraStatusText
 
 /** The one panel: connection, scene placement and the marker detection-range test. */
 @Composable
@@ -83,8 +85,10 @@ fun ControlPanel(s: AppState, act: PanelActions) {
 
       Section("Marker test")
       Line(s.markerStatus)
+      val cam = s.cameraStatus
+      if (cam != null) Line(cameraStatusText(cam), if (cam == CameraStatus.STARTING || cam == CameraStatus.RUNNING) Color(0xFFE0E0E0) else Color(0xFFFF8A80))
       s.markerLines.forEach { Line(it, mono = true) }
-      Line(s.lastQr, mono = true)
+      Line(s.lastRing, mono = true)
       OutlinedButton(onClick = act::resetReadings) { Text("Reset readings") }
     }
   }

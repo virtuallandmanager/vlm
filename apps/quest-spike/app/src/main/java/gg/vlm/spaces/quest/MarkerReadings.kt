@@ -1,29 +1,7 @@
 package gg.vlm.spaces.quest
 
-/** The printed test markers from apps/ar-spike/tools/make_markers.py. */
-data class TestMarker(val code: String, val width: Double) {
-  /**
-   * The QR code's side in metres. Quest tracks the QR code itself, not the whole tracked square: the square is 33
-   * modules across (a version 2 QR code is 25, plus a 2-module quiet zone and a 2-module ring on each side).
-   */
-  val qrSide: Double
-    get() = width * 25 / 33
-
-  companion object {
-    val ALL = listOf(TestMarker("TEST12", 0.12), TestMarker("TEST17", 0.17))
-    private const val PREFIX = "HTTPS://VLM.GG/S/"
-
-    /** The marker code in a marker QR payload (`HTTPS://VLM.GG/S/<CODE>`), or null for any other text. */
-    fun codeFromQr(payload: String): String? {
-      val p = payload.trim().uppercase()
-      if (!p.startsWith(PREFIX)) return null
-      return p.removePrefix(PREFIX).ifEmpty { null }
-    }
-  }
-}
-
 /**
- * What the detection-range test records for one marker: where tracking started ("found") and where it stopped
+ * What the detection-range test records for one ring test marker (RING_TEST_MARKERS): where tracking started ("found") and where it stopped
  * ("lost"), as distances from the headset in metres. Walk away until it's lost, then walk back until it's found.
  */
 class MarkerReading {
@@ -35,8 +13,6 @@ class MarkerReading {
   val lostAt = mutableListOf<Double>()
   var farthestTracked: Double? = null
     private set
-  /** The QR side Quest measured, in metres, the last time it tracked the code. */
-  var measuredSide: Double? = null
 
   val farthestFound: Double?
     get() = foundAt.maxOrNull()
