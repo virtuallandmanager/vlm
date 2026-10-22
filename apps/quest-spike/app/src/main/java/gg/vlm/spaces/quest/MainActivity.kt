@@ -101,9 +101,9 @@ class MainActivity : AppSystemActivity(), PanelActions {
   private var roomLoaded = false
   private var roomAttempts = 0
   /** The room scan's walls and ceiling drawn as passthrough, while [Occlusion.WALLS] is on (main thread). */
-  private var occluders: AnchorProceduralMesh? = null
+  private var occluders: List<Entity> = emptyList()
   /** The same surfaces tinted, while [AppState.showWalls] is on (main thread). */
-  private var wallTint: AnchorProceduralMesh? = null
+  private var wallTint: List<Entity> = emptyList()
   private var sceneReady = false
 
   private lateinit var camera: PassthroughCamera
@@ -199,6 +199,11 @@ class MainActivity : AppSystemActivity(), PanelActions {
     super.onResume()
     // Also catches permissions granted later in Settings.
     if (cameraPermitted()) camera.start()
+    // And a room scan made (or finished loading) while the app was in the background.
+    if (sceneReady && !roomLoaded && !roomRequested && checkSelfPermission(PERMISSION_USE_SCENE) == PackageManager.PERMISSION_GRANTED) {
+      roomAttempts = 0
+      loadRoom()
+    }
   }
 
   override fun onPause() {
@@ -392,9 +397,9 @@ class MainActivity : AppSystemActivity(), PanelActions {
         val ok = error == null && result == MRUKLoadDeviceResult.SUCCESS
         walls = if (ok) readWalls() else emptyList()
         roomLoaded = ok
-        val retry = !ok && result != MRUKLoadDeviceResult.ERROR_NO_ROOMS_FOUND && roomAttempts < ROOM_ATTEMPTS
+        // Right after the headset wakes the load can also report no rooms, so that is retried too.
+        val retry = !ok && roomAttempts < ROOM_ATTEMPTS
         if (retry) {
-          // Right after the headset wakes, tracking is still recovering and the load fails; try again shortly.
           Log.i(TAG, "Room scan: $result, retrying (attempt $roomAttempts of $ROOM_ATTEMPTS)")
           state.wallStatus = "Room scan not ready yet, trying again…"
           roomRequested = false
@@ -418,40 +423,47 @@ class MainActivity : AppSystemActivity(), PanelActions {
 
   /**
    * Turns on what [AppState.occlusion] asks for and off the rest. Walls are the room scan's wall faces and ceiling,
-   * drawn with a material that shows passthrough and writes depth, so anything virtual behind them isn't drawn. Live
+   * drawn with the hole-punch material, which clears to passthrough and writes depth, so anything virtual behind them isn't drawn. Live
    * depth is the SDK's environment depth occlusion.
    */
   private fun applyOcclusion() {
     if (!sceneReady) return
     val o = state.occlusion
     scene.setEnvironmentDepthMode(if (o == Occlusion.DEPTH) EnvironmentDepthMode.OCCLUSION else EnvironmentDepthMode.OFF)
-    if (o != Occlusion.WALLS) {
-      occluders?.destroy()
-      occluders = null
-    } else if (occluders == null && roomLoaded) {
-      val config = AnchorProceduralMeshConfig(SceneMaterial.passthrough(), false)
-      occluders =
-          AnchorProceduralMesh(mruk, mapOf(MRUKLabel.WALL_FACE to config, MRUKLabel.CEILING to config), MRUKSpawnMode.NONE)
-              .also { it.spawnMeshes(mruk.rooms) }
+    occluders = updateSurfaces(occluders, o == Occlusion.WALLS) {
+      Material(baseColor = Color4(0f, 0f, 0f, 0f), alphaMode = AlphaMode.HOLE_PUNCH.mode, shader = SceneMaterial.HOLE_PUNCH_SHADER)
     }
-    if (!state.showWalls) {
-      wallTint?.destroy()
-      wallTint = null
-    } else if (wallTint == null && roomLoaded) {
-      val tint = AnchorProceduralMeshConfig(Material(baseColor = Color4(0.3f, 0.8f, 1f, 0.35f), unlit = true, alphaMode = AlphaMode.TRANSLUCENT.mode), false)
-      wallTint =
-          AnchorProceduralMesh(mruk, mapOf(MRUKLabel.WALL_FACE to tint, MRUKLabel.CEILING to tint), MRUKSpawnMode.NONE)
-              .also { it.spawnMeshes(mruk.rooms) }
+    wallTint = updateSurfaces(wallTint, state.showWalls) {
+      Material(baseColor = Color4(0.3f, 0.8f, 1f, 0.35f), unlit = true, alphaMode = AlphaMode.TRANSLUCENT.mode)
     }
     state.occlusionStatus =
         when (o) {
           Occlusion.OFF -> "Virtual things show through real walls"
           Occlusion.WALLS ->
-              if (occluders != null) "Hidden behind the room scan's ${walls.size} walls and ceiling"
+              if (occluders.isNotEmpty()) "Hidden behind the room scan's ${walls.size} walls and ceiling"
               else "Walls need the room scan (${state.wallStatus})"
           Occlusion.DEPTH -> "Hidden behind anything real the headset's depth sees"
         }
     Log.i(TAG, "Occlusion: $o (${state.occlusionStatus})")
+  }
+
+  /**
+   * The room scan's wall faces and ceiling drawn with [material]: [current] when [on] and already spawned, newly spawned
+   * when [on] and the room has loaded, and none (destroying [current]) when off. The entities are destroyed here, since
+   * [AnchorProceduralMesh.destroy] only removes meshes it spawned for its own scene listener.
+   */
+  private fun updateSurfaces(current: List<Entity>, on: Boolean, material: () -> Material): List<Entity> {
+    if (!on) {
+      current.forEach { it.destroy() }
+      return emptyList()
+    }
+    if (current.isNotEmpty() || !roomLoaded) return current
+    val config = AnchorProceduralMeshConfig(material(), false)
+    val labels = mapOf(MRUKLabel.WALL_FACE to config, MRUKLabel.CEILING to config)
+    val mesh = AnchorProceduralMesh(mruk, labels, MRUKSpawnMode.NONE)
+    val spawned = mesh.spawnMeshes(mruk.rooms).flatMap { listOfNotNull(it.mesh, it.physics) }
+    mesh.destroy()
+    return spawned.filter { it != Entity.nullEntity() }
   }
 
   private fun noWallReason(): String =
@@ -503,8 +515,8 @@ class MainActivity : AppSystemActivity(), PanelActions {
   }
 
   override fun onSpatialShutdown() {
-    occluders?.destroy()
-    wallTint?.destroy()
+    occluders.forEach { it.destroy() }
+    wallTint.forEach { it.destroy() }
     camera.close()
     feed.stop()
     scope.cancel()
