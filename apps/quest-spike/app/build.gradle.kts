@@ -59,3 +59,16 @@ dependencies {
   implementation(libs.androidx.ui.graphics)
   implementation(libs.androidx.material3)
 }
+
+// The ring-marker synthetic test set (apps/ring-marker/testset), read by RingDetectorTest.
+val ringMarkerDir = file("../../ring-marker")
+val ringTestset by
+    tasks.registering(Exec::class) {
+      description = "Generates the ring-marker synthetic test set with python3 -m ringmarker.testset."
+      workingDir = ringMarkerDir
+      commandLine("python3", "-m", "ringmarker.testset", "testset")
+      inputs.files(fileTree(ringMarkerDir.resolve("ringmarker")) { include("*.py") })
+      outputs.dir(ringMarkerDir.resolve("testset"))
+    }
+
+tasks.matching { it.name == "testDebugUnitTest" }.configureEach { dependsOn(ringTestset) }
