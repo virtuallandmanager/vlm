@@ -4,6 +4,7 @@ import com.meta.spatial.core.Vector3
 import gg.vlm.spaces.Vec3
 import gg.vlm.spaces.api.BuilderCall
 import gg.vlm.spaces.ring.WallPlane
+import gg.vlm.spaces.ring.rangeToPlane
 import gg.vlm.spaces.space.angleDiffDeg
 import gg.vlm.spaces.space.markerInScene
 import org.junit.Assert.assertEquals
@@ -89,6 +90,26 @@ class AlignmentTest {
     assertEquals(Math.sqrt(dx * dx + dy * dy + dz * dz), depthRange(eye, onFront, walls)!!, 1e-6)
   }
 
+  @Test fun `depthRange and the size warning for a print that came out smaller or larger`() {
+    val walls = listOf(wall(0f, 3f, 0f, -1f))
+    val eye = Vec3(0.0, 1.6, 0.0)
+    val onWall = Vec3(0.5, 1.5, 3.0)
+    val depth = Math.sqrt(0.5 * 0.5 + 0.1 * 0.1 + 3.0 * 3.0)
+    // A print scaled by s reads 1/s as far by its size: behind the wall for 92%, in front of it for 105%.
+    for ((scale, expected) in listOf(0.92 to "8% smaller", 1.05 to "5% larger")) {
+      val measured = Vec3(eye.x + (onWall.x - eye.x) / scale, eye.y + (onWall.y - eye.y) / scale, eye.z + (onWall.z - eye.z) / scale)
+      val range = depthRange(eye, measured, walls)!!
+      assertEquals("x$scale", depth, range, 1e-9)
+      val ellipse = depth / scale
+      assertTrue("x$scale", sizeWarning(sizeRatio(ellipse, range))!!.contains(expected))
+    }
+  }
+
+  @Test fun `depthRange ignores a wall far beyond a plausible print size`() {
+    val walls = listOf(wall(0f, 3f, 0f, -1f))
+    assertNull(depthRange(Vec3(0.0, 1.5, 0.0), Vec3(0.0, 1.5, 1.0), walls))
+  }
+
   @Test fun `depthRange is null with no wall under the ring`() {
     assertNull(depthRange(Vec3(0.0, 1.6, 0.0), Vec3(0.5, 1.5, 1.0), listOf(wall(0f, 3f, 0f, -1f))))
   }
@@ -96,6 +117,9 @@ class AlignmentTest {
   // ── the flow ──
 
   private val sight = RingSight(Vec3(2.0, 1.4, -3.0), 90.0, 1.0)
+
+  /** A head [distanceM] from the ring. */
+  private fun head(distanceM: Double) = Vec3(sight.world.x, sight.world.y, sight.world.z + distanceM)
 
   private fun placed(): AlignFlow = AlignFlow("Ground floor", 0.0).also { it.onSteadyRing(sight) }
 
@@ -110,11 +134,16 @@ class AlignmentTest {
     assertEquals(1.4, markerInScene(s.root, sight.world, sight.headingDeg).y, 1e-9)
   }
 
-  @Test fun `a later sighting does not move a placed scene`() {
+  @Test fun `a later sighting refreshes the placed scene until the first nudge`() {
     val f = placed()
+    val later = sight.copy(world = Vec3(2.01, 1.41, -3.0), headingDeg = 91.0)
+    f.onSteadyRing(later)
+    assertEquals(defaultRoot(later.world, later.headingDeg, 0.0, 1.41), (f.state as AlignState.Placed).root)
+    f.nudge(0.01, 0.0, 0.0)
     val root = (f.state as AlignState.Placed).root
-    f.onSteadyRing(sight.copy(world = Vec3(0.0, 0.0, 0.0)))
+    f.onSteadyRing(sight)
     assertEquals(root, (f.state as AlignState.Placed).root)
+    assertEquals(1.41, f.requestSave(head(1.0))!!.heightAboveFloorM, 1e-12)
   }
 
   @Test fun `nudging turns about the ring`() {
@@ -128,30 +157,30 @@ class AlignmentTest {
 
   @Test fun `save beyond 1_5 m is refused and the scene stays adjustable`() {
     val f = placed()
-    assertNull(f.requestSave(1.51))
+    assertNull(f.requestSave(head(1.51)))
     assertEquals(AlignState.Refused("Step closer to the ring to save"), f.state)
     f.nudge(0.01, 0.0, 0.0)
     assertTrue(f.state is AlignState.Placed)
-    assertNotNull(f.requestSave(1.5))
+    assertNotNull(f.requestSave(head(1.5)))
   }
 
   @Test fun `save gives the ring's scene pose and its height above the floor`() {
     val f = placed()
     f.nudge(0.0, 0.0, 10.0)
     val root = (f.state as AlignState.Placed).root
-    val req = f.requestSave(1.0)!!
+    val req = f.requestSave(head(1.0))!!
     assertEquals(AlignState.Saving, f.state)
     assertEquals(markerInScene(root, sight.world, sight.headingDeg), req.pose)
     assertEquals(1.4, req.heightAboveFloorM, 1e-12)
   }
 
   @Test fun `save before the scene is placed gives nothing`() {
-    assertNull(AlignFlow("Ground floor", 0.0).requestSave(1.0))
+    assertNull(AlignFlow("Ground floor", 0.0).requestSave(head(1.0)))
   }
 
   @Test fun `a saved answer carries its warnings as copy`() {
     val f = AlignFlow("Mezzanine", 3.5).also { it.onSteadyRing(sight) }
-    f.requestSave(1.0)
+    f.requestSave(head(1.0))
     f.saved(BuilderCall.Ok(listOf("floor_height_off", "something_new")))
     assertEquals(AlignState.Saved(listOf("floor_height_off", "something_new")), f.state)
     assertEquals(listOf("Floor height doesn't match Mezzanine (3.5 m): check the floor"), f.warningLines())
@@ -159,10 +188,10 @@ class AlignmentTest {
 
   @Test fun `a failed save is refused with a reason and can be tried again`() {
     val f = placed()
-    f.requestSave(1.0)
+    f.requestSave(head(1.0))
     f.saved(BuilderCall.NoAccess)
     assertEquals(AlignState.Refused("This account can't edit this scene"), f.state)
-    assertNotNull(f.requestSave(1.0))
+    assertNotNull(f.requestSave(head(1.0)))
     f.saved(BuilderCall.Offline)
     assertTrue((f.state as AlignState.Refused).reason.isNotEmpty())
   }

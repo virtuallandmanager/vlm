@@ -37,6 +37,13 @@ Added in the whole-branch review fixes, so a visitor is never left without an in
 - A ring that holds still with its wall found, but seen more than 30° from head-on (one ring's outline can't tell its own wall from a perpendicular one that steeply): "Stand in front of the ring"
 - A ring that holds still but has had no wall heading for over 3 s (the scan missed its wall, or the wall disagrees with the ring's tilt): "Can't see the wall behind this ring. Look around the room so the headset can map it."
 
+### New builder copy (the owner may reword)
+
+The align panel's refusals (`AlignCopy` in `builder/Alignment.kt`). "Step closer to the ring to save" and "This account can't edit this scene" are the plan's copy.
+
+- Save failed because the headset is offline: "Can't reach vlm.gg: check the connection and save again"
+- Save failed for any other reason: "Couldn't save the alignment: try again"
+
 ## Build
 
 Needs JDK 17 and the Android SDK (API 34). On this Mac they're installed with Homebrew:

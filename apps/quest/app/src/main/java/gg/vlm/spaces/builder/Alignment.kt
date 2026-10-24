@@ -3,8 +3,8 @@ package gg.vlm.spaces.builder
 import gg.vlm.spaces.Vec3
 import gg.vlm.spaces.api.BuilderCall
 import gg.vlm.spaces.api.MarkerPose
-import gg.vlm.spaces.ring.WALL_TOLERANCE_M
 import gg.vlm.spaces.ring.WallPlane
+import gg.vlm.spaces.ring.wallHitsAlongRay
 import gg.vlm.spaces.space.RootPose
 import gg.vlm.spaces.space.markerInScene
 import gg.vlm.spaces.space.rootFromMarker
@@ -16,7 +16,6 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import kotlin.math.sqrt
 
 /** Where the scene starts on a floor's first visit: the ring at the middle of its north wall, facing into the scene. */
 private const val DEFAULT_RING_X = 8.0
@@ -58,48 +57,11 @@ fun sizeWarning(ratio: Double): String? {
 }
 
 /**
- * The distance along the ray from [origin] in the unit direction [dir] to the plane through [planePoint] with normal
- * [planeNormal], or null when the ray is parallel to it or the plane is behind.
- */
-fun rangeToPlane(origin: Vec3, dir: Vec3, planePoint: Vec3, planeNormal: Vec3): Double? {
-  val denom = dir.x * planeNormal.x + dir.y * planeNormal.y + dir.z * planeNormal.z
-  if (abs(denom) < 1e-6) return null
-  val t =
-      ((planePoint.x - origin.x) * planeNormal.x + (planePoint.y - origin.y) * planeNormal.y +
-          (planePoint.z - origin.z) * planeNormal.z) / denom
-  return t.takeIf { it > 0.0 }
-}
-
-/**
  * The depth range for the printed-size check: from [origin] (the camera) along the ray through [ring] to the plane of
- * the scanned wall the ring is on (the wall nearest it within [WALL_TOLERANCE_M] of its plane and edges), or null when
- * there is no such wall.
+ * the scanned wall the ray hits behind or in front of it (see [wallHitsAlongRay]; the nearest hit), or null when there
+ * is none. The ray, not [ring] itself, picks the wall: a print off size puts [ring] off its wall along the ray.
  */
-fun depthRange(origin: Vec3, ring: Vec3, walls: List<WallPlane>): Double? {
-  val wall =
-      walls
-          .mapNotNull { w ->
-            val len = hypot(w.normal.x.toDouble(), w.normal.z.toDouble())
-            if (len < 1e-3) return@mapNotNull null
-            val nx = w.normal.x / len
-            val nz = w.normal.z / len
-            val dx = ring.x - w.centre.x
-            val dy = ring.y - w.centre.y
-            val dz = ring.z - w.centre.z
-            val gap = abs(dx * nx + dz * nz)
-            val along = abs(dx * nz - dz * nx)
-            if (gap > WALL_TOLERANCE_M || along > w.halfWidth + WALL_TOLERANCE_M || abs(dy) > w.halfHeight + WALL_TOLERANCE_M) null
-            else Triple(gap, w, Vec3(nx, 0.0, nz))
-          }
-          .minByOrNull { it.first } ?: return null
-  val dx = ring.x - origin.x
-  val dy = ring.y - origin.y
-  val dz = ring.z - origin.z
-  val len = sqrt(dx * dx + dy * dy + dz * dz)
-  if (len < 1e-6) return null
-  val c = wall.second.centre
-  return rangeToPlane(origin, Vec3(dx / len, dy / len, dz / len), Vec3(c.x.toDouble(), c.y.toDouble(), c.z.toDouble()), wall.third)
-}
+fun depthRange(origin: Vec3, ring: Vec3, walls: List<WallPlane>): Double? = wallHitsAlongRay(origin, ring, walls).firstOrNull()?.t
 
 /** One thumbstick reading's worth of change: world metres and degrees of turn (see [stickNudge]). */
 data class StickNudge(val dx: Double, val dz: Double, val dYawDeg: Double)
@@ -163,10 +125,15 @@ class AlignFlow(private val floorName: String, private val floorHeightM: Double)
   private var ring: RingSight? = null
   private var root: RootPose? = null
   private var sizeChecked = false
+  private var nudged = false
 
-  /** A steady sight of the ring: the first one within reach places the scene at [defaultRoot]; later ones are ignored. */
+  /**
+   * A steady sight of the ring: the first one within reach places the scene at [defaultRoot]. Later ones refresh the
+   * placement until the builder first nudges it, which fixes the ring where it was.
+   */
   fun onSteadyRing(sight: RingSight) {
-    if (state != AlignState.LookAtRing || sight.distanceM > VisitorTuning.MAX_LOCK_DISTANCE_M) return
+    if (sight.distanceM > VisitorTuning.MAX_LOCK_DISTANCE_M) return
+    if (state != AlignState.LookAtRing && !(state is AlignState.Placed && !nudged)) return
     ring = sight
     val r = defaultRoot(sight.world, sight.headingDeg, floorHeightM, sight.world.y)
     root = r
@@ -179,20 +146,24 @@ class AlignFlow(private val floorName: String, private val floorHeightM: Double)
     val cur = root ?: return
     if (state is AlignState.Saving || state is AlignState.Saved) return
     val next = nudge(cur, dx, dz, dYawDeg, r.world)
+    nudged = true
     root = next
     state = AlignState.Placed(next)
   }
 
   /**
-   * Starts a save from [distanceM] away: the pose to send, or null when the scene isn't placed or the builder is
-   * beyond [VisitorTuning.MAX_LOCK_DISTANCE_M] (then [state] is Refused with "Step closer to the ring to save").
+   * Starts a save with the head at [head]: the pose to send, or null when the scene isn't placed or the head is
+   * beyond [VisitorTuning.MAX_LOCK_DISTANCE_M] of the ring (then [state] is Refused with [AlignCopy.STEP_CLOSER]).
    */
-  fun requestSave(distanceM: Double): AlignSave? {
+  fun requestSave(head: Vec3): AlignSave? {
     val r = ring ?: return null
     val cur = root ?: return null
     if (state is AlignState.Saving || state is AlignState.Saved) return null
-    if (distanceM > VisitorTuning.MAX_LOCK_DISTANCE_M) {
-      state = AlignState.Refused(STEP_CLOSER)
+    val dx = head.x - r.world.x
+    val dy = head.y - r.world.y
+    val dz = head.z - r.world.z
+    if (hypot(hypot(dx, dy), dz) > VisitorTuning.MAX_LOCK_DISTANCE_M) {
+      state = AlignState.Refused(AlignCopy.STEP_CLOSER)
       return null
     }
     state = AlignState.Saving
@@ -204,9 +175,9 @@ class AlignFlow(private val floorName: String, private val floorHeightM: Double)
     state =
         when (result) {
           is BuilderCall.Ok -> AlignState.Saved(result.value)
-          BuilderCall.NoAccess -> AlignState.Refused("This account can't edit this scene")
-          BuilderCall.Offline -> AlignState.Refused("Can't reach vlm.gg: check the connection and save again")
-          else -> AlignState.Refused("Couldn't save the alignment: try again")
+          BuilderCall.NoAccess -> AlignState.Refused(AlignCopy.NO_ACCESS)
+          BuilderCall.Offline -> AlignState.Refused(AlignCopy.OFFLINE)
+          else -> AlignState.Refused(AlignCopy.SAVE_FAILED)
         }
   }
 
@@ -228,8 +199,15 @@ class AlignFlow(private val floorName: String, private val floorHeightM: Double)
 
   private fun metres(h: Double) = String.format(Locale.ROOT, "%.2f", h).trimEnd('0').trimEnd('.')
 
-  companion object {
-    const val STEP_CLOSER = "Step closer to the ring to save"
-    private const val FLOOR_HEIGHT_OFF = "floor_height_off"
+  private companion object {
+    const val FLOOR_HEIGHT_OFF = "floor_height_off"
   }
+}
+
+/** The align flow's refusal copy in one place. [OFFLINE] and [SAVE_FAILED] are new (the owner may reword them). */
+object AlignCopy {
+  const val STEP_CLOSER = "Step closer to the ring to save"
+  const val NO_ACCESS = "This account can't edit this scene"
+  const val OFFLINE = "Can't reach vlm.gg: check the connection and save again"
+  const val SAVE_FAILED = "Couldn't save the alignment: try again"
 }

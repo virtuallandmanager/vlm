@@ -56,9 +56,57 @@ fun cameraToWorld(p: Vec3, head: Pose, k: CameraIntrinsics): Vector3 {
 /** A wall from the room scan: its centre and unit normal in world space, and its half extents along and up the wall. */
 data class WallPlane(val centre: Vector3, val normal: Vector3, val halfWidth: Float, val halfHeight: Float)
 
+/** A scanned wall the camera ray hits: its flat unit [normal] (as scanned, not turned into the room) and the ray distance [t]. */
+data class WallHit(val wall: WallPlane, val normal: Vec3, val t: Double)
+
+/**
+ * The distance along the ray from [origin] in the unit direction [dir] to the plane through [planePoint] with normal
+ * [planeNormal], or null when the ray is parallel to it or the plane is behind.
+ */
+fun rangeToPlane(origin: Vec3, dir: Vec3, planePoint: Vec3, planeNormal: Vec3): Double? {
+  val denom = dir.x * planeNormal.x + dir.y * planeNormal.y + dir.z * planeNormal.z
+  if (abs(denom) < 1e-6) return null
+  val t =
+      ((planePoint.x - origin.x) * planeNormal.x + (planePoint.y - origin.y) * planeNormal.y +
+          (planePoint.z - origin.z) * planeNormal.z) / denom
+  return t.takeIf { it > 0.0 }
+}
+
+/**
+ * The walls the ray from [origin] through [marker] hits, nearest first: the ray meets the wall's plane inside its edges
+ * (give or take [WALL_TOLERANCE_M]), at a distance within [PRINT_SCALE_TOLERANCE] of the marker's own. The marker's
+ * position is `r / s` along the ray for a print scaled by `s` (it reads that much farther), so it is off its wall by
+ * enough to miss a position test for a print a few percent off size; the ray's direction doesn't depend on the scale.
+ */
+fun wallHitsAlongRay(origin: Vec3, marker: Vec3, walls: List<WallPlane>): List<WallHit> {
+  val dx = marker.x - origin.x
+  val dy = marker.y - origin.y
+  val dz = marker.z - origin.z
+  val r = sqrt(dx * dx + dy * dy + dz * dz)
+  if (r < 1e-6) return emptyList()
+  val dir = Vec3(dx / r, dy / r, dz / r)
+  val hits = ArrayList<WallHit>()
+  for (w in walls) {
+    val len = sqrt((w.normal.x * w.normal.x + w.normal.z * w.normal.z).toDouble())
+    if (len < 1e-3) continue
+    val n = Vec3(w.normal.x / len, 0.0, w.normal.z / len)
+    val c = Vec3(w.centre.x.toDouble(), w.centre.y.toDouble(), w.centre.z.toDouble())
+    val t = rangeToPlane(origin, dir, c, n) ?: continue
+    if (t < r * (1 - PRINT_SCALE_TOLERANCE) || t > r * (1 + PRINT_SCALE_TOLERANCE)) continue
+    val hx = origin.x + dir.x * t - c.x
+    val hy = origin.y + dir.y * t - c.y
+    val hz = origin.z + dir.z * t - c.z
+    val along = abs(hx * n.z - hz * n.x)
+    if (along > w.halfWidth + WALL_TOLERANCE_M || abs(hy) > w.halfHeight + WALL_TOLERANCE_M) continue
+    hits += WallHit(w, n, t)
+  }
+  return hits.sortedBy { it.t }
+}
+
 /**
  * The heading, in degrees from world +z toward +x in (-180, 180], of the wall the marker is on: the normal of a wall
- * within [WALL_TOLERANCE_M] of [marker] (and within its edges, give or take the same), turned to point toward
+ * the ray from [viewer] through [marker] hits (see [wallHitsAlongRay]; inside its edges, give or take
+ * [WALL_TOLERANCE_M]), so a print a few percent off size still finds its wall, turned to point toward
  * [viewer]'s side of the wall, into the room. Walls are taken as vertical, as MRUK reports them.
  *
  * [tilt] (the circle's own tilt, from [circleNormals]) checks that the marker is on that wall: a wall counts only if its
@@ -83,20 +131,19 @@ data class WallFix(val headingDeg: Double?, val viewAngleDeg: Double)
 
 /** [wallHeading], with the view angle of the wall it picks (see [WallFix]). */
 fun wallFix(marker: Vector3, walls: List<WallPlane>, viewer: Vector3, tilt: List<Vec3>?): WallFix? {
-  // Each wall that counts: its into-room normal and its score (lower is better).
+  // Each wall the ray from the viewer through the marker hits, that counts: its into-room normal and its score (lower is
+  // better). The ray is used, not the marker's own position, because that is r / s along the ray for a print scaled by
+  // s: off the wall by more than the tolerance for a print a few percent off size.
   val passing = ArrayList<Pair<Vec3, Double>>()
-  for (w in walls) {
-    val n = flatUnit(w.normal) ?: continue
-    val dx = (marker.x - w.centre.x).toDouble()
-    val dy = (marker.y - w.centre.y).toDouble()
-    val dz = (marker.z - w.centre.z).toDouble()
-    val gap = abs(dx * n.x + dz * n.z)
-    val along = abs(dx * n.z - dz * n.x)
-    if (gap > WALL_TOLERANCE_M || along > w.halfWidth + WALL_TOLERANCE_M || abs(dy) > w.halfHeight + WALL_TOLERANCE_M) continue
+  val from = Vec3(viewer.x.toDouble(), viewer.y.toDouble(), viewer.z.toDouble())
+  val through = Vec3(marker.x.toDouble(), marker.y.toDouble(), marker.z.toDouble())
+  for (hit in wallHitsAlongRay(from, through, walls)) {
+    val w = hit.wall
+    val n = hit.normal
     val side = (viewer.x - w.centre.x) * n.x + (viewer.z - w.centre.z) * n.z
     val inward = if (side < 0) Vec3(-n.x, 0.0, -n.z) else n
     val score =
-        if (tilt == null) gap
+        if (tilt == null) hit.t
         else tilt.minOf { angleDeg(inward, it) }.takeIf { it <= TILT_TOLERANCE_DEG } ?: continue
     passing += inward to score
   }
@@ -168,7 +215,10 @@ fun scaleIntrinsics(k: CameraIntrinsics, refWidth: Int, refHeight: Int, width: I
   return k.copy(fx = k.fx * s, fy = k.fy * s, cx = (k.cx - cropX) * s, cy = (k.cy - cropY) * s)
 }
 
-/** How far a marker may sit from a wall's plane (and past its edges) and still count as on it. */
+/** How far a print's size may be off, as a share of the range, for the wall behind it to be taken for its wall. */
+const val PRINT_SCALE_TOLERANCE = 0.25
+
+/** How far a ray's hit may be past a wall's edges and still count as on it. */
 const val WALL_TOLERANCE_M = 0.10
 
 /** How far a wall's normal may be from the circle's tilt (see [circleNormals]) and still count as the marker's wall. */

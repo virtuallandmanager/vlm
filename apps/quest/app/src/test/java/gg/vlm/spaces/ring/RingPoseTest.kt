@@ -72,8 +72,10 @@ class RingPoseTest {
     assertEquals(180.0, wallHeading(Vector3(0.5f, 1.5f, 2.95f), walls, viewer, null)!!, 1e-4)
     // 5 cm in front of the x = 2 wall: normal -x, yaw -90°.
     assertEquals(-90.0, wallHeading(Vector3(1.95f, 1.2f, 0.5f), walls, viewer, null)!!, 1e-4)
-    // 30 cm from both.
-    assertNull(wallHeading(Vector3(1.7f, 1.5f, 2.7f), walls, viewer, null))
+    // 30 cm in front of the z = 3 wall (a print 10% off size): the ray from the viewer still meets that wall first.
+    assertEquals(180.0, wallHeading(Vector3(1.7f, 1.5f, 2.7f), walls, viewer, null)!!, 1e-4)
+    // Far short of any wall (a print off size by far more than a misprint): no wall.
+    assertNull(wallHeading(Vector3(0.5f, 1.5f, 1.0f), walls, viewer, null))
     // On the z = 3 plane but past its end.
     assertNull(wallHeading(Vector3(-2.5f, 1.5f, 3f), walls, viewer, null))
   }
@@ -186,7 +188,8 @@ class RingPoseTest {
     assertEquals(2, tilt.size)
     // The measured position errs toward the camera, closer to wall B's plane (5 cm) than to A's (7 cm).
     val measured = Vector3(1.95f, 1.5f, 2.93f)
-    assertEquals(-90.0, wallHeading(measured, walls, eye.sdk(), null)!!, 1e-4) // nearest alone takes the wrong wall
+    // Nearest alone picks by the ray from the eye, which meets wall A first here (not the plane the point is nearer).
+    assertEquals(180.0, wallHeading(measured, walls, eye.sdk(), null)!!, 1e-4)
     assertEquals(180.0, wallHeading(measured, walls, eye.sdk(), tilt)!!, 1e-4)
     assertEquals(180.0, wallHeading(onA.sdk(), walls, eye.sdk(), tilt)!!, 1e-4)
   }
@@ -325,6 +328,22 @@ class RingPoseTest {
       }
     }
     assertTrue("some case reaches the tilt term", passedTiltGate > 0)
+  }
+
+  @Test
+  fun aMisprintedRingStillGetsItsWallsHeading() {
+    // The ring's size puts it r / s along the ray for a print scaled by s: 13 cm behind the wall at 1.5 m for 92%, and
+    // in front of it for a larger print. The wall is chosen by the ray, which doesn't depend on the print's scale.
+    val onA = Vec3(0.5, 1.5, 3.0)
+    for (off in listOf(0.0, 20.0)) {
+      val eye = eyeAt(onA, wallA, 1.5, off)
+      val (head, d) = view(eye, onA, wallA)
+      for (scale in listOf(0.92, 1.05)) {
+        val measured = Vec3(eye.x + (onA.x - eye.x) / scale, eye.y + (onA.y - eye.y) / scale, eye.z + (onA.z - eye.z) / scale)
+        val fix = wallFix(measured.sdk(), walls, eye.sdk(), circleNormals(d, k, head))!!
+        assertEquals("$off° x$scale", 180.0, fix.headingDeg!!, 1e-4)
+      }
+    }
   }
 
   @Test
