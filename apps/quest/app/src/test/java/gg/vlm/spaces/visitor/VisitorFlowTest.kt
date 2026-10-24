@@ -39,7 +39,7 @@ class VisitorFlowTest {
 
   private fun toLocking(s: ArSpace = space()) {
     on(VisitorEvent.RingAgreed(ringA))
-    on(VisitorEvent.Lookup(ringA, lookupOk(s.id)))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), lookupOk(s.id)))
     on(VisitorEvent.Feed(snap(s)))
   }
 
@@ -63,20 +63,20 @@ class VisitorFlowTest {
 
   @Test fun `a found lookup starts the feed and names the space`() {
     on(VisitorEvent.RingAgreed(ringA))
-    val fx = on(VisitorEvent.Lookup(ringA, lookupOk()))
+    val fx = on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), lookupOk()))
     assertEquals(listOf<VisitorEffect>(VisitorEffect.StartFeed("sp-a")), fx)
     assertEquals(VisitorState.Loading(RingCodec.codeOf(ringA), "Cafe sp-a"), flow.state)
   }
 
   @Test fun `a not found ring is not asked again until the retry time passes`() {
     on(VisitorEvent.RingAgreed(ringOther))
-    on(VisitorEvent.Lookup(ringOther, ApiResult.NotFound))
-    assertEquals(VisitorState.Hint, flow.state)
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringOther), ApiResult.NotFound))
+    assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
     now += VisitorTuning.NOT_FOUND_RETRY_MS - 1
     assertTrue(on(VisitorEvent.RingAgreed(ringOther)).isEmpty())
     // a different ring is still looked up
     assertEquals(1, on(VisitorEvent.RingAgreed(ringA)).size)
-    on(VisitorEvent.Lookup(ringA, ApiResult.NotFound))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), ApiResult.NotFound))
     now += 1
     assertEquals(
         listOf<VisitorEffect>(VisitorEffect.Lookup(RingCodec.codeOf(ringOther))),
@@ -84,38 +84,97 @@ class VisitorFlowTest {
     )
   }
 
-  @Test fun `a lookup that fails shows a plain message and keeps looking`() {
+  @Test fun `a lookup that fails shows a plain message and retries only after the backoff`() {
     on(VisitorEvent.RingAgreed(ringA))
-    on(VisitorEvent.Lookup(ringA, ApiResult.Offline))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), ApiResult.Offline))
     assertEquals(VisitorState.Failed(VisitorCopy.OFFLINE), flow.state)
+    now += VisitorTuning.LOOKUP_RETRY_MIN_MS - 1
+    assertTrue(on(VisitorEvent.RingAgreed(ringA)).isEmpty())
+    assertEquals(VisitorState.Failed(VisitorCopy.OFFLINE), flow.state)
+    now += 1
     assertEquals(
         listOf<VisitorEffect>(VisitorEffect.Lookup(RingCodec.codeOf(ringA))),
         on(VisitorEvent.RingAgreed(ringA)),
     )
   }
 
+  @Test fun `the retry delay doubles up to the cap and success resets it`() {
+    val code = RingCodec.codeOf(ringA)
+    var delay = VisitorTuning.LOOKUP_RETRY_MIN_MS
+    repeat(8) {
+      assertEquals(1, on(VisitorEvent.RingAgreed(ringA)).size)
+      on(VisitorEvent.Lookup(code, ApiResult.RateLimited))
+      now += delay - 1
+      assertTrue(on(VisitorEvent.RingAgreed(ringA)).isEmpty())
+      now += 1
+      delay = minOf(delay * 2, VisitorTuning.LOOKUP_RETRY_MAX_MS)
+    }
+    assertEquals(VisitorTuning.LOOKUP_RETRY_MAX_MS, delay)
+    assertEquals(1, on(VisitorEvent.RingAgreed(ringA)).size)
+    on(VisitorEvent.Lookup(code, lookupOk()))
+    on(VisitorEvent.LookAgain)
+    on(VisitorEvent.RingAgreed(ringA))
+    on(VisitorEvent.Lookup(code, ApiResult.Offline))
+    now += VisitorTuning.LOOKUP_RETRY_MIN_MS
+    assertEquals(1, on(VisitorEvent.RingAgreed(ringA)).size)
+  }
+
+  @Test fun `a ring the server doesn't know says the space isn't open and stays that way`() {
+    on(VisitorEvent.RingAgreed(ringOther))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringOther), ApiResult.NotFound))
+    assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
+    assertTrue(on(VisitorEvent.RingAgreed(ringOther)).isEmpty())
+    assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
+  }
+
+  @Test fun `after an unpublish mid-visit the message survives the ring being seen again`() {
+    toShown()
+    on(VisitorEvent.FeedStatus(FeedStatus.NOT_FOUND))
+    on(VisitorEvent.RingAgreed(ringA))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), ApiResult.NotFound))
+    assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
+  }
+
+  @Test fun `an answer for an earlier ring is dropped when a space was opened by code`() {
+    on(VisitorEvent.RingAgreed(ringA))
+    on(VisitorEvent.OpenSpace("ABC123"))
+    assertTrue(on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), lookupOk("sp-a"))).isEmpty())
+    assertEquals(VisitorState.Loading("ABC123", null), flow.state)
+    assertEquals(1, on(VisitorEvent.Lookup("ABC123", lookupOk("sp-b"))).size)
+  }
+
+  @Test fun `an answer for an earlier opened code is dropped`() {
+    on(VisitorEvent.OpenSpace("BBBB"))
+    on(VisitorEvent.OpenSpace("CCCC"))
+    assertTrue(on(VisitorEvent.Lookup("BBBB", lookupOk("sp-b"))).isEmpty())
+    assertEquals(VisitorState.Loading("CCCC", null), flow.state)
+    assertEquals(listOf<VisitorEffect>(VisitorEffect.StartFeed("sp-c")), on(VisitorEvent.Lookup("CCCC", lookupOk("sp-c"))))
+  }
+
   @Test fun `lookup failures have their own words`() {
     on(VisitorEvent.RingAgreed(ringA))
-    on(VisitorEvent.Lookup(ringA, ApiResult.RateLimited))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), ApiResult.RateLimited))
     assertEquals(VisitorState.Failed(VisitorCopy.BUSY), flow.state)
+    now += VisitorTuning.LOOKUP_RETRY_MAX_MS
     on(VisitorEvent.RingAgreed(ringA))
-    on(VisitorEvent.Lookup(ringA, ApiResult.Failed(500)))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), ApiResult.Failed(500)))
     assertEquals(VisitorState.Failed(VisitorCopy.COULDNT_OPEN), flow.state)
+    now += VisitorTuning.LOOKUP_RETRY_MAX_MS
     on(VisitorEvent.RingAgreed(ringA))
-    on(VisitorEvent.Lookup(ringA, ApiResult.Failed(200)))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), ApiResult.Failed(200)))
     assertEquals(VisitorState.Failed(VisitorCopy.BAD_DATA), flow.state)
   }
 
   @Test fun `a stale lookup answer is ignored`() {
     on(VisitorEvent.RingAgreed(ringA))
     on(VisitorEvent.LookAgain)
-    assertTrue(on(VisitorEvent.Lookup(ringA, lookupOk())).isEmpty())
+    assertTrue(on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), lookupOk())).isEmpty())
     assertEquals(VisitorState.Hint, flow.state)
   }
 
   @Test fun `the first snapshot registers only the space's rings`() {
     on(VisitorEvent.RingAgreed(ringA))
-    on(VisitorEvent.Lookup(ringA, lookupOk()))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), lookupOk()))
     val s = space()
     val fx = on(VisitorEvent.Feed(snap(s)))
     assertEquals(listOf<VisitorEffect>(VisitorEffect.SetRegistered(setOf(ringA, ringA2))), fx)
@@ -195,7 +254,7 @@ class VisitorFlowTest {
     assertEquals(VisitorState.Loading("ABC123", null), flow.state)
     // the answer carries no ring of ours; it still lands
     val b = space("sp-b")
-    assertEquals(listOf<VisitorEffect>(VisitorEffect.StartFeed("sp-b")), on(VisitorEvent.Lookup(-1L, lookupOk("sp-b"))))
+    assertEquals(listOf<VisitorEffect>(VisitorEffect.StartFeed("sp-b")), on(VisitorEvent.Lookup("ABC123", lookupOk("sp-b"))))
     // the old space's feed can no longer touch us
     assertTrue(on(VisitorEvent.Feed(snap(space("sp-a"), "9"))).isEmpty())
     on(VisitorEvent.Feed(snap(b)))
@@ -211,7 +270,7 @@ class VisitorFlowTest {
 
   @Test fun `feed not found before the first snapshot also fails and stops`() {
     on(VisitorEvent.RingAgreed(ringA))
-    on(VisitorEvent.Lookup(ringA, lookupOk()))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), lookupOk()))
     val fx = on(VisitorEvent.FeedStatus(FeedStatus.NOT_FOUND))
     assertTrue(fx.containsAll(listOf(VisitorEffect.HideScene, VisitorEffect.StopFeed)))
     assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
@@ -219,7 +278,7 @@ class VisitorFlowTest {
 
   @Test fun `offline before the first snapshot fails, after it the scene stays`() {
     on(VisitorEvent.RingAgreed(ringA))
-    on(VisitorEvent.Lookup(ringA, lookupOk()))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), lookupOk()))
     on(VisitorEvent.FeedStatus(FeedStatus.OFFLINE))
     assertEquals(VisitorState.Failed(VisitorCopy.OFFLINE), flow.state)
     // it recovers when the snapshot arrives
@@ -231,9 +290,31 @@ class VisitorFlowTest {
     assertEquals(shown, flow.state)
   }
 
+  @Test fun `a bad or failing feed before the first snapshot says so, after it nothing changes`() {
+    on(VisitorEvent.RingAgreed(ringA))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), lookupOk()))
+    on(VisitorEvent.FeedStatus(FeedStatus.BAD_DATA))
+    assertEquals(VisitorState.Failed(VisitorCopy.BAD_DATA), flow.state)
+    on(VisitorEvent.FeedStatus(FeedStatus.FAILED))
+    assertEquals(VisitorState.Failed(VisitorCopy.COULDNT_OPEN), flow.state)
+    on(VisitorEvent.Feed(snap()))
+    on(VisitorEvent.Steady(ringA, Vec3(0.0, 1.5, 0.0), 10.0))
+    val shown = flow.state
+    assertTrue(on(VisitorEvent.FeedStatus(FeedStatus.BAD_DATA)).isEmpty())
+    assertTrue(on(VisitorEvent.FeedStatus(FeedStatus.FAILED)).isEmpty())
+    assertEquals(shown, flow.state)
+  }
+
+  @Test fun `step closer goes back to the hint when the candidate is gone`() {
+    on(VisitorEvent.UnreadableSeen(now - 2000))
+    assertEquals(VisitorState.StepCloser, flow.state)
+    on(VisitorEvent.UnreadableGone)
+    assertEquals(VisitorState.Hint, flow.state)
+  }
+
   @Test fun `rate limited before the first snapshot says busy`() {
     on(VisitorEvent.RingAgreed(ringA))
-    on(VisitorEvent.Lookup(ringA, lookupOk()))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), lookupOk()))
     on(VisitorEvent.FeedStatus(FeedStatus.RATE_LIMITED))
     assertEquals(VisitorState.Failed(VisitorCopy.BUSY), flow.state)
   }

@@ -80,4 +80,27 @@ class ArFeedTest {
     assertEquals(2, paths.size) // stopped
     assertTrue(server.requestCount == 2)
   }
+
+  @Test
+  fun `an unparseable body reports BAD_DATA and other errors FAILED, then it keeps trying`() {
+    var n = 0
+    server.dispatcher =
+        object : Dispatcher() {
+          override fun dispatch(request: RecordedRequest): MockResponse =
+              when (n++) {
+                0 -> MockResponse().setBody("not json")
+                1 -> MockResponse().setResponseCode(500)
+                else -> MockResponse().setResponseCode(404)
+              }
+        }
+    server.start()
+    val statuses = CopyOnWriteArrayList<FeedStatus>()
+    ArFeed(scope, ArApi(server.url("/").toString()), { statuses += it }, {}).start("s1")
+    val deadline = System.currentTimeMillis() + 10_000
+    while (FeedStatus.NOT_FOUND !in statuses && System.currentTimeMillis() < deadline) Thread.sleep(20)
+    assertEquals(
+        listOf(FeedStatus.CONNECTING, FeedStatus.BAD_DATA, FeedStatus.FAILED, FeedStatus.NOT_FOUND),
+        statuses.toList(),
+    )
+  }
 }

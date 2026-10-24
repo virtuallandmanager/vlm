@@ -6,7 +6,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-enum class FeedStatus { CONNECTING, LIVE, OFFLINE, RATE_LIMITED, NOT_FOUND }
+/** OFFLINE: unreachable. BAD_DATA: a 200 that couldn't be parsed. FAILED: any other error status. */
+enum class FeedStatus { CONNECTING, LIVE, OFFLINE, RATE_LIMITED, NOT_FOUND, BAD_DATA, FAILED }
 
 /**
  * Long-polls a space's feed. Each answer is a whole snapshot; [onSnapshot] fires only when the version changes.
@@ -48,8 +49,8 @@ class ArFeed(
         }
         ApiResult.NotFound -> return onStatus(FeedStatus.NOT_FOUND)
         ApiResult.RateLimited -> onStatus(FeedStatus.RATE_LIMITED)
-        ApiResult.Offline,
-        is ApiResult.Failed -> onStatus(FeedStatus.OFFLINE)
+        ApiResult.Offline -> onStatus(FeedStatus.OFFLINE)
+        is ApiResult.Failed -> onStatus(if (r.status == 200) FeedStatus.BAD_DATA else FeedStatus.FAILED)
       }
       wait = minOf(maxOf(wait * 2, 1.0), 30.0)
       delay((wait * 1000).toLong())

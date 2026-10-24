@@ -16,4 +16,11 @@ class LockGateTest {
 
   @Test fun `wide heading spread is gathering`() =
       assertEquals(Gate.GATHERING, LockGate.evaluate(5, 0.004, 2.0, 1.2))
+
+  @Test fun `non-finite inputs are gathering`() {
+    assertEquals(Gate.GATHERING, LockGate.evaluate(5, Double.NaN, 0.5, 1.2))
+    assertEquals(Gate.GATHERING, LockGate.evaluate(5, 0.004, Double.NaN, 1.2))
+    assertEquals(Gate.GATHERING, LockGate.evaluate(5, 0.004, 0.5, Double.NaN))
+    assertEquals(Gate.GATHERING, LockGate.evaluate(5, 0.004, 0.5, Double.POSITIVE_INFINITY))
+  }
 }

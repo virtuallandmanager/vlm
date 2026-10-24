@@ -14,4 +14,7 @@ object VisitorTuning {
   const val NOT_FOUND_RETRY_MS = 600_000L
   /** How long an unreadable candidate must persist before "Step closer". */
   const val UNREADABLE_HINT_MS = 1500L
+  /** A failed lookup is retried after this long, doubling per failure up to the cap; success resets it. */
+  const val LOOKUP_RETRY_MIN_MS = 2_000L
+  const val LOOKUP_RETRY_MAX_MS = 30_000L
 }

@@ -33,8 +33,10 @@ sealed interface VisitorState {
 sealed interface VisitorEvent {
   data class UnreadableSeen(val sinceMs: Long) : VisitorEvent
   data class RingAgreed(val ringId: Long) : VisitorEvent
-  /** The answer to a [VisitorEffect.Lookup]. [ringId] is the ring that asked; for [OpenSpace] lookups it is ignored. */
-  data class Lookup(val ringId: Long, val result: ApiResult<MarkerLookup>) : VisitorEvent
+  /** The answer to a [VisitorEffect.Lookup] for [code]; answers for any other code are dropped. */
+  data class Lookup(val code: String, val result: ApiResult<MarkerLookup>) : VisitorEvent
+  /** No unreadable candidate has been seen for a while: "Step closer" goes back to the hint. */
+  data object UnreadableGone : VisitorEvent
   data class Feed(val snapshot: ArFeedSnapshot) : VisitorEvent
   data class FeedStatus(val status: FeedConnection) : VisitorEvent
   data class Steady(val ringId: Long, val world: Vec3, val headingDeg: Double) : VisitorEvent
@@ -70,13 +72,20 @@ class VisitorFlow {
   private var feedSpaceId: String? = null
   /** The space itself, from its first snapshot. */
   private var space: ArSpace? = null
-  /** The ring that started the pending lookup; null for a lookup from [VisitorEvent.OpenSpace]. */
+  /** The code of the lookup we are waiting on, and the ring that started it (null for [VisitorEvent.OpenSpace]). */
+  private var pendingCode: String? = null
   private var lookupRing: Long? = null
   private val doNotAskUntil = mutableMapOf<Long, Long>()
+  private val retryAt = mutableMapOf<Long, Long>()
+  private val retryDelay = mutableMapOf<Long, Long>()
 
   fun on(event: VisitorEvent, nowMs: Long): List<VisitorEffect> =
       when (event) {
         is VisitorEvent.UnreadableSeen -> unreadable(event.sinceMs, nowMs)
+        VisitorEvent.UnreadableGone -> {
+          if (state == VisitorState.StepCloser) state = VisitorState.Hint
+          emptyList()
+        }
         is VisitorEvent.RingAgreed -> ringAgreed(event.ringId, nowMs)
         is VisitorEvent.Lookup -> lookup(event, nowMs)
         is VisitorEvent.Feed -> feed(event.snapshot)
@@ -88,7 +97,7 @@ class VisitorFlow {
         VisitorEvent.LookAgain -> forget(listOf(VisitorEffect.SetRegistered(null))) { VisitorState.Hint }
         is VisitorEvent.OpenSpace ->
             forget(listOf(VisitorEffect.SetRegistered(null))) { VisitorState.Loading(event.code, null) }
-                .also { lookupRing = null }
+                .also { pendingCode = event.code }
                 .plus(VisitorEffect.Lookup(event.code))
       }
 
@@ -103,9 +112,15 @@ class VisitorFlow {
   private fun ringAgreed(ringId: Long, nowMs: Long): List<VisitorEffect> {
     // Once a space is chosen (looked up or loaded) other rings never swap it; only LookAgain does.
     if (feedSpaceId != null || state is VisitorState.Loading) return emptyList()
-    if ((doNotAskUntil[ringId] ?: Long.MIN_VALUE) > nowMs) return emptyList()
+    if ((doNotAskUntil[ringId] ?: Long.MIN_VALUE) > nowMs) {
+      state = VisitorState.Failed(VisitorCopy.NOT_OPEN)
+      return emptyList()
+    }
+    // A failed lookup holds its message until the retry time, so it can't flicker or hammer the server.
+    if ((retryAt[ringId] ?: Long.MIN_VALUE) > nowMs) return emptyList()
     val code = RingCodec.codeOf(ringId)
     lookupRing = ringId
+    pendingCode = code
     state = VisitorState.Loading(code, null)
     return listOf(VisitorEffect.Lookup(code))
   }
@@ -113,29 +128,40 @@ class VisitorFlow {
   private fun lookup(e: VisitorEvent.Lookup, nowMs: Long): List<VisitorEffect> {
     val loading = state as? VisitorState.Loading ?: return emptyList()
     if (loading.spaceName != null || feedSpaceId != null) return emptyList()
-    if (lookupRing != null && lookupRing != e.ringId) return emptyList()
+    if (pendingCode != e.code) return emptyList()
+    val ring = lookupRing
     when (val r = e.result) {
       is ApiResult.Ok -> {
         feedSpaceId = r.value.spaceId
+        pendingCode = null
+        lookupRing = null
+        if (ring != null) {
+          retryAt.remove(ring)
+          retryDelay.remove(ring)
+        }
         state = loading.copy(spaceName = r.value.spaceName)
         return listOf(VisitorEffect.StartFeed(r.value.spaceId))
       }
       ApiResult.NotFound -> {
-        val ring = lookupRing
-        if (ring != null) {
-          doNotAskUntil[ring] = nowMs + VisitorTuning.NOT_FOUND_RETRY_MS
-          state = VisitorState.Hint
-        } else {
-          state = VisitorState.Failed(VisitorCopy.NOT_OPEN)
-        }
+        if (ring != null) doNotAskUntil[ring] = nowMs + VisitorTuning.NOT_FOUND_RETRY_MS
+        state = VisitorState.Failed(VisitorCopy.NOT_OPEN)
       }
-      ApiResult.Offline -> state = VisitorState.Failed(VisitorCopy.OFFLINE)
-      ApiResult.RateLimited -> state = VisitorState.Failed(VisitorCopy.BUSY)
+      ApiResult.Offline -> failed(ring, nowMs, VisitorCopy.OFFLINE)
+      ApiResult.RateLimited -> failed(ring, nowMs, VisitorCopy.BUSY)
       is ApiResult.Failed ->
-          state = VisitorState.Failed(if (r.status == 200) VisitorCopy.BAD_DATA else VisitorCopy.COULDNT_OPEN)
+          failed(ring, nowMs, if (r.status == 200) VisitorCopy.BAD_DATA else VisitorCopy.COULDNT_OPEN)
     }
+    pendingCode = null
     lookupRing = null
     return emptyList()
+  }
+
+  private fun failed(ring: Long?, nowMs: Long, message: String) {
+    state = VisitorState.Failed(message)
+    if (ring == null) return
+    val delay = retryDelay[ring]?.let { minOf(it * 2, VisitorTuning.LOOKUP_RETRY_MAX_MS) } ?: VisitorTuning.LOOKUP_RETRY_MIN_MS
+    retryDelay[ring] = delay
+    retryAt[ring] = nowMs + delay
   }
 
   private fun feed(snapshot: ArFeedSnapshot): List<VisitorEffect> {
@@ -177,6 +203,14 @@ class VisitorFlow {
         if (space == null) state = VisitorState.Failed(VisitorCopy.BUSY)
         emptyList()
       }
+      FeedConnection.BAD_DATA -> {
+        if (space == null) state = VisitorState.Failed(VisitorCopy.BAD_DATA)
+        emptyList()
+      }
+      FeedConnection.FAILED -> {
+        if (space == null) state = VisitorState.Failed(VisitorCopy.COULDNT_OPEN)
+        emptyList()
+      }
       FeedConnection.CONNECTING,
       FeedConnection.LIVE -> emptyList()
     }
@@ -215,6 +249,7 @@ class VisitorFlow {
     feedSpaceId = null
     space = null
     lookupRing = null
+    pendingCode = null
     state = next()
     return fx
   }
