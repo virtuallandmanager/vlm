@@ -111,11 +111,12 @@ export default function AdminPage() {
   }
 
   const handleReportStatus = async (id: string, status: 'open' | 'resolved') => {
+    setActionError(null)
     try {
       await api.setAdminArReportStatus(id, status)
       setReports((prev) => prev.filter((r) => r.id !== id))
     } catch (err) {
-      alert(`Failed to update report: ${(err as Error).message}`)
+      setActionError(`Failed to update report: ${(err as Error).message}`)
     }
   }
 
@@ -190,7 +191,7 @@ export default function AdminPage() {
       </div>
 
       {/* Space reports */}
-      <div className="bg-gray-800 rounded-lg p-4 space-y-3">
+      <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Space reports</h2>
           <label className="flex items-center gap-2 text-sm text-gray-400">
@@ -199,36 +200,36 @@ export default function AdminPage() {
           </label>
         </div>
         {reportsLoading ? (
-          <p className="text-sm text-gray-400">Loading reports...</p>
+          <Skeleton rows={1} className="h-12" />
         ) : reports.length === 0 ? (
           <p className="text-sm text-gray-400">{reportsResolved ? 'No resolved reports.' : 'No open reports.'}</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-400">
-                  <th className="py-1 pr-4 font-medium">Time</th>
-                  <th className="py-1 pr-4 font-medium">Space</th>
-                  <th className="py-1 pr-4 font-medium">Scene</th>
-                  <th className="py-1 pr-4 font-medium">Reason</th>
-                  <th className="py-1 pr-4 font-medium">Platform</th>
-                  <th className="py-1" />
+            <table className="w-full text-sm text-left">
+              <thead className={`${tableHead} border-b border-gray-800`}>
+                <tr>
+                  <th className="px-3 py-2">Time</th>
+                  <th className="px-3 py-2">Space</th>
+                  <th className="px-3 py-2">Scene</th>
+                  <th className="px-3 py-2">Reason</th>
+                  <th className="px-3 py-2">Platform</th>
+                  <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
                 {reports.map((r) => (
-                  <tr key={r.id} className="border-t border-gray-700">
-                    <td className="py-2 pr-4 whitespace-nowrap">{new Date(r.createdAt).toLocaleString()}</td>
-                    <td className="py-2 pr-4">{r.spaceName}</td>
-                    <td className="py-2 pr-4">
+                  <tr key={r.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                    <td className="px-3 py-2 whitespace-nowrap text-gray-400">{new Date(r.createdAt).toLocaleString()}</td>
+                    <td className="px-3 py-2 text-white">{r.spaceName}</td>
+                    <td className="px-3 py-2 text-gray-300">
                       <Link href={`/scenes?id=${r.sceneId}`} className="hover:underline">{r.sceneName}</Link>
                     </td>
-                    <td className="py-2 pr-4">{reportReasonLabel(r.reason)}</td>
-                    <td className="py-2 pr-4">{r.platform}</td>
-                    <td className="py-2 text-right">
+                    <td className="px-3 py-2 text-gray-300">{reportReasonLabel(r.reason)}</td>
+                    <td className="px-3 py-2 text-gray-400">{r.platform}</td>
+                    <td className="px-3 py-2 text-right">
                       <button
                         onClick={() => handleReportStatus(r.id, reportsResolved ? 'open' : 'resolved')}
-                        className="rounded-lg bg-gray-700 px-3 py-1 hover:bg-gray-600"
+                        className="rounded-md border border-gray-700 px-3 py-1 text-xs hover:border-gray-500"
                       >
                         {reportsResolved ? 'Reopen' : 'Resolved'}
                       </button>
