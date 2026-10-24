@@ -82,12 +82,12 @@ class RingDetectorTest {
     val range = manifest.filter { it.case == "range" }
     assertEquals(27, range.size)
     val detector = RingDetector()
-    repeat(5) { for (e in range) detector.detect(e.image.gray, e.image.width, e.image.height) }
+    repeat(5) { for (e in range) detector.detectFrame(e.image.gray, e.image.width, e.image.height) }
     val times =
         range
             .map { e ->
               val t0 = System.nanoTime()
-              detector.detect(e.image.gray, e.image.width, e.image.height)
+              detector.detectFrame(e.image.gray, e.image.width, e.image.height)
               (System.nanoTime() - t0) / 1e6
             }
             .sorted()
@@ -194,6 +194,59 @@ class RingDetectorTest {
         detections.getValue("two_markers"),
         RingDetector().detect(padded, e.image.width, e.image.height, stride),
     )
+  }
+
+  /** Nearest-neighbour downscale by [factor]. */
+  private fun downscale(img: Image, factor: Double): Image {
+    val w = (img.width * factor).toInt()
+    val h = (img.height * factor).toInt()
+    val out = ByteArray(w * h)
+    for (y in 0 until h) {
+      val sy = minOf((y / factor).toInt(), img.height - 1)
+      for (x in 0 until w) out[y * w + x] = img.gray[sy * img.width + minOf((x / factor).toInt(), img.width - 1)]
+    }
+    return Image(out, w, h)
+  }
+
+  /**
+   * The brief's fixture (range-RING140-1.2-0 at 0.35) still decodes, and just below it (0.34) the
+   * dot falls under MIN_AREA, so the ring is not seen at all: that ring has no unreadable band.
+   * RING170 at 0.6 m downscaled by 0.5 has the dot and finder ring but not the code.
+   */
+  @Test
+  fun aRingTooSmallToReadIsReportedUnreadable() {
+    val e = manifest.single { it.name == "range-RING170-0.6-0" }
+    val c = e.markers.single()["center_px"]!!.jsonArray
+    val s = 0.5
+    val im = downscale(e.image, s)
+    val frame = RingDetector().detectFrame(im.gray, im.width, im.height)
+    assertTrue("detections ${ids(frame.detections)}", frame.detections.isEmpty())
+    assertEquals(1, frame.unreadable.size)
+    val u = frame.unreadable.single()
+    val err = hypot(u.cx - c[0].jsonPrimitive.double * s, u.cy - c[1].jsonPrimitive.double * s)
+    assertTrue("centre error $err", err <= 10)
+    assertTrue(u.semiMajor > 0)
+  }
+
+  @Test
+  fun aReadableRingIsNotAlsoUnreadable() {
+    val e = manifest.single { it.name == "range-RING170-0.6-0" }
+    val frame = RingDetector().detectFrame(e.image.gray, e.image.width, e.image.height)
+    assertEquals(1, frame.detections.size)
+    assertTrue(frame.unreadable.isEmpty())
+  }
+
+  @Test
+  fun aBlankFrameAndTheDecoysReportNothing() {
+    val detector = RingDetector()
+    val blank = detector.detectFrame(ByteArray(120 * 160) { 128.toByte() }, 160, 120)
+    assertTrue(blank.detections.isEmpty() && blank.unreadable.isEmpty())
+    // decoy_disc_in_ring yields an unreadable candidate (a finder ring round a dot with no code):
+    // that only shows "Step closer", so it is not asserted here.
+    for (e in manifest.filter { it.name.startsWith("decoy") && it.name != "decoy_disc_in_ring" }) {
+      val frame = detector.detectFrame(e.image.gray, e.image.width, e.image.height)
+      assertTrue("${e.name}: ${frame.unreadable}", frame.unreadable.isEmpty())
+    }
   }
 
   private fun crop(img: Image, side: String, cut: Int): Image {

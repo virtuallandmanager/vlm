@@ -30,6 +30,16 @@ data class RingDetection(
 )
 
 /**
+ * A ring the detector can see (a dot inside a finder ring) but could not read or decode, typically
+ * because it is too small or too oblique. ([cx], [cy]) is the centre dot, [semiMajor] the finder
+ * ring's fitted outer semi-major axis in pixels.
+ */
+data class UnreadableRing(val cx: Double, val cy: Double, val semiMajor: Double)
+
+/** Result of one frame: decoded rings plus rings seen but not readable. */
+data class RingFrame(val detections: List<RingDetection>, val unreadable: List<UnreadableRing>)
+
+/**
  * Ring-marker detector: a step-for-step port of apps/ring-marker/ringmarker/detect.py, whose module
  * docstring is the spec (steps 1-8 below follow its numbering). Results on the synthetic test set
  * match the Python (same ids and corrected counts, centres to well under 0.1 px).
@@ -198,6 +208,9 @@ class RingDetector {
   private val cellX = DoubleArray(5)
   private val cellY = DoubleArray(5)
 
+  /** Conic of the finder ring found by the last [readCells] call, or null if none was found. */
+  private var seenConic: DoubleArray? = null
+
   /**
    * Detects ring markers in an 8-bit grey image (row j starts at j * [rowStride]). Detections are
    * ordered by (corrected, first-pixel raster index), with duplicates of the same marker dropped.
@@ -207,11 +220,29 @@ class RingDetector {
       width: Int,
       height: Int,
       rowStride: Int = width,
-  ): List<RingDetection> {
+  ): List<RingDetection> = detectFrame(gray, width, height, rowStride).detections
+
+  /**
+   * As [detect], also reporting candidates whose dot and finder ring were found (step 4) but whose
+   * cells could not be read or decoded. Unreadable entries that coincide with a detection or with
+   * each other are dropped.
+   */
+  fun detectFrame(
+      gray: ByteArray,
+      width: Int,
+      height: Int,
+      rowStride: Int = width,
+  ): RingFrame {
     val found = ArrayList<Found>()
+    val unseen = ArrayList<Pair<Dot, DoubleArray>>()
     for (dot in dotCandidates(gray, width, height, rowStride, windowSize(width))) {
-      val got = readCells(dot) ?: continue
-      val d = RingCodec.decode(got.cells) ?: continue
+      seenConic = null
+      val got = readCells(dot)
+      val d = got?.let { RingCodec.decode(it.cells) }
+      if (got == null || d == null) {
+        seenConic?.let { unseen.add(dot to it) }
+        continue
+      }
       val e = conicEllipse(got.conic)
       val det =
           RingDetection(
@@ -235,7 +266,16 @@ class RingDetector {
         kept.add(f)
       }
     }
-    return kept.map { it.det }
+    val unreadable = ArrayList<UnreadableRing>()
+    for ((dot, conic) in unseen) {
+      val x = dot.cx + 0.5
+      val y = dot.cy + 0.5
+      val r = 0.5 * sqrt(dot.a * dot.b)
+      if (kept.any { hypot(x - it.det.cx, y - it.det.cy) < r }) continue
+      if (unreadable.any { hypot(x - it.cx, y - it.cy) < r }) continue
+      unreadable.add(UnreadableRing(x, y, conicEllipse(conic)[0]))
+    }
+    return RingFrame(kept.map { it.det }, unreadable)
   }
 
   /** Test hook: the cells read for the dot candidate nearest (x, y) (pixel-index coordinates). */
@@ -542,6 +582,7 @@ class RingDetector {
 
   private fun readCells(dot: Dot): Cells? {
     val (fr, conic) = finder(dot) ?: return null
+    seenConic = conic
     val nb = GAP_SAMPLES
     var anyLight = false
     var allLight = true
