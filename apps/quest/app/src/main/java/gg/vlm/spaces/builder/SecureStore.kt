@@ -8,6 +8,8 @@ import androidx.security.crypto.MasterKey
 interface SecureStore {
   fun get(key: String): String?
   fun put(key: String, value: String?)
+  /** Removes all of [keys] in one write. */
+  fun remove(vararg keys: String)
 }
 
 /** [SecureStore] on [EncryptedSharedPreferences]: values are encrypted with a key held in the Android Keystore. */
@@ -24,9 +26,14 @@ class EncryptedSecureStore(context: Context) : SecureStore {
   override fun get(key: String): String? = prefs.getString(key, null)
 
   override fun put(key: String, value: String?) {
+    if (value == null) remove(key) else prefs.edit().putString(key, value).apply()
+  }
+
+  // A removal is a sign-out: it must be on disk before we return, so one commit() rather than apply().
+  override fun remove(vararg keys: String) {
     val edit = prefs.edit()
-    // A removal is a sign-out: it must be on disk before we return, so commit() rather than apply().
-    if (value == null) edit.remove(key).commit() else edit.putString(key, value).apply()
+    keys.forEach { edit.remove(it) }
+    edit.commit()
   }
 
   private companion object {

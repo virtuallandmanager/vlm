@@ -12,7 +12,10 @@ import kotlinx.serialization.json.jsonObject
 
 enum class DeviceKind { PERSONAL, SHARED }
 
-data class PairStart(val code: String, val approveUrl: String, val codeExpiresAtMs: Long)
+data class PairStart(val code: String, val approveUrl: String, val codeExpiresAtMs: Long) {
+  /** The code is a credential: it is not printed. */
+  override fun toString() = "PairStart(codeExpiresAtMs=$codeExpiresAtMs)"
+}
 
 sealed interface PairClaim {
   data object Pending : PairClaim

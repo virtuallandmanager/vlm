@@ -29,7 +29,10 @@ sealed interface PassResult {
     override fun toString() = "Ok(sceneId=$sceneId)"
   }
   data object NoAccess : PassResult
-  /** The headset was unpaired on the website: the store is cleared and the state is [AuthState.SignedOut]. */
+  /**
+   * This headset is no longer signed in: it was unpaired on the website, or ended its session, or was signed out
+   * while the call was running. The store is cleared and the state is [AuthState.SignedOut].
+   */
   data object Revoked : PassResult
   data object Offline : PassResult
   /** The server answered something unexpected (including a 401 that isn't a revocation). */
@@ -50,11 +53,26 @@ class DeviceAuth(
   private val _state = MutableStateFlow<AuthState>(restored())
   val state: StateFlow<AuthState> = _state.asStateFlow()
 
-  private val passes = java.util.concurrent.ConcurrentHashMap<String, MintedPass>()
+  /** Cached passes by device id and space id: a pass is never served to a device it wasn't minted for. */
+  private val passes = java.util.concurrent.ConcurrentHashMap<Pair<String, String>, MintedPass>()
   private val mintLock = Mutex()
+
+  /**
+   * Guards sign-out against the cache's check-then-put: [signOut] and the check-and-cache both hold it, so a pass
+   * is never cached (or served) once a sign-out has happened. Plain monitor: both sides are non-suspending.
+   */
+  private val cacheLock = Any()
 
   /** Bumped by every sign-out, so a mint that was in flight across one can tell and discards its pass. */
   @Volatile private var epoch = 0
+
+  private val pairing = java.util.concurrent.atomic.AtomicBoolean(false)
+
+  /** Test seams: run after a mint returns, before the check; and inside the check-and-cache. */
+  internal var afterMintForTest: () -> Unit = {}
+  internal var insideCacheForTest: () -> Unit = {}
+  internal val cachedPassCount get() = passes.size
+  internal fun signOutForTest() = signOut()
 
   private fun restored(): AuthState {
     val id = store.get(KEY_ID)
@@ -67,6 +85,16 @@ class DeviceAuth(
    * cancels. Ends in [AuthState.Paired] or [AuthState.SignedOut].
    */
   suspend fun beginPairing() {
+    // One pairing at a time: a second call while one is polling is ignored.
+    if (!pairing.compareAndSet(false, true)) return
+    try {
+      pairOnce()
+    } finally {
+      pairing.set(false)
+    }
+  }
+
+  private suspend fun pairOnce() {
     // Pairing again is an explicit re-pair: forget the old pairing first.
     if (_state.value is AuthState.Paired) signOut()
     val secret = newSecret()
@@ -108,20 +136,30 @@ class DeviceAuth(
   suspend fun passFor(spaceId: String): PassResult = mintLock.withLock { passLocked(spaceId) }
 
   private suspend fun passLocked(spaceId: String): PassResult {
-    val id = store.get(KEY_ID)
-    val secret = store.get(KEY_SECRET)
-    if (id == null || secret == null) return PassResult.Revoked
-    val cached = passes[spaceId]
-    if (cached != null && cached.expiresAtMs - clock() > MIN_LEFT_MS) return PassResult.Ok(cached.pass, cached.sceneId)
-    val startEpoch = epoch
+    val id: String
+    val secret: String
+    val startEpoch: Int
+    synchronized(cacheLock) {
+      id = store.get(KEY_ID) ?: return PassResult.Revoked
+      secret = store.get(KEY_SECRET) ?: return PassResult.Revoked
+      val cached = passes[id to spaceId]
+      if (cached != null && cached.expiresAtMs - clock() > MIN_LEFT_MS) return PassResult.Ok(cached.pass, cached.sceneId)
+      startEpoch = epoch
+    }
     val r = api.mintPass(id, secret, spaceId)
-    // Signed out (or re-paired) while the mint was in flight: its pass belongs to nobody now.
-    if (epoch != startEpoch || store.get(KEY_ID) != id) return PassResult.Revoked
-    return when (r) {
-      is BuilderCall.Ok -> {
-        passes[spaceId] = r.value
-        PassResult.Ok(r.value.pass, r.value.sceneId)
+    afterMintForTest()
+    if (r is BuilderCall.Ok) {
+      // Check and cache as one step against sign-out: a pass minted across a sign-out belongs to nobody now.
+      synchronized(cacheLock) {
+        if (epoch != startEpoch || store.get(KEY_ID) != id) return PassResult.Revoked
+        insideCacheForTest()
+        passes[id to spaceId] = r.value
       }
+    } else if (epoch != startEpoch) {
+      return PassResult.Revoked
+    }
+    return when (r) {
+      is BuilderCall.Ok -> PassResult.Ok(r.value.pass, r.value.sceneId)
       BuilderCall.NoAccess, BuilderCall.NotFound -> PassResult.NoAccess
       BuilderCall.Revoked, BuilderCall.BadSecret -> {
         signOut()
@@ -154,7 +192,10 @@ class DeviceAuth(
         return r
       }
       if (r !is BuilderCall.Unauthorized || attempt == 2) return r
-      mintLock.withLock { passes.remove(spaceId) }
+      mintLock.withLock {
+        val id = store.get(KEY_ID)
+        if (id != null) passes.remove(id to spaceId)
+      }
     }
     return BuilderCall.Unauthorized
   }
@@ -186,12 +227,12 @@ class DeviceAuth(
   }
 
   private fun signOut() {
-    epoch++
-    store.put(KEY_ID, null)
-    store.put(KEY_KIND, null)
-    store.put(KEY_SECRET, null)
-    passes.clear()
-    _state.value = AuthState.SignedOut
+    synchronized(cacheLock) {
+      epoch++
+      store.remove(KEY_ID, KEY_KIND, KEY_SECRET)
+      passes.clear()
+      _state.value = AuthState.SignedOut
+    }
   }
 
   private fun newSecret(): String {

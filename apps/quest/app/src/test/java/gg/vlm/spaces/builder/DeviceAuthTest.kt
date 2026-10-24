@@ -27,6 +27,10 @@ class FakeSecureStore : SecureStore {
   override fun put(key: String, value: String?) {
     if (value == null) map.remove(key) else map[key] = value
   }
+
+  override fun remove(vararg keys: String) {
+    keys.forEach { map.remove(it) }
+  }
 }
 
 class DeviceAuthTest {
@@ -298,5 +302,68 @@ class DeviceAuthTest {
     assertFalse(p.toString().contains("tok-secret"))
     assertFalse(PassResult.Ok("tok-secret", "sc").toString().contains("tok-secret"))
     assertFalse(AuthState.Pairing("ABC123", "https://x/ABC123", 1L).toString().contains("ABC123"))
+  }
+
+  @Test
+  fun `a sign-out between a mint and the cache check serves nothing and caches nothing`() {
+    val a = pairedAuth("shared")
+    server.enqueue(pass(900_000, "p"))
+    a.afterMintForTest = { Thread { a.signOutForTest() }.apply { start() }.join() }
+    assertEquals(PassResult.Revoked, runBlocking { a.passFor("sp1") })
+    assertEquals(0, a.cachedPassCount)
+    assertTrue(store.map.isEmpty())
+  }
+
+  @Test
+  fun `sign-out cannot run between the cache check and the put`() {
+    val a = pairedAuth("shared")
+    server.enqueue(pass(900_000, "p"))
+    var signer: Thread? = null
+    a.insideCacheForTest = { signer = Thread { a.signOutForTest() }.apply { start() }; Thread.sleep(150) }
+    // The signer is held out until the put is done...
+    assertTrue(runBlocking { a.passFor("sp1") } is PassResult.Ok)
+    signer!!.join()
+    // ...and then clears what was cached.
+    assertEquals(0, a.cachedPassCount)
+    assertEquals(AuthState.SignedOut, a.state.value)
+    assertEquals(PassResult.Revoked, runBlocking { a.passFor("sp1") })
+  }
+
+  @Test
+  fun `a pass cached for one device is not served to another`() {
+    val a = pairedAuth()
+    server.enqueue(pass(900_000, "dev1-pass"))
+    assertEquals(PassResult.Ok("dev1-pass", "sc1"), runBlocking { a.passFor("sp1") })
+    a.signOutForTest()
+    store.put(DeviceAuth.KEY_ID, "dev2")
+    store.put(DeviceAuth.KEY_SECRET, "s2")
+    server.enqueue(pass(900_000, "dev2-pass"))
+    assertEquals(PassResult.Ok("dev2-pass", "sc1"), runBlocking { a.passFor("sp1") })
+  }
+
+  @Test
+  fun `a second beginPairing while one is polling is ignored`() {
+    server.enqueue(start())
+    repeat(5) { server.enqueue(pending) }
+    server.start()
+    val a = DeviceAuth(ArApi(server.url("/").toString()), store, { now }, pollMs = 50)
+    val paths = ArrayList<String>()
+    runBlocking {
+      val job = launch(Dispatchers.Default) { a.beginPairing() }
+      paths += server.takeRequest().path!! // the first start
+      a.beginPairing() // returns at once: no second pairing
+      job.cancelAndJoin()
+    }
+    while (true) paths += (server.takeRequest(100, java.util.concurrent.TimeUnit.MILLISECONDS) ?: break).path!!
+    assertEquals(1, paths.count { it == "/api/ar/pair" })
+  }
+
+  @Test
+  fun `spaces signs out when the device was revoked`() {
+    val a = pairedAuth()
+    server.enqueue(json("""{"error":"device_revoked"}""", 401))
+    assertEquals(BuilderCall.Revoked, runBlocking { a.spaces() })
+    assertEquals(AuthState.SignedOut, a.state.value)
+    assertTrue(store.map.isEmpty())
   }
 }
