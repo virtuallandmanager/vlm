@@ -155,6 +155,28 @@ class TransformSession(
     val state = dragState ?: return
     if ((state is DragState.MoveFree || state is DragState.MoveAxis) && dragLock != lock) startFrom(d, ray)
     val next = compute(dragState!!, ray, surfaceHit) ?: return
+    update(d, next)
+  }
+
+  /** Not in session.ts: starts carrying the item with a controller (see [carryTo]); [dragging] until it ends. */
+  fun beginCarry() {
+    val d = draft ?: return
+    if (dragState != null) return
+    handle = Handle.Body
+    emittedThisDrag = false
+    lastSent = d
+    dragState = DragState.Carried(d)
+  }
+
+  /** Not in session.ts: the carried item's new [t] this frame, drafted like a drag's (at most every interval). */
+  fun carryTo(t: ItemTransform) {
+    val d = draft ?: return
+    if (dragState !is DragState.Carried) return
+    update(d, t)
+  }
+
+  /** Makes [next] the draft and emits it unless one went out less than an interval ago. */
+  private fun update(d: ItemTransform, next: ItemTransform) {
     if (sameTransform(next, d)) return
     draft = next
     val t = now()
@@ -228,6 +250,8 @@ class TransformSession(
     selected = null
     baseline = null
     draft = null
+    lock = MoveLock.FREE
+    dragLock = MoveLock.FREE
     resetDrag()
   }
 
@@ -256,6 +280,9 @@ class TransformSession(
     val start: ItemTransform
 
     class MoveFree(override val start: ItemTransform) : DragState
+
+    /** A controller carries the item; its poses come through [carryTo], not rays. */
+    class Carried(override val start: ItemTransform) : DragState
 
     /** A null [grab] is retried next frame. */
     class MoveAxis(override val start: ItemTransform, val axis: Axis, var grab: Vec3?) : DragState
@@ -308,6 +335,7 @@ class TransformSession(
   private fun compute(state: DragState, ray: Ray, surfaceHit: Vec3?): ItemTransform? {
     val start = state.start
     return when (state) {
+      is DragState.Carried -> null
       is DragState.MoveFree -> {
         val hit = near(ray, surfaceHit) ?: planeHit(ray, start.position, UP) ?: return null
         start.copy(position = hit)
@@ -347,9 +375,10 @@ class TransformSession(
         val grabDistance = state.grabDistance ?: return null
         val hit = lineHit(ray, start.position, state.dir) ?: return null
         val factor = abs(dot(sub(hit, start.position), state.dir)) / grabDistance
-        var size = start.scale[state.axis] * factor
+        val from = start.scale[state.axis]
+        var size = abs(from) * factor
         if (snapOn) size = max(STRETCH_SNAP_STEP, snap(size, STRETCH_SNAP_STEP))
-        start.copy(scale = start.scale.with(state.axis, max(MIN_SCALE, size)))
+        start.copy(scale = start.scale.with(state.axis, floorMagnitude(size, from)))
       }
     }
   }
@@ -357,7 +386,11 @@ class TransformSession(
   private companion object {
     val UP = Vec3(0.0, 1.0, 0.0)
 
-    fun floorScale(v: Vec3) = Vec3(max(MIN_SCALE, v.x), max(MIN_SCALE, v.y), max(MIN_SCALE, v.z))
+    fun floorScale(v: Vec3) = Vec3(floorMagnitude(abs(v.x), v.x), floorMagnitude(abs(v.y), v.y), floorMagnitude(abs(v.z), v.z))
+
+    /** [magnitude] floored at [MIN_SCALE], with the sign of [like] (a mirrored axis stays mirrored; zero is positive). */
+    fun floorMagnitude(magnitude: Double, like: Double): Double =
+        max(MIN_SCALE, magnitude).let { if (like < 0) -it else it }
 
     /** Null when the point is missing or implausibly far from the ray origin (near-parallel solves blow up). */
     fun near(ray: Ray, point: Vec3?): Vec3? {

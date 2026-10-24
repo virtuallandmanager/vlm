@@ -256,3 +256,13 @@ Unverified from the 0.14.0 jars and docs (confirmed there: `SemanticType.X.id` a
 - [ ] **Save, Everywhere and Just this place.** Pick, move, rotate and resize an image and a model; Save. Everywhere: Decentraland shows the change. Just this place: Decentraland doesn't, the AR feed does, and the Layout row gets the dot; **Reset to shared** then Save puts it back.
 - [ ] **Held.** While someone moves an item in Decentraland, try to drag it on the headset: the pick drops and the HUD says "<name> is moving this".
 - [ ] **Done.** With unsaved changes, Done asks "Save your changes before leaving?" (Save / Don't save / Cancel, wording the owner may change); with none it leaves at once.
+
+### Owner checks (carrying and snapping, plan 3 Task 8)
+
+Not yet run (no headset was connected; adb showed only an offline emulator). `Picking` carries and `MainActivity.builderSurfaces()` reads the room, but nothing creates `Picking` until Task 10. The carry math (`Carry`), the snap rules (`snap`) and the landing (`landCarried`) are unit tested; what only the headset can show:
+
+- [ ] **Carry an image to a real wall (Step 4).** Pick an image, point a controller at it and hold its grip: the image follows that controller, turning with it. Flick the thumbstick left or right: it turns 15 degrees a flick. Let go of the grip within 15 cm of a wall: the image lands flush against the wall (1 cm off it), upright and facing into the room. Check the wall's normal points into the room (if the image faces the wall, the scan's wall plane normal is flipped).
+- [ ] **Carry a model onto a table.** Put a model down with its base within 15 cm of a table top: it sits on the top, keeping its turn. Same on the floor. If it lands at the wrong height, the MRUK table plane is not its top face (check `builderSurfaces()` for `MRUKLabel.TABLE`, `FLOOR` anchors and their `MRUKPlane` extents).
+- [ ] **No snap.** Hold the OTHER controller's grip while letting go: the item stays exactly where it was.
+- [ ] **Saving.** After a carry, Decentraland shows the item where it was put down (drafts relay while carrying, the last pose on release), and Save keeps it. Move the scene root (re-align) first and repeat: the saved pose is still where you saw it.
+- [ ] **Controller poses.** `Picking` takes each `Controller` entity's `Transform` as the controller's world pose (+Z along the ray) and its `buttonState` as holding that side's grip and thumbstick bits only. If the item jumps on grip, or a grip starts a carry on the wrong controller, switch to `AvatarBody` / `scene.getControllerPoseAtTime`.

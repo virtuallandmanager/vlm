@@ -765,4 +765,66 @@ class TransformSessionTest {
     assertEquals(v(1, 2, 3), s.draft!!.position)
     assertFalse(s.dirty)
   }
+
+  // ── mirrored items, carrying and clearing (plan 3 Task 8) ──
+
+  @Test
+  fun `uniform keeps a mirrored axis mirrored, also at the floor`() {
+    val s = selected(position = origin, scale = v(-2, 1, 1), mode = TransformMode.RESIZE).session
+    s.beginDrag(Handle.Uniform, facing(2.0), null)
+    s.drag(facing(1.0), null)
+    assertEquals(v(-1.0, 0.5, 0.5), s.draft?.scale)
+    s.drag(facing(0.05), null)
+    assertEquals(v(-0.05, 0.05, 0.05), s.draft?.scale)
+  }
+
+  @Test
+  fun `stretch keeps a mirrored axis mirrored, at its size, snapped and at the floor`() {
+    val s = selected(position = origin, scale = v(-2, 1, 1), mode = TransformMode.RESIZE).session
+    s.beginDrag(Handle.Stretch(Axis.X), down(4, 5, 0), null)
+    s.drag(down(6, 5, 0), null)
+    assertEquals(v(-3, 1, 1), s.draft?.scale)
+    s.setSnap(true)
+    s.drag(down(5.3, 5.0, 0.0), null) // size 2.65 snaps to 2.75
+    close(-2.75, s.draft?.scale?.x)
+    s.setSnap(false)
+    s.drag(down(0.01, 5.0, 0.0), null)
+    close(-0.05, s.draft?.scale?.x)
+  }
+
+  @Test
+  fun `clearing resets the axis lock`() {
+    val s = selected().session
+    s.setLock(MoveLock.Y)
+    s.clear()
+    assertEquals(MoveLock.FREE, s.lock)
+    s.select(item())
+    s.cycleLock()
+    assertEquals(MoveLock.X, s.lock)
+  }
+
+  @Test
+  fun `a carry follows the poses it is given and stops at endDrag with the last one sent`() {
+    val h = H()
+    h.session.select(item())
+    h.session.beginCarry()
+    assertTrue(h.session.dragging)
+    h.session.carryTo(base.copy(position = v(2, 2, 3))) // first frame goes out
+    h.t += 20
+    h.session.carryTo(base.copy(position = v(3, 2, 3))) // inside the interval: held back
+    assertEquals(listOf(v(2, 2, 3)), h.drafts.map { it.transform.position })
+    h.session.endDrag()
+    assertEquals(listOf(v(2, 2, 3), v(3, 2, 3)), h.drafts.map { it.transform.position })
+    assertFalse(h.session.dragging)
+    h.session.carryTo(base.copy(position = v(9, 9, 9)))
+    assertEquals(v(3, 2, 3), h.session.draft!!.position)
+  }
+
+  @Test
+  fun `a ray drag does nothing to a carried item`() {
+    val s = selected().session
+    s.beginCarry()
+    s.drag(down(5, 10, 5), null)
+    assertEquals(base.position, s.draft!!.position)
+  }
 }

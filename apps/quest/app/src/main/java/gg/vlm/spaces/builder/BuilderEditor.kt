@@ -223,6 +223,25 @@ class BuilderEditor(
     if (sk != null) flush(sk)
   }
 
+  /**
+   * The picked item is taken by a controller: its transform, or null when nothing is picked or a drag is under way.
+   * Follow with [carryTo] each frame and [endCarry] at the end.
+   */
+  fun beginCarry(): ItemTransform? {
+    if (picked == null || session.dragging) return null
+    session.beginCarry()
+    return session.draft
+  }
+
+  /** The carried item's pose this frame (drafted and relayed like a drag, throttled). */
+  fun carryTo(t: ItemTransform) = session.carryTo(t)
+
+  /** Puts the carried item down at [t]: the last pose is relayed whatever the throttle says. */
+  fun endCarry(t: ItemTransform) {
+    session.carryTo(t)
+    endDrag()
+  }
+
   /** An axis handle's lock (and its guide) lasts for its drag only. */
   private fun clearLock() {
     if (session.lock != MoveLock.FREE) session.setLock(MoveLock.FREE)
@@ -322,6 +341,8 @@ class BuilderEditor(
       if (!startSaving()) return
       confirmingDone = false
       cancelDrag()
+      // The dropped drag's unsent pose is gone, so a failed save must show the store's pose, not the session's.
+      picked?.let(::reselect)
       launch { if (runSave()) leave() }
     } else {
       confirmingDone = false

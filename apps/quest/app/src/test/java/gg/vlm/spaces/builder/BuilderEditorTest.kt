@@ -587,4 +587,67 @@ class BuilderEditorTest {
     assertNull(editor.view().message)
     assertTrue(editor.overrides().isEmpty())
   }
+
+  @Test
+  fun `a failed save-and-leave shows the store's pose, not the dropped drag's unsent one`() {
+    loaded()
+    moveTo("in1", 4.0)
+    assertEquals(DoneStep.CONFIRM, editor.done())
+    editor.beginDrag(Handle.Body, down(4.0))
+    t += 200
+    editor.drag(down(5.0)) // relayed and stored
+    t += 20
+    editor.drag(down(6.0)) // unsent: only the session has it
+    remote.failing += "update"
+    editor.confirmDone(save = true)
+    assertEquals(0, left)
+    assertEquals(5.0, store.draft("in1")!!.now.position.x, 1e-9)
+    assertEquals(5.0, editor.pickedItem()!!.second.position.x, 1e-9)
+    assertFalse(editor.dragging)
+  }
+
+  private fun carried(sk: String = "in1"): ItemTransform {
+    editor.pick(sk)
+    return editor.beginCarry()!!
+  }
+
+  @Test
+  fun `a carry drafts and relays like a drag, with the putting-down pose sent last`() {
+    loaded()
+    val start = carried()
+    assertTrue(editor.dragging)
+    editor.carryTo(start.copy(position = v(2.0, 1.0, 0.0))) // relayed
+    t += 20
+    editor.carryTo(start.copy(position = v(3.0, 1.0, 0.0))) // held back
+    assertEquals(1, remote.relayed.size)
+    t += 20
+    editor.endCarry(start.copy(position = v(3.5, 1.0, 0.0)))
+    assertFalse(editor.dragging)
+    assertEquals(3.5, remote.relayed.last().position.x, 1e-9)
+    assertEquals(3.5, store.draft("in1")!!.now.position.x, 1e-9)
+    t += 200
+    editor.tick()
+    assertEquals(3.5, remote.relayed.last().position.x, 1e-9)
+  }
+
+  @Test
+  fun `carrying needs a picked item and no drag under way`() {
+    loaded()
+    assertNull(editor.beginCarry())
+    editor.pick("in1")
+    editor.beginDrag(Handle.Body, down(1.0))
+    assertNull(editor.beginCarry())
+  }
+
+  @Test
+  fun `an item taken by someone else mid-carry drops the carry`() {
+    loaded()
+    val start = carried()
+    editor.carryTo(start.copy(position = v(2.0, 1.0, 0.0)))
+    remote.draftAnswer = BuilderCall.Ok(DraftAnswer.Held("Sam"))
+    t += 200
+    editor.carryTo(start.copy(position = v(3.0, 1.0, 0.0)))
+    assertNull(editor.picked)
+    assertFalse(editor.dragging)
+  }
 }

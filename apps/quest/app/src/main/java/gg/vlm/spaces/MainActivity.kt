@@ -50,6 +50,9 @@ import com.meta.spatial.vr.VRFeature
 import gg.vlm.spaces.api.ArApi
 import gg.vlm.spaces.api.ArFeed
 import gg.vlm.spaces.api.VisitAnalytics
+import gg.vlm.spaces.builder.Surface
+import gg.vlm.spaces.builder.SurfaceKind
+import gg.vlm.spaces.builder.surfaceOf
 import gg.vlm.spaces.ring.CameraStatus
 import gg.vlm.spaces.ring.PassthroughCamera
 import gg.vlm.spaces.ring.PoseAverager
@@ -583,6 +586,35 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
             (plane.max.y - plane.min.y) / 2,
         )
       }
+
+  /**
+   * The room scan's walls, floors and tables as snap surfaces in world space (see `Picking`, wired in with builder mode).
+   * Read when an item is put down, not every frame. MRUK planes lie in their anchor's local x-y with the normal along
+   * local z; a table's plane is its top face. Unverified on device (README, owner checks).
+   */
+  fun builderSurfaces(): List<Surface> =
+      mruk.rooms.flatMap { room ->
+        room.walls.mapNotNull { readSurface(SurfaceKind.WALL, it, MRUKLabel.WALL_FACE, anchorRequired = false) } +
+            room.floors.mapNotNull { readSurface(SurfaceKind.FLOOR, it, MRUKLabel.FLOOR, anchorRequired = false) } +
+            room.anchors.mapNotNull { readSurface(SurfaceKind.TABLE, it, MRUKLabel.TABLE, anchorRequired = true) }
+      }
+
+  /** [e]'s plane as a [Surface] of [kind], or null if it lacks the [label] (an anchor is optional for [anchorRequired] false) or a plane. */
+  private fun readSurface(kind: SurfaceKind, e: Entity, label: MRUKLabel, anchorRequired: Boolean): Surface? {
+    val anchor = e.tryGetComponent<MRUKAnchor>()
+    if (if (anchorRequired) anchor == null || !anchor.hasLabel(label) else anchor != null && !anchor.hasLabel(label)) return null
+    val plane = e.tryGetComponent<MRUKPlane>() ?: return null
+    val pose = worldPose(e) ?: return null
+    val mid = Vector3((plane.min.x + plane.max.x) / 2, (plane.min.y + plane.max.y) / 2, 0f)
+    return surfaceOf(
+        kind,
+        pose.times(mid).vec(),
+        pose.q.times(Vector3(0f, 0f, 1f)).vec(),
+        pose.q.times(Vector3(1f, 0f, 0f)).vec(),
+        ((plane.max.x - plane.min.x) / 2).toDouble(),
+        ((plane.max.y - plane.min.y) / 2).toDouble(),
+    )
+  }
 
   /** [e]'s pose in world space: its Transform, under its TransformParent chain (MRUK parents child anchors). */
   private fun worldPose(e: Entity): Pose? {

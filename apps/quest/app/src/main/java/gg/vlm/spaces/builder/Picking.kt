@@ -1,6 +1,7 @@
 package gg.vlm.spaces.builder
 
 import com.meta.spatial.core.Entity
+import com.meta.spatial.core.Pose
 import com.meta.spatial.core.Query
 import com.meta.spatial.isdk.IsdkSystem
 import com.meta.spatial.runtime.ButtonBits
@@ -10,6 +11,7 @@ import com.meta.spatial.runtime.SemanticType
 import com.meta.spatial.toolkit.AppSystemActivity
 import com.meta.spatial.toolkit.Controller
 import com.meta.spatial.toolkit.Transform
+import gg.vlm.spaces.Quat
 import gg.vlm.spaces.Vec3
 import gg.vlm.spaces.builder.TransformMath.dot
 import gg.vlm.spaces.builder.TransformMath.normalize
@@ -86,8 +88,15 @@ class PressTracker(private val editor: BuilderEditor) {
  * Picks and drags with the controller ray and trigger or the hand's system pinch (`SemanticType.Select`, Task 1),
  * through [IsdkSystem.registerObserver]. Pressed entities are looked up in the [gizmo] first, then the scene's items
  * ([itemAt], a render key's item). While pressed, each [tick] reads the pressing pointer's pose, turns it into a scene
- * ray through [root] and feeds the [tracker]; a held grip on either controller turns snapping on (Shift in
+ * ray through [root] and feeds the [tracker]; a held grip on either controller turns the gizmo's snapping on (Shift in
  * Decentraland).
+ *
+ * **Carrying:** a grip pressed while that controller's ray points at the picked item ([rayNearItem]) takes it: the item
+ * follows the controller (moving and turning with it, [Carry]), each thumbstick flick turns it [CARRY_TURN_DEGREES],
+ * and letting go of the grip puts it down, snapped to the room's [surfaces] (world space) unless the OTHER
+ * controller's grip is held. The result goes through the editor like a gizmo drag. Hands only pinch to pick (Task 1
+ * ruling), so a carry is controllers only. Unverified on device: that each controller entity's `Transform` is its
+ * world pose with +Z along the pointing ray and that its `buttonState` holds only its own side's bits.
  *
  * **Unverified on device** (README, builder checks): that a plain `Mesh(hittable = LineTest)` item and the gizmo's
  * box handles produce ISDK `Select` events; that `PointerEvent.source`'s `Transform` is the pointer's world pose with
@@ -99,9 +108,16 @@ class Picking(
     private val gizmo: Gizmo,
     private val itemAt: (Entity) -> String?,
     private val root: () -> RootPose?,
+    private val surfaces: () -> List<Surface> = { emptyList() },
 ) {
   private val tracker = PressTracker(editor)
   private var pressedBy: Entity? = null
+
+  /** The controller carrying the picked item: [left] or right, with its last pose and thumbstick bits. */
+  private class Held(val left: Boolean, val carry: Carry, var pose: WorldPose, var thumbBits: Int)
+
+  private var held: Held? = null
+  private var lastGrips = 0
   private var isdk: IsdkSystem? = null
   private val observer: (PointerEvent) -> Unit = ::onPointer
 
@@ -115,14 +131,94 @@ class Picking(
     isdk = null
     tracker.release()
     pressedBy = null
+    if (held != null) editor.endDrag()
+    held = null
   }
 
   /** Call every frame while building. */
   fun tick() {
-    editor.setSnap(gripHeld())
+    val hands = readHands()
+    val grips = hands.fold(0) { acc, h -> acc or (h.buttons and GRIPS) }
+    editor.setSnap(grips != 0 && held == null)
+    val h = held
+    if (h != null) carryFrame(h, hands, grips) else startCarry(hands, grips)
+    lastGrips = grips
     val source = pressedBy ?: return
     rayOf(source)?.let(tracker::move)
   }
+
+  /** A controller's buttons and pose this frame. */
+  private class Hand(val buttons: Int, val pose: WorldPose)
+
+  private fun readHands(): List<Hand> {
+    val out = ArrayList<Hand>()
+    Query.where { has(Controller.id) }.eval().forEach { e ->
+      val c = e.getComponent<Controller>()
+      if (!c.isActive) return@forEach
+      val pose = e.tryGetComponent<Transform>()?.transform ?: return@forEach
+      out += Hand(c.buttonState, pose.world())
+    }
+    return out
+  }
+
+  /** A grip newly pressed on a controller pointing at the picked item takes it. */
+  private fun startCarry(hands: List<Hand>, grips: Int) {
+    val r = root() ?: return
+    if (tracker.dragging || pressedBy != null) return
+    for (left in listOf(true, false)) {
+      val bit = squeeze(left)
+      if (grips and bit == 0 || lastGrips and bit != 0) continue
+      val hand = hands.firstOrNull { it.buttons and bit != 0 } ?: continue
+      val shown = editor.pickedItem()?.second ?: return
+      val ray = sceneRay(hand.pose.position, forward(hand.pose.rotation), r)
+      if (!rayNearItem(ray, shown.position, carryGrabRadius(shown.scale))) continue
+      val start = editor.beginCarry() ?: return
+      val carry = Carry().also { it.start(worldPoseOf(start, r), hand.pose) }
+      held = Held(left, carry, hand.pose, hand.buttons and thumbs(left))
+      return
+    }
+  }
+
+  /** One frame of a carry: the item follows the controller; the grip letting go puts it down. */
+  private fun carryFrame(h: Held, hands: List<Hand>, grips: Int) {
+    val r = root()
+    val picked = editor.pickedItem()
+    if (r == null || picked == null || !editor.dragging) {
+      held = null // the item was taken away (someone else is moving it) or the scene was lost
+      return
+    }
+    val (item, shown) = picked
+    val hand = hands.firstOrNull { it.buttons and squeeze(h.left) != 0 }
+    if (hand == null) {
+      // Snapping is off while the other controller's grip is held.
+      val snapOn = grips and squeeze(!h.left) == 0
+      editor.endCarry(landCarried(h.carry.update(h.pose), item.element, shown.scale, r, surfaces(), snapOn))
+      held = null
+      return
+    }
+    val bits = hand.buttons and thumbs(h.left)
+    val flicked = bits and h.thumbBits.inv()
+    h.thumbBits = bits
+    if (flicked and thumbRight(h.left) != 0) h.carry.turn(CARRY_TURN_DEGREES)
+    if (flicked and thumbLeft(h.left) != 0) h.carry.turn(-CARRY_TURN_DEGREES)
+    h.pose = hand.pose
+    editor.carryTo(landCarried(h.carry.update(hand.pose), item.element, shown.scale, r, surfaces(), snapOn = false))
+  }
+
+  private fun squeeze(left: Boolean) = if (left) ButtonBits.ButtonSqueezeL else ButtonBits.ButtonSqueezeR
+
+  private fun thumbLeft(left: Boolean) = if (left) ButtonBits.ButtonThumbLL else ButtonBits.ButtonThumbRL
+
+  private fun thumbRight(left: Boolean) = if (left) ButtonBits.ButtonThumbLR else ButtonBits.ButtonThumbRR
+
+  private fun thumbs(left: Boolean) = thumbLeft(left) or thumbRight(left)
+
+  private fun forward(q: Quat) = q.rotate(Vec3(0.0, 0.0, 1.0))
+
+  private fun Pose.world() =
+      WorldPose(Vec3(t.x.toDouble(), t.y.toDouble(), t.z.toDouble()), Quat(q.w.toDouble(), q.x.toDouble(), q.y.toDouble(), q.z.toDouble()))
+
+  private val GRIPS = ButtonBits.ButtonSqueezeL or ButtonBits.ButtonSqueezeR
 
   private fun onPointer(e: PointerEvent) {
     when (e.type) {
@@ -155,14 +251,5 @@ class Picking(
         Vec3(f.x.toDouble(), f.y.toDouble(), f.z.toDouble()),
         r,
     )
-  }
-
-  private fun gripHeld(): Boolean {
-    var held = false
-    Query.where { has(Controller.id) }.eval().forEach { e ->
-      val c = e.getComponent<Controller>()
-      if (c.isActive && (c.buttonState and (ButtonBits.ButtonSqueezeL or ButtonBits.ButtonSqueezeR)) != 0) held = true
-    }
-    return held
   }
 }
