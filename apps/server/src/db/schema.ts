@@ -16,6 +16,8 @@ import {
   real,
   smallint,
   date,
+  doublePrecision,
+  bigint,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
 import type { VenueRules } from 'vlm-shared'
@@ -918,6 +920,49 @@ export const hyperfyPairings = pgTable('hyperfy_pairings', {
   worldIdx: index('hyperfy_pairings_world_idx').on(t.worldId),
   // Self pairings have a browser secret; hosted ones have a vouched player id. Exactly one.
   kindCheck: check('hyperfy_pairings_kind_check', sql`(${t.secretHash} IS NOT NULL) <> (${t.hyperfyPlayerId} IS NOT NULL)`),
+}))
+
+// ── AR spaces ───────────────────────────────────────────────────────────────
+
+export const arSpaces = pgTable('ar_spaces', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sceneId: uuid('scene_id').notNull().references(() => scenes.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  place: text('place'), // address or description
+  lat: doublePrecision('lat'),
+  lng: doublePrecision('lng'),
+  published: boolean('published').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  sceneIdx: index('ar_spaces_scene_idx').on(t.sceneId),
+}))
+
+export const arFloors = pgTable('ar_floors', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  spaceId: uuid('space_id').notNull().references(() => arSpaces.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  heightM: real('height_m').notNull().default(0),
+  sortOrder: integer('sort_order').notNull().default(0),
+}, (t) => ({
+  spaceIdx: index('ar_floors_space_idx').on(t.spaceId),
+}))
+
+export const arMarkers = pgTable('ar_markers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  floorId: uuid('floor_id').notNull().references(() => arFloors.id, { onDelete: 'cascade' }),
+  ringId: bigint('ring_id', { mode: 'number' }).notNull().unique(),
+  code: text('code').notNull().unique(),
+  diameterMm: real('diameter_mm').notNull().default(140),
+  whereText: text('where_text'), // where the ring is, shown to visitors before they arrive
+  poseX: real('pose_x'),
+  poseY: real('pose_y'),
+  poseZ: real('pose_z'),
+  headingDeg: real('heading_deg'),
+  poseRecordedAt: timestamp('pose_recorded_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  floorIdx: index('ar_markers_floor_idx').on(t.floorId),
 }))
 
 // ── Password Reset Tokens ───────────────────────────────────────────────────

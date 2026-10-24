@@ -4,7 +4,7 @@ import {
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
   sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
-  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers,
 } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { createVenue, createBooking, addGrant } from '../src/venues/service.js'
@@ -69,13 +69,16 @@ async function fixtures() {
   const [pairing] = await db.insert(hyperfyPairings).values({
     worldId: world.id, userId: b.id, secretHash: 'b-secret-hash', status: 'claimed', codeExpiresAt: new Date(Date.now() + H), expiresAt: new Date(Date.now() + H),
   }).returning()
+  const [arSpace] = await db.insert(arSpaces).values({ sceneId: scene.id, name: 'B space' }).returning()
+  const [arFloor] = await db.insert(arFloors).values({ spaceId: arSpace.id, name: 'Ground floor' }).returning()
+  const [arMarker] = await db.insert(arMarkers).values({ floorId: arFloor.id, ringId: 123456, code: '0000000' }).returning()
   const [bKey] = await db.insert(apiKeys).values({ userId: b.id, name: 'B key', keyHash: 'b-hash', keyPrefix: 'vlm_k1_b' }).returning()
 
   const aScene = (await createScene(a, 'A scene')).scene
   const [aEvent] = await db.insert(events).values({ ownerId: a.id, name: 'A event' }).returning()
   return {
     a, b, collaborator, scene, preset, element, instance, roleWallet, wallet, dcl, hyperfy, stream, event, giveaway, item,
-    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, world, pairing, aScene, aEvent,
+    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, world, pairing, arSpace, arFloor, arMarker, aScene, aEvent,
   }
 }
 type F = Awaited<ReturnType<typeof fixtures>>
@@ -112,6 +115,17 @@ const CASES: Case[] = [
   { route: 'DELETE /api/scenes/:sceneId/library/:id', url: (f) => `/api/scenes/${f.scene.id}/library/${f.libraryItem.id}` },
   { route: 'PATCH /api/scenes/:sceneId/library/:id', url: (f) => `/api/scenes/${f.scene.id}/library/${f.libraryItem.id}`, body: () => ({ name: 'renamed' }) },
   { route: 'POST /api/scenes/:sceneId/library/upload', url: (f) => `/api/scenes/${f.scene.id}/library/upload`, body: () => ({ filename: 'x.png', contentType: 'image/png', data: 'iVBORw0KGgo=' }) },
+  // AR spaces
+  { route: 'GET /api/scenes/:sceneId/ar/spaces', url: (f) => `/api/scenes/${f.scene.id}/ar/spaces` },
+  { route: 'POST /api/scenes/:sceneId/ar/spaces', url: (f) => `/api/scenes/${f.scene.id}/ar/spaces`, body: () => ({ name: 'pwned' }) },
+  { route: 'PUT /api/ar/spaces/:id', url: (f) => `/api/ar/spaces/${f.arSpace.id}`, body: () => ({ name: 'pwned' }) },
+  { route: 'DELETE /api/ar/spaces/:id', url: (f) => `/api/ar/spaces/${f.arSpace.id}` },
+  { route: 'POST /api/ar/spaces/:id/floors', url: (f) => `/api/ar/spaces/${f.arSpace.id}/floors`, body: () => ({ name: 'pwned', heightM: 3 }) },
+  { route: 'PUT /api/ar/floors/:id', url: (f) => `/api/ar/floors/${f.arFloor.id}`, body: () => ({ name: 'pwned' }) },
+  { route: 'DELETE /api/ar/floors/:id', url: (f) => `/api/ar/floors/${f.arFloor.id}` },
+  { route: 'POST /api/ar/floors/:id/markers', url: (f) => `/api/ar/floors/${f.arFloor.id}/markers`, body: () => ({}) },
+  { route: 'PUT /api/ar/markers/:id', url: (f) => `/api/ar/markers/${f.arMarker.id}`, body: () => ({ whereText: 'pwned' }) },
+  { route: 'DELETE /api/ar/markers/:id', url: (f) => `/api/ar/markers/${f.arMarker.id}` },
   // deploy
   { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.scene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET }) },
   { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.aScene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET, walletId: f.wallet.id }) },
@@ -218,7 +232,7 @@ const TABLES = [
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
   sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
-  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers,
 ]
 async function snapshot(f: F) {
   const all = await Promise.all(TABLES.map((t) => db.select().from(t as any)))
