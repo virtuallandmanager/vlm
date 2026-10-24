@@ -75,6 +75,8 @@ class VisitorController(
   private var lastFrameNs = 0L
   /** During Locking: the ring in view is too far away to lock (LockGate said TOO_FAR, none said STEADY). */
   private var tooFar = false
+  /** When [tick] last had a head pose, for the tracking watch's speed limits. */
+  private var lastHeadMs: Long? = null
 
   /** The ring that last became steady, for naming the space a scene was just shown for. */
   private var steadyRing: Long? = null
@@ -117,7 +119,9 @@ class VisitorController(
       }
       val fwd = head.q.times(Vector3(0f, 0f, 1f))
       val yaw = Math.toDegrees(atan2(fwd.x.toDouble(), fwd.z.toDouble()))
-      if (trackingWatch.onHead(head.t.vec(), yaw)) {
+      val dtS = lastHeadMs?.let { (now - it) / 1000.0 } ?: 0.0
+      lastHeadMs = now
+      if (trackingWatch.onHead(head.t.vec(), yaw, dtS)) {
         Log.i(TAG, "Tracking jumped: hiding the scene")
         dispatch(VisitorEvent.TrackingJump)
       }
@@ -144,6 +148,7 @@ class VisitorController(
 
   fun headsetOn() {
     trackingWatch.reset()
+    lastHeadMs = null
     dispatch(VisitorEvent.HeadsetOn)
   }
 
