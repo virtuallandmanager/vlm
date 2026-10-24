@@ -13,6 +13,7 @@ import { ParcelMap } from '@/components/analytics/ParcelMap'
 import { Section, type SectionState } from '@/components/analytics/Section'
 import { full } from '@/components/analytics/format'
 import { tenureLabel } from './LocationList'
+import { Badge, PageHeader, tableHead } from '@/components/ui'
 
 const LIVE_MS = 15_000
 const LIVE_ERROR_MS = 60_000
@@ -25,10 +26,10 @@ type Req<T> = { status: 'loading' | 'error' | 'ready'; data?: T }
 export function NoAccess() {
   return (
     <div className="mx-auto max-w-6xl">
-      <h1 className="mb-6 text-2xl font-bold">Analytics</h1>
-      <div className="rounded-xl bg-gray-900 p-6 text-sm text-gray-300">
+      <PageHeader crumbs={['Tools', 'Analytics']} title="Analytics" />
+      <div className="rounded-lg bg-gray-900 p-6 text-sm text-gray-300">
         <p>You don&apos;t have access to this scene&apos;s analytics.</p>
-        <Link href="/analytics/" className="mt-3 inline-block text-blue-500 hover:text-blue-400 hover:underline">See the scenes you can view</Link>
+        <Link href="/analytics/" className="mt-3 inline-block text-blue-400 hover:text-blue-300 hover:underline">See the scenes you can view</Link>
       </div>
     </div>
   )
@@ -178,21 +179,26 @@ export function Dashboard({ location, showAllLink, onWalletVisibility }: {
 
   const s = summary.data
   const tenure = tenureLabel(location)
+  const title = location.title || location.locationKey
   const sumState: SectionState = summary.status === 'ready' ? (s && s.sessions > 0 ? 'ready' : 'empty') : summary.status
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
       {/* 1. Header */}
-      <header className="space-y-3">
-        {showAllLink && (
-          <Link href="/analytics/" className="text-sm text-gray-400 hover:text-white">← All scenes</Link>
-        )}
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="break-words text-2xl font-bold">{location.title || location.locationKey}</h1>
-            <p className="mt-1 break-all text-sm text-gray-400">{location.locationKey}</p>
+      <PageHeader
+        crumbs={['Tools', showAllLink ? { label: 'Analytics', href: '/analytics/' } : 'Analytics', title]}
+        title={title}
+        subtitle={
+          <>
+            <p className="break-all text-sm">{location.locationKey}</p>
             {tenure && <p className="mt-1 text-xs text-gray-500">{tenure}</p>}
-          </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span>Data updates hourly</span>
+              {s && <Badge>{Math.round(s.verifiedShare * 100)}% verified wallets</Badge>}
+            </div>
+          </>
+        }
+        actions={
           <div className="flex flex-col items-start gap-2 sm:items-end">
             <Toggle
               label="Date range"
@@ -206,35 +212,27 @@ export function Dashboard({ location, showAllLink, onWalletVisibility }: {
                 <input
                   id="range-from" type="date" value={custom.from} max={custom.to || undefined}
                   onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))}
-                  className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-white outline-none [color-scheme:dark] focus:ring-2 focus:ring-blue-500"
+                  className="rounded-md border border-gray-700 bg-gray-950 px-3 py-1.5 text-white outline-none [color-scheme:dark] focus:border-blue-400"
                 />
                 <span className="text-gray-500" aria-hidden="true">to</span>
                 <label className="sr-only" htmlFor="range-to">End date</label>
                 <input
                   id="range-to" type="date" value={custom.to} min={custom.from || undefined}
                   onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))}
-                  className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-white outline-none [color-scheme:dark] focus:ring-2 focus:ring-blue-500"
+                  className="rounded-md border border-gray-700 bg-gray-950 px-3 py-1.5 text-white outline-none [color-scheme:dark] focus:border-blue-400"
                 />
               </div>
             )}
             {'error' in range && <p className="text-sm text-red-400" role="alert">{range.error}</p>}
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-          <span>Data updates hourly</span>
-          {s && (
-            <span className="rounded-full bg-gray-800 px-2 py-0.5 text-gray-300">
-              {Math.round(s.verifiedShare * 100)}% verified wallets
-            </span>
-          )}
-        </div>
-      </header>
+        }
+      />
 
       {/* 2. Summary cards */}
       {summary.status === 'error' ? (
-        <div className="rounded-xl bg-gray-900 p-4 text-sm text-gray-400" role="alert">
+        <div className="rounded-lg bg-gray-900 p-4 text-sm text-gray-400" role="alert">
           Couldn&apos;t load the summary —{' '}
-          <button type="button" onClick={retrySummary} className="text-blue-500 hover:text-blue-400 hover:underline">Retry</button>
+          <button type="button" onClick={retrySummary} className="text-blue-400 hover:text-blue-300 hover:underline">Retry</button>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5" aria-busy={summary.status === 'loading'}>
@@ -366,14 +364,14 @@ function Sessions({ apiRef, id, onNoAccess }: { apiRef: { current: Api }; id: st
     <Section title="Recent visits" state={state} onRetry={retry}>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-left text-sm">
-          <thead className="text-xs text-gray-400">
+          <thead className={tableHead}>
             <tr className="border-b border-gray-800">
-              <th scope="col" className="py-2 pr-4 font-medium">Started (local)</th>
-              <th scope="col" className="py-2 pr-4 font-medium">Duration</th>
-              <th scope="col" className="py-2 pr-4 font-medium">Visitor</th>
-              <th scope="col" className="py-2 pr-4 font-medium">Platform</th>
-              <th scope="col" className="py-2 pr-4 font-medium">Country</th>
-              <th scope="col" className="py-2 font-medium">Returning</th>
+              <th scope="col" className="py-2 pr-4">Started (local)</th>
+              <th scope="col" className="py-2 pr-4">Duration</th>
+              <th scope="col" className="py-2 pr-4">Visitor</th>
+              <th scope="col" className="py-2 pr-4">Platform</th>
+              <th scope="col" className="py-2 pr-4">Country</th>
+              <th scope="col" className="py-2">Returning</th>
             </tr>
           </thead>
           <tbody>
@@ -403,7 +401,7 @@ function Sessions({ apiRef, id, onNoAccess }: { apiRef: { current: Api }; id: st
             type="button"
             onClick={loadMore}
             disabled={loadingMore}
-            className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-50"
+            className="rounded-md bg-gray-800 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-50"
           >
             {loadingMore ? 'Loading…' : 'Load more'}
           </button>

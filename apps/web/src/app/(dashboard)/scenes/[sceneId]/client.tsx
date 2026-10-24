@@ -7,6 +7,7 @@ import { useSceneRoom } from '@/lib/colyseus'
 import { SceneRoles } from './SceneRoles'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { Badge, PageHeader, Skeleton, type Tone } from '@/components/ui'
 
 
 // ---------------------------------------------------------------------------
@@ -111,7 +112,7 @@ function NumberInput({ value, onChange, label }: { value: number; onChange: (v: 
         onChange={e => setLocal(e.target.value)}
         onBlur={commit}
         onKeyDown={e => { if (e.key === 'Enter') ref.current?.blur() }}
-        className="w-20 rounded bg-gray-800 px-2 py-1 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500" />
+        className="w-20 rounded bg-gray-950 px-2 py-1 text-sm text-white outline-none focus:border-blue-400 border border-gray-800" />
     </div>
   )
 }
@@ -133,7 +134,7 @@ function TextInput({ value, onChange, label, readOnly }: { value: string; onChan
         onChange={e => setLocal(e.target.value)}
         onBlur={commit}
         onKeyDown={e => { if (e.key === 'Enter') ref.current?.blur() }}
-        className={`w-full rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500 ${readOnly ? 'opacity-60 cursor-not-allowed' : ''}`} />
+        className={`w-full rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none ${readOnly ? 'opacity-60 cursor-not-allowed' : ''} focus:border-blue-400 border border-gray-800`} />
     </div>
   )
 }
@@ -275,7 +276,7 @@ function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
   }
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
+    <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h4 className="font-semibold">{element.name}</h4>
         <label className="flex items-center gap-2 text-sm text-gray-400">
@@ -299,7 +300,7 @@ function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
         <span className="text-xs text-gray-500">Off Type</span>
         <select value={props.offType ?? 0}
           onChange={e => updateProp('offType', parseInt(e.target.value))}
-          className="w-48 rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500">
+          className="w-48 rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none focus:border-blue-400 border border-gray-800">
           {OFF_TYPES.map(t => (
             <option key={t.value} value={t.value}>{t.label}</option>
           ))}
@@ -325,7 +326,7 @@ function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
             {playlist.map((url, idx) => (
               <div key={idx} draggable onDragStart={() => handleDragStart(idx)}
                 onDragOver={e => handleDragOver(e, idx)} onDragEnd={handleDragEnd}
-                className={`flex items-center gap-2 rounded-lg border bg-gray-800/50 px-3 py-2 text-sm cursor-grab active:cursor-grabbing ${
+                className={`flex items-center gap-2 rounded-md border bg-gray-800/50 px-3 py-2 text-sm cursor-grab active:cursor-grabbing ${
                   dragIdx === idx ? 'border-blue-500 bg-blue-900/20' : 'border-gray-700'
                 }`}>
                 <span className="text-gray-500 text-xs w-5 shrink-0">{idx + 1}.</span>
@@ -352,7 +353,7 @@ function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
           <input type="text" value={urlInput} onChange={e => setUrlInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleAddUrl() }}
             placeholder="Paste video URL and press Enter"
-            className="flex-1 rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500" />
+            className="flex-1 rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none focus:border-blue-400 border border-gray-800" />
           <button onClick={handleAddUrl} disabled={!urlInput.trim()}
             className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500 transition-colors disabled:opacity-50">
             Add
@@ -443,7 +444,7 @@ function MediaPicker({ api, accept, onSelect, onClose }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-2xl max-h-[80vh] rounded-xl border border-gray-700 bg-gray-900 shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-2xl max-h-[80vh] rounded-lg border border-gray-700 bg-gray-900 shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
           <h3 className="font-semibold">Media Library</h3>
           <div className="flex items-center gap-2">
@@ -457,7 +458,7 @@ function MediaPicker({ api, accept, onSelect, onClose }: {
         {uploadError && <p className="px-4 pt-3 text-xs text-red-400">{uploadError}</p>}
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
-            <p className="text-gray-400 text-sm text-center py-8">Loading...</p>
+            <Skeleton rows={2} className="h-12" />
           ) : assets.length === 0 ? (
             <p className="text-gray-500 text-sm text-center py-8">No media yet. Upload one above.</p>
           ) : (
@@ -526,7 +527,7 @@ function ImageElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
   }
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
+    <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h4 className="font-semibold">{element.name}</h4>
         <label className="flex items-center gap-2 text-sm text-gray-400">
@@ -619,7 +620,7 @@ function AdSpaceElementEditor({ element, onUpdateElement, onUpdateInstance, onDe
   }
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
+    <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h4 className="font-semibold">{element.name}</h4>
         <label className="flex items-center gap-2 text-sm text-gray-400">
@@ -635,7 +636,7 @@ function AdSpaceElementEditor({ element, onUpdateElement, onUpdateInstance, onDe
           <span className="text-xs text-gray-500">Shape</span>
           <select value={props.shape ?? '16:9'}
             onChange={e => updateProp('shape', e.target.value)}
-            className="w-48 rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500">
+            className="w-48 rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none focus:border-blue-400 border border-gray-800">
             {AD_SHAPES.map(s => (
               <option key={s} value={s}>{shapeLabel(s)}</option>
             ))}
@@ -645,7 +646,7 @@ function AdSpaceElementEditor({ element, onUpdateElement, onUpdateInstance, onDe
           <span className="text-xs text-gray-500">Formats</span>
           <select value={props.formats ?? 'both'}
             onChange={e => updateProp('formats', e.target.value)}
-            className="w-48 rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500">
+            className="w-48 rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none focus:border-blue-400 border border-gray-800">
             {AD_SPACE_FORMATS.map(f => (
               <option key={f.value} value={f.value}>{f.label}</option>
             ))}
@@ -738,7 +739,7 @@ function ModelElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
   }
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
+    <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h4 className="font-semibold">{element.name}</h4>
         <label className="flex items-center gap-2 text-sm text-gray-400">
@@ -802,7 +803,7 @@ function SoundElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
   }
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
+    <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h4 className="font-semibold">{element.name}</h4>
         <label className="flex items-center gap-2 text-sm text-gray-400">
@@ -870,7 +871,7 @@ function WidgetValueEditor({ controlType, value, onChange }: { controlType: numb
           <span className="text-xs text-gray-500">Date/Time</span>
           <input type="datetime-local" value={value || ''}
             onChange={e => onChange(e.target.value)}
-            className="w-64 rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500" />
+            className="w-64 rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none focus:border-blue-400 border border-gray-800" />
         </div>
       )
     case 5: // Trigger
@@ -914,7 +915,7 @@ function WidgetElementEditor({ element, onUpdateElement, onDelete }: {
   }
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
+    <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h4 className="font-semibold">{element.name}</h4>
         <div className="flex items-center gap-3">
@@ -934,7 +935,7 @@ function WidgetElementEditor({ element, onUpdateElement, onDelete }: {
         <span className="text-xs text-gray-500">Control Type</span>
         <select value={props.controlType ?? 0}
           onChange={e => updateProp('controlType', parseInt(e.target.value))}
-          className="w-48 rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500">
+          className="w-48 rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none focus:border-blue-400 border border-gray-800">
           {CONTROL_TYPES.map(ct => (
             <option key={ct.value} value={ct.value}>{ct.label}</option>
           ))}
@@ -993,13 +994,13 @@ function ModerationPanel({ sendMessage }: { sendMessage: (type: string, payload:
   return (
     <div className="space-y-6">
       {/* Send Message */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
+      <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-4">
         <h4 className="font-semibold">Send Message</h4>
         <div className="flex flex-col gap-1">
           <span className="text-xs text-gray-500">Message Text</span>
           <textarea value={msgText} onChange={e => setMsgText(e.target.value)}
             placeholder="Type a message to display in-world..."
-            className="w-full rounded bg-gray-800 px-3 py-2 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500 resize-y min-h-[60px]" />
+            className="w-full rounded bg-gray-950 px-3 py-2 text-sm text-white outline-none resize-y min-h-[60px] focus:border-blue-400 border border-gray-800" />
         </div>
         <div className="flex items-end gap-4">
           <div className="flex flex-col gap-1">
@@ -1018,7 +1019,7 @@ function ModerationPanel({ sendMessage }: { sendMessage: (type: string, payload:
       </div>
 
       {/* Crash User */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
+      <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-4">
         <h4 className="font-semibold">Crash User</h4>
         <div className="flex items-end gap-4">
           <div className="flex-1">
@@ -1033,7 +1034,7 @@ function ModerationPanel({ sendMessage }: { sendMessage: (type: string, payload:
       </div>
 
       {/* Recent Actions */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-3">
+      <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
         <h4 className="font-semibold">Recent Actions</h4>
         {actions.length === 0 ? (
           <p className="text-gray-500 text-sm">No moderation actions yet.</p>
@@ -1041,11 +1042,7 @@ function ModerationPanel({ sendMessage }: { sendMessage: (type: string, payload:
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {actions.map(action => (
               <div key={action.id} className="flex items-center gap-3 text-sm border-b border-gray-800 pb-2">
-                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                  action.type === 'Message' ? 'bg-blue-900/50 text-blue-400' : 'bg-red-900/50 text-red-400'
-                }`}>
-                  {action.type}
-                </span>
+                <Badge tone={action.type === 'Message' ? 'info' : 'danger'}>{action.type}</Badge>
                 <span className="text-gray-400 truncate flex-1">{action.detail}</span>
                 <span className="text-xs text-gray-600 whitespace-nowrap">{action.timestamp.toLocaleTimeString()}</span>
               </div>
@@ -1144,36 +1141,29 @@ function CollaboratorsSection({ sceneId, api, currentUserId }: {
     }
   }
 
-  const roleBadgeClass = (r: string) => {
-    switch (r) {
-      case 'owner': return 'bg-purple-900/50 text-purple-400'
-      case 'editor': return 'bg-blue-900/50 text-blue-400'
-      case 'viewer': return 'bg-gray-800 text-gray-400'
-      default: return 'bg-gray-800 text-gray-400'
-    }
-  }
+  const roleTone = (r: string): Tone => (r === 'owner' ? 'violet' : r === 'editor' ? 'info' : 'neutral')
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
+    <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-4">
       <h3 className="text-lg font-semibold">Collaborators</h3>
 
       {error && (
-        <div className="rounded-lg bg-red-900/30 border border-red-800 px-3 py-2 text-sm text-red-400">
+        <div className="rounded-md bg-red-900/30 border border-red-800 px-3 py-2 text-sm text-red-400">
           {error}
         </div>
       )}
       {success && (
-        <div className="rounded-lg bg-green-900/30 border border-green-800 px-3 py-2 text-sm text-green-400">
+        <div className="rounded-md bg-green-900/30 border border-green-800 px-3 py-2 text-sm text-green-400">
           {success}
         </div>
       )}
 
       {loading ? (
-        <p className="text-gray-400 text-sm">Loading collaborators...</p>
+        <Skeleton rows={2} className="h-12" />
       ) : (
         <div className="space-y-2">
           {collaborators.map(c => (
-            <div key={c.userId} className="flex items-center justify-between rounded-lg border border-gray-700 bg-gray-800/50 px-3 py-2">
+            <div key={c.userId} className="flex items-center justify-between rounded-md border border-gray-700 bg-gray-800/50 px-3 py-2">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-white truncate">{c.displayName}</p>
@@ -1182,22 +1172,18 @@ function CollaboratorsSection({ sceneId, api, currentUserId }: {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {c.role === 'owner' ? (
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${roleBadgeClass(c.role)}`}>
-                    {c.role}
-                  </span>
+                  <Badge tone={roleTone(c.role)}>{c.role}</Badge>
                 ) : isOwner ? (
                   <select
                     value={c.role}
                     onChange={e => handleChangeRole(c.userId, e.target.value)}
-                    className="rounded bg-gray-700 px-2 py-1 text-xs text-white outline-none focus:ring-1 focus:ring-blue-500"
+                    className="rounded bg-gray-700 px-2 py-1 text-xs text-white outline-none focus:border-blue-400 border border-gray-800"
                   >
                     <option value="editor">editor</option>
                     <option value="viewer">viewer</option>
                   </select>
                 ) : (
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${roleBadgeClass(c.role)}`}>
-                    {c.role}
-                  </span>
+                  <Badge tone={roleTone(c.role)}>{c.role}</Badge>
                 )}
                 {c.role !== 'owner' && (isOwner || c.userId === currentUserId) && (
                   <button
@@ -1222,7 +1208,7 @@ function CollaboratorsSection({ sceneId, api, currentUserId }: {
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="user@example.com"
-              className="w-full rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none focus:border-blue-400 border border-gray-800"
               required
             />
           </div>
@@ -1231,7 +1217,7 @@ function CollaboratorsSection({ sceneId, api, currentUserId }: {
             <select
               value={role}
               onChange={e => setRole(e.target.value as 'editor' | 'viewer')}
-              className="rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500"
+              className="rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none focus:border-blue-400 border border-gray-800"
             >
               <option value="editor">Editor</option>
               <option value="viewer">Viewer</option>
@@ -1552,31 +1538,33 @@ export default function SceneEditorPage() {
   // Render
   // -----------------------------------------------------------------------
 
-  if (loading) return <p className="text-gray-400">Loading scene...</p>
+  if (loading) return <Skeleton />
   if (error) return <p className="text-red-400">Error: {error}</p>
   if (!scene) return <p className="text-gray-400">Scene not found.</p>
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <div className="flex items-center gap-3 mb-1">
-          <h1 className="text-2xl font-bold">{scene.name}</h1>
-          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${connected ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-500'}`}>
+      <PageHeader
+        crumbs={['Workspace', { label: 'Scenes', href: '/scenes' }, scene.name]}
+        title={scene.name}
+        subtitle={
+          <>
+            <div className="flex items-center gap-2">
+              <code className="text-sm text-gray-500 font-mono">{sceneId}</code>
+              <button onClick={copySceneId} className="text-xs text-blue-400 hover:text-blue-300">
+                {copied ? 'Copied!' : 'Copy ID'}
+              </button>
+            </div>
+            {activePreset && <p className="mt-1 text-sm text-gray-500">Preset: {activePreset.name}</p>}
+          </>
+        }
+        actions={
+          <Badge tone={connected ? 'success' : 'neutral'}>
             <span className={`inline-block h-1.5 w-1.5 rounded-full ${connected ? 'bg-green-400' : 'bg-gray-600'}`} />
             {connected ? 'Connected' : 'Disconnected'}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <code className="text-sm text-gray-500 font-mono">{sceneId}</code>
-          <button onClick={copySceneId} className="text-xs text-blue-400 hover:text-blue-300">
-            {copied ? 'Copied!' : 'Copy ID'}
-          </button>
-        </div>
-        {activePreset && (
-          <p className="mt-1 text-sm text-gray-500">Preset: {activePreset.name}</p>
-        )}
-      </div>
+          </Badge>
+        }
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-800 pb-px">

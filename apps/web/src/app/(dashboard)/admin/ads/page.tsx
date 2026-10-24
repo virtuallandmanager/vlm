@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth'
 import { useApi, fileToBase64, mediaContentType, uploadErrorMessage } from '@/lib/api'
 import type { AdminAdSpace } from '@/lib/api'
 import { shapeLabel, isHttpsUrl, clickRate } from '@/lib/ads'
-import { PageHeader, PrimaryButton } from '@/components/ui'
+import { PageHeader, PrimaryButton, Skeleton, tableHeadBand } from '@/components/ui'
 import { PlusIcon } from '@/components/icons'
 
 const ERRORS: Record<string, string> = {
@@ -43,7 +43,7 @@ export default function AdminAdsPage() {
   return (
     <div className="max-w-5xl mx-auto">
       <PageHeader
-        crumbs={['Admin', 'Ads']}
+        crumbs={['System', { label: 'Admin', href: '/admin' }, 'Ads']}
         title="Ads"
         count={ads ? String(ads.length) : undefined}
         subtitle="Partner ads run on the spaces you place them on. House ads fill any space with no partner ad and pay nothing."
@@ -57,7 +57,7 @@ export default function AdminAdsPage() {
         />
       )}
       {!ads ? (
-        <p className="text-gray-400">Loading ads…</p>
+        <Skeleton rows={2} className="h-12" />
       ) : ads.length === 0 ? (
         <p className="py-8 text-center text-sm text-gray-500">No ads yet.</p>
       ) : (
@@ -96,17 +96,17 @@ function NewAdForm({ onCreated, onCancel }: { onCreated: (ad: AdminAd) => void; 
   }
 
   return (
-    <form onSubmit={submit} className="mb-4 space-y-3 rounded-xl border border-gray-800 bg-gray-900 p-4">
+    <form onSubmit={submit} className="mb-4 space-y-3 rounded-lg border border-gray-800 bg-gray-900 p-4">
       <div className="flex flex-wrap gap-3">
         <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs text-gray-500">
           Name
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={120}
-            className="rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500" />
+            className="rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none focus:border-blue-400 border border-gray-800" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-gray-500">
           Kind
           <select value={kind} onChange={(e) => setKind(e.target.value as 'house' | 'partner')}
-            className="rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500">
+            className="rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none focus:border-blue-400 border border-gray-800">
             <option value="partner">Partner</option>
             <option value="house">House</option>
           </select>
@@ -115,7 +115,7 @@ function NewAdForm({ onCreated, onCancel }: { onCreated: (ad: AdminAd) => void; 
       <label className="flex flex-col gap-1 text-xs text-gray-500">
         Click URL
         <input value={clickUrl} onChange={(e) => setClickUrl(e.target.value)} placeholder="https://"
-          className="rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500" />
+          className="rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none focus:border-blue-400 border border-gray-800" />
         {clickUrl !== '' && !isHttpsUrl(clickUrl) && <span className="text-red-400">Must be a full https:// address.</span>}
       </label>
       {error && <p className="text-sm text-red-400">{error}</p>}
@@ -156,7 +156,7 @@ function AdCard({ ad, spaces, open, onToggle, onChange }: {
   }
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900">
+    <div className="rounded-lg border border-gray-800 bg-gray-900">
       <div className="flex flex-wrap items-center justify-between gap-3 p-4">
         <button onClick={onToggle} aria-expanded={open} className="min-w-0 flex-1 text-left">
           <div className="flex items-center gap-2">
@@ -243,7 +243,7 @@ function Creatives({ ad, onChange }: { ad: AdminAd; onChange: (ad: AdminAd) => v
       )}
       <div className="flex flex-wrap items-center gap-2">
         <select value={shape} onChange={(e) => setShape(e.target.value as AdShape)} aria-label="Creative shape"
-          className="rounded bg-gray-800 px-3 py-1.5 text-sm text-white outline-none focus:ring-1 focus:ring-blue-500">
+          className="rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none focus:border-blue-400 border border-gray-800">
           {AD_SHAPES.map((s) => <option key={s} value={s}>{shapeLabel(s)}</option>)}
         </select>
         <label className={`cursor-pointer rounded bg-gray-700 px-3 py-1.5 text-sm text-white transition-colors hover:bg-gray-600 ${uploading ? 'pointer-events-none opacity-50' : ''}`}>
@@ -333,7 +333,7 @@ function Report({ adId }: { adId: string }) {
   }, [adId])
 
   if (error) return <p className="text-sm text-red-400">{error}</p>
-  if (!report) return <p className="text-sm text-gray-500">Loading report…</p>
+  if (!report) return <Skeleton rows={2} className="h-12" />
   const t = report.totals
 
   return (
@@ -373,7 +373,7 @@ function CountsTable({ title, rows }: { title: string; rows: { key: string; labe
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-800">
       <table className="w-full text-sm">
-        <thead className="bg-gray-950 text-left text-xs text-gray-500">
+        <thead className={tableHeadBand}>
           <tr>
             <th className="p-2">{title}</th>
             <th className="p-2 text-right">In scene</th>

@@ -6,10 +6,11 @@ import type { AnalyticsLocation } from '@/lib/analytics/types'
 import { dashboardHref, resolveView } from '@/lib/analytics/view'
 import { LocationList } from './LocationList'
 import { Dashboard, NoAccess } from './Dashboard'
+import { PageHeader, Skeleton } from '@/components/ui'
 
 export default function AnalyticsPage() {
   return (
-    <Suspense fallback={<p className="text-gray-400">Loading…</p>}>
+    <Suspense fallback={<Skeleton />}>
       <AnalyticsContent />
     </Suspense>
   )
@@ -45,15 +46,15 @@ function AnalyticsContent() {
   if (failed) {
     return (
       <div className="mx-auto max-w-6xl">
-        <h1 className="mb-6 text-2xl font-bold">Analytics</h1>
-        <p className="rounded-xl bg-gray-900 p-4 text-sm text-gray-400" role="alert">
+        <PageHeader crumbs={['Tools', 'Analytics']} title="Analytics" />
+        <p className="rounded-lg bg-gray-900 p-4 text-sm text-gray-400" role="alert">
           Couldn&apos;t load your scenes —{' '}
-          <button type="button" onClick={load} className="text-blue-500 hover:text-blue-400 hover:underline">Retry</button>
+          <button type="button" onClick={load} className="text-blue-400 hover:text-blue-300 hover:underline">Retry</button>
         </p>
       </div>
     )
   }
-  if (!locations || !view || view.view === 'redirect') return <p className="text-gray-400">Loading…</p>
+  if (!locations || !view || view.view === 'redirect') return <Skeleton />
   if (view.view === 'no-access') return <NoAccess />
   if (view.view === 'dashboard') {
     const id = view.location.id

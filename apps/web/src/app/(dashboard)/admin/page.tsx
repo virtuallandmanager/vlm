@@ -4,6 +4,8 @@ import { useAuth } from '@/lib/auth'
 import { useApi } from '@/lib/api'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { ConfirmAction, PageHeader, Skeleton, tableHead } from '@/components/ui'
+import { StatCard } from '@/components/analytics/StatCard'
 
 type Tab = 'users' | 'orgs'
 
@@ -44,6 +46,7 @@ export default function AdminPage() {
   const [orgsTotal, setOrgsTotal] = useState(0)
   const [orgsOffset, setOrgsOffset] = useState(0)
   const [orgsLoading, setOrgsLoading] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
     if (user?.role !== 'admin') return
@@ -81,13 +84,14 @@ export default function AdminPage() {
   }
 
   const handleRoleChange = async (userId: string, newRole: string) => {
+    setActionError(null)
     try {
       await api.updateUserRole(userId, newRole)
       setUsers((prev) =>
         prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)),
       )
     } catch (err) {
-      alert(`Failed to update role: ${(err as Error).message}`)
+      setActionError(`Failed to update role: ${(err as Error).message}`)
     }
   }
 
@@ -96,26 +100,26 @@ export default function AdminPage() {
   }
 
   const handleDeleteUser = async (userId: string, displayName: string) => {
-    if (!confirm(`Delete user "${displayName}"? This cannot be undone.`)) return
+    setActionError(null)
     try {
       await api.deleteUser(userId)
       setUsers((prev) => prev.filter((u) => u.id !== userId))
       setUsersTotal((prev) => prev - 1)
       refreshStats()
     } catch (err) {
-      alert(`Failed to delete user: ${(err as Error).message}`)
+      setActionError(`Failed to delete user ${displayName}: ${(err as Error).message}`)
     }
   }
 
   const handleDeleteOrg = async (orgId: string, name: string) => {
-    if (!confirm(`Delete organization "${name}"? This cannot be undone.`)) return
+    setActionError(null)
     try {
       await api.deleteOrg(orgId)
       setOrgs((prev) => prev.filter((o) => o.id !== orgId))
       setOrgsTotal((prev) => prev - 1)
       refreshStats()
     } catch (err) {
-      alert(`Failed to delete org: ${(err as Error).message}`)
+      setActionError(`Failed to delete organization ${name}: ${(err as Error).message}`)
     }
   }
 
@@ -132,37 +136,31 @@ export default function AdminPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-        <div className="flex gap-2">
-          <Link href="/admin/ads" className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm hover:bg-gray-700">Ads</Link>
-          <Link href="/admin/advertisers" className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm hover:bg-gray-700">Advertisers</Link>
-          <Link href="/admin/catalog" className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm hover:bg-gray-700">Catalog packs</Link>
-        </div>
-      </div>
+      <PageHeader
+        crumbs={['System', 'Admin']}
+        title="Admin Dashboard"
+        subtitle="Platform stats, users and the catalog."
+        actions={
+          <div className="flex gap-2">
+            <Link href="/admin/ads" className="rounded-md border border-gray-800 bg-gray-900 px-3 py-2 text-sm hover:border-gray-700">Ads</Link>
+            <Link href="/admin/advertisers" className="rounded-md border border-gray-800 bg-gray-900 px-3 py-2 text-sm hover:border-gray-700">Advertisers</Link>
+            <Link href="/admin/catalog" className="rounded-md border border-gray-800 bg-gray-900 px-3 py-2 text-sm hover:border-gray-700">Catalog packs</Link>
+          </div>
+        }
+      />
+
+      {actionError && <p className="text-sm text-red-400" role="alert">{actionError}</p>}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statsLoading ? (
-          <div className="col-span-4 text-center text-gray-400 py-4">Loading stats...</div>
+          <div className="col-span-full"><Skeleton rows={1} /></div>
         ) : stats ? (
           <>
-            <div className="bg-gray-800 rounded-lg p-4">
-              <p className="text-sm text-gray-400">Total Users</p>
-              <p className="text-2xl font-bold">{stats.totalUsers}</p>
-            </div>
-            <div className="bg-gray-800 rounded-lg p-4">
-              <p className="text-sm text-gray-400">Total Organizations</p>
-              <p className="text-2xl font-bold">{stats.totalOrgs}</p>
-            </div>
-            <div className="bg-gray-800 rounded-lg p-4">
-              <p className="text-sm text-gray-400">Total Scenes</p>
-              <p className="text-2xl font-bold">{stats.totalScenes}</p>
-            </div>
-            <div className="bg-gray-800 rounded-lg p-4">
-              <p className="text-sm text-gray-400">Storage Used</p>
-              <p className="text-2xl font-bold">{formatBytes(stats.totalStorageBytes)}</p>
-            </div>
+            <StatCard label="Total Users" value={String(stats.totalUsers)} />
+            <StatCard label="Total Organizations" value={String(stats.totalOrgs)} />
+            <StatCard label="Total Scenes" value={String(stats.totalScenes)} />
+            <StatCard label="Storage Used" value={formatBytes(stats.totalStorageBytes)} />
           </>
         ) : null}
       </div>
@@ -200,23 +198,23 @@ export default function AdminPage() {
               placeholder="Search by name or email..."
               value={usersSearchInput}
               onChange={(e) => setUsersSearchInput(e.target.value)}
-              className="flex-1 rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-gray-500"
+              className="flex-1 rounded-md bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-gray-500"
             />
             <button
               type="submit"
-              className="rounded-lg bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-600"
+              className="rounded-md bg-gray-700 px-4 py-2 text-sm text-white hover:bg-gray-600"
             >
               Search
             </button>
           </form>
 
           {usersLoading ? (
-            <p className="text-gray-400 text-center py-8">Loading users...</p>
+            <Skeleton rows={2} className="h-12" />
           ) : (
             <>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
-                  <thead className="text-xs text-gray-400 uppercase border-b border-gray-700">
+                  <thead className={`${tableHead} border-b border-gray-800`}>
                     <tr>
                       <th className="px-3 py-2">Name</th>
                       <th className="px-3 py-2">Email</th>
@@ -245,14 +243,16 @@ export default function AdminPage() {
                           {new Date(u.createdAt).toLocaleDateString()}
                         </td>
                         <td className="px-3 py-2">
-                          <button
-                            onClick={() => handleDeleteUser(u.id, u.displayName)}
+                          <ConfirmAction
+                            prompt={`Delete user "${u.displayName}"? This cannot be undone.`}
+                            confirmLabel="Delete"
+                            onConfirm={() => handleDeleteUser(u.id, u.displayName)}
                             className="text-red-400 hover:text-red-300 text-xs"
                             disabled={u.id === user?.id}
                             title={u.id === user?.id ? 'Cannot delete yourself' : 'Delete user'}
                           >
                             Delete
-                          </button>
+                          </ConfirmAction>
                         </td>
                       </tr>
                     ))}
@@ -304,12 +304,12 @@ export default function AdminPage() {
       {tab === 'orgs' && (
         <div className="space-y-4">
           {orgsLoading ? (
-            <p className="text-gray-400 text-center py-8">Loading organizations...</p>
+            <Skeleton rows={2} className="h-12" />
           ) : (
             <>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
-                  <thead className="text-xs text-gray-400 uppercase border-b border-gray-700">
+                  <thead className={`${tableHead} border-b border-gray-800`}>
                     <tr>
                       <th className="px-3 py-2">Name</th>
                       <th className="px-3 py-2">Slug</th>
@@ -330,12 +330,14 @@ export default function AdminPage() {
                           {new Date(o.createdAt).toLocaleDateString()}
                         </td>
                         <td className="px-3 py-2">
-                          <button
-                            onClick={() => handleDeleteOrg(o.id, o.name)}
+                          <ConfirmAction
+                            prompt={`Delete organization "${o.name}"? This cannot be undone.`}
+                            confirmLabel="Delete"
+                            onConfirm={() => handleDeleteOrg(o.id, o.name)}
                             className="text-red-400 hover:text-red-300 text-xs"
                           >
                             Delete
-                          </button>
+                          </ConfirmAction>
                         </td>
                       </tr>
                     ))}

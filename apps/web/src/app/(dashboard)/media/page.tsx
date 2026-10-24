@@ -2,17 +2,24 @@
 import { useApi, fileToBase64, mediaContentType, uploadErrorMessage, isGlbAsset, MEDIA_UPLOAD_RULES } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useEffect, useState, useRef } from 'react'
+import { CheckIcon, CopyIcon, CubeIcon, GridIcon, ListIcon, MediaIcon, PlusIcon, TrashIcon } from '@/components/icons'
+import { EmptyState, PageHeader, PrimaryButton, RowMenu, SearchField, SelectField, useStoredView, ViewToggle } from '@/components/ui'
+import { countLabel, formatBytes, plural } from '@/lib/format'
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+type Kind = 'image' | 'model' | 'video' | 'other'
+const VIEW_KEY = 'vlm.media.view'
+
+function mediaKind(asset: { contentType: string; filename?: string }): Kind {
+  if (asset.contentType.startsWith('image/')) return 'image'
+  if (isGlbAsset(asset)) return 'model'
+  if (asset.contentType.startsWith('video/')) return 'video'
+  return 'other'
 }
 
-function isImageType(contentType: string): boolean {
-  return contentType.startsWith('image/')
+/** "GLB", "PNG": the file's extension, or its content subtype when it has none. */
+function typeBadge(asset: { contentType: string; filename?: string }): string {
+  const ext = asset.filename?.includes('.') ? asset.filename.split('.').pop() : asset.contentType.split('/')[1]
+  return (ext ?? 'file').toUpperCase()
 }
 
 export default function MediaPage() {
@@ -21,7 +28,10 @@ export default function MediaPage() {
   const [assets, setAssets] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
-  const [copied, setCopied] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [kind, setKind] = useState<Kind | 'all'>('all')
+  const [view, chooseView] = useStoredView(VIEW_KEY, ['grid', 'list'], 'grid')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -35,6 +45,7 @@ export default function MediaPage() {
     const files = e.target.files
     if (!files || files.length === 0) return
     setUploading(true)
+    setError(null)
     try {
       for (const file of Array.from(files)) {
         const base64 = await fileToBase64(file)
@@ -42,7 +53,7 @@ export default function MediaPage() {
         setAssets(prev => [asset, ...prev])
       }
     } catch (err: any) {
-      alert('Upload failed: ' + uploadErrorMessage(err))
+      setError('Upload failed: ' + uploadErrorMessage(err))
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -50,104 +61,172 @@ export default function MediaPage() {
   }
 
   const handleDelete = async (assetId: string) => {
-    if (!confirm('Delete this asset?')) return
+    setError(null)
     try {
       await api.deleteMedia(assetId)
       setAssets(prev => prev.filter(a => a.id !== assetId))
     } catch (err: any) {
-      alert('Delete failed: ' + (err.message || 'Unknown error'))
+      setError('Delete failed: ' + (err.message || 'Unknown error'))
     }
   }
 
-  const handleCopyUrl = (asset: any) => {
-    if (asset.publicUrl) {
-      navigator.clipboard.writeText(asset.publicUrl)
-      setCopied(asset.id)
-      setTimeout(() => setCopied(null), 2000)
-    }
-  }
-
-  if (loading) return <p className="text-gray-400">Loading media...</p>
+  const upload = () => fileInputRef.current?.click()
+  const q = query.trim().toLowerCase()
+  const shown = assets.filter(a => (kind === 'all' || mediaKind(a) === kind) && (!q || a.filename.toLowerCase().includes(q)))
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Media Library</h1>
-        <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="image/png,image/jpeg,image/webp,image/gif,.glb,model/gltf-binary,video/mp4,video/webm"
-            className="hidden"
-            onChange={handleUpload}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-          >
-            {uploading ? 'Uploading...' : '+ Upload File'}
-          </button>
-          <p className="mt-1 text-xs text-gray-500 text-right">{MEDIA_UPLOAD_RULES}</p>
-        </div>
-      </div>
+    <div className="mx-auto max-w-7xl">
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="image/png,image/jpeg,image/webp,image/gif,.glb,model/gltf-binary,video/mp4,video/webm"
+        className="hidden"
+        onChange={handleUpload}
+      />
+      <PageHeader
+        crumbs={['Tools', 'Media']}
+        title="Media Library"
+        count={loading ? undefined : countLabel(assets.length)}
+        subtitle="Manage the files behind your experiences."
+        actions={
+          <div className="flex flex-col items-end gap-2">
+            <PrimaryButton onClick={upload} disabled={uploading}><PlusIcon size={16} /> {uploading ? 'Uploading...' : 'Upload File'}</PrimaryButton>
+            <p className="max-w-md text-right text-xs text-gray-500">{MEDIA_UPLOAD_RULES}</p>
+          </div>
+        }
+      />
 
-      {assets.length === 0 ? (
-        <p className="text-gray-500">No media assets yet. Upload a file to get started.</p>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {assets.map(asset => (
-            <div key={asset.id} className="rounded-xl border border-gray-800 bg-gray-900 overflow-hidden">
-              {/* Thumbnail / preview */}
-              <div className="h-40 bg-gray-800 flex items-center justify-center overflow-hidden">
-                {isImageType(asset.contentType) && asset.publicUrl ? (
-                  <img
-                    src={asset.publicUrl}
-                    alt={asset.filename}
-                    className="w-full h-full object-cover"
-                  />
-                ) : isGlbAsset(asset) ? (
-                  <div className="text-center text-gray-500">
-                    <div className="text-3xl mb-1">GLB</div>
-                    <div className="text-xs uppercase">3D model</div>
-                  </div>
-                ) : (
-                  <div className="text-center text-gray-500">
-                    <div className="text-3xl mb-1">
-                      {asset.contentType.startsWith('video/') ? 'V' :
-                       asset.contentType.startsWith('audio/') ? 'A' : 'F'}
-                    </div>
-                    <div className="text-xs uppercase">{asset.contentType.split('/')[1]}</div>
-                  </div>
-                )}
-              </div>
-              {/* Info */}
-              <div className="p-3">
-                <p className="text-sm font-medium truncate" title={asset.filename}>{asset.filename}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {formatBytes(asset.sizeBytes)} &middot; {asset.contentType}
-                </p>
-                {/* Actions */}
-                <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={() => handleCopyUrl(asset)}
-                    className="flex-1 rounded-lg bg-gray-800 px-3 py-1.5 text-xs hover:bg-gray-700 transition-colors"
-                  >
-                    {copied === asset.id ? 'Copied!' : 'Copy URL'}
-                  </button>
-                  <button
-                    onClick={() => handleDelete(asset.id)}
-                    className="rounded-lg bg-red-900/30 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/50 transition-colors"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+      {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+
+      {!loading && assets.length > 0 && (
+        <div className="mb-6 flex flex-wrap items-center gap-3">
+          <SearchField value={query} onChange={setQuery} placeholder="Search files..." label="Search files" />
+          <SelectField value={kind} onChange={v => setKind(v as Kind | 'all')} label="File type" className="w-full sm:w-56">
+            <option value="all">All types</option>
+            <option value="image">Images</option>
+            <option value="model">3D models</option>
+            <option value="video">Video</option>
+            <option value="other">Other</option>
+          </SelectField>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-sm text-gray-400">{plural(shown.length, 'file')}</span>
+            <ViewToggle value={view} onChange={chooseView} options={[['grid', GridIcon, 'Grid view'], ['list', ListIcon, 'List view']]} />
+          </div>
         </div>
       )}
+
+      {loading ? (
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3" aria-hidden="true">
+          {[0, 1, 2].map(i => <div key={i} className="h-80 animate-pulse rounded-lg border border-gray-800 bg-gray-900" />)}
+        </div>
+      ) : assets.length === 0 ? (
+        <EmptyState icon={<MediaIcon size={40} />} title="No media yet"
+          body="Images, 3D models and video you upload here can be placed in any of your scenes."
+          action={<PrimaryButton onClick={upload} disabled={uploading}><PlusIcon size={16} /> Upload File</PrimaryButton>} />
+      ) : shown.length === 0 ? (
+        <p className="py-12 text-center text-gray-500">No files match.</p>
+      ) : view === 'grid' ? (
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+          {shown.map(asset => <MediaCard key={asset.id} asset={asset} onDelete={() => handleDelete(asset.id)} />)}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-gray-800 bg-gray-900">
+          {shown.map((asset, i) => <MediaRow key={asset.id} asset={asset} first={i === 0} onDelete={() => handleDelete(asset.id)} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The image itself, or a labelled placeholder for files without one. */
+function MediaPreview({ asset, className, compact = false }: { asset: any; className: string; compact?: boolean }) {
+  const kind = mediaKind(asset)
+  if (kind === 'image' && asset.publicUrl) return <img src={asset.publicUrl} alt="" className={`${className} object-cover`} />
+  return (
+    <div className={`${className} flex flex-col items-center justify-center bg-gray-800/60 text-gray-500`}>
+      {kind === 'model' ? <CubeIcon size={compact ? 22 : 72} strokeWidth={compact ? 1.5 : 1} /> : <MediaIcon size={compact ? 22 : 56} strokeWidth={compact ? 1.5 : 1} />}
+      {!compact && (
+        <>
+          <span className="mt-3 text-3xl font-medium tracking-wide text-gray-400">{typeBadge(asset)}</span>
+          <span className="mt-1 text-xs uppercase tracking-wider">{kind === 'model' ? '3D model' : kind}</span>
+        </>
+      )}
+    </div>
+  )
+}
+
+function useCopyUrl(url?: string) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // clipboard blocked
+    }
+  }
+  return [copied, copy] as const
+}
+
+/** Delete that asks once more before it runs. */
+function useArmed(action: () => void) {
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    if (!armed) return
+    const t = setTimeout(() => setArmed(false), 3000)
+    return () => clearTimeout(t)
+  }, [armed])
+  return [armed, () => (armed ? action() : setArmed(true))] as const
+}
+
+function MediaCard({ asset, onDelete }: { asset: any; onDelete: () => void }) {
+  const [copied, copy] = useCopyUrl(asset.publicUrl)
+  const [armed, del] = useArmed(onDelete)
+  return (
+    <article className="corner-notch relative flex flex-col overflow-hidden rounded-lg border border-gray-800 bg-gray-900 transition-colors hover:border-gray-700">
+      <div className="relative">
+        <MediaPreview asset={asset} className="h-56 w-full" />
+        <span className="absolute left-4 top-4 rounded border border-gray-600 bg-gray-950/70 px-2 py-0.5 font-mono text-xs text-gray-200">{typeBadge(asset)}</span>
+      </div>
+      <div className="flex-1 px-4 pt-4 pb-3">
+        <p className="truncate font-semibold" title={asset.filename}>{asset.filename}</p>
+        <p className="mt-1 text-sm text-gray-400">{formatBytes(asset.sizeBytes)} · {asset.contentType}</p>
+      </div>
+      <footer className="flex items-center gap-2 border-t border-gray-800 p-4">
+        <button onClick={copy} disabled={!asset.publicUrl}
+          className="flex flex-1 items-center justify-center gap-2 rounded-md bg-gray-800/70 px-3 py-2 text-sm text-gray-200 hover:bg-gray-800 disabled:opacity-50">
+          {copied ? <CheckIcon size={16} className="text-blue-300" /> : <CopyIcon size={16} />} {copied ? 'Copied' : 'Copy URL'}
+        </button>
+        <span className="h-8 w-px bg-gray-800" aria-hidden="true" />
+        <button onClick={del} className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-red-400 hover:bg-red-500/10">
+          <TrashIcon size={16} /> {armed ? 'Confirm' : 'Delete'}
+        </button>
+      </footer>
+    </article>
+  )
+}
+
+function MediaRow({ asset, first, onDelete }: { asset: any; first: boolean; onDelete: () => void }) {
+  const [copied, copy] = useCopyUrl(asset.publicUrl)
+  return (
+    <div className={`flex items-center gap-4 px-4 py-3 ${first ? '' : 'border-t border-gray-800'}`}>
+      <div className="shrink-0 overflow-hidden rounded"><MediaPreview asset={asset} className="h-12 w-20" compact /></div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-medium" title={asset.filename}>{asset.filename}</p>
+        <p className="truncate text-sm text-gray-500">{formatBytes(asset.sizeBytes)} · {asset.contentType}</p>
+      </div>
+      <span className="hidden rounded border border-gray-700 px-2 py-0.5 font-mono text-xs text-gray-300 sm:inline">{typeBadge(asset)}</span>
+      <button onClick={copy} disabled={!asset.publicUrl} aria-label={copied ? 'Copied' : 'Copy URL'}
+        className="shrink-0 rounded p-2 text-gray-400 hover:bg-white/[0.05] hover:text-blue-300 disabled:opacity-50">
+        {copied ? <CheckIcon size={18} className="text-blue-300" /> : <CopyIcon size={18} />}
+      </button>
+      <RowMenu label={`Actions for ${asset.filename}`} items={[
+        { label: 'Copy URL', onSelect: copy },
+        { label: 'Delete file', onSelect: onDelete, danger: true, confirm: 'Click again to delete' },
+      ]} />
     </div>
   )
 }

@@ -3,10 +3,13 @@ import { useApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
+import { Badge, badgeClass, PageHeader, PrimaryButton, Skeleton, tableHead } from '@/components/ui'
+import { PlusIcon } from '@/components/icons'
+import { countLabel } from '@/lib/format'
 
 export default function GiveawaysPage() {
   return (
-    <Suspense fallback={<p className="text-gray-400">Loading...</p>}>
+    <Suspense fallback={<Skeleton />}>
       <GiveawaysContent />
     </Suspense>
   )
@@ -49,11 +52,7 @@ function GiveawaysContent() {
 
   if (selectedId) {
     return (
-      <div>
-        <button onClick={() => router.push('/giveaways')}
-          className="mb-4 text-sm text-gray-400 hover:text-white">
-          &larr; Back to giveaways
-        </button>
+      <div className="mx-auto max-w-7xl">
         <GiveawayDetail id={selectedId} onDeleted={() => {
           setGiveaways(prev => prev.filter(g => g.id !== selectedId))
           router.push('/giveaways')
@@ -62,27 +61,26 @@ function GiveawaysContent() {
     )
   }
 
-  if (loading) return <p className="text-gray-400">Loading giveaways...</p>
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Giveaways</h1>
-        <button onClick={() => setShowCreate(!showCreate)}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700">
-          + Create Giveaway
-        </button>
-      </div>
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        crumbs={['Workspace', 'Giveaways']}
+        title="Giveaways"
+        count={loading ? undefined : countLabel(giveaways.length)}
+        subtitle="Set up rewards for the people who visit your scenes."
+        actions={<PrimaryButton onClick={() => setShowCreate(!showCreate)}><PlusIcon size={16} /> Create Giveaway</PrimaryButton>}
+      />
 
       {showCreate && (
-        <form onSubmit={handleCreate} className="mb-6 rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-3">
+        <form onSubmit={handleCreate} className="mb-6 rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
           <div className="flex gap-2">
             <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
               placeholder="Giveaway name" autoFocus
-              className="flex-1 rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500" />
+              className="flex-1 rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800" />
             <input type="number" value={newClaimLimit} onChange={e => setNewClaimLimit(e.target.value)}
               placeholder="Claim limit" min="1"
-              className="w-32 rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-32 rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800" />
           </div>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-sm text-gray-300">
@@ -91,24 +89,24 @@ function GiveawaysContent() {
               Enabled
             </label>
             <div className="flex-1" />
-            <button type="submit" className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700">Create</button>
-            <button type="button" onClick={() => setShowCreate(false)} className="rounded-lg bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700">Cancel</button>
+            <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700">Create</button>
+            <button type="button" onClick={() => setShowCreate(false)} className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700">Cancel</button>
           </div>
         </form>
       )}
 
-      {giveaways.length === 0 ? (
+      {loading ? (
+        <Skeleton />
+      ) : giveaways.length === 0 ? (
         <p className="text-gray-500">No giveaways yet. Create one to get started.</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {giveaways.map(g => (
             <button key={g.id} onClick={() => router.push(`/giveaways?id=${g.id}`)}
-              className="rounded-xl border border-gray-800 bg-gray-900 p-4 hover:border-gray-600 transition-colors text-left">
+              className="rounded-lg border border-gray-800 bg-gray-900 p-4 hover:border-gray-600 transition-colors text-left">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold">{g.name}</h3>
-                <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${g.enabled ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-500'}`}>
-                  {g.enabled ? 'Enabled' : 'Disabled'}
-                </span>
+                <Badge tone={g.enabled ? 'success' : 'neutral'}>{g.enabled ? 'Enabled' : 'Disabled'}</Badge>
               </div>
               <p className="mt-2 text-sm text-gray-400">Claim limit: {g.claimLimit ?? 1}</p>
               <p className="mt-1 text-xs text-gray-600">ID: {g.id}</p>
@@ -240,46 +238,45 @@ function GiveawayDetail({ id, onDeleted }: { id: string; onDeleted: () => void }
     }
   }
 
-  if (loading) return <p className="text-gray-400">Loading giveaway...</p>
+  if (loading) return <Skeleton />
   if (error && !giveaway) return <p className="text-red-400">Error: {error}</p>
   if (!giveaway) return <p className="text-gray-500">Giveaway not found.</p>
 
   return (
     <div className="space-y-6">
+      <PageHeader
+        crumbs={['Workspace', { label: 'Giveaways', href: '/giveaways' }, giveaway.name]}
+        title={giveaway.name}
+        subtitle={<span className="text-sm text-gray-500">Claims: {giveaway.claimCount ?? 0} &middot; Items: {giveaway.items?.length ?? 0} &middot; ID: {giveaway.id}</span>}
+        actions={
+          <button onClick={handleToggleEnabled} title={giveaway.enabled ? 'Click to disable' : 'Click to enable'}
+            className={`${badgeClass(giveaway.enabled ? 'success' : 'neutral')} hover:brightness-125`}>
+            {giveaway.enabled ? 'Enabled' : 'Disabled'}
+          </button>
+        }
+      />
+
       {error && <p className="text-red-400 text-sm">{error}</p>}
 
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{giveaway.name}</h1>
-        <button onClick={handleToggleEnabled}
-          className={`rounded-full px-3 py-1 text-sm font-medium ${giveaway.enabled ? 'bg-green-900/50 text-green-400 hover:bg-green-900/70' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-          {giveaway.enabled ? 'Enabled' : 'Disabled'}
-        </button>
-      </div>
-
-      <p className="text-sm text-gray-500">
-        Claims: {giveaway.claimCount ?? 0} &middot; Items: {giveaway.items?.length ?? 0} &middot; ID: {giveaway.id}
-      </p>
-
       {/* ── Edit Form ───────────────────────────────────────────────────────── */}
-      <form onSubmit={handleUpdate} className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-3">
+      <form onSubmit={handleUpdate} className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
         <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Settings</h2>
         <div className="flex gap-2">
           <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
             placeholder="Name"
-            className="flex-1 rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500" />
+            className="flex-1 rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800" />
           <input type="number" value={editClaimLimit} onChange={e => setEditClaimLimit(e.target.value)}
             placeholder="Claim limit" min="1"
-            className="w-32 rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500" />
+            className="w-32 rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800" />
           <button type="submit" disabled={saving}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50">
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50">
             {saving ? 'Saving...' : 'Save'}
           </button>
         </div>
       </form>
 
       {/* ── Items Section ───────────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-3">
+      <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Items</h2>
           <button onClick={() => setShowAddItem(!showAddItem)}
@@ -293,20 +290,20 @@ function GiveawayDetail({ id, onDeleted }: { id: string; onDeleted: () => void }
             <div className="grid grid-cols-2 gap-2">
               <input type="text" value={itemName} onChange={e => setItemName(e.target.value)}
                 placeholder="Item name"
-                className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                className="rounded-md bg-gray-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400 border border-gray-800" />
               <input type="text" value={itemImageUrl} onChange={e => setItemImageUrl(e.target.value)}
                 placeholder="Image URL"
-                className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                className="rounded-md bg-gray-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400 border border-gray-800" />
               <input type="text" value={itemContractAddress} onChange={e => setItemContractAddress(e.target.value)}
                 placeholder="Contract address"
-                className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                className="rounded-md bg-gray-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400 border border-gray-800" />
               <input type="text" value={itemTokenId} onChange={e => setItemTokenId(e.target.value)}
                 placeholder="Token ID"
-                className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                className="rounded-md bg-gray-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400 border border-gray-800" />
             </div>
             <div className="flex gap-2">
-              <button type="submit" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm hover:bg-blue-700">Add</button>
-              <button type="button" onClick={() => setShowAddItem(false)} className="rounded-lg bg-gray-800 px-3 py-1.5 text-sm hover:bg-gray-700">Cancel</button>
+              <button type="submit" className="rounded-md bg-blue-600 px-3 py-1.5 text-sm hover:bg-blue-700">Add</button>
+              <button type="button" onClick={() => setShowAddItem(false)} className="rounded-md bg-gray-800 px-3 py-1.5 text-sm hover:bg-gray-700">Cancel</button>
             </div>
           </form>
         )}
@@ -316,7 +313,7 @@ function GiveawayDetail({ id, onDeleted }: { id: string; onDeleted: () => void }
         ) : (
           <div className="space-y-2">
             {giveaway.items.map((item: any) => (
-              <div key={item.id} className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2">
+              <div key={item.id} className="flex items-center justify-between rounded-md bg-gray-800/50 px-3 py-2">
                 <div className="flex items-center gap-3 min-w-0">
                   {item.imageUrl && (
                     <img src={item.imageUrl} alt={item.name || 'item'} className="h-8 w-8 rounded object-cover" />
@@ -342,22 +339,22 @@ function GiveawayDetail({ id, onDeleted }: { id: string; onDeleted: () => void }
       </div>
 
       {/* ── Claims Section ──────────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-3">
+      <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
         <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Claims ({claims.length})</h2>
 
         {claimsLoading ? (
-          <p className="text-sm text-gray-500">Loading claims...</p>
+          <Skeleton rows={2} className="h-12" />
         ) : claims.length === 0 ? (
           <p className="text-sm text-gray-500">No claims yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-800 text-left text-gray-400">
-                  <th className="pb-2 pr-4 font-medium">Wallet / User</th>
-                  <th className="pb-2 pr-4 font-medium">Item</th>
-                  <th className="pb-2 pr-4 font-medium">Status</th>
-                  <th className="pb-2 font-medium">Claimed At</th>
+              <thead className={tableHead}>
+                <tr className="border-b border-gray-800">
+                  <th className="pb-2 pr-4">Wallet / User</th>
+                  <th className="pb-2 pr-4">Item</th>
+                  <th className="pb-2 pr-4">Status</th>
+                  <th className="pb-2">Claimed At</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800/50">
@@ -370,14 +367,9 @@ function GiveawayDetail({ id, onDeleted }: { id: string; onDeleted: () => void }
                     </td>
                     <td className="py-2 pr-4">{claim.item?.name || claim.itemId?.slice(0, 8) || 'N/A'}</td>
                     <td className="py-2 pr-4">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                        claim.status === 'completed' ? 'bg-green-900/50 text-green-400'
-                        : claim.status === 'pending' ? 'bg-yellow-900/50 text-yellow-400'
-                        : claim.status === 'failed' ? 'bg-red-900/50 text-red-400'
-                        : 'bg-gray-800 text-gray-400'
-                      }`}>
+                      <Badge tone={claim.status === 'completed' ? 'success' : claim.status === 'pending' ? 'warning' : claim.status === 'failed' ? 'danger' : 'neutral'}>
                         {claim.status}
-                      </span>
+                      </Badge>
                     </td>
                     <td className="py-2 text-gray-400">
                       {claim.claimedAt ? new Date(claim.claimedAt).toLocaleString() : 'N/A'}
@@ -391,22 +383,22 @@ function GiveawayDetail({ id, onDeleted }: { id: string; onDeleted: () => void }
       </div>
 
       {/* ── Delete Giveaway ─────────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-red-900/50 bg-gray-900 p-4">
+      <div className="rounded-lg border border-red-900/50 bg-gray-900 p-4">
         <h2 className="text-sm font-semibold text-red-400 uppercase tracking-wider mb-2">Danger Zone</h2>
         {!confirmDelete ? (
           <button onClick={() => setConfirmDelete(true)}
-            className="rounded-lg bg-red-900/30 px-4 py-2 text-sm text-red-400 hover:bg-red-900/50">
+            className="rounded-md bg-red-900/30 px-4 py-2 text-sm text-red-400 hover:bg-red-900/50">
             Delete Giveaway
           </button>
         ) : (
           <div className="flex items-center gap-3">
             <p className="text-sm text-gray-300">Are you sure? This cannot be undone.</p>
             <button onClick={handleDelete}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700">
+              className="rounded-md bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700">
               Confirm Delete
             </button>
             <button onClick={() => setConfirmDelete(false)}
-              className="rounded-lg bg-gray-800 px-3 py-2 text-sm hover:bg-gray-700">
+              className="rounded-md bg-gray-800 px-3 py-2 text-sm hover:bg-gray-700">
               Cancel
             </button>
           </div>
