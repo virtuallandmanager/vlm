@@ -1,3 +1,4 @@
+import { parseRingCode, ringCodeOf } from 'vlm-shared'
 import type { ArMarkerView, ArSpaceView } from 'vlm-shared'
 
 export const AR_MIN_DIAMETER_MM = 60
@@ -22,6 +23,15 @@ export function spaceReadiness(s: ArSpaceView): { ok: boolean; missing: Array<'m
 }
 
 export const shareUrl = (code: string): string => `https://vlm.gg/s/${code}`
+
+/** The ring code in a /s/<code> address, normalised; null when the last segment isn't a valid code (or is the static placeholder). */
+export function spaceCodeFromPath(path: string): string | null {
+  const last = path.split(/[?#]/)[0].split('/').filter(Boolean).pop() ?? ''
+  let decoded = last
+  try { decoded = decodeURIComponent(last) } catch { /* keep the raw segment */ }
+  const id = parseRingCode(decoded)
+  return id === null ? null : ringCodeOf(id)
+}
 
 const ERRORS: Record<string, string> = {
   no_access: "You don't have access to build AR spaces in this scene.",

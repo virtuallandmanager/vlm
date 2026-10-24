@@ -55,7 +55,7 @@ import { register, httpRequestsTotal, httpRequestDurationSeconds } from './metri
  * loads the web page /pair/<code>): log the route shape, never the code.
  */
 export const redactPairingCode = (url: string) =>
-  url.replace(/^(\/api\/(?:hyperfy|ar)\/pair\/)[^/?#]+/, '$1:code').replace(/^(\/pair\/(?:headset\/)?)[^/?#]+/, '$1:code')
+  url.replace(/^(\/api\/(?:hyperfy|ar)\/pair\/)[^/?#]+/, '$1:code').replace(/^(\/(?:pair\/(?:headset\/)?|s\/))[^/?#]+/, '$1:code')
 
 /** The metric label for a request no route matched (404s, the SPA fallback): fixed, so a url never becomes a label. */
 export const UNMATCHED_ROUTE = 'unmatched'
@@ -280,6 +280,20 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     })
   }
 
+  // Android app links: claims vlm.gg/s/<code> for the Quest app. Registered before the static handler and SPA
+  // fallback so neither answers it. No fingerprints yet means [], so nothing claims links before the app is signed.
+  app.get('/.well-known/assetlinks.json', (_request, reply) => {
+    const fingerprints = config.androidCertSha256
+    return reply.type('application/json').send(fingerprints.length === 0 ? [] : [{
+      relation: ['delegate_permission/common.handle_all_urls'],
+      target: {
+        namespace: 'android_app',
+        package_name: config.androidAppPackage,
+        sha256_cert_fingerprints: fingerprints,
+      },
+    }])
+  })
+
   // ── Static Dashboard ─────────────────────────────────────────────────────
   const dashboardPath = resolve(config.dashboardDir)
   console.log(`[vlm-server] Dashboard path: ${dashboardPath} (exists: ${existsSync(dashboardPath)})`)
@@ -297,6 +311,10 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     // Companion upload links (/u/<code>): the static export has one page for every code, at u/_/
     app.get('/u/:code', (_request, reply) => reply.sendFile('u/_/index.html'))
     app.get('/u/:code/', (_request, reply) => reply.sendFile('u/_/index.html'))
+
+    // AR space pages (/s/<code>): the static export has one page for every code, at s/_/
+    app.get('/s/:code', (_request, reply) => reply.sendFile('s/_/index.html'))
+    app.get('/s/:code/', (_request, reply) => reply.sendFile('s/_/index.html'))
 
     // Headset pairing approval links (/pair/headset/<code>): own page at pair/headset/_/
     app.get('/pair/headset/:code', (_request, reply) => reply.sendFile('pair/headset/_/index.html'))

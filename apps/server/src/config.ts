@@ -32,6 +32,11 @@ export const config = {
   webAppUrl: env('WEB_APP_URL') || env('PUBLIC_URL') || 'http://localhost:3010',
   logLevel: env('LOG_LEVEL') || (env('NODE_ENV') === 'production' ? 'info' : 'debug'),
 
+  // ── Android app links (/.well-known/assetlinks.json) ─────────────────────
+  androidAppPackage: env('ANDROID_APP_PACKAGE') || 'gg.vlm.spaces',
+  // Release-key SHA-256 fingerprints, comma-separated; empty until the app is signed
+  androidCertSha256: (env('ANDROID_CERT_SHA256') || '').split(',').map((s) => s.trim()).filter(Boolean),
+
   // ── Database ────────────────────────────────────────────────────────────
   databaseUrl: env('DATABASE_URL')!,
   dbPoolMax: parseInt(env('DB_POOL_MAX') || (mode === 'single' ? '10' : '20')),

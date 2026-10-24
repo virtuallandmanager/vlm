@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { ArMarkerView, ArSpaceView } from 'vlm-shared'
-import { alignmentStatus, friendlyArError, shareUrl, spaceReadiness } from './ar'
+import { alignmentStatus, friendlyArError, shareUrl, spaceCodeFromPath, spaceReadiness } from './ar'
 
 const marker = (pose: ArMarkerView['pose']): ArMarkerView => ({ id: 'm', ringId: 1, code: '2E3D4C5', diameterMm: 140, whereText: null, pose })
 const space = (markers: ArMarkerView[]): ArSpaceView => ({
@@ -43,5 +43,17 @@ describe('friendlyArError', () => {
     expect(friendlyArError('bad_request')).toBe("Something in that entry isn't valid")
     expect(friendlyArError('weird')).toBe('weird')
     expect(friendlyArError('')).toBe('Something went wrong')
+  })
+})
+
+describe('spaceCodeFromPath', () => {
+  it('normalises the last path segment into a ring code', () => {
+    expect(spaceCodeFromPath('/s/2e3d-4c5/')).toBe('2E3D4C5')
+    expect(spaceCodeFromPath('/s/2E3D4C5')).toBe('2E3D4C5')
+  })
+  it('is null for an invalid code or the static placeholder', () => {
+    expect(spaceCodeFromPath('/s/bad/')).toBeNull()
+    expect(spaceCodeFromPath('/s/_/')).toBeNull()
+    expect(spaceCodeFromPath('/')).toBeNull()
   })
 })
