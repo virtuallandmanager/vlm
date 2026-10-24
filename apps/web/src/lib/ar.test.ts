@@ -40,6 +40,7 @@ describe('friendlyArError', () => {
     expect(friendlyArError('last_floor')).toMatch(/last floor/i)
     expect(friendlyArError('no_room_for_screws')).toBe('Not enough room for screw holes at this size: pick another mounting')
     expect(friendlyArError('too_large_for_paper')).toBe('Too big for Letter paper at 100%: use the 3D print files')
+    expect(friendlyArError('bad_request')).toBe("Something in that entry isn't valid")
     expect(friendlyArError('weird')).toBe('weird')
     expect(friendlyArError('')).toBe('Something went wrong')
   })

@@ -27,6 +27,7 @@ const ERRORS: Record<string, string> = {
   no_access: "You don't have access to build AR spaces in this scene.",
   bad_diameter: 'Size must be between 60 and 256 mm.',
   last_floor: "A space needs at least one floor: you can't remove the last floor.",
+  bad_request: "Something in that entry isn't valid",
   not_found: 'That item no longer exists. Reload the page.',
   no_room_for_screws: 'Not enough room for screw holes at this size: pick another mounting',
   too_large_for_paper: 'Too big for Letter paper at 100%: use the 3D print files',

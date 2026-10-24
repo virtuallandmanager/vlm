@@ -47,20 +47,24 @@ export function isGlbAsset(asset: { contentType?: string; filename?: string }): 
 export function useApi() {
   const { token, logout } = useAuth()
 
+  /** A kind-less (pre-scene-pass) session, or a scene pass used outside its scope: drop it so the
+   *  dashboard layout sends the user to sign-in once (with `next`), instead of showing an error. */
+  const dropDeadSession = useCallback((status: number, err: any) => {
+    if ((status === 401 && err.message === 'Session expired — sign in again') || (status === 403 && err.error === 'scene_pass_not_allowed')) logout()
+  }, [logout])
+
   const apiFetch = useCallback(async <T = any>(path: string, options: RequestInit = {}): Promise<T> => {
     const headers = requestHeaders(token, options)
     const res = await fetch(`${API_URL}${path}`, { ...options, headers })
     if (!res.ok) {
       // Non-JSON error bodies (proxy pages, e.g. a 413 from the edge) become `HTTP <status>`.
       const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
-      // A kind-less (pre-scene-pass) session, or a scene pass used outside its scope: drop it so the
-      // dashboard layout sends the user to sign-in once (with `next`), instead of showing an error.
-      if ((res.status === 401 && err.message === 'Session expired — sign in again') || (res.status === 403 && err.error === 'scene_pass_not_allowed')) logout()
+      dropDeadSession(res.status, err)
       throw Object.assign(new Error(err.error || `API error ${res.status}`), { status: res.status, body: err })
     }
     if (res.status === 204) return undefined as T
     return res.json()
-  }, [token, logout])
+  }, [token, dropDeadSession])
 
   return {
     // Linked wallets
@@ -112,6 +116,7 @@ export function useApi() {
       const res = await fetch(`${API_URL}/api/ar/markers/${id}/files?format=${format}&mounting=${mounting}`, { headers: requestHeaders(token, {}) })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        dropDeadSession(res.status, err)
         throw Object.assign(new Error(err.error || `API error ${res.status}`), { status: res.status, body: err })
       }
       const m = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')
