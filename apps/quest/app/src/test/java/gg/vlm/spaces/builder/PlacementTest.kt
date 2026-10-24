@@ -5,6 +5,7 @@ import gg.vlm.spaces.space.RootPose
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -139,5 +140,17 @@ class PlacementTest {
             ]}""")
     assertEquals(listOf(false, false, true, true), l.map { it.drawable })
     assertNull(l[1].thumbnailUrl)
+  }
+
+  @Test
+  fun `a booking's preset is live when the active preset is a booking copy`() {
+    fun body(name: String) =
+        Json.parseToJsonElement(
+                """{"scene":{"activePresetId":"p2","presets":[{"id":"p1","name":"booking:b0"},{"id":"p2","name":"$name"}]}}"""
+            )
+            .jsonObject
+    assertTrue(activePresetIsBooking(body("booking:6f1c")))
+    assertFalse(activePresetIsBooking(body("Main")))
+    assertFalse(activePresetIsBooking(Json.parseToJsonElement("""{"scene":{"presets":[]}}""").jsonObject))
   }
 }

@@ -27,7 +27,9 @@ object VisitorCopy {
   const val LOOK_AT_RING = "Look at the ring when you get there"
   const val CLOSE = "Close"
   const val BUILDER = "Builder"
-  const val BUILDER_SOON = "Builder mode is coming soon"
+  /** Owner-only menu items (builder mode active, or the headset paired). */
+  const val KEEP_LOADED = "Keep the scene loaded between visitors"
+  const val SIGN_OUT = "Sign out"
 
   fun opening(spaceName: String?) = if (spaceName == null) "Opening…" else "Opening $spaceName…"
 
@@ -72,6 +74,11 @@ sealed interface VisitorEvent {
   data object HeadsetOn : VisitorEvent
   data object LookAgain : VisitorEvent
   data class OpenSpace(val code: String) : VisitorEvent
+  /**
+   * Builder mode has ended (Done) with [snapshot]'s space placed at [root] from [ringId]: visitor mode takes it over,
+   * shown where it is, and follows its published feed from now on.
+   */
+  data class Adopt(val snapshot: ArFeedSnapshot, val root: RootPose, val ringId: Long) : VisitorEvent
   /** Time has passed (sent every frame): lets a stale "isn't open" go back to the hint. */
   data object Tick : VisitorEvent
 }
@@ -154,8 +161,21 @@ class VisitorFlow {
             forget(listOf(VisitorEffect.SetRegistered(null))) { VisitorState.Loading(event.code, null) }
                 .also { pendingCode = event.code }
                 .plus(listOf(VisitorEffect.ShowSpacePage(event.code), VisitorEffect.Lookup(event.code)))
+        is VisitorEvent.Adopt -> adopt(event)
         VisitorEvent.Tick -> tick(nowMs)
       }
+
+  /** The space builder mode was showing, shown where it is; its feed restarts as a visitor's (published only). */
+  private fun adopt(e: VisitorEvent.Adopt): List<VisitorEffect> {
+    val s = e.snapshot.space
+    // Visitor mode was paused with nothing loaded, so only forget's bookkeeping matters here, not its effects.
+    forget(emptyList()) { VisitorState.Shown(s, e.root) }
+    feedSpaceId = s.id
+    feedRing = e.ringId
+    space = s
+    anchorRing = e.ringId
+    return listOf(VisitorEffect.StartFeed(s.id), VisitorEffect.SetRegistered(ringIds(s)))
+  }
 
   /** A ring whose space isn't open that has left view for a while no longer holds "isn't open": back to the hint. */
   private fun tick(nowMs: Long): List<VisitorEffect> {

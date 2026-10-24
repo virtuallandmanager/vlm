@@ -366,4 +366,24 @@ class DeviceAuthTest {
     assertEquals(AuthState.SignedOut, a.state.value)
     assertTrue(store.map.isEmpty())
   }
+
+  @Test
+  fun `unpair ends the session on the server and forgets a personal pairing too`() {
+    val a = pairedAuth()
+    server.enqueue(MockResponse().setResponseCode(204))
+    runBlocking { a.unpair() }
+    val r = server.takeRequest()
+    assertEquals("/api/ar/devices/dev1/end", r.path)
+    assertTrue(store.map.isEmpty())
+    assertEquals(AuthState.SignedOut, a.state.value)
+  }
+
+  @Test
+  fun `unpair signs out even when the server can't be reached`() {
+    val a = pairedAuth()
+    server.shutdown()
+    runBlocking { a.unpair() }
+    assertTrue(store.map.isEmpty())
+    assertEquals(AuthState.SignedOut, a.state.value)
+  }
 }

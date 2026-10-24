@@ -163,4 +163,12 @@ class BuilderApiTest {
     assertEquals(BuilderCall.Ok(Unit), runBlocking { a.endDraft("sp1", "in1", false) })
     assertTrue(bodies[1], bodies[1].contains("\"saved\":false") && bodies[1].contains("\"sk\":\"in1\""))
   }
+
+  @Test
+  fun `placeEntry refuses a format the headset can't draw without calling the server`() {
+    val a = api()
+    val r = runBlocking { a.placeEntry("sp1", "pr1", LibraryEntry("4", LibraryKind.IMAGE, "Anim", "https://x/a.gif", null, drawable = false), t) }
+    assertEquals(BuilderCall.Failed(0), r)
+    assertTrue(seen.toString(), seen.isEmpty())
+  }
 }

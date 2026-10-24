@@ -5,7 +5,8 @@ The Quest app (`gg.vlm.spaces`), promoted from the spike that lived in `apps/que
 What it does:
 
 - **Visitor mode.** A hint card (1 m ahead, a little below the eyes, following the head lazily) shows a drawing of a ring and says "Look for a ring like this, at eye level near the entrance." A ring seen but not readable turns it into "Step closer to the ring". A readable ring is looked up (`GET /api/ar/markers/by-code/:code`), the space's feed is long-polled (`GET /api/ar/spaces/:id/feed`), and once the ring is within 1.5 m and its averaged position and wall heading hold still, the scene fades in (400 ms) placed from the ring's saved pose, with a cyan outline flashing on the ring. While it waits the card says "Hold still…" only while one of the space's rings is actually being gathered; with none in view (after a tracking jump, the headset back on, or a space opened from a link before arriving) it shows the standard hint, and a ring too far away or unreadable says "Step closer to the ring". The wall heading must agree with the ring's own tilt (within 20°), so near a corner or a door frame the perpendicular wall isn't taken; when two walls facing different ways agree about as well (within 15° of each other, as at an inside corner seen at about 45°) there is no heading until the visitor moves. A heading counts only within 30° of head-on, by both the wall it picks and the ring's own tilt, so a perpendicular wall can't stand in for an unscanned one; a steeper view says "Stand in front of the ring". Any other ring of the same space re-anchors it, and so does a newer snapshot that moves the saved pose of the ring the scene was placed from (if that ring isn't steady in view, or its printed size changed, the scene hides until it locks again); a tracking jump (the head moving faster than 2.5 m/s or turning faster than 300°/s) hides it until a ring is seen again. Taking the headset off ends the visit (back to the hint card, nothing loaded). The code is in `visitor/`: `VisitorFlow` (the state machine), `VisitorController` (the glue to the headset), `HintCard`, `VisitorMenu`, `RingOutline`; the space itself (feed, scene, ring locks, outline, placement), which builder mode will share, is `space/SpaceSession`.
-- **Menu:** the left controller's menu button at any time, or the small "⋯" button below the hint card's place whenever a space is up (shown, locking, not set up, or failed after its lookup; not on the plain hint card). **Look at the ring again**, occlusion (**Hide behind walls** / **Live depth** / **Off**), **Spaces** (not yet) and **Builder** ("Builder mode is coming soon"). Debug builds add **Developer**: the old control panel, with the feed status, occlusion and the marker readings.
+- **Menu:** the left controller's menu button at any time, or the small "⋯" button below the hint card's place whenever a space is up (shown, locking, not set up, or failed after its lookup; not on the plain hint card). **Look at the ring again**, occlusion (**Hide behind walls** / **Live depth** / **Off**), **Spaces** and **Builder** (builder mode, below). While builder mode is on, or whenever the headset is paired, the menu also has the owner's **Keep the scene loaded between visitors** switch (`AppPrefs.keepLoadedBetweenVisitors`) and **Sign out**. Debug builds add **Developer**: the old control panel, with the feed status, occlusion and the marker readings.
+- **Builder mode** (`builder/BuilderController`, the counterpart of `VisitorController`). The menu's **Builder** pairs a signed-out headset first (the pairing panel: the code, a QR of the approval page, **Cancel**), then finds the space: the one whose ring is in view (its code matched against `POST /api/ar/devices/:id/spaces`), otherwise a pick list of the account's spaces. Entering pauses visitor mode and follows the space's feed on the same space session with the space's AR pass (re-asked for every 30 s, so a pass about to run out is minted again). The scene is placed from a steady ring with a saved pose; a ring on a floor with no saved pose opens the **Align** panel first (sticks nudge the scene, one step every 100 ms while held; **Save alignment**, then **Done**). Then the HUD (banner, booking and several-places warnings, Layout and Assets, Save / Revert / Done), the pointer, gizmo and carries, and a ring panel for the floor's other rings (check, **Record** / **Re-record**). Builder mode doesn't re-anchor from other rings, so the ring check measures them against where the scene was placed. Taking the headset off hides the scene; back on, it is placed afresh from a ring, with the drafts kept (a personal headset off for over 10 minutes drops them; a shared one off for over 2 minutes signs out, back at the hint card with nothing loaded, even while still off). **Done** returns to visitor mode with the space still shown, following its published feed as a visitor would (a space that isn't published then says it isn't open). **Sign out** and a headset revoked on the website return to the hint card with nothing loaded; a revoked headset is asked to pair again straight away. A space link opened while building is ignored.
 - **Server:** always `https://vlm.gg` in release builds. Debug builds take a `baseUrl` intent extra and remember it.
 - **Images** are unlit, double-sided textured quads. **Videos** are video panels (ExoPlayer, muted, mp4 and HLS). **Models** load straight from their URL; only `.glb` works, anything else shows a pink box. **Sounds** aren't played yet.
 - **Hide behind real things:** a menu choice. **Walls** draws the room scan's wall faces and ceiling (MRUK `AnchorProceduralMesh`) with the hole-punch material (`AlphaMode.HOLE_PUNCH`, `HOLE_PUNCH_SHADER`; `SceneMaterial.passthrough()` showed the room but didn't hide what was behind it), so they show the real room and hide anything virtual behind them. **Live depth** turns on Spatial SDK's environment depth occlusion (`EnvironmentDepthMode.OCCLUSION`), which also hides behind furniture and people; it's the default, and looked better on the headset. The choice is remembered. **Show scanned walls** tints the same surfaces, to check the room scan against the real walls.
@@ -43,6 +44,15 @@ The align panel's refusals (`AlignCopy` in `builder/Alignment.kt`). "Step closer
 
 - Save failed because the headset is offline: "Can't reach vlm.gg: check the connection and save again"
 - Save failed for any other reason: "Couldn't save the alignment: try again"
+
+Builder mode's own panels (`BuilderCopy` in `builder/BuilderController.kt`) and the menu:
+
+- While the spaces load: "Finding your spaces…"; the pick list: "Choose a space to build"; none: "This account has no spaces to build on yet"
+- Offline: "Can't reach vlm.gg: check the connection and try again"; any other failure: "Couldn't load your spaces: try again"; the space's pass refused for another reason: "Couldn't open this space for building: try again"
+- Pairing ended without an approval (code expired or refused): "Pairing didn't finish: tap Builder to try again"
+- These notices, and "This account can't edit this scene" when the space's pass is refused, show on the builder panel with a **Close** button
+- Waiting to place the scene: "Look at a ring of <space>"; a ring with no saved pose on a floor that already has one: "Look at a ring that is already lined up on this floor"
+- The menu's owner items: "Keep the scene loaded between visitors" and "Sign out" (the brief's names)
 
 ## Build
 
@@ -221,7 +231,7 @@ Do these on the Quest 3 with a debug build when convenient. Each says what resul
 
 ### Owner checks (alignment, plan 3 Task 5)
 
-Not yet run (no headset was connected). The align panel and its flow are built but not reachable from the menu until Task 10, so for now drive them from a debug hook or wait for Task 10. Use a test space on a local or staging server, with a floor whose ring has no saved pose.
+Not yet run (no headset was connected). Reach the align panel from the menu's **Builder** (see the full run below). Use a test space on a local or staging server, with a floor whose ring has no saved pose.
 
 - [ ] Look at the ring from under 1.5 m: the scene appears with the ring at the middle of its north wall, facing into the scene.
 - [ ] Left stick moves the scene, right stick turns it, about the ring (the ring stays put as the scene turns); with the grip held, steps are 1 cm and 0.5°. (Without the grip they are 5 cm and 2.5°: confirm that feels right.)
@@ -232,7 +242,7 @@ Not yet run (no headset was connected). The align panel and its flow are built b
 
 ### Owner checks (record, check and re-record rings, plan 3 Task 6)
 
-Not yet run (no headset was connected). The panel is built but not reachable from the menu until Task 10, so drive it from a debug hook or wait for Task 10. Use a floor that has been aligned from its first ring, with a second printed ring on the same floor that has no saved pose.
+Not yet run (no headset was connected). The ring panel shows while building whenever a ring of the floor is steady in view. Use a floor that has been aligned from its first ring, with a second printed ring on the same floor that has no saved pose.
 
 - [ ] Look at the second ring from under 4 m of the first: **Record this ring** shows. Press it: "Ring saved".
 - [ ] Look at the second ring again: "This ring is <d> cm and <a>° from where it should be" reads a few cm and under 1°, and no **Re-record this ring** button shows.
@@ -243,7 +253,7 @@ Not yet run (no headset was connected). The panel is built but not reachable fro
 
 ### Owner checks (builder HUD, picking and the transform bar, plan 3 Task 7)
 
-Not yet run (no headset was connected). The HUD (`R.id.builder_hud`, `BuilderHud`), `Picking`, `Gizmo`, `PickOutline` and `BuilderEditor` are built and compile, but nothing creates them until Task 10. The transform math is a port of `packages/vlm-core/src/transform/session.ts` and its tests; what follows is what only the headset can show.
+Not yet run (no headset was connected). The HUD (`R.id.builder_hud`, `BuilderHud`), `Picking`, `Gizmo`, `PickOutline` and `BuilderEditor` are wired into builder mode (`BuilderController`, `HeadsetBuilderTools`). The transform math is a port of `packages/vlm-core/src/transform/session.ts` and its tests; what follows is what only the headset can show.
 
 Unverified from the 0.14.0 jars and docs (confirmed there: `SemanticType.X.id` and `PointerEventType.X.id` are `getId()`, so `.id` is right; `IsdkSystem.registerObserver`, `PointerEvent.source / hitInfo.entity`, `Pose.forward()`, `ButtonBits.ButtonSqueezeL/R`):
 
@@ -259,7 +269,7 @@ Unverified from the 0.14.0 jars and docs (confirmed there: `SemanticType.X.id` a
 
 ### Owner checks (carrying and snapping, plan 3 Task 8)
 
-Not yet run (no headset was connected; adb showed only an offline emulator). `Picking` carries and `MainActivity.builderSurfaces()` reads the room, but nothing creates `Picking` until Task 10. The carry math (`Carry`), the snap rules (`snap`) and the landing (`landCarried`) are unit tested; what only the headset can show:
+Not yet run (no headset was connected; adb showed only an offline emulator). `Picking` carries and `MainActivity.builderSurfaces()` reads the room, and builder mode creates `Picking` with those surfaces. The carry math (`Carry`), the snap rules (`snap`) and the landing (`landCarried`) are unit tested; what only the headset can show:
 
 - [ ] **Carry an image to a real wall (Step 4).** Pick an image, point a controller at it and hold its grip: the image follows that controller, turning with it. Flick the thumbstick left or right: it turns 15 degrees a flick. Let go of the grip within 15 cm of a wall: the image lands flush against the wall (1 cm off it), upright and facing into the room. Check the wall's normal points into the room (if the image faces the wall, the scan's wall plane normal is flipped).
 - [ ] **Carry a model onto a table.** Put a model down with its base within 15 cm of a table top: it sits on the top, keeping its turn. Same on the floor. If it lands at the wrong height, the MRUK table plane is not its top face (check `builderSurfaces()` for `MRUKLabel.TABLE`, `FLOOR` anchors and their `MRUKPlane` extents).
@@ -270,7 +280,7 @@ Not yet run (no headset was connected; adb showed only an offline emulator). `Pi
 
 ### Owner checks (placing from the library, plan 3 Task 9)
 
-Not yet run (no headset was connected). `AssetsTab`, `placeAhead`, `BuilderApi.placeEntry` and `BuilderEditor.pickWhenPresent` exist and are tested, but the HUD isn't in the menu until Task 10, which must also load `BuilderApi.library` into `AssetsState`, read the scene's `activePresetId` (`activePresetId(BuilderApi.scene(...))`), and call `placeEntry` at `placeAhead(head, headYaw, root)` followed by `pickWhenPresent(placed.instanceId)`.
+Not yet run (no headset was connected). `AssetsTab`, `placeAhead`, `BuilderApi.placeEntry` and `BuilderEditor.pickWhenPresent` are wired into builder mode: it loads `BuilderApi.library` into `AssetsState`, reads the scene's `activePresetId`, and calls `placeEntry` at `placeAhead(head, headYaw, root)` followed by `pickWhenPresent(placed.instanceId)`.
 
 - [ ] **Library lists.** The Assets tab shows the scene's images (with a small preview), videos and models (no preview); sounds and uploads still in progress are left out.
 - [ ] **Place an image.** Place puts it 1 m ahead of the head at eye height, turned to face you (not mirrored, not edge-on), and it is picked (gizmo showing) as soon as the next snapshot arrives. Move it, then Save.
@@ -279,3 +289,40 @@ Not yet run (no headset was connected). `AssetsTab`, `placeAhead`, `BuilderApi.p
 - [ ] **In a turned room.** After aligning to a ring so the scene is turned (root yaw not 0), a placed item still lands 1 m in front of you and faces you.
 - [ ] **Shared.** With the switch on Just this place, Place still adds the item to the shared scene (it shows at Decentraland and at other places); the switch applies to its later edits.
 - [ ] **Failure.** Offline, Place leaves nothing behind (no empty element in the scene's Layout).
+
+### Owner checks (builder mode end to end, plan 3 Task 10)
+
+Not yet run: no headset was connected, so nothing was installed. The wiring is unit tested (`BuilderControllerTest`: entering with a ring in view and from the pick list, Align for an unaligned floor, a shared headset off over 2 minutes, a personal one off for a minute, Done, a revoked headset, Assets place and pick); what follows is the whole run on the headset, with a debug build against a test space, as plan 3 Task 10 Step 2 lays out. Tick each step and note anything that went wrong.
+
+Before you start: a scene you can edit with one AR space (a floor with two printed rings, the first with no saved pose), the same scene open in Decentraland, and the website signed in on your phone.
+
+1. **Pair as personal.**
+   - [ ] Open the menu, tap **Builder**: the pairing panel shows a code (ABC-123 style) and a QR code.
+   - [ ] Scan the QR (or type the code on vlm.gg), choose **This is my headset** and approve: the panel closes by itself within a few seconds.
+   - [ ] With the first ring in view, the space opens straight away; with no ring in view, a list of your spaces shows (pick yours). The banner "Builder: visitors don't see your changes until you save" isn't up yet; the builder panel says "Look at a ring of <space>".
+   - [ ] **Cancel** on the pairing panel (try it once before approving) closes it; approving that code on the website afterwards pairs nothing (the headset stopped asking).
+2. **Align a floor.**
+   - [ ] Look at the first ring from under 1.5 m: the Align panel opens and the scene appears with the ring at its default spot.
+   - [ ] Nudge with the sticks (left moves, right turns; hold a grip for fine steps). Holding a stick keeps stepping: about 50 cm/s, 25°/s, or a fifth of that with the grip. Say if that's too fast or slow.
+   - [ ] If the ring was printed off size, the size warning shows. **Save alignment**, then **Done**: the HUD opens to your left, showing the banner, and items can be picked.
+3. **Record a second ring.**
+   - [ ] Walk to the second ring (within 4 m of the first) and look at it: the ring panel (to the right) shows **Record this ring**. Press it: "Ring saved", then the check line reads a few cm and under 1°.
+4. **Move two images.**
+   - [ ] Pick an image, set **Everywhere**, move it; pick another, set **Just this place**, move it. Decentraland shows the first moving live (drafts), not the second.
+5. **Headset off for 1 minute.**
+   - [ ] Take the headset off for about a minute and put it back on: the scene is hidden and the builder panel asks to look at a ring. Look at a ring: the scene comes back with both moves still unsaved (the Layout rows marked •, **Save** enabled).
+6. **Save.**
+   - [ ] **Save**: Decentraland shows the Everywhere move where you left it, and not the Just this place one. The Layout row of the second image gets the dot.
+   - [ ] **Done**: the HUD closes and the space stays shown, as a visitor sees it (the first image moved, the second moved here only).
+7. **Check the AR feed as a visitor.**
+   - [ ] Menu → **Look at the ring again**, then look at a ring: the space shows with both saved moves.
+8. **Pair a second time as shared.**
+   - [ ] Menu → **Sign out** (the menu loses **Sign out** and the switch). **Builder** again: a new code. Approve it as **Shared headset**.
+   - [ ] Build, then take the headset off for 3 minutes. Put it back on: it's at the hint card ("Look for a ring like this…") with nothing loaded, the menu has no **Sign out**, and **Builder** asks for a new code. The website no longer lists the shared headset.
+   - [ ] While shared and building, **Done** also signs out (the next **Builder** asks for a new code).
+9. **Revoke the personal headset.**
+   - [ ] Pair as personal again and start building. On the website, revoke this headset. Move an item (its live draft is the first call to fail) or **Save**: builder mode closes to the hint card with nothing loaded, and the pairing panel asks to pair again.
+10. **The switch.**
+    - [ ] With **Keep the scene loaded between visitors** on, a visitor's scene hides when the headset comes off and comes back after looking at a ring without loading again; off (the default), the next person starts at the hint card.
+
+Also worth a look on the way: the HUD and the Align panel can be grabbed and moved; leaving builder mode with **Done** doesn't flash the scene (the renderer rebuilds its items when picking is turned off).

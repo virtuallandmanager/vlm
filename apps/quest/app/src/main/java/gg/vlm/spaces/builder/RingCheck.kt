@@ -51,11 +51,12 @@ data class RingCheckView(val button: RingButton, val line: String?, val warn: Bo
 /**
  * The record / check / re-record journey for the other rings of one floor, with no view or I/O. [view] says what the
  * panel shows; [requestSave] gives the pose to send for the ring in view (through `BuilderApi.savePose`, as alignment
- * does), and [saved] takes the answer. Main thread only.
+ * does), and [saved] takes the answer. The floor is fixed for the flow's life: once a save lands, make a new flow from
+ * the feed's newer floor, passing the old [status] on. Main thread only.
  */
-class RingCheckFlow(private val floor: ArFloor) {
+class RingCheckFlow(private val floor: ArFloor, status: String? = null) {
   /** The save's progress copy, or null: "Saving…", "Ring saved" or a refusal. */
-  var status: String? = null
+  var status: String? = status
     private set
 
   fun view(root: RootPose, lastAnchorWorld: Vec3, ring: RingInView): RingCheckView {

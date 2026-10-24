@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -37,6 +38,10 @@ interface MenuActions {
   fun openSpace(code: String)
   fun setOcclusion(o: Occlusion)
   fun openBuilder()
+  /** Owner only: taking the headset off hides the scene but keeps it loaded (`AppPrefs.keepLoadedBetweenVisitors`). */
+  fun setKeepLoaded(on: Boolean)
+  /** Owner only: leaves builder mode and forgets the headset's pairing. */
+  fun signOut()
   /** Debug builds only. */
   fun toggleDeveloper()
 }
@@ -49,7 +54,7 @@ private val OCCLUSION_CHOICES =
         Occlusion.OFF to VisitorCopy.OCCLUSION_OFF,
     )
 
-/** The small menu (0.5 × 0.6 m): the only settings a visitor sees. */
+/** The small menu (0.5 × 0.6 m): the only settings a visitor sees, plus the owner's while building or paired. */
 @Composable
 fun VisitorMenu(s: AppState, act: MenuActions, developer: Boolean) {
   MaterialTheme(colorScheme = darkColorScheme()) {
@@ -77,7 +82,14 @@ fun VisitorMenu(s: AppState, act: MenuActions, developer: Boolean) {
           s.recentSpaces.forEach { r -> Wide(r.spaceName, { act.openSpace(r.code) }, outlined = true) }
         }
       }
-      Wide(VisitorCopy.BUILDER, act::openBuilder)
+      Wide(VisitorCopy.BUILDER, act::openBuilder, enabled = !s.builderActive)
+      if (s.ownerControls) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+          Text(VisitorCopy.KEEP_LOADED, color = Color(0xFFE0E0E0), fontSize = 13.sp, modifier = Modifier.weight(1f))
+          Switch(checked = s.keepLoaded, onCheckedChange = act::setKeepLoaded)
+        }
+        Wide(VisitorCopy.SIGN_OUT, act::signOut, outlined = true)
+      }
       if (developer) Wide("Developer", act::toggleDeveloper, outlined = true)
       s.menuNote?.let { Text(it, color = Color(0xFFE0E0E0), fontSize = 13.sp) }
     }

@@ -150,4 +150,17 @@ class RingCheckTest {
     flow.saved(BuilderCall.Offline)
     assertEquals(AlignCopy.OFFLINE, flow.status)
   }
+
+  @Test fun `a flow made from the newer floor keeps the saved status and checks the recorded ring`() {
+    val before = floor(marker(2, null), marker(1, expected))
+    val ring = RingInView(2, Vec3(11.0, 1.5, 5.0), 0.0)
+    val flow = RingCheckFlow(before)
+    val save = flow.requestSave(root, anchor, ring)!!
+    flow.saved(BuilderCall.Ok(emptyList()))
+    val next = RingCheckFlow(floor(marker(2, save.pose), marker(1, expected)), flow.status)
+    assertEquals(RingCheckCopy.SAVED, next.status)
+    val v = next.view(root, anchor, ring)
+    assertEquals(RingButton.None, v.button)
+    assertEquals("This ring is 0 cm and 0.0° from where it should be", v.line)
+  }
 }

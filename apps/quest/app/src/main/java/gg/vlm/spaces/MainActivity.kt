@@ -3,6 +3,7 @@ package gg.vlm.spaces
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
@@ -50,7 +51,23 @@ import com.meta.spatial.vr.VRFeature
 import gg.vlm.spaces.api.ArApi
 import gg.vlm.spaces.api.ArFeed
 import gg.vlm.spaces.api.VisitAnalytics
+import gg.vlm.spaces.builder.AlignPanel
+import gg.vlm.spaces.builder.AlignSticks
+import gg.vlm.spaces.builder.AssetsTab
+import gg.vlm.spaces.builder.BuilderApi
+import gg.vlm.spaces.builder.BuilderController
+import gg.vlm.spaces.builder.BuilderHud
+import gg.vlm.spaces.builder.BuilderPanels
+import gg.vlm.spaces.builder.BuilderPromptPanel
+import gg.vlm.spaces.builder.DeviceAuth
+import gg.vlm.spaces.builder.EncryptedSecureStore
+import gg.vlm.spaces.builder.HUD_HEIGHT_M
+import gg.vlm.spaces.builder.HUD_WIDTH_M
+import gg.vlm.spaces.builder.HeadsetBuilderTools
+import gg.vlm.spaces.builder.PairingPanel
+import gg.vlm.spaces.builder.RingCheckPanel
 import gg.vlm.spaces.builder.Surface
+import gg.vlm.spaces.builder.callsFor
 import gg.vlm.spaces.builder.SurfaceKind
 import gg.vlm.spaces.builder.surfaceOf
 import gg.vlm.spaces.ring.CameraStatus
@@ -73,7 +90,6 @@ import gg.vlm.spaces.visitor.RingOutline
 import gg.vlm.spaces.visitor.SpacePage
 import gg.vlm.spaces.visitor.spaceCodeFromIntent
 import gg.vlm.spaces.visitor.VisitorController
-import gg.vlm.spaces.visitor.VisitorCopy
 import gg.vlm.spaces.visitor.VisitorMenu
 import gg.vlm.spaces.visitor.VisitorTuning
 import java.io.File
@@ -88,9 +104,11 @@ import kotlinx.coroutines.launch
 
 /**
  * VLM Spaces for Meta Quest 3 / 3S, in visitor mode: a hint card asks the visitor to look at a ring marker, and the
- * space it belongs to appears life-size in passthrough, placed from the ring ([VisitorController]). This activity owns
- * the lifecycle, the passthrough camera (rings found by [RingDetector] in the left camera's frames), the room scan
- * (MRUK: wall headings and occlusion) and the panels. Debug builds add a Developer panel with the marker readings.
+ * space it belongs to appears life-size in passthrough, placed from the ring ([VisitorController]). The menu's
+ * **Builder** opens builder mode for owners ([BuilderController]), which pauses visitor mode while it holds the space.
+ * This activity owns the lifecycle, the passthrough camera (rings found by [RingDetector] in the left camera's frames),
+ * the room scan (MRUK: wall headings, occlusion and snap surfaces) and the panels, and hands everything else to the two
+ * controllers. Debug builds add a Developer panel with the marker readings.
  */
 class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   private lateinit var mruk: MRUKFeature
@@ -99,6 +117,8 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   private lateinit var prefs: AppPrefs
   private lateinit var renderer: SceneRenderer
   private lateinit var visitor: VisitorController
+  private lateinit var builder: BuilderController
+  private val builderPanels = BuilderPanels(state)
 
   private var hintPanel: Entity? = null
   private var menuButton: Entity? = null
@@ -155,6 +175,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     prefs = AppPrefs(this)
     renderer = SceneRenderer(this)
     state.occlusion = prefs.occlusion
+    state.keepLoaded = prefs.keepLoadedBetweenVisitors
     // Release builds always use https://vlm.gg; debug builds take a `baseUrl` extra (saved for next time).
     state.serverUrl = prefs.baseUrl(intent.getStringExtra("baseUrl"))
     val api = ArApi(state.serverUrl)
@@ -175,6 +196,19 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
             prefs = prefs,
             ui = state,
             setRegistered = { ids -> tracker.registered = ids },
+        )
+    val auth = DeviceAuth(api, EncryptedSecureStore(this), System::currentTimeMillis, deviceName = Build.MODEL)
+    val builderApi = BuilderApi(api, auth)
+    builder =
+        BuilderController(
+            scope,
+            session,
+            auth,
+            calls = builderApi::callsFor,
+            visitor = visitor,
+            scene = renderer,
+            tools = HeadsetBuilderTools(this, renderer, ::builderSurfaces),
+            ui = state,
         )
     // A vlm.gg/s link that launched the app (a re-created activity doesn't open it again).
     if (savedInstanceState == null) openLink(intent)
@@ -235,6 +269,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     if (BuildConfig.DEBUG) {
       developerPanel = Entity.createPanelEntity(R.id.control_panel, Transform(Pose()), Grabbable()).also { show(it, false) }
     }
+    builderPanels.create()
     sceneReady = true
     applyOcclusion()
     if (scenePermitted()) loadRoom()
@@ -246,6 +281,17 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
           composePanel(R.id.menu_button, 0.08f, 0.08f) { MenuButton(this) },
           composePanel(R.id.visitor_menu, 0.5f, 0.6f) { VisitorMenu(state, this, BuildConfig.DEBUG) },
           composePanel(R.id.space_page, 0.5f, 0.4f) { SpacePage(state, ::closeSpacePage) },
+          composePanel(R.id.pairing_panel, 0.45f, 0.5f) { state.pairing?.let { PairingPanel(it) { builder.cancelPairing() } } },
+          composePanel(R.id.builder_prompt, 0.5f, 0.5f) {
+            state.builderPrompt?.let { BuilderPromptPanel(it, { s -> builder.pickSpace(s) }, { builder.cancel() }) }
+          },
+          composePanel(R.id.align_panel, 0.5f, 0.45f) {
+            state.align?.let { AlignPanel(it.state, it.notes, { builder.saveAlignment() }, { builder.closeAlign() }) }
+          },
+          composePanel(R.id.ring_panel, 0.45f, 0.3f) { state.ringCheck?.let { RingCheckPanel(it) { builder.recordRing() } } },
+          composePanel(R.id.builder_hud, HUD_WIDTH_M, HUD_HEIGHT_M) {
+            state.hud?.let { BuilderHud(it, builder.hudActions) { AssetsTab(state.assets) { e -> builder.place(e) } } }
+          },
           if (BuildConfig.DEBUG) composePanel(R.id.control_panel, 0.7f, 0.9f) { ControlPanel(state, this) } else null,
       )
 
@@ -271,8 +317,11 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
       wallsReadAt = now
     }
     val rings = latestRings
-    visitor.tick(head, rings, camera.intrinsics, walls)
-    if (head != Pose()) placePanels(head, now)
+    if (!builder.tick(head, rings, camera.intrinsics, walls, alignSticks())) visitor.tick(head, rings, camera.intrinsics, walls)
+    if (head != Pose()) {
+      placePanels(head, now)
+      builderPanels.update(head)
+    }
     if (menuPressed()) toggleMenu()
     if (BuildConfig.DEBUG) updateReadings(head, rings)
   }
@@ -280,7 +329,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   override fun onResume() {
     super.onResume()
     renderer.paused = false
-    visitor.headsetOn()
+    if (!builder.headsetOn()) visitor.headsetOn()
     hintFollow.recentre()
     // Also catches permissions granted (or taken away) later in Settings.
     if (cameraPermitted()) camera.start() else if (!askingPermissions) onCameraStatus(CameraStatus.NO_PERMISSION)
@@ -297,7 +346,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     latestRings = null
     renderer.paused = true
     // The permission dialog pausing the app isn't the headset coming off (see askingPermissions).
-    if (!askingPermissions) visitor.headsetOff()
+    if (!askingPermissions && !builder.headsetOff()) visitor.headsetOff()
     state.menuOpen = false
     super.onPause()
   }
@@ -334,6 +383,25 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
       show(it, open)
     }
     developerPanel?.let { show(it, state.developerOpen) }
+  }
+
+  /**
+   * The thumbsticks and grips as the align panel reads them (only used while aligning): the left stick moves, the
+   * right stick turns, either grip makes the steps fine. The SDK reports the sticks as direction bits.
+   */
+  private fun alignSticks(): AlignSticks {
+    var b = 0
+    Query.where { has(Controller.id) }.eval().forEach { e ->
+      val c = e.getComponent<Controller>()
+      if (c.isActive) b = b or c.buttonState
+    }
+    fun axis(plus: Int, minus: Int) = (if (b and plus != 0) 1.0 else 0.0) - (if (b and minus != 0) 1.0 else 0.0)
+    return AlignSticks(
+        leftX = axis(ButtonBits.ButtonThumbLR, ButtonBits.ButtonThumbLL),
+        leftY = axis(ButtonBits.ButtonThumbLU, ButtonBits.ButtonThumbLD),
+        rightX = axis(ButtonBits.ButtonThumbRR, ButtonBits.ButtonThumbRL),
+        fine = b and (ButtonBits.ButtonSqueezeL or ButtonBits.ButtonSqueezeR) != 0,
+    )
   }
 
   /** The left controller's menu button, pressed this frame. */
@@ -373,13 +441,24 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   private fun closeSpacePage() = visitor.closeSpacePage()
 
   override fun lookAgain() {
-    visitor.lookAgain()
+    if (!builder.lookAgain()) visitor.lookAgain()
     state.menuOpen = false
     hintFollow.recentre()
   }
 
   override fun openBuilder() {
-    state.menuNote = VisitorCopy.BUILDER_SOON
+    state.menuOpen = false
+    builder.open()
+  }
+
+  override fun setKeepLoaded(on: Boolean) {
+    state.keepLoaded = on
+    prefs.keepLoadedBetweenVisitors = on
+  }
+
+  override fun signOut() {
+    state.menuOpen = false
+    builder.signOut()
   }
 
   override fun toggleDeveloper() {
@@ -588,7 +667,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
       }
 
   /**
-   * The room scan's walls, floors and tables as snap surfaces in world space (see `Picking`, wired in with builder mode).
+   * The room scan's walls, floors and tables as snap surfaces in world space (for `Picking`'s carries in builder mode).
    * Read when an item is put down, not every frame. MRUK planes lie in their anchor's local x-y with the normal along
    * local z; a table's plane is its top face. Unverified on device (README, owner checks).
    */

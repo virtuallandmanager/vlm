@@ -3,6 +3,7 @@ package gg.vlm.spaces.builder
 import gg.vlm.spaces.IMAGE_EXT
 import gg.vlm.spaces.VIDEO_EXT
 import gg.vlm.spaces.Vec3
+import gg.vlm.spaces.api.BuilderCall
 import gg.vlm.spaces.extOf
 import gg.vlm.spaces.space.RootPose
 import gg.vlm.spaces.space.rotateY
@@ -101,9 +102,28 @@ fun libraryEntries(body: JsonObject): List<LibraryEntry> =
 fun activePresetId(body: JsonObject): String? =
     (((body["scene"] as? JsonObject)?.get("activePresetId")) as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotEmpty() }
 
-/** Creates [entry] in the scene's [presetId] at [t]: always the shared scene, whatever the Everywhere switch says. */
-suspend fun BuilderApi.placeEntry(spaceId: String, presetId: String, entry: LibraryEntry, t: ItemTransform) =
-    when (entry.kind) {
+/**
+ * Whether the scene's live preset is a booking's copy (`GET /api/scenes/:id`): the server names those
+ * `booking:<booking id>` when it clones the venue's preset for a booking.
+ */
+fun activePresetIsBooking(body: JsonObject): Boolean {
+  val scene = body["scene"] as? JsonObject ?: return false
+  val id = activePresetId(body) ?: return false
+  val preset = (scene["presets"] as? JsonArray)?.firstOrNull { ((it as? JsonObject)?.get("id") as? JsonPrimitive)?.content == id } as? JsonObject
+  val name = (preset?.get("name") as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return false
+  return name.startsWith(BOOKING_PRESET_PREFIX)
+}
+
+private const val BOOKING_PRESET_PREFIX = "booking:"
+
+/**
+ * Creates [entry] in the scene's [presetId] at [t]: always the shared scene, whatever the Everywhere switch says. An
+ * entry the headset can't draw ([LibraryEntry.drawable] false) is refused without a call, as `Failed(0)`.
+ */
+suspend fun BuilderApi.placeEntry(spaceId: String, presetId: String, entry: LibraryEntry, t: ItemTransform): BuilderCall<PlacedItem> =
+    if (!entry.drawable) BuilderCall.Failed(0)
+    else
+        when (entry.kind) {
       LibraryKind.IMAGE -> placeImage(spaceId, presetId, entry.name, entry.url, t)
       LibraryKind.VIDEO -> placeVideo(spaceId, presetId, entry.name, entry.url, t)
       LibraryKind.MODEL -> placeModel(spaceId, presetId, entry.name, entry.url, t)

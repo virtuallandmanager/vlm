@@ -37,6 +37,7 @@ import com.meta.spatial.toolkit.TransformParent
 import com.meta.spatial.toolkit.VideoSurfacePanelRegistration
 import com.meta.spatial.toolkit.Visible
 import java.net.HttpURLConnection
+import gg.vlm.spaces.builder.BuilderScene
 import gg.vlm.spaces.builder.ItemTransform
 import gg.vlm.spaces.space.RootPose
 import gg.vlm.spaces.space.SceneView
@@ -65,7 +66,7 @@ fun Vec3.sdk() = Vector3(x.toFloat(), y.toFloat(), z.toFloat())
  * In [builderMode], item meshes take ray hits (`MeshCollision.LineTest`) so the builder can pick them ([keyAt]), and
  * [setOverrides] shows edited items where the builder has put them; visitors' meshes keep `NoCollision`.
  */
-class SceneRenderer(private val activity: AppSystemActivity) : SceneView {
+class SceneRenderer(private val activity: AppSystemActivity) : SceneView, BuilderScene {
   val root: Entity = Entity.create(listOf(Transform(Pose())))
 
   /**
@@ -81,7 +82,7 @@ class SceneRenderer(private val activity: AppSystemActivity) : SceneView {
     }
 
   /** Builder mode: item meshes can be hit by the pointer. Changing it rebuilds the items. */
-  var builderMode = false
+  override var builderMode = false
     set(value) {
       if (field != value) {
         field = value
@@ -159,7 +160,7 @@ class SceneRenderer(private val activity: AppSystemActivity) : SceneView {
    * Shows the items in [next] (by key) at their builder transforms instead of the feed's; items no longer in it go
    * back to the feed's. Call every frame while building; only changed items are touched.
    */
-  fun setOverrides(next: Map<String, ItemTransform>) {
+  override fun setOverrides(next: Map<String, ItemTransform>) {
     if (next == overrides) return
     val prev = overrides
     overrides = next

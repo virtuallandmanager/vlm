@@ -15,6 +15,7 @@ import gg.vlm.spaces.ring.CameraIntrinsics
 import gg.vlm.spaces.ring.RingCodec
 import gg.vlm.spaces.ring.RingDetection
 import gg.vlm.spaces.ring.WallPlane
+import gg.vlm.spaces.space.RootPose
 import gg.vlm.spaces.space.SpaceSession
 import gg.vlm.spaces.space.markerInScene
 import kotlin.coroutines.cancellation.CancellationException
@@ -41,12 +42,27 @@ interface VisitorPrefs {
   var recentSpaces: List<RecentSpace>
 }
 
+/** Builder mode's hold on visitor mode ([VisitorController] in the app). */
+interface VisitorLink {
+  /** Builder mode takes the space session: visitor mode forgets its space (nothing loaded) and waits. */
+  fun pause()
+
+  /**
+   * Builder mode has ended: visitor mode takes the session back, showing [handoff]'s space where builder mode left
+   * it, or at the hint card with nothing loaded when it's null.
+   */
+  fun resume(handoff: Handoff?)
+}
+
+/** The space builder mode was showing as it left: its last snapshot, where it is placed, and the ring it was placed from. */
+data class Handoff(val snapshot: ArFeedSnapshot, val root: RootPose, val ringId: Long)
+
 /**
  * Visitor mode, joined to the headset: owns the [VisitorFlow], turns camera rings, head poses and the lifecycle into
  * the flow's events, and carries out its effects on the space [session] (feed, scene, ring locks, outline), the ring
  * tracker ([setRegistered]) and the visit [analytics]. Writes what the hint card says into [ui]. [clock] and
  * [nanoClock] are `SystemClock.elapsedRealtime` and `elapsedRealtimeNanos` on the headset (the session's clock must
- * match [clock]). Main thread only.
+ * match [clock]). While builder mode holds the session ([pause] to [resume]) it does nothing. Main thread only.
  */
 class VisitorController(
     private val scope: CoroutineScope,
@@ -58,7 +74,7 @@ class VisitorController(
     private val setRegistered: (Set<Long>?) -> Unit,
     private val clock: () -> Long = SystemClock::elapsedRealtime,
     private val nanoClock: () -> Long = SystemClock::elapsedRealtimeNanos,
-) {
+) : VisitorLink {
   private val flow = VisitorFlow()
   private val trackingWatch = TrackingWatch()
   private val unreadableWatch = UnreadableWatch()
@@ -77,14 +93,11 @@ class VisitorController(
   /** The ring that last became steady, for naming the space a scene was just shown for. */
   private var steadyRing: Long? = null
 
+  /** Builder mode holds the session. */
+  private var paused = false
+
   init {
-    session.onStatus = ::onFeedStatus
-    session.onSnapshot = ::onSnapshot
-    session.onSteady = { id, world, heading ->
-      // A new steady pose locks on, or re-anchors a shown scene.
-      steadyRing = id
-      dispatch(VisitorEvent.Steady(id, world, heading))
-    }
+    attach()
     ui.recentSpaces = prefs.recentSpaces
     scope.launch {
       while (true) {
@@ -93,6 +106,52 @@ class VisitorController(
       }
     }
     refreshUi()
+  }
+
+  /** Takes the session's callbacks (builder mode sets its own while it holds the session). */
+  private fun attach() {
+    session.onStatus = ::onFeedStatus
+    session.onSnapshot = ::onSnapshot
+    session.onSteady = { id, world, heading ->
+      // A new steady pose locks on, or re-anchors a shown scene.
+      steadyRing = id
+      dispatch(VisitorEvent.Steady(id, world, heading))
+    }
+  }
+
+  override fun pause() {
+    if (paused) return
+    dispatch(VisitorEvent.LookAgain) // stops the feed and the visit, and clears the scene
+    resetSightings()
+    paused = true
+    ui.hint = null
+    ui.sceneShown = false
+    ui.spacePage = null
+    ui.spaceProblem = null
+    // The "⋯" button stays, so the menu (Sign out) can be reached with hands too.
+    ui.menuButtonShown = true
+  }
+
+  override fun resume(handoff: Handoff?) {
+    if (!paused) return
+    paused = false
+    attach()
+    trackingWatch.reset()
+    lastHeadMs = null
+    resetSightings()
+    if (handoff != null) {
+      steadyRing = handoff.ringId
+      dispatch(VisitorEvent.Adopt(handoff.snapshot, handoff.root, handoff.ringId))
+    } else {
+      refreshUi()
+    }
+  }
+
+  private fun resetSightings() {
+    unreadableWatch.reset()
+    unreadableSince = null
+    gather = GatherStatus.NONE_IN_VIEW
+    lastFrameNs = 0L
   }
 
   /** Posts queued analytics; a failure stays queued for the next flush. */
@@ -114,6 +173,7 @@ class VisitorController(
 
   /** Call every frame with the head pose, the newest camera rings, the camera's intrinsics and the room's walls. */
   fun tick(head: Pose, rings: CameraRings?, k: CameraIntrinsics?, walls: List<WallPlane>) {
+    if (paused) return
     val now = clock()
     if (head != Pose()) {
       (flow.state as? VisitorState.Shown)?.let { shown ->
@@ -140,27 +200,30 @@ class VisitorController(
   }
 
   fun headsetOff() {
+    if (paused) return
     dispatch(VisitorEvent.HeadsetOff)
     endVisit()
     // A shared headset: the next person starts at the hint card with nothing loaded, unless a builder chose otherwise.
     if (!prefs.keepLoadedBetweenVisitors) dispatch(VisitorEvent.LookAgain)
-    unreadableWatch.reset()
-    unreadableSince = null
-    gather = GatherStatus.NONE_IN_VIEW
-    lastFrameNs = 0L
+    resetSightings()
     refreshUi()
   }
 
   fun headsetOn() {
+    if (paused) return
     trackingWatch.reset()
     lastHeadMs = null
     dispatch(VisitorEvent.HeadsetOn)
   }
 
-  fun lookAgain() = dispatch(VisitorEvent.LookAgain)
+  fun lookAgain() {
+    if (!paused) dispatch(VisitorEvent.LookAgain)
+  }
 
-  /** Opens the space with [code] (from a link or the Spaces list): shows its page and looks it up. */
-  fun openSpace(code: String) = dispatch(VisitorEvent.OpenSpace(code))
+  /** Opens the space with [code] (from a link or the Spaces list): shows its page and looks it up. Not while building. */
+  fun openSpace(code: String) {
+    if (!paused) dispatch(VisitorEvent.OpenSpace(code))
+  }
 
   fun closeSpacePage() {
     ui.spacePage = null
@@ -315,6 +378,7 @@ class VisitorController(
   }
 
   private fun refreshUi() {
+    if (paused) return
     val st = flow.state
     ui.spacePage = spacePageFor(ui.spacePage, st)
     ui.spaceProblem = if (ui.spacePage?.spaceName == null) (st as? VisitorState.Failed)?.message else null

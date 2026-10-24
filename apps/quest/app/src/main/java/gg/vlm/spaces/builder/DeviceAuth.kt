@@ -39,6 +39,21 @@ sealed interface PassResult {
   data class Failed(val status: Int) : PassResult
 }
 
+/** What builder mode needs of the headset's pairing ([DeviceAuth] on the headset; a fake in tests). */
+interface BuilderAuth {
+  val state: StateFlow<AuthState>
+
+  suspend fun beginPairing()
+
+  suspend fun spaces(): BuilderCall<List<DeviceSpace>>
+
+  suspend fun passFor(spaceId: String): PassResult
+
+  suspend fun endSession()
+
+  suspend fun unpair()
+}
+
 /**
  * The headset's identity: pairs it with a VLM account, keeps the device id and secret in [store], and mints (and
  * caches) AR passes. The secret and passes are never logged, and only the secret's SHA-256 goes out when pairing.
@@ -49,9 +64,9 @@ class DeviceAuth(
     private val clock: () -> Long,
     private val pollMs: Long = POLL_MS,
     private val deviceName: String? = null,
-) {
+) : BuilderAuth {
   private val _state = MutableStateFlow<AuthState>(restored())
-  val state: StateFlow<AuthState> = _state.asStateFlow()
+  override val state: StateFlow<AuthState> = _state.asStateFlow()
 
   /** Cached passes by device id and space id: a pass is never served to a device it wasn't minted for. */
   private val passes = java.util.concurrent.ConcurrentHashMap<Pair<String, String>, MintedPass>()
@@ -84,7 +99,7 @@ class DeviceAuth(
    * Makes a secret, starts a pairing and polls until the approver answers, the code expires (10 minutes) or the caller
    * cancels. Ends in [AuthState.Paired] or [AuthState.SignedOut].
    */
-  suspend fun beginPairing() {
+  override suspend fun beginPairing() {
     // One pairing at a time: a second call while one is polling is ignored.
     if (!pairing.compareAndSet(false, true)) return
     try {
@@ -133,7 +148,7 @@ class DeviceAuth(
   }
 
   /** A pass for [spaceId]: the cached one while it has more than 60 s left, else a freshly minted one. */
-  suspend fun passFor(spaceId: String): PassResult = mintLock.withLock { passLocked(spaceId) }
+  override suspend fun passFor(spaceId: String): PassResult = mintLock.withLock { passLocked(spaceId) }
 
   private suspend fun passLocked(spaceId: String): PassResult {
     val id: String
@@ -201,7 +216,7 @@ class DeviceAuth(
   }
 
   /** Shared headset: ends the session on the server and forgets the pairing. Personal: only drops the cached passes. */
-  suspend fun endSession() {
+  override suspend fun endSession() {
     val s = _state.value as? AuthState.Paired ?: return
     if (s.kind == DeviceKind.PERSONAL) {
       mintLock.withLock { passes.clear() }
@@ -213,8 +228,20 @@ class DeviceAuth(
     signOut()
   }
 
+  /**
+   * **Sign out** from the menu, either kind of headset: tells the server the session is over (it ends this headset's
+   * drafts; a shared headset is unpaired there), best effort, then forgets the pairing here. A personal headset stays
+   * listed on the website until it is revoked there.
+   */
+  override suspend fun unpair() {
+    val s = _state.value as? AuthState.Paired ?: return
+    val secret = store.get(KEY_SECRET)
+    if (secret != null) api.endSession(s.deviceId, secret)
+    signOut()
+  }
+
   /** The spaces the approver can build on. A revoked device is signed out here like everywhere else. */
-  suspend fun spaces(): BuilderCall<List<DeviceSpace>> {
+  override suspend fun spaces(): BuilderCall<List<DeviceSpace>> {
     val id = store.get(KEY_ID)
     val secret = store.get(KEY_SECRET)
     if (id == null || secret == null) return BuilderCall.Revoked
