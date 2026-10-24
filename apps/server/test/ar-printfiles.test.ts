@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { inflateRawSync } from 'node:zlib'
-import { ringCodeOf, ringPlaqueSizeMm } from 'vlm-shared'
-import { buildMarkerMeshes, paperPdf, stl, threeMf, type Mesh, type Mounting } from '../src/ar/printfiles.js'
+import { ringCodeOf, ringPlaqueSizeMm, ringShapes } from 'vlm-shared'
+import { buildMarkerMeshes, distanceToShape, paperPdf, screwSpots, stl, threeMf, type Mesh, type Mounting } from '../src/ar/printfiles.js'
 import { crc32 } from '../src/ar/zip.js'
+import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { sceneCollaborators } from '../src/db/schema.js'
+import { arMarkers, sceneCollaborators } from '../src/db/schema.js'
 import { resetDb } from './helpers/db.js'
 import { createScene, createUser, testApp, tokenFor, type TestUser } from './helpers/factories.js'
 
@@ -124,14 +125,37 @@ describe('ring marker meshes and STL', () => {
     expect(Math.min(...floor.map((v) => v[1]))).toBeCloseTo(-(half - 12) - 5.2, 3)
   })
 
-  it('screws cut two countersunk holes on the centre line, 10 mm from the top and bottom edges', () => {
-    const { base } = buildMarkerMeshes(ID, 140, 'screws')
+  it('screws cut two countersunk holes in opposite corners, heads clear of every raised shape by 1.5 mm', () => {
     const half = ringPlaqueSizeMm(140) / 2
-    const top = base.verts.filter((v) => Math.abs(v[2] - 4) < 1e-6 && Math.hypot(v[0], Math.abs(v[1]) - (half - 10)) < 3.6)
-    expect(top.length).toBe(2 * 360)
-    expect(Math.max(...top.map((v) => v[0]))).toBeCloseTo(3.5, 3)
-    const shaft = base.verts.filter((v) => Math.abs(v[2]) < 1e-6 && Math.hypot(v[0], Math.abs(v[1]) - (half - 10)) < 1.8)
-    expect(Math.max(...shaft.map((v) => v[0]))).toBeCloseTo(1.75, 3)
+    const spots = screwSpots(ID, 140)!
+    expect(spots).toHaveLength(2)
+    const [tl, br] = spots
+    expect(tl[0]).toBeLessThan(0)
+    expect(tl[1]).toBeGreaterThan(0)
+    expect(br[0]).toBeGreaterThan(0)
+    expect(br[1]).toBeLessThan(0)
+    const shapes = ringShapes(ID, 140)
+    for (const [x, y] of spots) {
+      for (const sh of shapes) expect(distanceToShape(sh, x, y) - 3.5).toBeGreaterThanOrEqual(1.5 - 1e-9)
+      expect(half - Math.abs(x) - 3.5).toBeGreaterThanOrEqual(2 - 1e-9)
+      expect(half - Math.abs(y) - 3.5).toBeGreaterThanOrEqual(2 - 1e-9)
+    }
+    // the mesh really has them: head circle (r 3.5) at z=4, shaft (r 1.75) at z=0
+    const { base, raised } = buildMarkerMeshes(ID, 140, 'screws')
+    for (const [x, y] of spots) {
+      const head = base.verts.filter((v) => Math.abs(v[2] - 4) < 1e-6 && Math.hypot(v[0] - x, v[1] - y) < 3.6)
+      expect(head.length).toBe(360)
+      expect(Math.max(...head.map((v) => Math.hypot(v[0] - x, v[1] - y)))).toBeCloseTo(3.5, 3)
+      const shaft = base.verts.filter((v) => Math.abs(v[2]) < 1e-6 && Math.hypot(v[0] - x, v[1] - y) < 1.8)
+      expect(Math.max(...shaft.map((v) => Math.hypot(v[0] - x, v[1] - y)))).toBeCloseTo(1.75, 3)
+      // independent of distanceToShape: no raised vertex within 1.5 mm of the head circle
+      for (const v of raised.verts) expect(Math.hypot(v[0] - x, v[1] - y)).toBeGreaterThan(3.5 + 1.5 - 0.5)
+    }
+  })
+
+  it('screws report no room when the corners are crowded', () => {
+    expect(screwSpots(1, 60)).toBeNull()
+    expect(() => buildMarkerMeshes(1, 60, 'screws')).toThrow('no_room_for_screws')
   })
 
   it('keyhole thickens the plaque to 6 mm behind a 30 mm square', () => {
@@ -234,7 +258,7 @@ describe('print file download route', () => {
     const s = await setup()
     const res = await app.inject({ method: 'GET', url: `/api/ar/markers/${s.marker.id}/files?format=stl-base`, headers: as(s.owner) })
     expect(res.statusCode).toBe(200)
-    expect(res.headers['content-disposition']).toBe(`attachment; filename="vlm-ring-${s.marker.code}-140mm.stl"`)
+    expect(res.headers['content-disposition']).toBe(`attachment; filename="vlm-ring-${s.marker.code}-140mm-base.stl"`)
     expect(res.headers['content-type']).toBe('model/stl')
     expect(parseStl(res.rawPayload).count).toBe(12)
   })
@@ -252,7 +276,8 @@ describe('print file download route', () => {
       const res = await get(`format=${format}`)
       expect(res.statusCode, format).toBe(200)
       expect(res.headers['content-type']).toContain(type)
-      expect(res.headers['content-disposition']).toContain(`vlm-ring-${s.marker.code}-140mm.${ext}`)
+      const suffix = format === 'stl-raised' ? '-raised' : ''
+      expect(res.headers['content-disposition']).toContain(`vlm-ring-${s.marker.code}-140mm${suffix}.${ext}`)
     }
     expect((await get('format=svg')).body).toContain('<svg')
     const keyhole = await get('format=stl-base&mounting=keyhole')
@@ -275,6 +300,17 @@ describe('print file download route', () => {
     expect(res.statusCode).toBe(400)
     expect(res.json()).toEqual({ error: 'too_large_for_paper' })
     expect((await app.inject({ method: 'GET', url: `/api/ar/markers/${s.marker.id}/files?format=stl-base`, headers: as(s.owner) })).statusCode).toBe(200)
+  })
+
+  it('answers 400 no_room_for_screws when the corners are crowded', async () => {
+    const s = await setup()
+    await app.inject({ method: 'PUT', url: `/api/ar/markers/${s.marker.id}`, headers: as(s.owner), payload: { diameterMm: 60 } })
+    await db.update(arMarkers).set({ ringId: 1 }).where(eq(arMarkers.id, s.marker.id))
+    const url = `/api/ar/markers/${s.marker.id}/files`
+    const res = await app.inject({ method: 'GET', url: `${url}?format=stl-base&mounting=screws`, headers: as(s.owner) })
+    expect(res.statusCode).toBe(400)
+    expect(res.json()).toEqual({ error: 'no_room_for_screws' })
+    expect((await app.inject({ method: 'GET', url: `${url}?format=stl-base&mounting=tape`, headers: as(s.owner) })).statusCode).toBe(200)
   })
 
   it('needs build access: a viewer and a stranger are refused, an unknown marker is 404', async () => {

@@ -150,13 +150,19 @@ export default async function arSpaceRoutes(app: FastifyInstance) {
         throw err
       }
     } else {
-      const { base, raised } = buildMarkerMeshes(ringId, diameterMm, mounting as Mounting)
+      let meshes: ReturnType<typeof buildMarkerMeshes>
+      try { meshes = buildMarkerMeshes(ringId, diameterMm, mounting as Mounting) } catch (err) {
+        if (err instanceof Error && err.message === 'no_room_for_screws') return bad(reply, 'no_room_for_screws')
+        throw err
+      }
+      const { base, raised } = meshes
       body = format === '3mf' ? threeMf(base, raised) : stl(format === 'stl-base' ? base : raised, `VLM ring marker ${marker.code} ${format === 'stl-base' ? 'base' : 'raised'}`)
     }
     const { ext, type } = FILE_FORMATS[format]
+    const suffix = format === 'stl-base' ? '-base' : format === 'stl-raised' ? '-raised' : ''
     return reply
       .header('content-type', type)
-      .header('content-disposition', `attachment; filename="vlm-ring-${marker.code}-${diameterMm}mm.${ext}"`)
+      .header('content-disposition', `attachment; filename="vlm-ring-${marker.code}-${diameterMm}mm${suffix}.${ext}"`)
       .send(body)
   })
 }

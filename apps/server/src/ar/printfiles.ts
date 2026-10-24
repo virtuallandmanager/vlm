@@ -183,6 +183,64 @@ function band(mesh: Mesh, lower: P[], upper: P[], z0: number, z1: number) {
 const wall = (mesh: Mesh, ring: P[], z0: number, z1: number) => band(mesh, ring, ring, z0, z1)
 
 // ---------------------------------------------------------------------------------------------
+// Screw positions
+
+const SHAFT_MM = 3.5
+const HEAD_MM = 7
+const HEAD_CLEAR_MM = 1.5 // head circle to any raised shape
+const EDGE_CLEAR_MM = 2 // head circle to the plaque edge
+
+/** Distance from a point to a raised shape (0 inside it). */
+export function distanceToShape(s: RingShape, x: number, y: number): number {
+  if (s.kind === 'rect') return Math.hypot(Math.max(s.x0 - x, 0, x - s.x1), Math.max(s.y0 - y, 0, y - s.y1))
+  const r = Math.hypot(x, y)
+  if (s.kind === 'disc') return Math.max(0, r - s.r)
+  const deg = ((Math.atan2(x, y) * 180) / Math.PI + 360) % 360 // clockwise from +y
+  const full = s.a1 - s.a0 >= 360 - 1e-9
+  const a0 = s.a0 % 360
+  if (full || (deg >= a0 && deg <= a0 + (s.a1 - s.a0)) || (deg + 360 >= a0 && deg + 360 <= a0 + (s.a1 - s.a0))) {
+    return r < s.r0 ? s.r0 - r : r > s.r1 ? r - s.r1 : 0
+  }
+  let best = Infinity
+  for (const a of [s.a0, s.a1]) {
+    const dx = Math.sin(rad(a))
+    const dy = Math.cos(rad(a))
+    const t = Math.min(s.r1, Math.max(s.r0, x * dx + y * dy))
+    best = Math.min(best, Math.hypot(x - t * dx, y - t * dy))
+  }
+  return best
+}
+
+/**
+ * Countersunk screw holes in the top-left and bottom-right corners: in each, the spot (searched on a
+ * 0.5 mm grid) with the most room around its head. Null when a corner has no spot that keeps the
+ * head 1.5 mm from every raised shape and 2 mm from the plaque edge.
+ */
+export function screwSpots(markerId: number, diameterMm: number): P[] | null {
+  const shapes = ringShapes(markerId, diameterMm)
+  const h = ringPlaqueSizeMm(diameterMm) / 2
+  const reach = HEAD_MM / 2
+  const spots: P[] = []
+  for (const sign of [1, -1]) {
+    let best: P | null = null
+    let bestSlack = -Infinity
+    for (let u = EDGE_CLEAR_MM + reach; u <= 30; u += 0.5) {
+      for (let v = EDGE_CLEAR_MM + reach; v <= 30; v += 0.5) {
+        const x = sign * -(h - u) // top-left: x negative, y positive; bottom-right mirrors it
+        const y = sign * (h - v)
+        // slack: how far the head is past the requirements (negative = too close)
+        let slack = Math.min(u, v) - reach - EDGE_CLEAR_MM
+        for (const sh of shapes) slack = Math.min(slack, distanceToShape(sh, x, y) - reach - HEAD_CLEAR_MM)
+        if (best === null || slack > bestSlack) { bestSlack = slack; best = [x, y] }
+      }
+    }
+    if (!best || bestSlack < 0) return null
+    spots.push(best)
+  }
+  return spots
+}
+
+// ---------------------------------------------------------------------------------------------
 // The base plaque and its mounting cuts
 
 function keyholeOutlines(cx: number, cy: number) {
@@ -197,7 +255,8 @@ function dropRepeats(poly: P[]): P[] {
   return poly.filter((p, i) => !same(p, poly[(i + 1) % poly.length]))
 }
 
-function buildBase(sizeMm: number, mounting: Mounting): Mesh {
+function buildBase(markerId: number, diameterMm: number, mounting: Mounting): Mesh {
+  const sizeMm = ringPlaqueSizeMm(diameterMm)
   const mesh = new Mesh()
   const h = sizeMm / 2
   const plate = rect(-h, -h, h, h)
@@ -236,10 +295,12 @@ function buildBase(sizeMm: number, mounting: Mounting): Mesh {
       }
     }
   } else if (mounting === 'screws') {
-    const sinkDepth = (7 - 3.5) / 2 // 45 degree countersink from the 7 mm head to the 3.5 mm shaft
-    for (const sy of [-1, 1]) {
-      const head = circle(0, sy * (h - 10), 3.5)
-      const shaft = circle(0, sy * (h - 10), 1.75)
+    const spots = screwSpots(markerId, diameterMm)
+    if (!spots) throw new Error('no_room_for_screws')
+    const sinkDepth = (HEAD_MM - SHAFT_MM) / 2 // 45 degree countersink from the head to the shaft
+    for (const [x, y] of spots) {
+      const head = circle(x, y, HEAD_MM / 2)
+      const shaft = circle(x, y, SHAFT_MM / 2)
       frontHoles.push(head)
       backHoles.push(shaft)
       band(mesh, reversed(shaft), reversed(shaft), 0, BASE_MM - sinkDepth)
@@ -316,7 +377,7 @@ function rectsExtrude(mesh: Mesh, rects: RectShape[], z0: number, z1: number) {
 
 /** The base (light, z 0 to 4, minus the mounting cuts) and the raised part (dark, z 4 to 4.6), same origin. */
 export function buildMarkerMeshes(markerId: number, diameterMm: number, mounting: Mounting = 'none'): { base: Mesh; raised: Mesh } {
-  const base = buildBase(ringPlaqueSizeMm(diameterMm), mounting)
+  const base = buildBase(markerId, diameterMm, mounting)
   const raised = new Mesh()
   const z0 = BASE_MM
   const z1 = BASE_MM + RAISED_MM
