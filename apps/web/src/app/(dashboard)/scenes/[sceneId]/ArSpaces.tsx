@@ -4,7 +4,7 @@ import { ringMarkerSvg, type ArFloorView, type ArMarkerView, type ArSpaceView } 
 import { useApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import {
-  AR_DEFAULT_DIAMETER_MM, AR_MAX_DIAMETER_MM, AR_MIN_DIAMETER_MM, alignmentStatus, friendlyArError, shareUrl, spaceReadiness,
+  AR_DEFAULT_DIAMETER_MM, AR_MAX_DIAMETER_MM, AR_MIN_DIAMETER_MM, alignmentStatus, friendlyArError, resizeNote, shareUrl, spaceReadiness,
   type ArFileFormat, type ArMounting,
 } from '@/lib/ar'
 
@@ -61,6 +61,7 @@ function MarkerCard({ marker, busy, run }: { marker: ArMarkerView; busy: boolean
   const [mounting, setMounting] = useState<ArMounting>('none')
   const [diameter, setDiameter] = useState(String(marker.diameterMm))
   const [diameterErr, setDiameterErr] = useState<string | null>(null)
+  const [resized, setResized] = useState(false)
   const [dlError, setDlError] = useState<string | null>(null)
   const svg = useMemo(() => ringMarkerSvg(marker.ringId, marker.diameterMm), [marker.ringId, marker.diameterMm])
   useEffect(() => setDiameter(String(marker.diameterMm)), [marker.diameterMm])
@@ -76,6 +77,7 @@ function MarkerCard({ marker, busy, run }: { marker: ArMarkerView; busy: boolean
       : await run(() => api.updateArMarker(marker.id, { diameterMm: n }), { quiet: true })
     setDiameterErr(msg)
     if (msg) setDiameter(String(marker.diameterMm))
+    else setResized(true)
   }
   const download = async (format: ArFileFormat) => {
     setDlError(null)
@@ -102,6 +104,7 @@ function MarkerCard({ marker, busy, run }: { marker: ArMarkerView; busy: boolean
           <label className="text-xs text-gray-400">Size (mm)</label>
           <input type="number" min={AR_MIN_DIAMETER_MM} max={AR_MAX_DIAMETER_MM} value={diameter} onChange={(e) => setDiameter(e.target.value)} onBlur={saveDiameter} className={`${input} w-24`} />
           {diameterErr && <span className="text-xs text-red-400">{diameterErr}</span>}
+          {!diameterErr && (resized || diameter !== String(marker.diameterMm)) && <span className="text-xs text-yellow-400">{resizeNote(marker)}</span>}
           <span className={`text-xs ${aligned ? 'text-green-400' : 'text-yellow-400'}`}>{aligned ? 'Aligned' : 'Not aligned yet: align it with the Quest app'}</span>
           <button disabled={busy} onClick={() => { if (confirm('Remove this marker?')) run(() => api.deleteArMarker(marker.id), { lock: true }) }} className="ml-auto text-xs text-red-400 hover:underline">Remove</button>
         </div>

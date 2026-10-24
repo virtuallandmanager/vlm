@@ -22,6 +22,13 @@ export function spaceReadiness(s: ArSpaceView): { ok: boolean; missing: Array<'m
   return { ok: missing.length === 0, missing }
 }
 
+/** What a size change costs: the ring must be printed again, and aligned again if it already was. */
+export function resizeNote(m: ArMarkerView): string {
+  return alignmentStatus(m) === 'aligned'
+    ? 'Changing the size means reprinting this ring and aligning it again.'
+    : 'Changing the size means reprinting this ring.'
+}
+
 export const shareUrl = (code: string): string => `https://vlm.gg/s/${code}`
 
 /** The ring code in a /s/<code> address, normalised; null when the last segment isn't a valid code (or is the static placeholder). */

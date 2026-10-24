@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { ArMarkerView, ArSpaceView } from 'vlm-shared'
-import { alignmentStatus, friendlyArError, shareUrl, spaceCodeFromPath, spaceReadiness } from './ar'
+import { alignmentStatus, friendlyArError, resizeNote, shareUrl, spaceCodeFromPath, spaceReadiness } from './ar'
 
 const marker = (pose: ArMarkerView['pose']): ArMarkerView => ({ id: 'm', ringId: 1, code: '2E3D4C5', diameterMm: 140, whereText: null, pose })
 const space = (markers: ArMarkerView[]): ArSpaceView => ({
@@ -13,6 +13,13 @@ describe('alignmentStatus', () => {
   it('is not_aligned without a pose and aligned with one', () => {
     expect(alignmentStatus(marker(null))).toBe('not_aligned')
     expect(alignmentStatus(marker(pose))).toBe('aligned')
+  })
+})
+
+describe('resizeNote', () => {
+  it('asks for a reprint, and a new alignment when the ring was aligned', () => {
+    expect(resizeNote(marker(null))).toBe('Changing the size means reprinting this ring.')
+    expect(resizeNote(marker(pose))).toBe('Changing the size means reprinting this ring and aligning it again.')
   })
 })
 
