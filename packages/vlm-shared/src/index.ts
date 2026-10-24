@@ -13,3 +13,4 @@ export * from './catalog.js';
 export * from './hyperfy.js';
 export * from './hyperfy-hud.js';
 export * from './ads.js';
+export * from './ring-marker/codec.js';
