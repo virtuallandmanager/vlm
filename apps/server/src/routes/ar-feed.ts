@@ -9,6 +9,7 @@ import { longPoll } from '../http/long-poll.js'
 import { TokenBucketLimiter } from '../analytics/limiter.js'
 import { getSpace } from '../ar/spaces.js'
 import { AR_ANALYTICS_PLATFORMS, recordArBatch } from '../ar/analytics.js'
+import { AR_REPORT_REASONS, createArReport } from '../ar/reports.js'
 
 let holdMs: number = AR_FEED.holdMs
 
@@ -19,6 +20,15 @@ let limiter = new TokenBucketLimiter()
 // Per IP: a headset flushes a batch every few seconds while someone is inside.
 export const AR_ANALYTICS_LIMIT = { capacity: 60, refillPerSec: 1 }
 let analyticsLimiter = new TokenBucketLimiter()
+
+// Per IP: a visitor sends a report rarely; this stops a flood into the admin page and the support inbox.
+export const AR_REPORT_LIMIT = { capacity: 5, refillPerSec: 5 / 3600 }
+let reportLimiter = new TokenBucketLimiter()
+
+/** Test hook. */
+export function setArReportLimiter(l: TokenBucketLimiter): void {
+  reportLimiter = l
+}
 
 /** Test hook. */
 export function setArAnalyticsLimiter(l: TokenBucketLimiter): void {
@@ -120,6 +130,23 @@ export default async function arFeedRoutes(app: FastifyInstance) {
       const checked = checkHyperfyAnalyticsBatch(rest, Date.now())
       if (!checked.ok) return reply.status(400).send({ error: checked.error })
       return reply.send(await recordArBatch(space, platform, checked.batch))
+    },
+  )
+
+  app.post<{ Params: { id: string } }>(
+    '/api/ar/spaces/:id/report',
+    // Public for a published space; its own per-IP limit. The IP is only the limiter's key: it is not stored.
+    { logLevel: 'warn', config: { rateLimit: false } },
+    async (request, reply) => {
+      const limit = reportLimiter.take(`ip:${request.ip}`, 1, AR_REPORT_LIMIT.capacity, AR_REPORT_LIMIT.refillPerSec)
+      if (!limit.ok) return reply.status(429).send({ error: 'rate_limited', retryAfter: Math.ceil(limit.retryAfterMs / 1000) })
+      const space = await getSpace(request.params.id)
+      if (!space || !space.published) return reply.status(404).send({ error: 'not_found' })
+      const { reason, platform } = (request.body ?? {}) as Record<string, unknown>
+      if (typeof reason !== 'string' || !AR_REPORT_REASONS.has(reason)) return reply.status(400).send({ error: 'bad_reason' })
+      if (typeof platform !== 'string' || !AR_ANALYTICS_PLATFORMS.has(platform)) return reply.status(400).send({ error: 'bad_platform' })
+      await createArReport(space, reason, platform)
+      return reply.status(201).send({ ok: true })
     },
   )
 }

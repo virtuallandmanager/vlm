@@ -996,6 +996,18 @@ export const arDevices = pgTable('ar_devices', {
   userIdx: index('ar_devices_user_idx').on(t.userId),
 }))
 
+// A visitor's report of a published space (VLM Spaces menu → Report this space). Stores no identity: no IP, no device.
+export const arReports = pgTable('ar_reports', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  spaceId: uuid('space_id').notNull().references(() => arSpaces.id, { onDelete: 'cascade' }),
+  reason: text('reason').notNull(), // offensive | unsafe | spam | other
+  platform: text('platform').notNull(), // ar-quest
+  status: text('status').notNull().default('open'), // open | resolved
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  statusIdx: index('ar_reports_status_idx').on(t.status, t.createdAt),
+}))
+
 // ── Password Reset Tokens ───────────────────────────────────────────────────
 
 export const passwordResetTokens = pgTable('password_reset_tokens', {

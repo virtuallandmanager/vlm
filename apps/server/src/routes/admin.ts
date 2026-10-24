@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
-import { eq, sql, ilike, or, count } from 'drizzle-orm'
+import { eq, sql, ilike, or, count, desc } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   users,
@@ -9,10 +9,13 @@ import {
   mediaAssets,
   subscriptions,
   catalogPacks,
+  arReports,
+  arSpaces,
 } from '../db/schema.js'
 import { listPacks } from '../catalog/packs.js'
 import { hostedWorldsBlockingDelete } from '../hyperfy/hosting.js'
 import { authenticate } from '../middleware/auth.js'
+import { isUuid } from '../auth/scene-from.js'
 
 /**
  * Reusable preHandler that ensures the authenticated user has the 'admin' role.
@@ -42,6 +45,41 @@ export default async function adminRoutes(app: FastifyInstance) {
     if (!row) return reply.status(404).send({ error: 'Pack not found' })
     const [pack] = await listPacks(row.id)
     return reply.send({ pack })
+  })
+
+  // ── VLM Spaces reports: what visitors sent from the Quest menu ──
+
+  app.get<{ Querystring: { status?: string } }>('/api/admin/ar-reports', async (request, reply) => {
+    const status = request.query.status ?? 'open'
+    if (!['open', 'resolved', 'all'].includes(status)) return reply.status(400).send({ error: 'bad_status' })
+    const reports = await db
+      .select({
+        id: arReports.id,
+        spaceId: arReports.spaceId,
+        spaceName: arSpaces.name,
+        sceneId: arSpaces.sceneId,
+        sceneName: scenes.name,
+        reason: arReports.reason,
+        platform: arReports.platform,
+        status: arReports.status,
+        createdAt: arReports.createdAt,
+      })
+      .from(arReports)
+      .innerJoin(arSpaces, eq(arSpaces.id, arReports.spaceId))
+      .innerJoin(scenes, eq(scenes.id, arSpaces.sceneId))
+      .where(status === 'all' ? undefined : eq(arReports.status, status))
+      .orderBy(desc(arReports.createdAt))
+      .limit(200)
+    return reply.send({ reports })
+  })
+
+  app.patch<{ Params: { id: string }; Body: { status?: unknown } }>('/api/admin/ar-reports/:id', async (request, reply) => {
+    const status = request.body?.status
+    if (status !== 'open' && status !== 'resolved') return reply.status(400).send({ error: 'bad_status' })
+    if (!isUuid(request.params.id)) return reply.status(404).send({ error: 'not_found' })
+    const [row] = await db.update(arReports).set({ status }).where(eq(arReports.id, request.params.id)).returning({ id: arReports.id, status: arReports.status })
+    if (!row) return reply.status(404).send({ error: 'not_found' })
+    return reply.send({ report: row })
   })
 
   // ── GET /api/admin/stats — system-wide statistics ─────────────────────────

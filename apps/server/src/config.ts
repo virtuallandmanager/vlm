@@ -31,6 +31,24 @@ export function assertProductionSecrets(c: { mode: VLMMode; nodeEnv?: string; jw
   }
 }
 
+/**
+ * Normalise comma-separated SHA-256 certificate fingerprints to Google's assetlinks format (`AA:BB:...`): accepts any
+ * case, with or without colons or spaces. Entries that aren't 64 hex digits are dropped, warned by index only.
+ */
+export function normalizeCertFingerprints(raw: string): string[] {
+  const out: string[] = []
+  raw.split(',').forEach((entry, i) => {
+    const hex = entry.replace(/[\s:]/g, '').toUpperCase()
+    if (!hex) return
+    if (!/^[0-9A-F]{64}$/.test(hex)) {
+      console.warn(`[vlm-config] ANDROID_CERT_SHA256 entry ${i} is not a SHA-256 fingerprint, ignoring it`)
+      return
+    }
+    out.push(hex.match(/../g)!.join(':'))
+  })
+  return out
+}
+
 export const config = {
   mode,
 
@@ -43,7 +61,11 @@ export const config = {
   // ── Android app links (/.well-known/assetlinks.json) ─────────────────────
   androidAppPackage: env('ANDROID_APP_PACKAGE') || 'gg.vlm.spaces',
   // Release-key SHA-256 fingerprints, comma-separated; empty until the app is signed
-  androidCertSha256: (env('ANDROID_CERT_SHA256') || '').split(',').map((s) => s.trim()).filter(Boolean),
+  androidCertSha256: normalizeCertFingerprints(env('ANDROID_CERT_SHA256') || ''),
+
+  // ── VLM Spaces reports ───────────────────────────────────────────────────
+  // Where a visitor's "Report this space" is emailed (best-effort; reports are always stored and shown on /admin)
+  arReportsEmail: env('AR_REPORTS_EMAIL') || 'support@vlm.gg',
 
   // ── Database ────────────────────────────────────────────────────────────
   databaseUrl: env('DATABASE_URL')!,
