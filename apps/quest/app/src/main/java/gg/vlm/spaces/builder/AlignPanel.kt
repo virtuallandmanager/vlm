@@ -29,11 +29,27 @@ fun alignLines(state: AlignState, extra: List<String>): List<String> =
     }
 
 /**
+ * The lines for the ring in view ([RingCheckFlow.view]), top to bottom: the check or refusal line, the second-ring
+ * suggestion, then the save [status]. The first is the warning when [RingCheckView.warn].
+ */
+fun ringCheckLines(view: RingCheckView, status: String?): List<String> = listOfNotNull(view.line, view.suggestion, status)
+
+/**
  * The align panel: a view of [AlignFlow]'s [state]. [notes] are the printed-size message and, once saved, the floor
- * warnings. **Save alignment** shows once the scene is placed. Not wired into the menu yet (Task 10).
+ * warnings. **Save alignment** shows once the scene is placed. When a ring of the floor is in view, [ring] (with the
+ * flow's [ringStatus]) adds its check lines and **Record this ring** / **Re-record this ring**, which call
+ * [onRecordRing]. Not wired into the menu yet (Task 10).
  */
 @Composable
-fun AlignPanel(state: AlignState, notes: List<String>, onSave: () -> Unit, onClose: () -> Unit) {
+fun AlignPanel(
+    state: AlignState,
+    notes: List<String>,
+    onSave: () -> Unit,
+    onClose: () -> Unit,
+    ring: RingCheckView? = null,
+    ringStatus: String? = null,
+    onRecordRing: () -> Unit = {},
+) {
   val lines = alignLines(state, notes)
   MaterialTheme(colorScheme = darkColorScheme()) {
     Column(
@@ -43,6 +59,16 @@ fun AlignPanel(state: AlignState, notes: List<String>, onSave: () -> Unit, onClo
       Text(lines.first(), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
       lines.drop(1).forEach { Text(it, color = Color(0xFFE0E0E0), fontSize = 15.sp) }
       if (state is AlignState.Placed || state is AlignState.Refused) Button(onClick = onSave) { Text("Save alignment") }
+      if (ring != null) {
+        val warnColor = if (ring.warn) Color(0xFFFFB74D) else Color(0xFFE0E0E0)
+        val lines = ringCheckLines(ring, ringStatus)
+        lines.forEach { Text(it, color = if (it == ring.line) warnColor else Color(0xFFE0E0E0), fontSize = 15.sp) }
+        when (ring.button) {
+          RingButton.Record -> Button(onClick = onRecordRing) { Text("Record this ring") }
+          RingButton.ReRecord -> Button(onClick = onRecordRing) { Text("Re-record this ring") }
+          RingButton.None -> Unit
+        }
+      }
       OutlinedButton(onClick = onClose) { Text(if (state is AlignState.Saved) "Done" else "Cancel") }
     }
   }

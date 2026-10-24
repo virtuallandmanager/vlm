@@ -213,6 +213,12 @@ Do these on the Quest 3 with a debug build when convenient. Each says what resul
 3. **Wrist pose.** Log `scene.getControllerPoseAtTime(true, time)` with hands only and with a controller, and `JointType.LEFT_HAND_WRIST` after `setBodyTrackingJointSet(JointSet.DEFAULT)`. Is `pose` valid and tracked, and does it follow the wrist? If yes, "⋯" can move to the left wrist.
 4. **Mesh without a grabbable.** Does a plain entity with a mesh (no `Grabbable`) produce `Select` events with hit points, or does it need a collider component?
 
+### Setting up rings (builders)
+
+- Tape rings flat on a wall the headset has scanned. A sign standing in front of a wall, turned 25–60° from it, can line up wrong.
+- The printed-size check covers prints from 75% to 125% of the recorded size.
+- Record a floor's other rings within 4 m of the ring the scene was last anchored from; further away, align from that ring instead.
+
 ### Owner checks (alignment, plan 3 Task 5)
 
 Not yet run (no headset was connected). The align panel and its flow are built but not reachable from the menu until Task 10, so for now drive them from a debug hook or wait for Task 10. Use a test space on a local or staging server, with a floor whose ring has no saved pose.
@@ -223,3 +229,14 @@ Not yet run (no headset was connected). The align panel and its flow are built b
 - [ ] Reload as a visitor and look at the same ring: the scene lines up with where it was aligned.
 - [ ] A floor whose recorded height doesn't match the ring's height above the real floor shows "Floor height doesn't match <floor> (<h> m): check the floor".
 - [ ] A ring printed at 92% (or any size off by over 3%) says "This ring looks about 8% smaller than its recorded size: was it printed at 100%?"; one at 100% says nothing. Check the depth range against a tape measure from the headset to the wall.
+
+### Owner checks (record, check and re-record rings, plan 3 Task 6)
+
+Not yet run (no headset was connected). The panel is built but not reachable from the menu until Task 10, so drive it from a debug hook or wait for Task 10. Use a floor that has been aligned from its first ring, with a second printed ring on the same floor that has no saved pose.
+
+- [ ] Look at the second ring from under 4 m of the first: **Record this ring** shows. Press it: "Ring saved".
+- [ ] Look at the second ring again: "This ring is <d> cm and <a>° from where it should be" reads a few cm and under 1°, and no **Re-record this ring** button shows.
+- [ ] Look at the second ring from the first: the check line reads the same few cm.
+- [ ] Move the printed ring 6 cm (or turn it over 1°): the line shows as a warning with **Re-record this ring**. Press it: only that ring's pose changes.
+- [ ] A ring with no pose more than 4 m (straight line) from the last anchor shows "Too far from the last ring to record accurately: walk back, or align from this ring instead" and no Record button.
+- [ ] A floor with a single ring shows "Add a second ring on this floor so visitors stay lined up".
