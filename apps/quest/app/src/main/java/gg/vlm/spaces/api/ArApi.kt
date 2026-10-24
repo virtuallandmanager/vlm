@@ -130,6 +130,30 @@ class ArApi(baseUrl: String, private val userAgentVersion: Int = 1) {
   private fun secretBody(secret: String) = buildJsonObject { put("secret", secret) }
 
   private suspend fun <T> device(path: String, body: JsonObject, parse: (String) -> T?): BuilderCall<T> =
+      send("POST", path, null, body, parse)
+
+  /**
+   * A builder call made with an AR pass ([token]); see `DeviceAuth.withPass`. 2xx is parsed by [parse] (a body of
+   * "" for a 204). A non-2xx status for which [answer] gives a value is [BuilderCall.Ok] with it (for answers
+   * that are part of the route's contract, like a 409); other statuses map as for the device routes.
+   */
+  internal suspend fun <T> bearer(
+      method: String,
+      path: String,
+      token: String,
+      body: JsonObject?,
+      answer: (status: Int, body: String) -> T? = { _, _ -> null },
+      parse: (String) -> T?,
+  ): BuilderCall<T> = send(method, path, token, body, parse, answer)
+
+  private suspend fun <T> send(
+      method: String,
+      path: String,
+      token: String?,
+      body: JsonObject?,
+      parse: (String) -> T?,
+      answer: (Int, String) -> T? = { _, _ -> null },
+  ): BuilderCall<T> =
       withContext(Dispatchers.IO) {
         val c =
             try {
@@ -138,18 +162,23 @@ class ArApi(baseUrl: String, private val userAgentVersion: Int = 1) {
               return@withContext BuilderCall.Offline
             }
         try {
-          c.requestMethod = "POST"
+          c.requestMethod = method
           c.connectTimeout = 15_000
           c.readTimeout = 15_000
           c.useCaches = false
-          c.doOutput = true
           c.setRequestProperty("X-VLM-App-Version", userAgentVersion.toString())
-          c.setRequestProperty("Content-Type", "application/json")
-          c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+          if (!token.isNullOrEmpty()) c.setRequestProperty("Authorization", "Bearer $token")
+          if (body != null) {
+            c.doOutput = true
+            c.setRequestProperty("Content-Type", "application/json")
+            c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+          }
           val status = c.responseCode
           val text =
               (if (status in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
+          val given = if (status in 200..299) null else answer(status, text)
           when {
+            given != null -> BuilderCall.Ok(given)
             status in 200..299 -> parse(text)?.let { BuilderCall.Ok(it) } ?: BuilderCall.Failed(status)
             status == 401 ->
                 when (errorCode(text)) {

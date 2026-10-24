@@ -1,0 +1,180 @@
+package gg.vlm.spaces.builder
+
+import gg.vlm.spaces.Vec3
+import gg.vlm.spaces.api.ArApi
+import gg.vlm.spaces.api.BuilderCall
+import gg.vlm.spaces.api.MarkerPose
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
+
+/** How the server took a draft. */
+sealed interface DraftAnswer {
+  data object Ok : DraftAnswer
+  /** Someone else is moving that item. */
+  data class Held(val name: String) : DraftAnswer
+  /** Live drafts are down; saving still works. */
+  data object Unavailable : DraftAnswer
+}
+
+data class PlacedItem(val elementId: String, val instanceId: String)
+
+/**
+ * The calls the builder makes with an AR pass. Each takes the [spaceId] the pass is for and goes through
+ * [DeviceAuth.withPass].
+ */
+class BuilderApi(private val api: ArApi, private val auth: DeviceAuth) {
+  /** `GET /api/scenes/:id`: the scene with its presets, for preset and booking info. */
+  suspend fun scene(spaceId: String, sceneId: String): BuilderCall<JsonObject> =
+      call(spaceId, "GET", "/api/scenes/${enc(sceneId)}", null, ::obj)
+
+  /** `PUT /api/instances/:id`: the shared transform (Everywhere). */
+  suspend fun updateInstance(spaceId: String, id: String, t: ItemTransform): BuilderCall<Unit> =
+      call(spaceId, "PUT", "/api/instances/${enc(id)}", transformBody(t)) { Unit }
+
+  /** `PUT /api/ar/spaces/:id/adjustments/:instanceId`: this place's offset (Just this place). */
+  suspend fun putAdjustment(spaceId: String, instanceId: String, a: Adjustment): BuilderCall<Unit> =
+      call(
+          spaceId,
+          "PUT",
+          "/api/ar/spaces/${enc(spaceId)}/adjustments/${enc(instanceId)}",
+          buildJsonObject {
+            put("dPosition", vec(a.dPosition))
+            put("dRotation", vec(a.dRotation))
+            put("scaleFactor", vec(a.scaleFactor))
+          },
+      ) { Unit }
+
+  suspend fun deleteAdjustment(spaceId: String, instanceId: String): BuilderCall<Unit> =
+      call(spaceId, "DELETE", "/api/ar/spaces/${enc(spaceId)}/adjustments/${enc(instanceId)}", null) { Unit }
+
+  /** `POST /api/ar/drafts`: a live preview of a move; 409 `held` and 503 are answers, not failures. */
+  suspend fun draft(spaceId: String, sk: String, element: String, t: ItemTransform): BuilderCall<DraftAnswer> =
+      auth.withPass(spaceId) { token ->
+        api.bearer(
+            "POST",
+            "/api/ar/drafts",
+            token,
+            buildJsonObject {
+              put("element", element)
+              put("sk", sk)
+              put("position", vec(t.position))
+              put("rotation", vec(t.rotation))
+              put("scale", vec(t.scale))
+            },
+            answer = { status, body ->
+              when {
+                status == 409 && errorOf(body) == "held" -> DraftAnswer.Held(holderOf(body))
+                status == 503 -> DraftAnswer.Unavailable
+                else -> null
+              }
+            },
+        ) {
+          DraftAnswer.Ok
+        }
+      }
+
+  /** `POST /api/ar/drafts/end`. */
+  suspend fun endDraft(spaceId: String, sk: String, saved: Boolean): BuilderCall<Unit> =
+      call(
+          spaceId,
+          "POST",
+          "/api/ar/drafts/end",
+          buildJsonObject {
+            put("sk", sk)
+            put("saved", saved)
+          },
+      ) { Unit }
+
+  /** `GET /api/scenes/:sceneId/library`: the models and images the builder can place. */
+  suspend fun library(spaceId: String, sceneId: String): BuilderCall<JsonObject> =
+      call(spaceId, "GET", "/api/scenes/${enc(sceneId)}/library", null, ::obj)
+
+  suspend fun placeModel(spaceId: String, presetId: String, name: String, src: String, t: ItemTransform): BuilderCall<PlacedItem> =
+      place(spaceId, presetId, "model", name, buildJsonObject { put("modelSrc", src) }, t)
+
+  suspend fun placeImage(spaceId: String, presetId: String, name: String, src: String, t: ItemTransform): BuilderCall<PlacedItem> =
+      place(spaceId, presetId, "image", name, buildJsonObject { put("textureSrc", src) }, t)
+
+  /** `PUT /api/ar/markers/:id/pose`: the alignment of a ring; the answer is the server's warnings. */
+  suspend fun savePose(spaceId: String, markerId: String, pose: MarkerPose, heightAboveFloorM: Double): BuilderCall<List<String>> =
+      call(
+          spaceId,
+          "PUT",
+          "/api/ar/markers/${enc(markerId)}/pose",
+          buildJsonObject {
+            put("x", pose.x)
+            put("y", pose.y)
+            put("z", pose.z)
+            put("headingDeg", pose.headingDeg)
+            put("heightAboveFloorM", heightAboveFloorM)
+          },
+      ) { body ->
+        (obj(body)?.get("warnings") as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content } ?: emptyList()
+      }
+
+  /**
+   * The element, then its instance, as the Hyperfy HUD does. If the instance can't be made the element is deleted
+   * again so no empty one is left behind.
+   */
+  private suspend fun place(
+      spaceId: String,
+      presetId: String,
+      type: String,
+      name: String,
+      properties: JsonObject,
+      t: ItemTransform,
+  ): BuilderCall<PlacedItem> {
+    val el =
+        call(
+            spaceId,
+            "POST",
+            "/api/presets/${enc(presetId)}/elements",
+            buildJsonObject {
+              put("type", type)
+              put("name", name)
+              put("properties", properties)
+            },
+        ) { idIn(it, "element") }
+    val elementId = (el as? BuilderCall.Ok)?.value ?: return el.asFailure()
+    val inst = call(spaceId, "POST", "/api/elements/${enc(elementId)}/instances", transformBody(t)) { idIn(it, "instance") }
+    if (inst is BuilderCall.Ok) return BuilderCall.Ok(PlacedItem(elementId, inst.value))
+    call(spaceId, "DELETE", "/api/elements/${enc(elementId)}", null) { Unit }
+    return inst.asFailure()
+  }
+
+  private suspend fun <T> call(spaceId: String, method: String, path: String, body: JsonObject?, parse: (String) -> T?): BuilderCall<T> =
+      auth.withPass(spaceId) { token -> api.bearer(method, path, token, body, parse = parse) }
+
+  private fun transformBody(t: ItemTransform) =
+      buildJsonObject {
+        put("position", vec(t.position))
+        put("rotation", vec(t.rotation))
+        put("scale", vec(t.scale))
+      }
+
+  private fun vec(v: Vec3) =
+      buildJsonObject {
+        put("x", v.x)
+        put("y", v.y)
+        put("z", v.z)
+      }
+
+  private fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
+
+  private fun obj(body: String): JsonObject? = runCatching { Json.parseToJsonElement(body).jsonObject }.getOrNull()
+
+  private fun errorOf(body: String) = (obj(body)?.get("error") as? JsonPrimitive)?.content
+
+  private fun holderOf(body: String) = (obj(body)?.get("holderName") as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""
+
+  /** `{ [key]: { id } }`. */
+  private fun idIn(body: String, key: String): String? =
+      ((obj(body)?.get(key) as? JsonObject)?.get("id") as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+  @Suppress("UNCHECKED_CAST") private fun <T> BuilderCall<*>.asFailure(): BuilderCall<T> = this as BuilderCall<T>
+}
