@@ -21,14 +21,12 @@ import org.junit.Test
  * task ringTestset).
  */
 class RingDetectorTest {
-  private class Image(val gray: ByteArray, val width: Int, val height: Int)
-
   private class Entry(
       val name: String,
       val case: String,
       val expectNone: Boolean,
       val markers: List<JsonObject>,
-      val image: Image,
+      val image: TestsetImage,
   )
 
   private fun ids(found: List<RingDetection>) = found.map { "0x" + it.id.toString(16) }
@@ -197,7 +195,7 @@ class RingDetectorTest {
   }
 
   /** Nearest-neighbour downscale by [factor]. */
-  private fun downscale(img: Image, factor: Double): Image {
+  private fun downscale(img: TestsetImage, factor: Double): TestsetImage {
     val w = (img.width * factor).toInt()
     val h = (img.height * factor).toInt()
     val out = ByteArray(w * h)
@@ -205,7 +203,7 @@ class RingDetectorTest {
       val sy = minOf((y / factor).toInt(), img.height - 1)
       for (x in 0 until w) out[y * w + x] = img.gray[sy * img.width + minOf((x / factor).toInt(), img.width - 1)]
     }
-    return Image(out, w, h)
+    return TestsetImage(out, w, h)
   }
 
   /**
@@ -249,7 +247,7 @@ class RingDetectorTest {
     }
   }
 
-  private fun crop(img: Image, side: String, cut: Int): Image {
+  private fun crop(img: TestsetImage, side: String, cut: Int): TestsetImage {
     val (x0, y0, x1, y1) =
         when (side) {
           "left" -> listOf(cut, 0, img.width, img.height)
@@ -260,39 +258,11 @@ class RingDetectorTest {
     val w = x1 - x0
     val out = ByteArray(w * (y1 - y0))
     for (y in y0 until y1) System.arraycopy(img.gray, y * img.width + x0, out, (y - y0) * w, w)
-    return Image(out, w, y1 - y0)
+    return TestsetImage(out, w, y1 - y0)
   }
 
   companion object {
     private val dir = File("../../ring-marker/testset")
-
-    /**
-     * Reads an 8-bit grey PNG with javax.imageio.ImageIO. Unit tests compile against android.jar,
-     * which lacks javax.imageio and java.awt, so they are reached reflectively (they exist at run
-     * time on the JVM).
-     */
-    private fun load(file: File): Image {
-      val image = Class.forName("java.awt.image.BufferedImage")
-      val rasterType = Class.forName("java.awt.image.Raster")
-      val io = Class.forName("javax.imageio.ImageIO")
-      val bi = io.getMethod("read", File::class.java).invoke(null, file)!!
-      val width = image.getMethod("getWidth").invoke(bi) as Int
-      val height = image.getMethod("getHeight").invoke(bi) as Int
-      val raster = image.getMethod("getRaster").invoke(bi)!!
-      require(rasterType.getMethod("getNumBands").invoke(raster) == 1) { "$file is not grey" }
-      val px =
-          rasterType
-              .getMethod(
-                  "getPixels",
-                  Int::class.java,
-                  Int::class.java,
-                  Int::class.java,
-                  Int::class.java,
-                  IntArray::class.java,
-              )
-              .invoke(raster, 0, 0, width, height, null) as IntArray
-      return Image(ByteArray(px.size) { px[it].toByte() }, width, height)
-    }
 
     private val manifest: List<Entry> by lazy {
       val root = Json.parseToJsonElement(File(dir, "manifest.json").readText()).jsonArray
@@ -304,7 +274,7 @@ class RingDetectorTest {
             o["case"]!!.jsonPrimitive.content,
             o["expect"]!!.jsonPrimitive.content == "none",
             o["markers"]!!.jsonArray.map { it.jsonObject },
-            load(File(dir, o["file"]!!.jsonPrimitive.content)),
+            loadTestsetImage(File(dir, o["file"]!!.jsonPrimitive.content)),
         )
       }
     }

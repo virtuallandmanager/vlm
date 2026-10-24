@@ -63,13 +63,16 @@ data class WallPlane(val centre: Vector3, val normal: Vector3, val halfWidth: Fl
  *
  * [tilt] (the circle's own tilt, from [circleNormals]) checks that the marker is on that wall: a wall counts only if its
  * into-room normal is within [TILT_TOLERANCE_DEG] of one of the tilt's normals, and of the walls that count the one
- * that agrees best wins (near an inside corner or a door frame the perpendicular wall is just as close). Null when no
- * wall is close, or none agrees with the tilt. A null [tilt] skips the check and takes the nearest wall (the
- * developer panel, which has no single frame's outline).
+ * that agrees best wins (near an inside corner or a door frame the perpendicular wall is just as close). The tilt's
+ * false normal sits at twice the view angle from the true one, so seen at about 45° from an inside corner it lands on
+ * the perpendicular wall: when a wall facing another way agrees within [TILT_AMBIGUOUS_DEG] of the best, the pick
+ * would be decided by measurement error, so there is no heading (the visitor is asked to look around and moves).
+ * Null when no wall is close, none agrees with the tilt, or two walls agree about as well. A null [tilt] skips the
+ * check and takes the nearest wall (the developer panel, which has no single frame's outline).
  */
 fun wallHeading(marker: Vector3, walls: List<WallPlane>, viewer: Vector3, tilt: List<Vec3>?): Double? {
-  var best: Vec3? = null
-  var bestScore = Double.MAX_VALUE
+  // Each wall that counts: its into-room normal and its score (lower is better).
+  val passing = ArrayList<Pair<Vec3, Double>>()
   for (w in walls) {
     val n = flatUnit(w.normal) ?: continue
     val dx = (marker.x - w.centre.x).toDouble()
@@ -83,12 +86,13 @@ fun wallHeading(marker: Vector3, walls: List<WallPlane>, viewer: Vector3, tilt: 
     val score =
         if (tilt == null) gap
         else tilt.minOf { angleDeg(inward, it) }.takeIf { it <= TILT_TOLERANCE_DEG } ?: continue
-    if (score < bestScore) {
-      bestScore = score
-      best = inward
-    }
+    passing += inward to score
   }
-  val n = best ?: return null
+  val (n, bestScore) = passing.minByOrNull { it.second } ?: return null
+  if (tilt != null &&
+      passing.any { (m, score) -> angleDeg(m, n) > TILT_AMBIGUOUS_DEG && score - bestScore < TILT_AMBIGUOUS_DEG }) {
+    return null
+  }
   val deg = Math.toDegrees(atan2(n.x, n.z))
   return if (deg <= -180.0) deg + 360.0 else deg // (-180, 180]; a -0.0 x would give -180
 }
@@ -150,7 +154,13 @@ fun scaleIntrinsics(k: CameraIntrinsics, refWidth: Int, refHeight: Int, width: I
 const val WALL_TOLERANCE_M = 0.10
 
 /** How far a wall's normal may be from the circle's tilt (see [circleNormals]) and still count as the marker's wall. */
-const val TILT_TOLERANCE_DEG = 30.0
+const val TILT_TOLERANCE_DEG = 20.0
+
+/**
+ * Two walls facing ways more than this apart that both agree with the tilt, the runner-up by less than this more than
+ * the best, leave the marker's wall in doubt (see [wallHeading]).
+ */
+const val TILT_AMBIGUOUS_DEG = 15.0
 
 /** An outline rounder than this (minor / major) says nothing about which way the circle is tilted. */
 const val ROUND_RATIO = 0.97

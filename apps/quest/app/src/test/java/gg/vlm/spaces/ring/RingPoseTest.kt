@@ -6,11 +6,17 @@ import com.meta.spatial.core.Vector3
 import gg.vlm.spaces.Vec3
 import gg.vlm.spaces.Quat
 import gg.vlm.spaces.sdk
+import java.io.File
 import kotlin.math.acos
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -224,5 +230,57 @@ class RingPoseTest {
     assertEquals(180.0, wallHeading(Vector3(1.95f, 1.5f, 2.93f), walls, eye.sdk(), tilt)!!, 1e-4)
     // Only the perpendicular wall near: 90° from the camera ray, so no heading.
     assertNull(wallHeading(onA.sdk(), listOf(walls[1]), eye.sdk(), tilt))
+  }
+
+  @Test
+  fun aCornerSeenAt45DegreesIsAmbiguous() {
+    // The false normal is 90° from wall A: on wall B. Both agree; which wins would be down to measurement error.
+    val onA = Vec3(1.95, 1.5, 3.0)
+    val eye = eyeAt(onA, wallA, 1.2, 45.0)
+    val (head, d) = view(eye, onA, wallA)
+    assertNull(wallHeading(onA.sdk(), walls, eye.sdk(), circleNormals(d, k, head)))
+  }
+
+  @Test
+  fun aCornerSeenAt20Or60DegreesTakesTheMarkersWall() {
+    val onA = Vec3(1.95, 1.5, 3.0)
+    for (off in listOf(20.0, 60.0)) {
+      val eye = eyeAt(onA, wallA, 1.2, off)
+      val (head, d) = view(eye, onA, wallA)
+      assertEquals("$off°", 180.0, wallHeading(onA.sdk(), walls, eye.sdk(), circleNormals(d, k, head))!!, 1e-4)
+    }
+  }
+
+  @Test
+  fun thePerpendicularWallAloneOutsideTheGateGivesNoHeading() {
+    // The marker's own wall A is unscanned; wall B is 5 cm away. Seen at 30° or 60°, the false normal (at twice the
+    // view angle from A's) is 30° from B: outside the 20° gate. (From about 35° to 55° it is within 20° of B, and B
+    // is taken: one wall alone can't be told from the marker's own.)
+    val onA = Vec3(1.95, 1.5, 3.0)
+    for (off in listOf(30.0, 60.0)) {
+      val eye = eyeAt(onA, wallA, 1.2, off)
+      val (head, d) = view(eye, onA, wallA)
+      assertNull("$off°", wallHeading(onA.sdk(), listOf(walls[1]), eye.sdk(), circleNormals(d, k, head)))
+    }
+  }
+
+  @Test
+  fun aDetectedObliqueRingHasItsTrueNormalAmongTheCandidates() {
+    // The test set turns the plaque about the vertical by angle_deg, its +x edge away from the camera: in camera space
+    // (y down) the normal toward the camera is (sin a, 0, -cos a), and with no head or lens pose world space has the
+    // same x and z.
+    val dir = File("../../ring-marker/testset")
+    val entries = Json.parseToJsonElement(File(dir, "manifest.json").readText()).jsonArray.map { it.jsonObject }
+    for (name in listOf("range-RING140-1.2-30", "range-RING140-1.2-45")) {
+      val e = entries.single { it["name"]!!.jsonPrimitive.content == name }
+      val a = Math.toRadians(e["markers"]!!.jsonArray.single().jsonObject["angle_deg"]!!.jsonPrimitive.double)
+      val truth = Vec3(sin(a), 0.0, -cos(a))
+      val img = loadTestsetImage(File(dir, e["file"]!!.jsonPrimitive.content))
+      val d = RingDetector().detectFrame(img.gray, img.width, img.height).detections.single()
+      val tilt = circleNormals(d, k, Pose())
+      assertEquals(name, 2, tilt.size)
+      val best = tilt.minOf { c -> Math.toDegrees(acos((c.x * truth.x + c.y * truth.y + c.z * truth.z).coerceIn(-1.0, 1.0))) }
+      assertTrue("$name: $best° from the true normal", best < 5.0)
+    }
   }
 }
