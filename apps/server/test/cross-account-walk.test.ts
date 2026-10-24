@@ -137,6 +137,7 @@ const CASES: Case[] = [
   { route: 'GET /api/ar/markers/:id/files', url: (f) => `/api/ar/markers/${f.arMarker.id}/files?format=svg` },
   { route: 'GET /api/ar/markers/by-code/:code', url: () => `/api/ar/markers/by-code/${ringCodeOf(123456)}` },
   { route: 'POST /api/ar/spaces/:id/analytics', url: (f) => `/api/ar/spaces/${f.arSpace.id}/analytics`, body: () => ({ v: 1, platform: 'ar-quest', events: [{ type: 'enter', playerId: 'p1', t: Date.now() }] }) },
+  { route: 'POST /api/ar/spaces/:id/report', url: (f) => `/api/ar/spaces/${f.arSpace.id}/report`, body: () => ({ reason: 'spam', platform: 'ar-quest' }) },
   { route: 'GET /api/ar/spaces/:id/feed', url: (f) => `/api/ar/spaces/${f.arSpace.id}/feed` },
   // AR headsets (B's shared headset; A guesses the secret)
   { route: 'POST /api/ar/devices/:id/pass', url: (f) => `/api/ar/devices/${f.arDevice.id}/pass`, body: (f) => ({ secret: 'guess', spaceId: f.arSpace.id }) },
@@ -219,6 +220,7 @@ const CASES: Case[] = [
   { route: 'DELETE /api/admin/users/:userId', url: (f) => `/api/admin/users/${f.b.id}` },
   { route: 'DELETE /api/admin/orgs/:orgId', url: (f) => `/api/admin/orgs/${f.org.id}` },
   { route: 'PATCH /api/admin/catalog/packs/:id', url: () => '/api/admin/catalog/packs/any-pack', body: () => ({ enabled: false }) },
+  { route: 'PATCH /api/admin/ar-reports/:id', url: () => `/api/admin/ar-reports/${AD_ID}`, body: () => ({ status: 'resolved' }) },
   { route: 'PATCH /api/admin/ads/:id', url: () => `/api/admin/ads/${AD_ID}`, body: () => ({ status: 'paused' }) },
   { route: 'POST /api/admin/ads/:id/creatives', url: () => `/api/admin/ads/${AD_ID}/creatives`, body: () => ({ mediaAssetId: AD_ID, shape: '1:1' }) },
   { route: 'DELETE /api/admin/ads/:id/creatives/:creativeId', url: () => `/api/admin/ads/${AD_ID}/creatives/${AD_ID}` },
