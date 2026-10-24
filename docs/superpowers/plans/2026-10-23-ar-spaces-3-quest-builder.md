@@ -150,14 +150,15 @@ git commit -m "feat(quest): builder session rules for personal and shared headse
 - `data class ItemTransform(position: Vec3, rotation: Vec3, scale: Vec3)` (scene coordinates, degrees).
 - `enum class Scope { EVERYWHERE, JUST_HERE }`.
 - `class DraftStore(clock: () -> Long)`:
-  - `fun edit(sk: String, element: String, base: ItemTransform, now: ItemTransform, scope: Scope)` — records or updates a draft; `base` is the shared (unadjusted) transform from the feed.
+  - `fun edit(sk: String, element: String, base: ItemTransform, adjustment: Adjustment?, now: ItemTransform, scope: Scope)` — records or updates a draft. `base` is the shared (unadjusted) transform: the feed's `arShared` for an instance with `arAdjusted: true`, else the instance's own transform. `adjustment` is the feed's `arAdjustment` (null when none). `now` is what the builder sees (shared plus adjustment).
   - `fun drafts(): List<Draft>`; `data class Draft(sk, element, base, now, scope, editedAtMs)`.
-  - `fun saveOps(): List<SaveOp>` — `sealed interface SaveOp { UpdateInstance(sk, ItemTransform); PutAdjustment(sk, Adjustment); EndDraft(sk, saved: Boolean) }`. `EVERYWHERE` → `UpdateInstance(now)`; `JUST_HERE` → `PutAdjustment` with `dPosition = now.position − base.position`, `dRotation = now.rotation − base.rotation`, `scaleFactor = now.scale / base.scale` (component-wise; a zero base component gives factor 1).
+  - `fun saveOps(): List<SaveOp>` — `sealed interface SaveOp { UpdateInstance(sk, ItemTransform); PutAdjustment(sk, Adjustment); EndDraft(sk, saved: Boolean) }`. `EVERYWHERE` → `UpdateInstance(shared)` where, if the item has an adjustment, `shared = now` with the adjustment taken back out (position − dPosition, rotation − dRotation, scale ÷ scaleFactor) so this place keeps its offset and other places get the move; with no adjustment, `shared = now`. `JUST_HERE` → `PutAdjustment` with `dPosition = now.position − base.position`, `dRotation = now.rotation − base.rotation`, `scaleFactor = now.scale / base.scale` (component-wise; a zero base component gives factor 1).
   - `fun revert(): List<SaveOp>` — `EndDraft(saved = false)` for each draft, then clears.
   - `fun dropMissing(present: Set<String>)` — forgets drafts whose `sk` left the feed (Review Focus 3).
   - `fun expire(olderThanMs: Long)`.
 - Done = Save if there are drafts and the builder confirms, else Revert; then leave builder mode.
-- A draft is sent to `draft(...)` at most 10 times a second while an item moves (the server allows 20).
+- A draft is sent to `draft(...)` at most 10 times a second while an item moves (the server allows 20). Drafts relay only for `EVERYWHERE` edits; for `JUST_HERE` the headset may still send them, but saving the adjustment ends the draft on the server (plan 1 final fix), so `saveOps` for `JUST_HERE` needs no `EndDraft`.
+- Tests also cover: an Everywhere save of an adjusted item writes `now` minus the adjustment; a Just-here edit of an adjusted item replaces the adjustment with the full offset from `base` (not the increment).
 
 - [ ] **Step 1: Write the failing tests**
 
