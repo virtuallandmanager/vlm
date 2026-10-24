@@ -1,3 +1,5 @@
+import type { SerializedScene } from './hyperfy.js'
+
 export type ArMarkerView = {
   id: string
   ringId: number
@@ -25,3 +27,12 @@ export type ArSpaceView = {
   published: boolean
   floors: ArFloorView[]
 }
+
+export const AR_FEED = { version: 1, holdMs: 25_000 } as const
+
+/** The space as the headset gets it: the scene it belongs to is the feed's business, not the app's. */
+export type ArSpaceWire = Omit<ArSpaceView, 'sceneId'>
+
+export type ArFeedResponse = { v: 1; version: string; space: ArSpaceWire; scene: SerializedScene | null }
+
+export type ArMarkerLookup = { spaceId: string; floorId: string; markerId: string; spaceName: string; whereText: string | null }

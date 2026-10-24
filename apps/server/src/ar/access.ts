@@ -1,3 +1,4 @@
+import { parseRingCode } from 'vlm-shared'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { arFloors, arMarkers, arSpaces } from '../db/schema.js'
@@ -39,3 +40,39 @@ const idParam = (r: { params?: unknown }) => (r.params as Record<string, unknown
 export const fromSpace: SceneFrom = (r) => spaceScene(idParam(r) as string)
 export const fromFloor: SceneFrom = (r) => floorScene(idParam(r) as string)
 export const fromMarker: SceneFrom = (r) => markerScene(idParam(r) as string)
+
+export type MarkerByCode = {
+  sceneId: string
+  spaceId: string
+  floorId: string
+  markerId: string
+  spaceName: string
+  whereText: string | null
+  published: boolean
+}
+
+/** Finds a marker by its typed code (any case; I/L as 1, O as 0). */
+export async function markerByCode(code: string): Promise<MarkerByCode | null> {
+  const ringId = parseRingCode(code)
+  if (ringId === null) return null
+  const [row] = await db
+    .select({
+      sceneId: arSpaces.sceneId,
+      spaceId: arSpaces.id,
+      floorId: arFloors.id,
+      markerId: arMarkers.id,
+      spaceName: arSpaces.name,
+      whereText: arMarkers.whereText,
+      published: arSpaces.published,
+    })
+    .from(arMarkers)
+    .innerJoin(arFloors, eq(arFloors.id, arMarkers.floorId))
+    .innerJoin(arSpaces, eq(arSpaces.id, arFloors.spaceId))
+    .where(eq(arMarkers.ringId, ringId))
+  return row ?? null
+}
+
+export const markerSceneByCode: SceneFrom = async (r) => {
+  const code = (r.params as Record<string, unknown> | undefined)?.code
+  return typeof code === 'string' ? ((await markerByCode(code))?.sceneId ?? null) : null
+}

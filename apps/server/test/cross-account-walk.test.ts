@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { ringCodeOf } from 'vlm-shared'
 import { db } from '../src/db/connection.js'
 import {
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
@@ -126,6 +127,8 @@ const CASES: Case[] = [
   { route: 'POST /api/ar/floors/:id/markers', url: (f) => `/api/ar/floors/${f.arFloor.id}/markers`, body: () => ({}) },
   { route: 'PUT /api/ar/markers/:id', url: (f) => `/api/ar/markers/${f.arMarker.id}`, body: () => ({ whereText: 'pwned' }) },
   { route: 'DELETE /api/ar/markers/:id', url: (f) => `/api/ar/markers/${f.arMarker.id}` },
+  { route: 'GET /api/ar/markers/by-code/:code', url: () => `/api/ar/markers/by-code/${ringCodeOf(123456)}` },
+  { route: 'GET /api/ar/spaces/:id/feed', url: (f) => `/api/ar/spaces/${f.arSpace.id}/feed` },
   // deploy
   { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.scene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET }) },
   { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.aScene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET, walletId: f.wallet.id }) },

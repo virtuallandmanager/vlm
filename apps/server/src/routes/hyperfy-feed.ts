@@ -6,7 +6,7 @@ import { hyperfyWorlds } from '../db/schema.js'
 import { findWorldByKey } from '../hyperfy/worlds.js'
 import { recordHyperfyBatch } from '../hyperfy/analytics.js'
 import { sceneSnapshot } from '../hyperfy/snapshot.js'
-import { onSceneTouched } from '../realtime/bus.js'
+import { longPoll } from '../http/long-poll.js'
 import { TokenBucketLimiter } from '../analytics/limiter.js'
 
 let holdMs: number = HYPERFY_FEED.holdMs
@@ -56,95 +56,9 @@ export default async function hyperfyFeedRoutes(app: FastifyInstance) {
       }
 
       const { sceneId } = world
-      const since = request.query.since
-      const answer = async (): Promise<{ done: boolean; body?: HyperfyFeedResponse }> => {
+      return longPoll(request, reply, sceneId, request.query.since, holdMs, async () => {
         const snap = await sceneSnapshot(sceneId)
-        if (!snap) return { done: true }
-        return { done: !since || snap.version !== since, body: { v: HYPERFY_FEED.version, ...snap } }
-      }
-      const send = (r: { body?: HyperfyFeedResponse }) =>
-        r.body ? reply.send(r.body) : reply.status(404).send({ error: 'scene_not_found' })
-      if (!since) return send(await answer())
-
-      // Listen for the client leaving first, then subscribe before the first read, so a touch landing after
-      // that read can't be missed.
-      let closed = false
-      let onClose = () => {
-        closed = true
-      }
-      const closeListener = () => onClose()
-      request.raw.on('close', closeListener)
-      let onTouch = () => {}
-      let unsubscribe: () => Promise<void>
-      try {
-        unsubscribe = await onSceneTouched(sceneId, () => onTouch())
-      } catch (err) {
-        request.raw.off('close', closeListener)
-        request.log.error(err)
-        return reply.status(500).send({ error: 'feed_failed' })
-      }
-      let touched = false
-      onTouch = () => {
-        touched = true
-      }
-      const release = () => {
-        request.raw.off('close', closeListener)
-        void unsubscribe()
-      }
-
-      let first: Awaited<ReturnType<typeof answer>>
-      try {
-        first = await answer()
-      } catch (err) {
-        release()
-        throw err
-      }
-      if (first.done || closed) {
-        release()
-        return closed ? undefined : send(first)
-      }
-
-      // Hold. Resolves once, whichever of touch / timeout / client close comes first.
-      return new Promise<void>((resolve) => {
-        let finished = false
-        let checking = false
-        let again = false
-        const finish = (fn: () => unknown) => {
-          if (finished) return
-          finished = true
-          clearTimeout(timer)
-          release()
-          Promise.resolve(fn()).finally(resolve)
-        }
-        const check = async () => {
-          // Serialize re-reads; a touch that lands mid-read triggers one more read afterwards.
-          if (checking) { again = true; return }
-          checking = true
-          try {
-            do {
-              again = false
-              const r = await answer()
-              if (r.done) return finish(() => send(r))
-            } while (again && !finished)
-          } catch (err) {
-            request.log.error(err)
-            finish(() => reply.status(500).send({ error: 'feed_failed' }))
-          } finally {
-            checking = false
-          }
-        }
-        const timer = setTimeout(() => {
-          // Hold expired: answer with the current state (same version unless a touch was missed).
-          finish(async () => {
-            const r = await answer().catch(() => null)
-            if (r) return send(r)
-            return reply.status(500).send({ error: 'feed_failed' })
-          })
-        }, holdMs)
-        onTouch = () => void check()
-        onClose = () => finish(() => undefined)
-        // A touch during the first read may have come after it read the scene: read once more.
-        if (touched) void check()
+        return snap ? { version: snap.version, body: { v: HYPERFY_FEED.version, ...snap } satisfies HyperfyFeedResponse } : null
       })
     },
   )
