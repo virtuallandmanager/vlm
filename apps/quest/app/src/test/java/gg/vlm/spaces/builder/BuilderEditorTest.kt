@@ -695,4 +695,94 @@ class BuilderEditorTest {
     editor.carryTo(start.copy(position = v(2.0, 1.0, 0.0)))
     assertEquals(2.0, editor.pickedItem()!!.second.position.x, 1e-9)
   }
+
+  // ── whole-branch review fixes ──
+
+  @Test
+  fun `done's save with a draft edited again while it ran stays in builder mode with the message`() {
+    loaded()
+    moveTo("in1", 4.0)
+    editor.done()
+    remote.during = { if (remote.calls.last().startsWith("update")) editor.setExact(TransformMode.MOVE, Axis.X, 5.0) }
+    editor.confirmDone(save = true)
+    remote.during = null
+    assertEquals(0, left)
+    assertEquals("Couldn't save 1 change: try again", editor.view().message)
+    assertEquals(5.0, store.draft("in1")!!.now.position.x, 1e-9)
+    // Saving again takes the newer edit and leaves.
+    editor.done()
+    editor.confirmDone(save = true)
+    assertEquals(1, left)
+    assertTrue(store.drafts().isEmpty())
+  }
+
+  @Test
+  fun `a plain save that keeps a re-edited draft shows no failure`() {
+    loaded()
+    moveTo("in1", 4.0)
+    remote.during = { if (remote.calls.last().startsWith("update")) editor.setExact(TransformMode.MOVE, Axis.X, 5.0) }
+    editor.save()
+    remote.during = null
+    assertNull(editor.view().message)
+  }
+
+  @Test
+  fun `closing ends every draft still in the store`() {
+    loaded()
+    moveTo("in1", 4.0)
+    moveTo("in2", 3.5)
+    remote.calls.clear()
+    editor.discard()
+    assertEquals(listOf("end in1 false", "end in2 false"), remote.calls)
+    assertTrue(store.drafts().isEmpty())
+    assertNull(editor.picked)
+  }
+
+  @Test
+  fun `done's save ends a draft that appeared after it began, on leaving`() {
+    loaded()
+    moveTo("in1", 4.0)
+    editor.done()
+    // While in1's update is under way, chair gets a draft (an edit the save's ops don't have).
+    remote.during = {
+      if (remote.calls.last() == "update in1 4.0") {
+        remote.during = null
+        editor.pick("in2")
+        editor.setExact(TransformMode.MOVE, Axis.X, 3.5)
+      }
+    }
+    editor.confirmDone(save = true)
+    assertEquals(0, left)
+    assertEquals("Couldn't save 1 change: try again", editor.view().message)
+    remote.calls.clear()
+    editor.done()
+    editor.confirmDone(save = false)
+    assertEquals(listOf("end in2 false"), remote.calls)
+    assertEquals(1, left)
+  }
+
+  @Test
+  fun `clearing an adjustment that is already gone ends the draft`() {
+    loaded()
+    editor.resetToShared("in2")
+    remote.notFound += "clear"
+    remote.calls.clear()
+    editor.save()
+    assertEquals(listOf("clear in2", "end in2 false"), remote.calls)
+  }
+
+  @Test
+  fun `the scope switch is locked while a reset to shared is unsaved`() {
+    loaded()
+    editor.pick("in2")
+    editor.resetToShared("in2")
+    assertTrue(editor.view().scopeLocked)
+    assertTrue(hudModel(editor.view(), HudTab.LAYOUT, emptyList()).bar!!.scopeLocked)
+    editor.setScope(Scope.EVERYWHERE)
+    assertEquals(Scope.JUST_HERE, editor.view().scope)
+    remote.calls.clear()
+    editor.save()
+    assertEquals(listOf("clear in2"), remote.calls) // still a cleared adjustment, not a shared move
+    assertFalse(editor.view().scopeLocked)
+  }
 }

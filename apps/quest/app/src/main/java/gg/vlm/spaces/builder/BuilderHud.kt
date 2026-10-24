@@ -219,8 +219,18 @@ private fun PickedBar(bar: PickBar, actions: BuilderHudActions) {
     }
   }
   Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-    FilterChip(selected = bar.scope == Scope.EVERYWHERE, onClick = { actions.setScope(Scope.EVERYWHERE) }, label = { Text(SCOPE_EVERYWHERE) })
-    FilterChip(selected = bar.scope == Scope.JUST_HERE, onClick = { actions.setScope(Scope.JUST_HERE) }, label = { Text(SCOPE_JUST_HERE) })
+    FilterChip(
+        selected = bar.scope == Scope.EVERYWHERE,
+        onClick = { actions.setScope(Scope.EVERYWHERE) },
+        label = { Text(SCOPE_EVERYWHERE) },
+        enabled = !bar.scopeLocked,
+    )
+    FilterChip(
+        selected = bar.scope == Scope.JUST_HERE,
+        onClick = { actions.setScope(Scope.JUST_HERE) },
+        label = { Text(SCOPE_JUST_HERE) },
+        enabled = !bar.scopeLocked,
+    )
   }
 }
 

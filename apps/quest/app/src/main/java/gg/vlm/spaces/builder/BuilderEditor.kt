@@ -40,6 +40,8 @@ data class EditorView(
     val mode: TransformMode,
     /** The Everywhere / Just this place switch, for the picked item. */
     val scope: Scope,
+    /** The switch can't be changed: the picked item has a Reset to shared waiting to be saved. */
+    val scopeLocked: Boolean,
     /** Items with unsaved changes. */
     val edited: Set<String>,
     val message: String?,
@@ -130,6 +132,7 @@ class BuilderEditor(
           pickedTransform = session.draft,
           mode = session.mode,
           scope = scope,
+          scopeLocked = picked?.let(::resetPending) ?: false,
           edited = store.drafts().map { it.sk }.toSet(),
           message = message,
           saving = saving,
@@ -203,8 +206,12 @@ class BuilderEditor(
     changed()
   }
 
-  /** The switch, for the picked item; an existing draft of it changes scope too. */
+  /**
+   * The switch, for the picked item; an existing draft of it changes scope too. Locked while the item's Reset to
+   * shared is unsaved: as Everywhere it would save as a move of the shared transform, not a cleared adjustment.
+   */
   fun setScope(s: Scope) {
+    if (picked?.let(::resetPending) == true) return
     scope = s
     val sk = picked
     val d = sk?.let(store::draft)
@@ -293,6 +300,12 @@ class BuilderEditor(
     changed()
   }
 
+  /** [sk]'s draft clears its adjustment when saved: a Just this place edit back at the shared transform. */
+  private fun resetPending(sk: String): Boolean {
+    val d = store.draft(sk) ?: return false
+    return d.scope == Scope.JUST_HERE && d.adjustment != null && TransformMath.sameTransform(d.now, d.base)
+  }
+
   /** Sends held-back drafts that are due. Call every frame. */
   fun tick() {
     for (sk in throttle.due()) store.draft(sk)?.let(::send)
@@ -350,7 +363,10 @@ class BuilderEditor(
     return DoneStep.LEFT
   }
 
-  /** The answer to [DONE_CONFIRM]: save and leave once all saved (a failure stays, with a message), or revert and leave. */
+  /**
+   * The answer to [DONE_CONFIRM]: save and leave once all saved, or revert and leave. Anything left unsaved (a failed
+   * call, or an edit made while the save ran) stays in builder mode with the failure message.
+   */
   fun confirmDone(save: Boolean) {
     if (save) {
       if (!startSaving()) return
@@ -358,7 +374,15 @@ class BuilderEditor(
       cancelDrag()
       // The dropped drag's unsent pose is gone, so a failed save must show the store's pose, not the session's.
       picked?.let(::reselect)
-      launch { if (runSave()) leave() }
+      launch {
+        val left = runSave() ?: return@launch
+        if (left == 0) {
+          leave()
+        } else {
+          message = saveFailedMessage(left)
+          changed()
+        }
+      }
     } else {
       confirmingDone = false
       revert()
@@ -373,16 +397,25 @@ class BuilderEditor(
   }
 
   private fun leave() {
+    discard()
+    onLeave?.invoke()
+  }
+
+  /**
+   * Builder mode is closing: every draft still in the store is ended unsaved and draft ends that failed after their
+   * save get a last try, all best effort (the server lets a hold lapse anyway). Ignores a save in progress.
+   */
+  fun discard() {
     pending.clear()
     cancelDrag()
     session.clear()
     picked = null
     message = null
     saved.clear()
-    // Last chance for draft ends that failed after their save; best effort (holds lapse anyway).
-    runEnds(endsToRetry.map { (sk, s) -> SaveOp.EndDraft(sk, s) })
+    val ops = store.revert()
+    ops.forEach { throttle.reset(it.sk) }
+    runEnds(ops + endsToRetry.map { (sk, s) -> SaveOp.EndDraft(sk, s) })
     endsToRetry.clear()
-    onLeave?.invoke()
   }
 
   /** The shared transform and adjustment an edit of [item] starts from: what its last save left, else the feed's. */
@@ -445,12 +478,13 @@ class BuilderEditor(
   }
 
   /**
-   * Runs the save ops; true when every item saved. An item counts as saved once its save call (instance, adjustment
-   * or cleared adjustment) succeeds; a draft end that fails after it is kept in [endsToRetry] and is all that is sent
+   * Runs the save ops and returns how many changes are still unsaved (failed, or edited again while the save ran),
+   * or null when a save was already running. An item counts as saved once its save call (instance, adjustment or
+   * cleared adjustment) succeeds; a draft end that fails after it is kept in [endsToRetry] and is all that is sent
    * for it next time.
    */
-  private suspend fun runSave(): Boolean {
-    if (running) return false
+  private suspend fun runSave(): Int? {
+    if (running) return null
     running = true
     saving = true
     for ((sk, s) in endsToRetry.entries.toList()) if (exec(SaveOp.EndDraft(sk, s)) is BuilderCall.Ok) endsToRetry.remove(sk)
@@ -475,7 +509,7 @@ class BuilderEditor(
     saving = false
     if (failed > 0) message = saveFailedMessage(failed)
     changed()
-    return failed == 0
+    return store.drafts().size
   }
 
   /** What saving [d] with [ops] left on the server. */
@@ -496,8 +530,16 @@ class BuilderEditor(
       when (op) {
         is SaveOp.UpdateInstance -> remote.updateInstance(op.sk, op.transform)
         is SaveOp.PutAdjustment -> remote.putAdjustment(op.sk, op.adjustment)
-        // Already gone (cleared elsewhere, or never there) is what was asked for.
-        is SaveOp.DeleteAdjustment -> remote.deleteAdjustment(op.sk).let { if (it == BuilderCall.NotFound) BuilderCall.Ok(Unit) else it }
+        // Already gone (cleared elsewhere, or never there) is what was asked for. The server ends the draft only when
+        // it clears one (204), so after a 404 it is ended here, best effort.
+        is SaveOp.DeleteAdjustment ->
+            when (val r = remote.deleteAdjustment(op.sk)) {
+              BuilderCall.NotFound -> {
+                remote.endDraft(op.sk, false)
+                BuilderCall.Ok(Unit)
+              }
+              else -> r
+            }
         is SaveOp.EndDraft -> remote.endDraft(op.sk, op.saved)
       }
 

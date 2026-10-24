@@ -135,7 +135,14 @@ data class HudRow(val sk: String, val name: String, val kind: String, val adjust
 data class ExactRow(val label: String, val mode: TransformMode, val values: List<String>)
 
 /** The bar shown while an item is picked. */
-data class PickBar(val name: String, val mode: TransformMode, val scope: Scope, val exact: List<ExactRow>)
+data class PickBar(
+    val name: String,
+    val mode: TransformMode,
+    val scope: Scope,
+    val exact: List<ExactRow>,
+    /** The scope switch is locked (a Reset to shared is waiting to be saved). */
+    val scopeLocked: Boolean = false,
+)
 
 /** What the builder HUD shows; built by [hudModel], drawn by `BuilderHud`. */
 data class BuilderHudModel(
@@ -188,7 +195,7 @@ fun hudModel(view: EditorView, tab: HudTab, warnings: List<String>): BuilderHudM
       banner = BUILDER_BANNER,
       warnings = warnings,
       rows = view.items.map { HudRow(it.sk, it.name, kindLabel(it.element), it.adjusted, it.sk == view.picked, it.sk in view.edited) },
-      bar = picked?.let { PickBar(it.name, view.mode, view.scope, exactRows(view.pickedTransform ?: it.now)) },
+      bar = picked?.let { PickBar(it.name, view.mode, view.scope, exactRows(view.pickedTransform ?: it.now), view.scopeLocked) },
       message = view.message,
       canSave = view.edited.isNotEmpty() && !view.saving,
       saving = view.saving,
