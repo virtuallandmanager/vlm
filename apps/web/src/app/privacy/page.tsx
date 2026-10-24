@@ -48,7 +48,7 @@ export default function PrivacyPage() {
 
         <h2>VLM Spaces on Quest</h2>
         <p>
-          VLM Spaces is the Meta Quest app that shows a VLM space in your room. It talks to vlm.gg, and only to vlm.gg.
+          VLM Spaces is the Meta Quest app that shows a VLM space in your room. It talks to vlm.gg. Pictures, videos and 3D models in a space load from wherever its owner hosts them, which may be outside vlm.gg; those hosts see the headset's network address like any website would.
         </p>
         <ul className="list-disc pl-5">
           <li>

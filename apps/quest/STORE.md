@@ -139,6 +139,7 @@ Based on `docs/superpowers/specs/2026-10-22-ar-builder-and-visitor-modes-design.
 - **Collected from builders only:** pairing (`/api/ar/pair...`, the headset model as the device name, and a SHA-256 hash of the device secret; the headset proves who it is with a secret kept in its encrypted storage, sent over HTTPS to the pairing, pass and spaces calls, and the server stores only a hash of it), edits to the scene, ring alignments, and draft previews.
 - **Not collected:** camera images, room scans or room geometry, microphone, location, contacts, name, email, Meta account id, advertising id.
 - **Camera and spatial data** are processed on the headset only: rings are found from the passthrough camera, and walls and surfaces are used for occlusion and snapping.
-- **Shared with third parties:** none (the app talks only to vlm.gg).
+- **Media hosts:** Pictures, videos and 3D models in a space load from wherever its owner hosts them, which may be outside vlm.gg; those hosts see the headset's network address like any website would. The app sends them no account, token or visit data.
+- **Shared with third parties:** no user data. The media hosts above get the headset's network address with each request, as any website does.
 - **Encrypted in transit:** yes (release builds have no cleartext).
 - **Deletion:** visit events carry no identity; builders can revoke a paired headset on vlm.gg.
