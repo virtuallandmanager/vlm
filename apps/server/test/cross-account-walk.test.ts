@@ -134,6 +134,7 @@ const CASES: Case[] = [
   { route: 'PUT /api/ar/spaces/:id/adjustments/:instanceId', url: (f) => `/api/ar/spaces/${f.arSpace.id}/adjustments/${f.instance.id}`, body: () => ({ dPosition: { x: 9, y: 9, z: 9 }, dRotation: { x: 0, y: 0, z: 0 }, scaleFactor: { x: 1, y: 1, z: 1 } }) },
   { route: 'DELETE /api/ar/spaces/:id/adjustments/:instanceId', url: (f) => `/api/ar/spaces/${f.arSpace.id}/adjustments/${f.instance.id}` },
   { route: 'DELETE /api/ar/markers/:id', url: (f) => `/api/ar/markers/${f.arMarker.id}` },
+  { route: 'GET /api/ar/markers/:id/files', url: (f) => `/api/ar/markers/${f.arMarker.id}/files?format=svg` },
   { route: 'GET /api/ar/markers/by-code/:code', url: () => `/api/ar/markers/by-code/${ringCodeOf(123456)}` },
   { route: 'POST /api/ar/spaces/:id/analytics', url: (f) => `/api/ar/spaces/${f.arSpace.id}/analytics`, body: () => ({ v: 1, platform: 'ar-quest', events: [{ type: 'enter', playerId: 'p1', t: Date.now() }] }) },
   { route: 'GET /api/ar/spaces/:id/feed', url: (f) => `/api/ar/spaces/${f.arSpace.id}/feed` },

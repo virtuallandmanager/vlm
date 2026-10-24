@@ -3,6 +3,7 @@ import { RING_DEFAULT_DIAMETER_MM, randomRingId, ringCodeOf, type ArFloorView, t
 import { db } from '../db/connection.js'
 import { arFloors, arMarkers, arSpaces } from '../db/schema.js'
 import { publishSceneTouched } from '../realtime/bus.js'
+import { isUuid } from '../auth/scene-from.js'
 import { floorScene, markerScene, spaceScene } from './access.js'
 
 type MarkerRow = typeof arMarkers.$inferSelect
@@ -19,6 +20,13 @@ const markerView = (m: MarkerRow): ArMarkerView => ({
     ? { x: m.poseX, y: m.poseY, z: m.poseZ, headingDeg: m.headingDeg }
     : null,
 })
+
+/** One marker's view by id, or null when it does not exist. */
+export async function getMarker(id: string): Promise<ArMarkerView | null> {
+  if (!isUuid(id)) return null
+  const [row] = await db.select().from(arMarkers).where(eq(arMarkers.id, id))
+  return row ? markerView(row) : null
+}
 
 const floorView = (f: FloorRow, markers: MarkerRow[]): ArFloorView => ({
   id: f.id,

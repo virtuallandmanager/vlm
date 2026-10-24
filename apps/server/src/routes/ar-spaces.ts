@@ -1,13 +1,24 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { RING_MAX_DIAMETER_MM } from 'vlm-shared'
+import { RING_MAX_DIAMETER_MM, ringMarkerSvg } from 'vlm-shared'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess } from '../auth/permissions.js'
 import { fromParam, type SceneFrom } from '../auth/scene-from.js'
 import { fromFloor, fromMarker, fromSpace, mayBuild } from '../ar/access.js'
-import { addFloor, addMarker, createSpace, deleteFloor, deleteMarker, deleteSpace, listSpaces, updateFloor, updateMarker, updateSpace } from '../ar/spaces.js'
+import { buildMarkerMeshes, MOUNTINGS, paperPdf, stl, threeMf, type Mounting } from '../ar/printfiles.js'
+import { addFloor, addMarker, getMarker, createSpace, deleteFloor, deleteMarker, deleteSpace, listSpaces, updateFloor, updateMarker, updateSpace } from '../ar/spaces.js'
 
 const MIN_DIAMETER_MM = 60
+
+const FILE_FORMATS = {
+  'stl-base': { ext: 'stl', type: 'model/stl' },
+  'stl-raised': { ext: 'stl', type: 'model/stl' },
+  '3mf': { ext: '3mf', type: 'model/3mf' },
+  pdf: { ext: 'pdf', type: 'application/pdf' },
+  svg: { ext: 'svg', type: 'image/svg+xml' },
+} as const
+type FileFormat = keyof typeof FILE_FORMATS
+const isFileFormat = (v: unknown): v is FileFormat => typeof v === 'string' && Object.hasOwn(FILE_FORMATS, v)
 
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0 && v.length <= 200
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
@@ -121,5 +132,31 @@ export default async function arSpaceRoutes(app: FastifyInstance) {
   app.delete<{ Params: { id: string } }>('/api/ar/markers/:id', cfg(fromMarker), async (request, reply) => {
     if (!(await guard(request, reply, fromMarker))) return
     return (await deleteMarker(request.params.id)) ? reply.status(204).send() : missing(reply)
+  })
+
+  /** Print files for a marker: STL parts, the two-filament 3MF, the paper PDF or the SVG. Mounting shapes the base (STL base and 3MF). */
+  app.get<{ Params: { id: string }; Querystring: { format?: unknown; mounting?: unknown } }>('/api/ar/markers/:id/files', cfg(fromMarker), async (request, reply) => {
+    if (!(await guard(request, reply, fromMarker))) return
+    const { format, mounting = 'none' } = request.query
+    if (!isFileFormat(format) || !MOUNTINGS.includes(mounting as Mounting)) return bad(reply)
+    const marker = await getMarker(request.params.id)
+    if (!marker) return missing(reply)
+    const { ringId, diameterMm } = marker
+    let body: Buffer | string
+    if (format === 'svg') body = ringMarkerSvg(ringId, diameterMm)
+    else if (format === 'pdf') {
+      try { body = paperPdf(ringId, diameterMm) } catch (err) {
+        if (err instanceof Error && err.message === 'too_large_for_paper') return bad(reply, 'too_large_for_paper')
+        throw err
+      }
+    } else {
+      const { base, raised } = buildMarkerMeshes(ringId, diameterMm, mounting as Mounting)
+      body = format === '3mf' ? threeMf(base, raised) : stl(format === 'stl-base' ? base : raised, `VLM ring marker ${marker.code} ${format === 'stl-base' ? 'base' : 'raised'}`)
+    }
+    const { ext, type } = FILE_FORMATS[format]
+    return reply
+      .header('content-type', type)
+      .header('content-disposition', `attachment; filename="vlm-ring-${marker.code}-${diameterMm}mm.${ext}"`)
+      .send(body)
   })
 }
