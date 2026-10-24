@@ -228,7 +228,7 @@ git commit -m "feat(quest): align a floor from its ring, with floor-height and p
 - `fun mayRecord(ringWorld: Vec3, lastAnchorWorld: Vec3): Boolean`.
 - Panel, when a builder looks at a ring of the current floor:
   - no pose yet → **Record this ring** (refused past `RECORD_RADIUS_M` with "Too far from the last ring to record accurately: walk back, or align from this ring instead");
-  - has a pose → the check line with the exact copy, and if `warn`, **Re-record this ring** (saves only this ring's pose);
+  - has a pose → the check line with the exact copy, and if `warn`, **Re-record this ring** (saves only this ring's pose; refused past `RECORD_RADIUS_M` like Record, since drift from the anchor is what the check measures);
   - a floor with one ring → "Add a second ring on this floor so visitors stay lined up".
 
 - [ ] **Step 1: Write the failing tests** — 3 cm / 0.5° → no warn; 6 cm → warn; 1.2° → warn; `mayRecord` at 3.9 m true, 4.1 m false; check copy formats `d` to whole centimetres and `a` to one decimal.
