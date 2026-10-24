@@ -61,7 +61,8 @@ fun snapExtents(element: String, s: Vec3): SnapExtents =
  * Where an item put down at [position] ([yawDeg] its heading) should sit against the room: flush on a wall, resting on
  * a floor or table. All in world space. Only surfaces whose plane is within [SNAP_DISTANCE_M] of the item (its back
  * face against a wall, its underside over a floor or table) and whose rectangle contains the item's projection count,
- * and the nearest wins. A wall puts the item [halfDepthM] off the plane along its normal and turns it to face along
+ * and the nearest wins. A wall's distance counts either side of the plane, so an item up to that far behind a wall
+ * (pushed through it) comes out to the wall's front face. A wall puts the item [halfDepthM] off the plane along its normal and turns it to face along
  * that normal (headings run from +Z toward +X); a floor or table sets the height to the surface plus [halfHeightM]
  * and leaves the heading.
  */

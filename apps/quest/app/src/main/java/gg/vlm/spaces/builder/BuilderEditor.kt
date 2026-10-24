@@ -208,7 +208,7 @@ class BuilderEditor(
    * axis, or [MoveLock.FREE] for the item itself.
    */
   fun beginDrag(handle: Handle, ray: Ray, lock: MoveLock = MoveLock.FREE) {
-    if (picked == null) return
+    if (picked == null || session.dragging) return
     if (handle is Handle.Body) session.setLock(lock)
     session.beginDrag(handle, ray, null)
   }

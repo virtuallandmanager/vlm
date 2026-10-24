@@ -113,11 +113,7 @@ class Picking(
   private val tracker = PressTracker(editor)
   private var pressedBy: Entity? = null
 
-  /** The controller carrying the picked item: [left] or right, with its last pose and thumbstick bits. */
-  private class Held(val left: Boolean, val carry: Carry, var pose: WorldPose, var thumbBits: Int)
-
-  private var held: Held? = null
-  private var lastGrips = 0
+  private val carry = CarryController(editor)
   private var isdk: IsdkSystem? = null
   private val observer: (PointerEvent) -> Unit = ::onPointer
 
@@ -131,24 +127,15 @@ class Picking(
     isdk = null
     tracker.release()
     pressedBy = null
-    if (held != null) editor.endDrag()
-    held = null
+    carry.cancel()
   }
 
   /** Call every frame while building. */
   fun tick() {
-    val hands = readHands()
-    val grips = hands.fold(0) { acc, h -> acc or (h.buttons and GRIPS) }
-    editor.setSnap(grips != 0 && held == null)
-    val h = held
-    if (h != null) carryFrame(h, hands, grips) else startCarry(hands, grips)
-    lastGrips = grips
+    carry.frame(readHands(), root(), pressedBy != null || tracker.dragging, surfaces)
     val source = pressedBy ?: return
     rayOf(source)?.let(tracker::move)
   }
-
-  /** A controller's buttons and pose this frame. */
-  private class Hand(val buttons: Int, val pose: WorldPose)
 
   private fun readHands(): List<Hand> {
     val out = ArrayList<Hand>()
@@ -156,74 +143,28 @@ class Picking(
       val c = e.getComponent<Controller>()
       if (!c.isActive) return@forEach
       val pose = e.tryGetComponent<Transform>()?.transform ?: return@forEach
-      out += Hand(c.buttonState, pose.world())
+      val b = c.buttonState
+      fun bit(mask: Int, flag: Int) = if (b and mask != 0) flag else 0
+      out +=
+          Hand(
+              e,
+              bit(ButtonBits.ButtonSqueezeL, GRIP_LEFT) or bit(ButtonBits.ButtonSqueezeR, GRIP_RIGHT),
+              bit(ButtonBits.ButtonThumbLL, THUMB_LEFT_LEFT) or bit(ButtonBits.ButtonThumbLR, THUMB_LEFT_RIGHT) or
+                  bit(ButtonBits.ButtonThumbRL, THUMB_RIGHT_LEFT) or bit(ButtonBits.ButtonThumbRR, THUMB_RIGHT_RIGHT),
+              pose.world(),
+          )
     }
     return out
   }
 
-  /** A grip newly pressed on a controller pointing at the picked item takes it. */
-  private fun startCarry(hands: List<Hand>, grips: Int) {
-    val r = root() ?: return
-    if (tracker.dragging || pressedBy != null) return
-    for (left in listOf(true, false)) {
-      val bit = squeeze(left)
-      if (grips and bit == 0 || lastGrips and bit != 0) continue
-      val hand = hands.firstOrNull { it.buttons and bit != 0 } ?: continue
-      val shown = editor.pickedItem()?.second ?: return
-      val ray = sceneRay(hand.pose.position, forward(hand.pose.rotation), r)
-      if (!rayNearItem(ray, shown.position, carryGrabRadius(shown.scale))) continue
-      val start = editor.beginCarry() ?: return
-      val carry = Carry().also { it.start(worldPoseOf(start, r), hand.pose) }
-      held = Held(left, carry, hand.pose, hand.buttons and thumbs(left))
-      return
-    }
-  }
-
-  /** One frame of a carry: the item follows the controller; the grip letting go puts it down. */
-  private fun carryFrame(h: Held, hands: List<Hand>, grips: Int) {
-    val r = root()
-    val picked = editor.pickedItem()
-    if (r == null || picked == null || !editor.dragging) {
-      held = null // the item was taken away (someone else is moving it) or the scene was lost
-      return
-    }
-    val (item, shown) = picked
-    val hand = hands.firstOrNull { it.buttons and squeeze(h.left) != 0 }
-    if (hand == null) {
-      // Snapping is off while the other controller's grip is held.
-      val snapOn = grips and squeeze(!h.left) == 0
-      editor.endCarry(landCarried(h.carry.update(h.pose), item.element, shown.scale, r, surfaces(), snapOn))
-      held = null
-      return
-    }
-    val bits = hand.buttons and thumbs(h.left)
-    val flicked = bits and h.thumbBits.inv()
-    h.thumbBits = bits
-    if (flicked and thumbRight(h.left) != 0) h.carry.turn(CARRY_TURN_DEGREES)
-    if (flicked and thumbLeft(h.left) != 0) h.carry.turn(-CARRY_TURN_DEGREES)
-    h.pose = hand.pose
-    editor.carryTo(landCarried(h.carry.update(hand.pose), item.element, shown.scale, r, surfaces(), snapOn = false))
-  }
-
-  private fun squeeze(left: Boolean) = if (left) ButtonBits.ButtonSqueezeL else ButtonBits.ButtonSqueezeR
-
-  private fun thumbLeft(left: Boolean) = if (left) ButtonBits.ButtonThumbLL else ButtonBits.ButtonThumbRL
-
-  private fun thumbRight(left: Boolean) = if (left) ButtonBits.ButtonThumbLR else ButtonBits.ButtonThumbRR
-
-  private fun thumbs(left: Boolean) = thumbLeft(left) or thumbRight(left)
-
-  private fun forward(q: Quat) = q.rotate(Vec3(0.0, 0.0, 1.0))
-
   private fun Pose.world() =
       WorldPose(Vec3(t.x.toDouble(), t.y.toDouble(), t.z.toDouble()), Quat(q.w.toDouble(), q.x.toDouble(), q.y.toDouble(), q.z.toDouble()))
-
-  private val GRIPS = ButtonBits.ButtonSqueezeL or ButtonBits.ButtonSqueezeR
 
   private fun onPointer(e: PointerEvent) {
     when (e.type) {
       PointerEventType.Select.id -> {
-        if (e.semanticType != SemanticType.Select.id) return
+        // A carry owns the item until its grip lets go; a trigger must not turn it into a ray drag.
+        if (e.semanticType != SemanticType.Select.id || carry.carrying) return
         val ray = rayOf(e.source) ?: return
         val hit: Entity? = e.hitInfo.entity
         val target =

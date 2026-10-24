@@ -650,4 +650,14 @@ class BuilderEditorTest {
     assertNull(editor.picked)
     assertFalse(editor.dragging)
   }
+
+  @Test
+  fun `a ray drag cannot begin over a carry`() {
+    loaded()
+    val start = carried()
+    editor.beginDrag(Handle.Body, down(1.0))
+    editor.drag(down(4.0))
+    editor.carryTo(start.copy(position = v(2.0, 1.0, 0.0)))
+    assertEquals(2.0, editor.pickedItem()!!.second.position.x, 1e-9)
+  }
 }

@@ -4,6 +4,7 @@ import gg.vlm.spaces.Vec3
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import kotlin.math.sqrt
 
 class SurfaceSnapTest {
   private fun v(x: Double, y: Double, z: Double) = Vec3(x, y, z)
@@ -119,5 +120,25 @@ class SurfaceSnapTest {
     val model = snapExtents("model", v(1.0, 2.0, 0.5))
     assertEquals(0.25, model.halfDepth, 0.0)
     assertEquals(0.0, model.halfHeight, 0.0)
+  }
+
+  @Test
+  fun `a wall at 45 degrees takes the item flush and faces out`() {
+    val h = sqrt(0.5)
+    val wall = Surface(SurfaceKind.WALL, v(0.0, 1.5, 0.0), v(h, 0.0, h), 3.0, 1.5)
+    val r = snap(v(0.05, 1.5, 0.05), 0.0, 0.01, 0.5, listOf(wall))
+    assertEquals(SurfaceKind.WALL, r.snappedTo)
+    assertEquals(45.0, r.yawDeg, 1e-9)
+    assertEquals(0.01 * h, r.position.x, 1e-9)
+    assertEquals(0.01 * h, r.position.z, 1e-9)
+    assertEquals(1.5, r.position.y, 1e-9)
+  }
+
+  @Test
+  fun `an item up to 15 cm behind a wall comes out to its front face`() {
+    val r = snap(v(0.0, 1.5, 2.1), 30.0, 0.01, 0.5, listOf(wallZ2))
+    assertEquals(SurfaceKind.WALL, r.snappedTo)
+    assertEquals(1.99, r.position.z, 1e-9)
+    assertEquals(180.0, r.yawDeg, 1e-9)
   }
 }
