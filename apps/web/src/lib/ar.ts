@@ -51,3 +51,8 @@ const ERRORS: Record<string, string> = {
 }
 
 export const friendlyArError = (code: string): string => ERRORS[code] ?? (code || 'Something went wrong')
+
+const REPORT_REASONS: Record<string, string> = { offensive: 'Offensive', unsafe: 'Unsafe', spam: 'Spam', other: 'Something else' }
+
+/** What a visitor picked in the headset's "Report this space", as the admin page names it. */
+export const reportReasonLabel = (reason: string): string => REPORT_REASONS[reason] ?? reason

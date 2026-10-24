@@ -1,7 +1,8 @@
 'use client'
 
 import { useAuth } from '@/lib/auth'
-import { useApi } from '@/lib/api'
+import { useApi, type AdminArReport } from '@/lib/api'
+import { reportReasonLabel } from '@/lib/ar'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 
@@ -44,6 +45,20 @@ export default function AdminPage() {
   const [orgsTotal, setOrgsTotal] = useState(0)
   const [orgsOffset, setOrgsOffset] = useState(0)
   const [orgsLoading, setOrgsLoading] = useState(false)
+
+  // Space reports (VLM Spaces visitors)
+  const [reports, setReports] = useState<AdminArReport[]>([])
+  const [reportsResolved, setReportsResolved] = useState(false)
+  const [reportsLoading, setReportsLoading] = useState(true)
+
+  useEffect(() => {
+    if (user?.role !== 'admin') return
+    setReportsLoading(true)
+    api.getAdminArReports(reportsResolved ? 'resolved' : 'open')
+      .then(data => setReports(data.reports))
+      .catch(err => console.error('Failed to load space reports:', err))
+      .finally(() => setReportsLoading(false))
+  }, [user?.role, reportsResolved])
 
   useEffect(() => {
     if (user?.role !== 'admin') return
@@ -88,6 +103,15 @@ export default function AdminPage() {
       )
     } catch (err) {
       alert(`Failed to update role: ${(err as Error).message}`)
+    }
+  }
+
+  const handleReportStatus = async (id: string, status: 'open' | 'resolved') => {
+    try {
+      await api.setAdminArReportStatus(id, status)
+      setReports((prev) => prev.filter((r) => r.id !== id))
+    } catch (err) {
+      alert(`Failed to update report: ${(err as Error).message}`)
     }
   }
 
@@ -165,6 +189,58 @@ export default function AdminPage() {
             </div>
           </>
         ) : null}
+      </div>
+
+      {/* Space reports */}
+      <div className="bg-gray-800 rounded-lg p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Space reports</h2>
+          <label className="flex items-center gap-2 text-sm text-gray-400">
+            <input type="checkbox" checked={reportsResolved} onChange={(e) => setReportsResolved(e.target.checked)} />
+            Show resolved
+          </label>
+        </div>
+        {reportsLoading ? (
+          <p className="text-sm text-gray-400">Loading reports...</p>
+        ) : reports.length === 0 ? (
+          <p className="text-sm text-gray-400">{reportsResolved ? 'No resolved reports.' : 'No open reports.'}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-400">
+                  <th className="py-1 pr-4 font-medium">Time</th>
+                  <th className="py-1 pr-4 font-medium">Space</th>
+                  <th className="py-1 pr-4 font-medium">Scene</th>
+                  <th className="py-1 pr-4 font-medium">Reason</th>
+                  <th className="py-1 pr-4 font-medium">Platform</th>
+                  <th className="py-1" />
+                </tr>
+              </thead>
+              <tbody>
+                {reports.map((r) => (
+                  <tr key={r.id} className="border-t border-gray-700">
+                    <td className="py-2 pr-4 whitespace-nowrap">{new Date(r.createdAt).toLocaleString()}</td>
+                    <td className="py-2 pr-4">{r.spaceName}</td>
+                    <td className="py-2 pr-4">
+                      <Link href={`/scenes?id=${r.sceneId}`} className="hover:underline">{r.sceneName}</Link>
+                    </td>
+                    <td className="py-2 pr-4">{reportReasonLabel(r.reason)}</td>
+                    <td className="py-2 pr-4">{r.platform}</td>
+                    <td className="py-2 text-right">
+                      <button
+                        onClick={() => handleReportStatus(r.id, reportsResolved ? 'open' : 'resolved')}
+                        className="rounded-lg bg-gray-700 px-3 py-1 hover:bg-gray-600"
+                      >
+                        {reportsResolved ? 'Reopen' : 'Resolved'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}

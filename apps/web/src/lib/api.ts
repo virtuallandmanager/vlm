@@ -29,6 +29,19 @@ export function mediaContentType(file: File): string {
 
 export type { AdminAdSpace } from 'vlm-shared'
 
+/** A visitor's report of a VLM Spaces space, as the admin page lists it. */
+export interface AdminArReport {
+  id: string
+  spaceId: string
+  spaceName: string
+  sceneId: string
+  sceneName: string
+  reason: string
+  platform: string
+  status: 'open' | 'resolved'
+  createdAt: string
+}
+
 export const MEDIA_UPLOAD_RULES = 'Only PNG, JPG, WebP, GIF (≤ 10 MB), GLB (≤ 50 MB) or MP4/WebM video (≤ 70 MB)'
 
 /** Human-readable message for a failed media upload. */
@@ -359,6 +372,10 @@ export function useApi() {
     setAdminAdPlacements: (id: string, elementIds: string[]) =>
       apiFetch<{ ad: AdminAd }>(`/api/admin/ads/${id}/placements`, { method: 'PUT', body: JSON.stringify({ elementIds }) }),
     getAdminAdSpaces: () => apiFetch<{ spaces: AdminAdSpace[] }>('/api/admin/ads/spaces'),
+    getAdminArReports: (status: 'open' | 'resolved' | 'all' = 'open') =>
+      apiFetch<{ reports: AdminArReport[] }>(`/api/admin/ar-reports?status=${status}`),
+    setAdminArReportStatus: (id: string, status: 'open' | 'resolved') =>
+      apiFetch<{ report: { id: string; status: string } }>(`/api/admin/ar-reports/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
     getAdminAdReport: (id: string) => apiFetch<AdReport>(`/api/admin/ads/${id}/report`),
     /** Links a model you uploaded, or a catalog model, into a scene's library (no storage used for catalog models). */
     addModelToSceneLibrary: (sceneId: string, assetItemId: string) =>

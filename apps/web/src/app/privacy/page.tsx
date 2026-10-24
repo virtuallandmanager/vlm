@@ -44,6 +44,8 @@ export default function PrivacyPage() {
         <p>
           Call <code className="rounded bg-gray-800 px-1.5 py-0.5 text-sm">POST /api/analytics/me/delete</code> with your session token. A
           dashboard control for this is coming. This removes your sessions, events and positions from every scene.
+          To ask for your data to be deleted, or for help, email{' '}
+          <a href="mailto:support@vlm.gg" className="text-blue-400 hover:underline">support@vlm.gg</a>.
         </p>
 
         <h2>VLM Spaces on Quest</h2>
@@ -58,6 +60,10 @@ export default function PrivacyPage() {
             or to each other.
           </li>
           <li>
+            <strong>A report, if you send one:</strong> a visitor can report a space from the menu. A report sends only the space, the reason you
+            chose, the app name and the time. Nothing that identifies you is sent or stored with it.
+          </li>
+          <li>
             <strong>Builders also send:</strong> the edits they make to a space, the alignment of a ring, and the pairing of their headset (including the headset model)
             with a VLM account. The headset proves who it is with a secret kept in its encrypted storage; the server stores only a hash of it.
           </li>
@@ -69,7 +75,9 @@ export default function PrivacyPage() {
         </ul>
         <p>
           Visit events follow the same retention as the rest of VLM analytics, above. They carry no identity, so there is nothing to look up
-          or delete for a single visitor. A builder can revoke a paired headset on vlm.gg, which stops it from editing.
+          or delete for a single visitor. A builder can revoke a paired headset on vlm.gg, which stops it from editing. To ask for your data to be
+          deleted, or for help, email{' '}
+          <a href="mailto:support@vlm.gg" className="text-blue-400 hover:underline">support@vlm.gg</a>.
         </p>
 
         <h2>Advertiser early access</h2>

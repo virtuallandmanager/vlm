@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { ArMarkerView, ArSpaceView } from 'vlm-shared'
-import { alignmentStatus, friendlyArError, resizeNote, shareUrl, spaceCodeFromPath, spaceReadiness } from './ar'
+import { alignmentStatus, friendlyArError, reportReasonLabel, resizeNote, shareUrl, spaceCodeFromPath, spaceReadiness } from './ar'
 
 const marker = (pose: ArMarkerView['pose']): ArMarkerView => ({ id: 'm', ringId: 1, code: '2E3D4C5', diameterMm: 140, whereText: null, pose })
 const space = (markers: ArMarkerView[]): ArSpaceView => ({
@@ -62,5 +62,12 @@ describe('spaceCodeFromPath', () => {
     expect(spaceCodeFromPath('/s/bad/')).toBeNull()
     expect(spaceCodeFromPath('/s/_/')).toBeNull()
     expect(spaceCodeFromPath('/')).toBeNull()
+  })
+})
+
+describe('reportReasonLabel', () => {
+  it('names the four reasons and passes an unknown one through', () => {
+    expect(['offensive', 'unsafe', 'spam', 'other'].map(reportReasonLabel)).toEqual(['Offensive', 'Unsafe', 'Spam', 'Something else'])
+    expect(reportReasonLabel('new-reason')).toBe('new-reason')
   })
 })
