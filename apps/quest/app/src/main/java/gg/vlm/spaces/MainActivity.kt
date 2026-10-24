@@ -439,7 +439,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     if (!calibrated) return "  no camera calibration: position unknown"
     val avg = markerPositions.getValue(id)
     val p = avg.mean() ?: return "  not in view"
-    val wall = wallHeading(p.sdk(), walls, head.t)?.let { "wall faces ${"%.1f".format(it)}°" } ?: "no wall"
+    val wall = wallHeading(p.sdk(), walls, head.t, null)?.let { "wall faces ${"%.1f".format(it)}°" } ?: "no wall"
     val spread = "±${"%.1f".format(avg.spread()!! * 100)} cm over ${avg.count}"
     return "  at (${"%.2f".format(p.x)}, ${"%.2f".format(p.y)}, ${"%.2f".format(p.z)}) m $spread · $wall"
   }

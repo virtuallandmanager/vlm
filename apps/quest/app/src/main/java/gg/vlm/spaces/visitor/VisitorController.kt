@@ -21,6 +21,7 @@ import gg.vlm.spaces.ring.RingCodec
 import gg.vlm.spaces.ring.RingDetection
 import gg.vlm.spaces.ring.WallPlane
 import gg.vlm.spaces.ring.cameraToWorld
+import gg.vlm.spaces.ring.circleNormals
 import gg.vlm.spaces.ring.markerInCamera
 import gg.vlm.spaces.ring.wallHeading
 import gg.vlm.spaces.space.markerInScene
@@ -188,7 +189,7 @@ class VisitorController(
       if (k == null) continue
       val w = cameraToWorld(markerInCamera(d, k, marker.diameterMm / 1000.0), head, k)
       val step =
-          tracks.getOrPut(id) { RingLock() }.step(w.vec(), wallHeading(w, walls, head.t), head.t.vec())
+          tracks.getOrPut(id) { RingLock() }.step(w.vec(), wallHeading(w, walls, head.t, circleNormals(d, k, head)), head.t.vec())
       if (step.gate == Gate.TOO_FAR) anyTooFar = true
       if (step.gate == Gate.STEADY) anySteady = true
       // A new steady pose locks on, or re-anchors a shown scene.

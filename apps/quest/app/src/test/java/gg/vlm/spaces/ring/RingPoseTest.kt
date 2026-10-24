@@ -4,9 +4,16 @@ import com.meta.spatial.core.Pose
 import com.meta.spatial.core.Quaternion
 import com.meta.spatial.core.Vector3
 import gg.vlm.spaces.Vec3
+import gg.vlm.spaces.Quat
+import gg.vlm.spaces.sdk
+import kotlin.math.acos
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.sqrt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RingPoseTest {
@@ -55,22 +62,22 @@ class RingPoseTest {
   @Test
   fun wallHeadingNearest() {
     // 5 cm in front of the z = 3 wall: its normal is -z, yaw 180°.
-    assertEquals(180.0, wallHeading(Vector3(0.5f, 1.5f, 2.95f), walls, viewer)!!, 1e-4)
+    assertEquals(180.0, wallHeading(Vector3(0.5f, 1.5f, 2.95f), walls, viewer, null)!!, 1e-4)
     // 5 cm in front of the x = 2 wall: normal -x, yaw -90°.
-    assertEquals(-90.0, wallHeading(Vector3(1.95f, 1.2f, 0.5f), walls, viewer)!!, 1e-4)
+    assertEquals(-90.0, wallHeading(Vector3(1.95f, 1.2f, 0.5f), walls, viewer, null)!!, 1e-4)
     // 30 cm from both.
-    assertNull(wallHeading(Vector3(1.7f, 1.5f, 2.7f), walls, viewer))
+    assertNull(wallHeading(Vector3(1.7f, 1.5f, 2.7f), walls, viewer, null))
     // On the z = 3 plane but past its end.
-    assertNull(wallHeading(Vector3(-2.5f, 1.5f, 3f), walls, viewer))
+    assertNull(wallHeading(Vector3(-2.5f, 1.5f, 3f), walls, viewer, null))
   }
 
   @Test
   fun wallNormalIntoRoom() {
     // The same z = 3 wall, its normal reported pointing away from the viewer (+z): flipped back to -z.
     val away = listOf(WallPlane(Vector3(0f, 1.5f, 3f), Vector3(0f, 0f, 1f), 2f, 1.5f))
-    assertEquals(180.0, wallHeading(Vector3(0.5f, 1.5f, 3.02f), away, viewer)!!, 1e-4)
+    assertEquals(180.0, wallHeading(Vector3(0.5f, 1.5f, 3.02f), away, viewer, null)!!, 1e-4)
     // Seen from the other side of that wall, the normal points +z (yaw 0°).
-    assertEquals(0.0, wallHeading(Vector3(0.5f, 1.5f, 3.02f), away, Vector3(0f, 1.6f, 5f))!!, 1e-4)
+    assertEquals(0.0, wallHeading(Vector3(0.5f, 1.5f, 3.02f), away, Vector3(0f, 1.6f, 5f), null)!!, 1e-4)
   }
 
   @Test
@@ -112,5 +119,110 @@ class RingPoseTest {
     assertEquals(480.0, crop.cy, 1e-9)
     // Already at the stream size: unchanged.
     assertEquals(k, scaleIntrinsics(k, 1280, 960, 1280, 960))
+  }
+
+  // ── the circle's tilt picks the wall ──
+
+  /**
+   * A head at [eye] looking level (yaw only) at [centre], and the outline a 140 mm circle on a wall facing [normal]
+   * (unit, into the room) has in its camera: the circle projected through the pinhole and fitted from its points'
+   * second moments, as the detector reports it (major axis angle from +x toward +y, image y down).
+   */
+  private fun view(eye: Vec3, centre: Vec3, normal: Vec3): Pair<Pose, RingDetection> {
+    val yaw = atan2(centre.x - eye.x, centre.z - eye.z)
+    val head = Pose(eye.sdk(), Quaternion(cos(yaw / 2).toFloat(), 0f, sin(yaw / 2).toFloat(), 0f))
+    val inv = Quat(cos(yaw / 2), 0.0, -sin(yaw / 2), 0.0)
+    fun pixel(p: Vec3): Pair<Double, Double> {
+      val h = inv.rotate(Vec3(p.x - eye.x, p.y - eye.y, p.z - eye.z))
+      // head (y up) to camera (y down)
+      return (k.fx * h.x / h.z + k.cx) to (k.fy * -h.y / h.z + k.cy)
+    }
+    // Two directions in the wall's plane.
+    val u = Vec3(normal.z, 0.0, -normal.x)
+    val v = Vec3(0.0, 1.0, 0.0)
+    val pts = (0 until 360).map { i ->
+      val t = Math.toRadians(i.toDouble())
+      val r = ring140.diameter / 2
+      pixel(Vec3(centre.x + r * (cos(t) * u.x + sin(t) * v.x), centre.y + r * (cos(t) * u.y + sin(t) * v.y), centre.z + r * (cos(t) * u.z + sin(t) * v.z)))
+    }
+    val mx = pts.sumOf { it.first } / pts.size
+    val my = pts.sumOf { it.second } / pts.size
+    val sxx = pts.sumOf { (it.first - mx) * (it.first - mx) } / pts.size
+    val syy = pts.sumOf { (it.second - my) * (it.second - my) } / pts.size
+    val sxy = pts.sumOf { (it.first - mx) * (it.second - my) } / pts.size
+    val half = (sxx + syy) / 2
+    val root = sqrt((sxx - syy) * (sxx - syy) / 4 + sxy * sxy)
+    val angle = (Math.toDegrees(0.5 * atan2(2 * sxy, sxx - syy)) + 180.0) % 180.0
+    val (cx, cy) = pixel(centre)
+    return head to RingDetection(ring140.id, 0, 0, cx, cy, sqrt(2 * (half + root)), sqrt(2 * (half - root)), angle, 0.0)
+  }
+
+  /** [eye] [distance] m out from [centre] on a wall facing [normal], [offDeg] degrees round toward -x (level). */
+  private fun eyeAt(centre: Vec3, normal: Vec3, distance: Double, offDeg: Double): Vec3 {
+    val a = Math.toRadians(offDeg)
+    // the normal turned about +y (toward -x for a -z wall)
+    val dx = normal.x * cos(a) + normal.z * sin(a)
+    val dz = -normal.x * sin(a) + normal.z * cos(a)
+    return Vec3(centre.x + distance * dx, centre.y, centre.z + distance * dz)
+  }
+
+  private val wallA = Vec3(0.0, 0.0, -1.0) // the z = 3 wall, into the room
+  private val wallB = Vec3(-1.0, 0.0, 0.0) // the x = 2 wall
+
+  @Test
+  fun tiltPicksTheWallTheMarkerIsOnAtACorner() {
+    // 5 cm from the corner on wall A, seen from 1.2 m at 30°.
+    val onA = Vec3(1.95, 1.5, 3.0)
+    val eye = eyeAt(onA, wallA, 1.2, 30.0)
+    val (head, d) = view(eye, onA, wallA)
+    val tilt = circleNormals(d, k, head)
+    assertEquals(2, tilt.size)
+    // The measured position errs toward the camera, closer to wall B's plane (5 cm) than to A's (7 cm).
+    val measured = Vector3(1.95f, 1.5f, 2.93f)
+    assertEquals(-90.0, wallHeading(measured, walls, eye.sdk(), null)!!, 1e-4) // nearest alone takes the wrong wall
+    assertEquals(180.0, wallHeading(measured, walls, eye.sdk(), tilt)!!, 1e-4)
+    assertEquals(180.0, wallHeading(onA.sdk(), walls, eye.sdk(), tilt)!!, 1e-4)
+  }
+
+  @Test
+  fun tiltPicksWallBForAMarkerOnB() {
+    val onB = Vec3(2.0, 1.5, 2.95)
+    val eye = eyeAt(onB, wallB, 1.2, -30.0)
+    val (head, d) = view(eye, onB, wallB)
+    assertEquals(-90.0, wallHeading(Vector3(1.94f, 1.5f, 2.95f), walls, eye.sdk(), circleNormals(d, k, head))!!, 1e-4)
+  }
+
+  @Test
+  fun tiltCandidatesIncludeTheTrueNormal() {
+    val onA = Vec3(0.5, 1.5, 3.0)
+    for (off in listOf(20.0, 30.0, 45.0, -40.0)) {
+      val eye = eyeAt(onA, wallA, 1.2, off)
+      val (head, d) = view(eye, onA, wallA)
+      val best = circleNormals(d, k, head).minOf { c -> Math.toDegrees(acos((c.x * wallA.x + c.y * wallA.y + c.z * wallA.z).coerceIn(-1.0, 1.0))) }
+      assertTrue("$off° off: $best° from the true normal", best < 5.0)
+    }
+  }
+
+  @Test
+  fun noWallAgreesWithTheTiltGivesNoHeading() {
+    // The marker is on wall A, which the scan missed; only wall B is near. Seen at 20°, B is 50° off either tilt.
+    val onA = Vec3(1.95, 1.5, 3.0)
+    val eye = eyeAt(onA, wallA, 1.2, 20.0)
+    val (head, d) = view(eye, onA, wallA)
+    assertNull(wallHeading(onA.sdk(), listOf(walls[1]), eye.sdk(), circleNormals(d, k, head)))
+  }
+
+  @Test
+  fun aRoundOutlineAcceptsOnlyAWallFacingTheCamera() {
+    // Head-on: the outline is round, so the one candidate is the ray toward the camera.
+    val onA = Vec3(1.95, 1.5, 3.0)
+    val eye = eyeAt(onA, wallA, 1.2, 0.0)
+    val (head, d) = view(eye, onA, wallA)
+    assertTrue(d.semiMinor / d.semiMajor > ROUND_RATIO)
+    val tilt = circleNormals(d, k, head)
+    assertEquals(1, tilt.size)
+    assertEquals(180.0, wallHeading(Vector3(1.95f, 1.5f, 2.93f), walls, eye.sdk(), tilt)!!, 1e-4)
+    // Only the perpendicular wall near: 90° from the camera ray, so no heading.
+    assertNull(wallHeading(onA.sdk(), listOf(walls[1]), eye.sdk(), tilt))
   }
 }

@@ -5,8 +5,11 @@ import com.meta.spatial.core.Vector3
 import gg.vlm.spaces.Quat
 import gg.vlm.spaces.Vec3
 import kotlin.math.abs
+import kotlin.math.acos
 import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
@@ -54,13 +57,19 @@ fun cameraToWorld(p: Vec3, head: Pose, k: CameraIntrinsics): Vector3 {
 data class WallPlane(val centre: Vector3, val normal: Vector3, val halfWidth: Float, val halfHeight: Float)
 
 /**
- * The heading, in degrees from world +z toward +x in (-180, 180], of the wall the marker is on: the normal of the nearest wall within
- * [WALL_TOLERANCE_M] of [marker] (and within its edges, give or take the same), turned to point toward [viewer]'s side
- * of the wall, into the room. Null when no wall is that close. Walls are taken as vertical, as MRUK reports them.
+ * The heading, in degrees from world +z toward +x in (-180, 180], of the wall the marker is on: the normal of a wall
+ * within [WALL_TOLERANCE_M] of [marker] (and within its edges, give or take the same), turned to point toward
+ * [viewer]'s side of the wall, into the room. Walls are taken as vertical, as MRUK reports them.
+ *
+ * [tilt] (the circle's own tilt, from [circleNormals]) checks that the marker is on that wall: a wall counts only if its
+ * into-room normal is within [TILT_TOLERANCE_DEG] of one of the tilt's normals, and of the walls that count the one
+ * that agrees best wins (near an inside corner or a door frame the perpendicular wall is just as close). Null when no
+ * wall is close, or none agrees with the tilt. A null [tilt] skips the check and takes the nearest wall (the
+ * developer panel, which has no single frame's outline).
  */
-fun wallHeading(marker: Vector3, walls: List<WallPlane>, viewer: Vector3): Double? {
-  var best: WallPlane? = null
-  var bestGap = Double.MAX_VALUE
+fun wallHeading(marker: Vector3, walls: List<WallPlane>, viewer: Vector3, tilt: List<Vec3>?): Double? {
+  var best: Vec3? = null
+  var bestScore = Double.MAX_VALUE
   for (w in walls) {
     val n = flatUnit(w.normal) ?: continue
     val dx = (marker.x - w.centre.x).toDouble()
@@ -69,17 +78,54 @@ fun wallHeading(marker: Vector3, walls: List<WallPlane>, viewer: Vector3): Doubl
     val gap = abs(dx * n.x + dz * n.z)
     val along = abs(dx * n.z - dz * n.x)
     if (gap > WALL_TOLERANCE_M || along > w.halfWidth + WALL_TOLERANCE_M || abs(dy) > w.halfHeight + WALL_TOLERANCE_M) continue
-    if (gap < bestGap) {
-      bestGap = gap
-      best = w
+    val side = (viewer.x - w.centre.x) * n.x + (viewer.z - w.centre.z) * n.z
+    val inward = if (side < 0) Vec3(-n.x, 0.0, -n.z) else n
+    val score =
+        if (tilt == null) gap
+        else tilt.minOf { angleDeg(inward, it) }.takeIf { it <= TILT_TOLERANCE_DEG } ?: continue
+    if (score < bestScore) {
+      bestScore = score
+      best = inward
     }
   }
-  val w = best ?: return null
-  val n = flatUnit(w.normal)!!
-  val side = (viewer.x - w.centre.x) * n.x + (viewer.z - w.centre.z) * n.z
-  val sign = if (side < 0) -1.0 else 1.0
-  val deg = Math.toDegrees(atan2(sign * n.x, sign * n.z))
+  val n = best ?: return null
+  val deg = Math.toDegrees(atan2(n.x, n.z))
   return if (deg <= -180.0) deg + 360.0 else deg // (-180, 180]; a -0.0 x would give -180
+}
+
+/**
+ * The plane normals (world space, unit, toward the camera) a printed circle with [d]'s outline could have. A tilted
+ * circle's outline is squashed along its minor axis by the cosine of the tilt, so the normal leans from the ray toward
+ * the camera by `acos(minor / major)`, one way or the other along the minor axis: two candidates. A nearly round
+ * outline (minor / major above [ROUND_RATIO]) can't tell which way it leans, so the one candidate is the ray toward
+ * the camera. This treats the outline as seen along its own ray (no perspective skew), which is well within the
+ * [TILT_TOLERANCE_DEG] it is checked to.
+ */
+fun circleNormals(d: RingDetection, k: CameraIntrinsics, head: Pose): List<Vec3> {
+  val ray = unit(Vec3((d.cx - k.cx) / k.fx, (d.cy - k.cy) / k.fy, 1.0))
+  val toCamera = Vec3(-ray.x, -ray.y, -ray.z)
+  val ratio = if (d.semiMajor > 0) d.semiMinor / d.semiMajor else 1.0
+  val inCamera =
+      if (ratio > ROUND_RATIO) listOf(toCamera)
+      else {
+        val th = Math.toRadians(d.angleDeg)
+        // The minor axis, lifted from the image to camera space at the ellipse's centre, square to the ray.
+        val u = Vec3(-sin(th) / k.fx, cos(th) / k.fy, 0.0)
+        val along = u.x * ray.x + u.y * ray.y + u.z * ray.z
+        val m = unit(Vec3(u.x - along * ray.x, u.y - along * ray.y, u.z - along * ray.z))
+        val tau = acos(ratio.coerceIn(0.0, 1.0))
+        val c = cos(tau)
+        val s = sin(tau)
+        listOf(
+            Vec3(toCamera.x * c + m.x * s, toCamera.y * c + m.y * s, toCamera.z * c + m.z * s),
+            Vec3(toCamera.x * c - m.x * s, toCamera.y * c - m.y * s, toCamera.z * c - m.z * s),
+        )
+      }
+  val origin = cameraToWorld(Vec3(0.0, 0.0, 0.0), head, k)
+  return inCamera.map { v ->
+    val w = cameraToWorld(v, head, k)
+    unit(Vec3((w.x - origin.x).toDouble(), (w.y - origin.y).toDouble(), (w.z - origin.z).toDouble()))
+  }
 }
 
 /**
@@ -103,6 +149,12 @@ fun scaleIntrinsics(k: CameraIntrinsics, refWidth: Int, refHeight: Int, width: I
 /** How far a marker may sit from a wall's plane (and past its edges) and still count as on it. */
 const val WALL_TOLERANCE_M = 0.10
 
+/** How far a wall's normal may be from the circle's tilt (see [circleNormals]) and still count as the marker's wall. */
+const val TILT_TOLERANCE_DEG = 30.0
+
+/** An outline rounder than this (minor / major) says nothing about which way the circle is tilted. */
+const val ROUND_RATIO = 0.97
+
 /** The camera frame of a lens looking straight ahead from the head: 180° about x (y down, z forward). */
 private val LOOKING_AHEAD = Quat(0.0, 1.0, 0.0, 0.0)
 
@@ -110,6 +162,15 @@ private fun normalised(q: Quat): Quat {
   val n = sqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z)
   return if (n < 1e-9) LOOKING_AHEAD else Quat(q.w / n, q.x / n, q.y / n, q.z / n)
 }
+
+private fun unit(v: Vec3): Vec3 {
+  val n = sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+  return Vec3(v.x / n, v.y / n, v.z / n)
+}
+
+/** The angle between unit vectors [a] and [b], in degrees. */
+private fun angleDeg(a: Vec3, b: Vec3): Double =
+    Math.toDegrees(acos((a.x * b.x + a.y * b.y + a.z * b.z).coerceIn(-1.0, 1.0)))
 
 private fun flatUnit(v: Vector3): Vec3? {
   val len = sqrt((v.x * v.x + v.z * v.z).toDouble())
