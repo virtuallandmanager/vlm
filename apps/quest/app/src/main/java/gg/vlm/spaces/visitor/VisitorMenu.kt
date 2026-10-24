@@ -42,6 +42,11 @@ interface MenuActions {
   fun setKeepLoaded(on: Boolean)
   /** Owner only: leaves builder mode and forgets the headset's pairing. */
   fun signOut()
+  /** Swaps the menu for the report's reason picker. */
+  fun startReport()
+  fun cancelReport()
+  /** Sends a report of the space now up, for [reason] (`offensive`, `unsafe`, `spam` or `other`), and leaves the picker. */
+  fun reportSpace(reason: String)
   /** Debug builds only. */
   fun toggleDeveloper()
 }
@@ -54,6 +59,15 @@ private val OCCLUSION_CHOICES =
         Occlusion.OFF to VisitorCopy.OCCLUSION_OFF,
     )
 
+/** The report picker's buttons, in order: the reason sent, and its label. */
+private val REPORT_CHOICES =
+    listOf(
+        "offensive" to VisitorCopy.REPORT_OFFENSIVE,
+        "unsafe" to VisitorCopy.REPORT_UNSAFE,
+        "spam" to VisitorCopy.REPORT_SPAM,
+        "other" to VisitorCopy.REPORT_OTHER,
+    )
+
 /** The small menu (0.5 × 0.6 m): the only settings a visitor sees, plus the owner's while building or paired. */
 @Composable
 fun VisitorMenu(s: AppState, act: MenuActions, developer: Boolean) {
@@ -62,6 +76,11 @@ fun VisitorMenu(s: AppState, act: MenuActions, developer: Boolean) {
         Modifier.fillMaxSize().background(Color(0xF0101420), RoundedCornerShape(16.dp)).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+      if (s.reportPicking && s.reportSpaceId != null) {
+        REPORT_CHOICES.forEach { (reason, label) -> Wide(label, { act.reportSpace(reason) }) }
+        Wide(VisitorCopy.REPORT_CANCEL, act::cancelReport, outlined = true)
+        return@Column
+      }
       Wide(VisitorCopy.LOOK_AGAIN, act::lookAgain)
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         OCCLUSION_CHOICES.forEach { (o, label) ->
@@ -83,6 +102,7 @@ fun VisitorMenu(s: AppState, act: MenuActions, developer: Boolean) {
         }
       }
       Wide(VisitorCopy.BUILDER, act::openBuilder, enabled = !s.builderActive)
+      if (s.reportSpaceId != null && !s.builderActive) Wide(VisitorCopy.REPORT_SPACE, act::startReport, outlined = true)
       if (s.ownerControls) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
           Text(VisitorCopy.KEEP_LOADED, color = Color(0xFFE0E0E0), fontSize = 13.sp, modifier = Modifier.weight(1f))

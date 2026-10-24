@@ -43,7 +43,7 @@ With a signed APK:
 $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 ```
 
-Copy the `Signer #1 certificate SHA-256 digest` line, and insert colons (`AA:BB:...`) if the server expects them as in `assetlinks.json`. Set it in the server environment as `ANDROID_CERT_SHA256` (comma-separated for several keys; plan 1 Task 12; `apps/server/src/config.ts`). Until it's set, `https://vlm.gg/s/<code>` links don't verify and open in the browser. If Meta re-signs the app on upload (Play-style app signing doesn't apply to Horizon; check the Developer Dashboard), add that certificate's fingerprint too.
+Copy the `Signer #1 certificate SHA-256 digest` line, and the server accepts it with or without colons, in any case, and writes it as `AA:BB:...` in `assetlinks.json` (an entry that isn't 64 hex digits is dropped with a warning that names its position, not its value). Set it in the server environment as `ANDROID_CERT_SHA256` (comma-separated for several keys; plan 1 Task 12; `apps/server/src/config.ts`). Until it's set, `https://vlm.gg/s/<code>` links don't verify and open in the browser. If Meta re-signs the app on upload (Play-style app signing doesn't apply to Horizon; check the Developer Dashboard), add that certificate's fingerprint too.
 
 ## 3. VRC checklist (owner)
 
@@ -68,7 +68,7 @@ From Meta's published list, https://developers.meta.com/horizon/distribute/publi
 
 **Security and permissions**
 - [ ] R Security.2 Minimum permissions. Requested: `INTERNET`, `CAMERA` and `HEADSET_CAMERA` (read the passthrough camera to find rings), `USE_SCENE` and `USE_ANCHOR_API` (room geometry for occlusion and snapping), `HAND_TRACKING`, `RENDER_MODEL` (controller models). Confirm each is used; remove any that isn't. Rationale wording is in `res/values/strings.xml`.
-- [ ] r Security.1 Platform entitlement check within 10 s of launch: not implemented. The app is free and needs no entitlement; decide whether to add it.
+- [x] r Security.1 Platform entitlement check within 10 s of launch: decided not to add it. The app is free and the check is only recommended.
 
 **Performance**
 - [ ] R Performance.1 Runs at the declared refresh rate with the scene, occlusion and ring detection on.
@@ -83,12 +83,12 @@ From Meta's published list, https://developers.meta.com/horizon/distribute/publi
 - [ ] r Input.2 Grip for pickup.
 
 **Privacy**
-- [ ] R Privacy.1 to .4 Privacy policy URL is https://vlm.gg/privacy (section "VLM Spaces on Quest"); it explains what is collected and how it is used. Privacy.4 asks how users request deletion: the page says visit events carry no identity and a builder revokes a headset on vlm.gg. Check this satisfies Meta; if not, add a contact address (owner's call).
+- [ ] R Privacy.1 to .4 Privacy policy URL is https://vlm.gg/privacy (section "VLM Spaces on Quest"); it explains what is collected and how it is used. Privacy.4 asks how users request deletion: the page says visit events carry no identity, a builder revokes a headset on vlm.gg, and anyone can email support@vlm.gg to ask for their data to be deleted or for help.
 - [ ] R Privacy.5 Data protection checks (Developer Dashboard, Data use; answers below).
 
 **Content and publishing**
 - [ ] R Content.2 Metadata matches the app.
-- [ ] R Content.3 User-generated content needs a way to report Code of Conduct violations. Spaces are made by their owners on vlm.gg, and visitors see only published spaces, but visitors can see owner-chosen media. Decide whether Meta counts this as UGC; if so, add a report route (not built).
+- [ ] R Content.3 User-generated content needs a way to report Code of Conduct violations. Spaces are made by their owners on vlm.gg, and visitors see only published spaces, but visitors can see owner-chosen media. Built the report route anyway: the menu has **Report this space** (Offensive, Unsafe, Spam, Something else); reports land on the vlm.gg admin page ("Space reports") and are emailed to support@vlm.gg once the server has SMTP set (until then the admin page is the only place they show).
 - [ ] R Publishing.1 to .3 Website URL (https://vlm.gg), support link, terms URL (if given) all load.
 - [ ] R Publishing.4 to .8 Name, descriptions and keywords meet content guidelines; Meta brand use follows the brand guidelines ("Meta Quest", not "Oculus"; no other headsets named).
 - [ ] R Asset.1, .2, .5, .6, .7 Logo transparent; cover art branded with no extra text; screenshots free of overlays; no other platforms' hardware in text or images; trailer 2 minutes or less.
@@ -136,6 +136,7 @@ Based on `docs/superpowers/specs/2026-10-22-ar-builder-and-visitor-modes-design.
   - Ring code, to look up the space (`GET /api/ar/markers/by-code/:code`).
   - Space contents (`GET /api/ar/spaces/:id/feed`).
   - Anonymous visit events: arrive, leave and head position in scene coordinates, at most one every 5 s (`POST /api/ar/spaces/:id/analytics`). A fresh random id per visit, never stored. Not linked to the user, no token sent. Purpose: analytics for the space's owner.
+  - A report, only if the visitor sends one from the menu (`POST /api/ar/spaces/:id/report`): the space, the chosen reason, the app name (`ar-quest`) and the time. Nothing that identifies the visitor is sent or stored (the network address only limits repeated reports and is not kept). Purpose: content moderation.
 - **Collected from builders only:** pairing (`/api/ar/pair...`, the headset model as the device name, and a SHA-256 hash of the device secret; the headset proves who it is with a secret kept in its encrypted storage, sent over HTTPS to the pairing, pass and spaces calls, and the server stores only a hash of it), edits to the scene, ring alignments, and draft previews.
 - **Not collected:** camera images, room scans or room geometry, microphone, location, contacts, name, email, Meta account id, advertising id.
 - **Camera and spatial data** are processed on the headset only: rings are found from the passthrough camera, and walls and surfaces are used for occlusion and snapping.

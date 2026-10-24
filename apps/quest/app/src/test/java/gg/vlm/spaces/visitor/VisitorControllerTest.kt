@@ -13,6 +13,7 @@ import gg.vlm.spaces.api.ArMarker
 import gg.vlm.spaces.api.ArSpace
 import gg.vlm.spaces.api.FeedStatus
 import gg.vlm.spaces.api.MarkerLookup
+import gg.vlm.spaces.api.ReportResult
 import gg.vlm.spaces.api.MarkerPose
 import gg.vlm.spaces.api.VisitAnalytics
 import gg.vlm.spaces.ring.CameraIntrinsics
@@ -133,6 +134,8 @@ class VisitorControllerTest {
   private val posted = mutableListOf<Pair<String, String>>()
   private val analytics = VisitAnalytics({ id, body -> posted += id to body; AnalyticsPost.Sent }, { 1_700_000_000_000L })
   private val ui = AppState()
+  private val reports = mutableListOf<Pair<String, String>>()
+  private var reportAnswer = ReportResult.Sent
   private val lookups = mutableListOf<String>()
   private val controller =
       VisitorController(
@@ -143,6 +146,10 @@ class VisitorControllerTest {
             ApiResult.Ok(MarkerLookup("sp-a", "f1", "m1", "Cafe", null))
           },
           analytics = analytics,
+          report = { id, reason ->
+            reports += id to reason
+            reportAnswer
+          },
           prefs = FakePrefs(),
           ui = ui,
           setRegistered = {},
@@ -185,6 +192,30 @@ class VisitorControllerTest {
     assertEquals(root.position.z, view.placed!!.position.z, 1e-4)
     assertEquals(view.placed, session.rootOf())
     assertEquals(1, outline.flashes)
+  }
+
+  @Test fun `a report names the space now up and tells the menu how it went`() {
+    controller.reportSpace("spam") // nothing chosen yet
+    dispatcher.drain()
+    assertTrue(reports.isEmpty())
+    assertNull(ui.reportSpaceId)
+    toShown()
+    assertEquals("sp-a", ui.reportSpaceId)
+    controller.reportSpace("spam")
+    dispatcher.drain()
+    assertEquals(listOf("sp-a" to "spam"), reports)
+    assertEquals(VisitorCopy.REPORT_SENT, ui.menuNote)
+    reportAnswer = ReportResult.RateLimited
+    controller.reportSpace("other")
+    dispatcher.drain()
+    assertEquals(VisitorCopy.REPORT_RATE_LIMITED, ui.menuNote)
+    reportAnswer = ReportResult.Failed
+    controller.reportSpace("other")
+    dispatcher.drain()
+    assertEquals(VisitorCopy.REPORT_FAILED, ui.menuNote)
+    controller.lookAgain()
+    dispatcher.drain()
+    assertNull(ui.reportSpaceId)
   }
 
   @Test fun `a tracking jump hides the scene at once`() {

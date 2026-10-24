@@ -18,6 +18,17 @@ sealed interface ApiResult<out T> {
   data class Failed(val status: Int) : ApiResult<Nothing>
 }
 
+/** How a visitor's report of a space ended. */
+enum class ReportResult { Sent, RateLimited, Failed }
+
+/** The outcome of a report the server answered with HTTP [status]: 201 is taken, 429 is the per-IP limit, else it failed. */
+fun reportResultFor(status: Int): ReportResult =
+    when (status) {
+      201 -> ReportResult.Sent
+      429 -> ReportResult.RateLimited
+      else -> ReportResult.Failed
+    }
+
 /**
  * How a headset-secret call (pairing and the device routes) or a builder call made with an AR pass (see
  * `DeviceAuth.withPass`) ended. A 401 is told apart by the server's error code:
@@ -88,6 +99,39 @@ class ArApi(baseUrl: String, private val userAgentVersion: Int = 1) {
           analyticsPostFor(c.responseCode)
         } catch (e: java.io.IOException) {
           AnalyticsPost.Retry
+        } finally {
+          c.disconnect()
+        }
+      }
+
+  /**
+   * `POST /api/ar/spaces/:id/report` (see [reportResultFor]); [reason] is `offensive`, `unsafe`, `spam` or `other`. Anonymous;
+   * sends no token. Offline is [ReportResult.Failed].
+   */
+  suspend fun report(spaceId: String, reason: String): ReportResult =
+      withContext(Dispatchers.IO) {
+        val c =
+            try {
+              URL("$base/api/ar/spaces/${enc(spaceId)}/report").openConnection() as HttpURLConnection
+            } catch (e: java.io.IOException) {
+              return@withContext ReportResult.Failed
+            }
+        try {
+          c.requestMethod = "POST"
+          c.connectTimeout = 15_000
+          c.readTimeout = 15_000
+          c.useCaches = false
+          c.doOutput = true
+          c.setRequestProperty("X-VLM-App-Version", userAgentVersion.toString())
+          c.setRequestProperty("Content-Type", "application/json")
+          val body = buildJsonObject {
+            put("reason", reason)
+            put("platform", "ar-quest")
+          }
+          c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+          reportResultFor(c.responseCode)
+        } catch (e: java.io.IOException) {
+          ReportResult.Failed
         } finally {
           c.disconnect()
         }

@@ -6,6 +6,7 @@ import gg.vlm.spaces.api.ArFeedSnapshot
 import gg.vlm.spaces.api.ArSpace
 import gg.vlm.spaces.api.FeedStatus as FeedConnection
 import gg.vlm.spaces.api.MarkerLookup
+import gg.vlm.spaces.api.ReportResult
 import gg.vlm.spaces.ring.RingCodec
 import gg.vlm.spaces.space.RootPose
 import gg.vlm.spaces.space.SteadyPose
@@ -31,6 +32,17 @@ object VisitorCopy {
   const val KEEP_LOADED = "Keep the scene loaded between visitors"
   const val SIGN_OUT = "Sign out"
 
+  /** The menu's report flow: the button, the reason picker, and the note after sending. */
+  const val REPORT_SPACE = "Report this space"
+  const val REPORT_OFFENSIVE = "Offensive"
+  const val REPORT_UNSAFE = "Unsafe"
+  const val REPORT_SPAM = "Spam"
+  const val REPORT_OTHER = "Something else"
+  const val REPORT_CANCEL = "Cancel"
+  const val REPORT_SENT = "Thanks. VLM will look at this space."
+  const val REPORT_RATE_LIMITED = "Too many reports from here. Try again later."
+  const val REPORT_FAILED = "Couldn't send the report. Check the connection and try again."
+
   fun opening(spaceName: String?) = if (spaceName == null) "Opening…" else "Opening $spaceName…"
 
   const val NOT_OPEN = "This space isn't open right now."
@@ -52,6 +64,14 @@ object VisitorCopy {
   const val PERMISSION_RATIONALE = "$PERMISSION_RATIONALE_CAMERA $PERMISSION_RATIONALE_SPATIAL"
   const val NO_WALL = "Can't see the wall behind this ring. Look around the room so the headset can map it."
 }
+
+/** The line the menu shows once a report has been tried. */
+fun reportNote(result: ReportResult): String =
+    when (result) {
+      ReportResult.Sent -> VisitorCopy.REPORT_SENT
+      ReportResult.RateLimited -> VisitorCopy.REPORT_RATE_LIMITED
+      ReportResult.Failed -> VisitorCopy.REPORT_FAILED
+    }
 
 sealed interface VisitorState {
   data object Hint : VisitorState
@@ -146,6 +166,10 @@ class VisitorFlow {
    */
   val spaceChosen: Boolean
     get() = feedSpaceId != null || chosenNotOpen
+
+  /** The id of the space a visitor may report: the one whose feed is up or loading, else null (nothing chosen, or not open). */
+  val reportSpaceId: String?
+    get() = feedSpaceId
 
   fun on(event: VisitorEvent, nowMs: Long): List<VisitorEffect> =
       when (event) {

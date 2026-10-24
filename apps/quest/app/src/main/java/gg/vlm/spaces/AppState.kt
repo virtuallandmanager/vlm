@@ -27,6 +27,10 @@ class AppState {
   var menuOpen by mutableStateOf(false)
   /** A line under the menu's buttons, such as why builder mode closed; null for none. */
   var menuNote by mutableStateOf<String?>(null)
+  /** The space the menu's **Report this space** would report, or null (the button hides). */
+  var reportSpaceId by mutableStateOf<String?>(null)
+  /** The menu shows the report's reason picker in place of its buttons. */
+  var reportPicking by mutableStateOf(false)
   var occlusion by mutableStateOf(Occlusion.DEPTH)
   /** The menu's Spaces list is open. */
   var spacesOpen by mutableStateOf(false)

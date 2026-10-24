@@ -193,6 +193,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
             session,
             lookup = { code -> api.lookup(code) },
             analytics = analytics,
+            report = api::report,
             prefs = prefs,
             ui = state,
             setRegistered = { ids -> tracker.registered = ids },
@@ -424,8 +425,24 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   override fun toggleMenu() {
     state.menuNote = null
     state.spacesOpen = false
+    state.reportPicking = false
     state.menuOpen = !state.menuOpen
     if (state.menuOpen) menuPanel?.setComponent(Transform(aheadPose(scene.getViewerPose(), 0.8f, -0.1f)))
+  }
+
+  override fun startReport() {
+    state.menuNote = null
+    state.reportPicking = true
+  }
+
+  override fun cancelReport() {
+    state.reportPicking = false
+  }
+
+  override fun reportSpace(reason: String) {
+    state.reportPicking = false
+    state.menuNote = null
+    visitor.reportSpace(reason)
   }
 
   override fun toggleSpaces() {

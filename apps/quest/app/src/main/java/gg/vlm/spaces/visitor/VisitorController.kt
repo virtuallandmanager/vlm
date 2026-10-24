@@ -10,6 +10,7 @@ import gg.vlm.spaces.api.ApiResult
 import gg.vlm.spaces.api.ArFeedSnapshot
 import gg.vlm.spaces.api.FeedStatus
 import gg.vlm.spaces.api.MarkerLookup
+import gg.vlm.spaces.api.ReportResult
 import gg.vlm.spaces.api.VisitAnalytics
 import gg.vlm.spaces.ring.CameraIntrinsics
 import gg.vlm.spaces.ring.RingCodec
@@ -69,6 +70,7 @@ class VisitorController(
     private val session: SpaceSession,
     private val lookup: suspend (code: String) -> ApiResult<MarkerLookup>,
     private val analytics: VisitAnalytics,
+    private val report: suspend (spaceId: String, reason: String) -> ReportResult = { _, _ -> ReportResult.Failed },
     private val prefs: VisitorPrefs,
     private val ui: AppState,
     private val setRegistered: (Set<Long>?) -> Unit,
@@ -224,6 +226,24 @@ class VisitorController(
   /** Opens the space with [code] (from a link or the Spaces list): shows its page and looks it up. Not while building. */
   fun openSpace(code: String) {
     if (!paused) dispatch(VisitorEvent.OpenSpace(code))
+  }
+
+  /** Reports the space now up (or loading) for [reason] and tells the menu how it went. Not while building. */
+  fun reportSpace(reason: String) {
+    val id = flow.reportSpaceId
+    if (paused || id == null) return
+    scope.launch {
+      val r =
+          try {
+            report.invoke(id, reason)
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            Log.w(TAG, "Report failed", e)
+            ReportResult.Failed
+          }
+      ui.menuNote = reportNote(r)
+    }
   }
 
   fun closeSpacePage() {
@@ -401,6 +421,7 @@ class VisitorController(
     ui.hint = hintText(st, gather, unreadableSince?.let { now - it } ?: 0L, device)
     ui.sceneShown = st is VisitorState.Shown
     ui.menuButtonShown = menuButtonShown(st, flow.spaceChosen)
+    ui.reportSpaceId = flow.reportSpaceId
     ui.visitorState = st::class.simpleName ?: ""
     ui.itemCount = session.itemCount()
   }

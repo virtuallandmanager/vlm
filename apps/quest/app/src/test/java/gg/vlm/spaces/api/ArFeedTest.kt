@@ -62,6 +62,33 @@ class ArFeedTest {
   }
 
   @Test
+  fun `a report posts the reason and platform, and the status maps to sent, rate limited or failed`() = runBlocking {
+    server.enqueue(MockResponse().setResponseCode(201).setBody("""{"ok":true}"""))
+    server.enqueue(MockResponse().setResponseCode(429).setBody("""{"error":"rate_limited"}"""))
+    server.enqueue(MockResponse().setResponseCode(404))
+    server.enqueue(MockResponse().setResponseCode(400))
+    server.enqueue(MockResponse().setResponseCode(500))
+    server.start()
+    val api = ArApi(server.url("/").toString())
+    assertEquals(ReportResult.Sent, api.report("s1", "unsafe"))
+    val sent = server.takeRequest()
+    assertEquals("POST", sent.method)
+    assertEquals("/api/ar/spaces/s1/report", sent.path)
+    assertEquals("""{"reason":"unsafe","platform":"ar-quest"}""", sent.body.readUtf8())
+    assertNull(sent.getHeader("Authorization"))
+    assertEquals(ReportResult.RateLimited, api.report("s1", "spam"))
+    for (i in 1..3) assertEquals(ReportResult.Failed, api.report("s1", "other"))
+  }
+
+  @Test
+  fun `a report that cannot reach the server failed`() = runBlocking {
+    server.start()
+    val url = server.url("/").toString()
+    server.shutdown()
+    assertEquals(ReportResult.Failed, ArApi(url).report("s1", "spam"))
+  }
+
+  @Test
   fun `the feed long-polls with since and stops on NOT_FOUND`() {
     val paths = CopyOnWriteArrayList<String>()
     var n = 0

@@ -9,10 +9,12 @@ import gg.vlm.spaces.api.ArSpace
 import gg.vlm.spaces.api.FeedStatus
 import gg.vlm.spaces.api.MarkerLookup
 import gg.vlm.spaces.api.MarkerPose
+import gg.vlm.spaces.api.ReportResult
 import gg.vlm.spaces.ring.RingCodec
 import gg.vlm.spaces.space.SteadyPose
 import gg.vlm.spaces.space.rootFromMarker
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -519,6 +521,23 @@ class VisitorFlowTest {
     on(VisitorEvent.RingAgreed(ringOther))
     on(VisitorEvent.Lookup(RingCodec.codeOf(ringOther), ApiResult.NotFound))
     assertEquals(false, menuButtonShown(flow.state, flow.spaceChosen))
+  }
+
+  @Test fun `only a space with a feed up or loading can be reported`() {
+    assertNull(flow.reportSpaceId)
+    on(VisitorEvent.RingAgreed(ringA))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), lookupOk()))
+    assertEquals("sp-a", flow.reportSpaceId)
+    on(VisitorEvent.FeedStatus(FeedStatus.NOT_FOUND))
+    assertNull(flow.reportSpaceId)
+    on(VisitorEvent.LookAgain)
+    assertNull(flow.reportSpaceId)
+  }
+
+  @Test fun `each report result has its own note`() {
+    assertEquals("Thanks. VLM will look at this space.", reportNote(ReportResult.Sent))
+    assertEquals("Too many reports from here. Try again later.", reportNote(ReportResult.RateLimited))
+    assertEquals("Couldn't send the report. Check the connection and try again.", reportNote(ReportResult.Failed))
   }
 
   // ── a newer snapshot moves the anchor ring ──
