@@ -24,7 +24,9 @@ class EncryptedSecureStore(context: Context) : SecureStore {
   override fun get(key: String): String? = prefs.getString(key, null)
 
   override fun put(key: String, value: String?) {
-    prefs.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply()
+    val edit = prefs.edit()
+    // A removal is a sign-out: it must be on disk before we return, so commit() rather than apply().
+    if (value == null) edit.remove(key).commit() else edit.putString(key, value).apply()
   }
 
   private companion object {

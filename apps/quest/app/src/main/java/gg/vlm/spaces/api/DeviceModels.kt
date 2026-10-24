@@ -20,7 +20,10 @@ sealed interface PairClaim {
   data object Refused : PairClaim
 }
 
-data class MintedPass(val pass: String, val expiresAtMs: Long, val sceneId: String)
+data class MintedPass(val pass: String, val expiresAtMs: Long, val sceneId: String) {
+  /** The pass is a credential: it is not printed. */
+  override fun toString() = "MintedPass(expiresAtMs=$expiresAtMs, sceneId=$sceneId)"
+}
 
 data class DeviceMarker(val markerId: String, val floorId: String, val code: String)
 

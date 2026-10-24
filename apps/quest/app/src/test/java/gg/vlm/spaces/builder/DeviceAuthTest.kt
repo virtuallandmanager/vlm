@@ -1,8 +1,12 @@
 package gg.vlm.spaces.builder
 
 import gg.vlm.spaces.api.ArApi
-import gg.vlm.spaces.api.DeviceCall
+import gg.vlm.spaces.api.BuilderCall
 import gg.vlm.spaces.api.DeviceKind
+import gg.vlm.spaces.api.MintedPass
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
@@ -145,17 +149,17 @@ class DeviceAuthTest {
         runBlocking {
           a.withPass("sp1") { token ->
             seen += token
-            if (token == "p1") DeviceCall.Unauthorized else DeviceCall.Ok("saved")
+            if (token == "p1") BuilderCall.Unauthorized else BuilderCall.Ok("saved")
           }
         }
-    assertEquals(DeviceCall.Ok("saved"), r)
+    assertEquals(BuilderCall.Ok("saved"), r)
     assertEquals(listOf("p1", "p2"), seen)
 
     // Twice unauthorized: gives up after the one retry.
     server.enqueue(pass(900_000, "p3"))
     var calls = 0
-    val r2 = runBlocking { a.withPass("sp1") { _: String -> calls++; DeviceCall.Unauthorized } }
-    assertEquals(DeviceCall.Unauthorized, r2)
+    val r2 = runBlocking { a.withPass("sp1") { _: String -> calls++; BuilderCall.Unauthorized } }
+    assertEquals(BuilderCall.Unauthorized, r2)
     assertEquals(2, calls)
   }
 
@@ -164,8 +168,8 @@ class DeviceAuthTest {
     val a = pairedAuth()
     server.enqueue(pass(900_000))
     var calls = 0
-    val r = runBlocking { a.withPass("sp1") { _: String -> calls++; DeviceCall.Revoked } }
-    assertEquals(DeviceCall.Revoked, r)
+    val r = runBlocking { a.withPass("sp1") { _: String -> calls++; BuilderCall.Revoked } }
+    assertEquals(BuilderCall.Revoked, r)
     assertEquals(1, calls)
     assertEquals(AuthState.SignedOut, a.state.value)
     assertTrue(store.map.isEmpty())
@@ -225,13 +229,74 @@ class DeviceAuthTest {
   fun `deviceSpaces parses the list and sends the secret`() {
     val a = pairedAuth()
     server.enqueue(json("""[{"spaceId":"sp1","spaceName":"Loft","sceneId":"sc1","sceneName":"Scene","markers":[{"markerId":"m1","floorId":"f1","code":"ABCD"}]}]"""))
-    val (id, secret) = a.credentials()!!
-    val r = runBlocking { ArApi(server.url("/").toString()).deviceSpaces(id, secret) }
-    val spaces = (r as DeviceCall.Ok).value
+    val secret = store.get(DeviceAuth.KEY_SECRET)!!
+    val r = runBlocking { a.spaces() }
+    val spaces = (r as BuilderCall.Ok).value
     assertEquals("Loft", spaces[0].spaceName)
     assertEquals("ABCD", spaces[0].markers[0].code)
     val req = server.takeRequest()
     assertEquals("/api/ar/devices/dev1/spaces", req.path)
     assertEquals("""{"secret":"$secret"}""", req.body.readUtf8())
+  }
+
+  @Test
+  fun `a mint in flight when the session ends is not served`() {
+    val a = pairedAuth("shared")
+    server.enqueue(pass(900_000, "late").setBodyDelay(400, java.util.concurrent.TimeUnit.MILLISECONDS))
+    server.enqueue(MockResponse().setResponseCode(204))
+    val inFlight = java.util.concurrent.CompletableFuture.supplyAsync { runBlocking { a.passFor("sp1") } }
+    server.takeRequest() // the mint has reached the server
+    runBlocking { a.endSession() }
+    assertEquals(PassResult.Revoked, inFlight.get())
+    assertEquals(PassResult.Revoked, runBlocking { a.passFor("sp1") })
+    assertTrue(store.map.isEmpty())
+  }
+
+  @Test
+  fun `cancelling a pairing stops polling and leaves the store empty`() {
+    server.enqueue(start())
+    repeat(3) { server.enqueue(pending) }
+    server.start()
+    val a = DeviceAuth(ArApi(server.url("/").toString()), store, { now }, pollMs = 50)
+    runBlocking {
+      val job = launch(Dispatchers.Default) { a.beginPairing() }
+      server.takeRequest() // start
+      server.takeRequest() // first claim
+      job.cancelAndJoin()
+    }
+    val polled = server.requestCount
+    Thread.sleep(200)
+    assertEquals(polled, server.requestCount)
+    assertEquals(AuthState.SignedOut, a.state.value)
+    assertTrue(store.map.isEmpty())
+  }
+
+  @Test
+  fun `a shared end clears the store even when the server is offline`() {
+    val a = pairedAuth("shared")
+    server.shutdown()
+    runBlocking { a.endSession() }
+    assertTrue(store.map.isEmpty())
+    assertEquals(AuthState.SignedOut, a.state.value)
+  }
+
+  @Test
+  fun `a failed re-pair does not leave a stale secret and an unexpected 401 is a failure`() {
+    val a = pairedAuth()
+    server.enqueue(json("""{"error":"Unauthorized","message":"Invalid or missing token"}""", 401))
+    assertEquals(PassResult.Failed(401), runBlocking { a.passFor("sp1") })
+    assertTrue(a.state.value is AuthState.Paired)
+    server.enqueue(start())
+    server.enqueue(json("""{"status":"refused"}"""))
+    runBlocking { a.beginPairing() }
+    assertTrue(store.map.isEmpty())
+  }
+
+  @Test
+  fun `credentials are redacted in toString`() {
+    val p = MintedPass("tok-secret", 5L, "sc")
+    assertFalse(p.toString().contains("tok-secret"))
+    assertFalse(PassResult.Ok("tok-secret", "sc").toString().contains("tok-secret"))
+    assertFalse(AuthState.Pairing("ABC123", "https://x/ABC123", 1L).toString().contains("ABC123"))
   }
 }

@@ -1,8 +1,9 @@
 package gg.vlm.spaces.builder
 
 import gg.vlm.spaces.api.ArApi
-import gg.vlm.spaces.api.DeviceCall
+import gg.vlm.spaces.api.BuilderCall
 import gg.vlm.spaces.api.DeviceKind
+import gg.vlm.spaces.api.DeviceSpace
 import gg.vlm.spaces.api.MintedPass
 import gg.vlm.spaces.api.PairClaim
 import java.security.MessageDigest
@@ -16,16 +17,23 @@ import kotlinx.coroutines.sync.withLock
 
 sealed interface AuthState {
   data object SignedOut : AuthState
-  data class Pairing(val code: String, val approveUrl: String, val expiresAtMs: Long) : AuthState
+  data class Pairing(val code: String, val approveUrl: String, val expiresAtMs: Long) : AuthState {
+    /** The code is a credential: it is not printed. */
+    override fun toString() = "Pairing(expiresAtMs=$expiresAtMs)"
+  }
   data class Paired(val deviceId: String, val kind: DeviceKind) : AuthState
 }
 
 sealed interface PassResult {
-  data class Ok(val token: String, val sceneId: String) : PassResult
+  data class Ok(val token: String, val sceneId: String) : PassResult {
+    override fun toString() = "Ok(sceneId=$sceneId)"
+  }
   data object NoAccess : PassResult
   /** The headset was unpaired on the website: the store is cleared and the state is [AuthState.SignedOut]. */
   data object Revoked : PassResult
   data object Offline : PassResult
+  /** The server answered something unexpected (including a 401 that isn't a revocation). */
+  data class Failed(val status: Int) : PassResult
 }
 
 /**
@@ -45,6 +53,9 @@ class DeviceAuth(
   private val passes = java.util.concurrent.ConcurrentHashMap<String, MintedPass>()
   private val mintLock = Mutex()
 
+  /** Bumped by every sign-out, so a mint that was in flight across one can tell and discards its pass. */
+  @Volatile private var epoch = 0
+
   private fun restored(): AuthState {
     val id = store.get(KEY_ID)
     val kind = store.get(KEY_KIND)?.let { k -> DeviceKind.entries.firstOrNull { it.name == k } }
@@ -56,23 +67,25 @@ class DeviceAuth(
    * cancels. Ends in [AuthState.Paired] or [AuthState.SignedOut].
    */
   suspend fun beginPairing() {
+    // Pairing again is an explicit re-pair: forget the old pairing first.
+    if (_state.value is AuthState.Paired) signOut()
     val secret = newSecret()
-    store.put(KEY_SECRET, secret)
     try {
       val start =
           when (val r = api.startPairing(sha256Hex(secret), deviceName)) {
-            is DeviceCall.Ok -> r.value
+            is BuilderCall.Ok -> r.value
             else -> return signOut()
           }
       _state.value = AuthState.Pairing(start.code, start.approveUrl, start.codeExpiresAtMs)
       while (clock() < start.codeExpiresAtMs) {
         delay(pollMs)
         when (val r = api.claim(start.code, secret)) {
-          is DeviceCall.Ok ->
+          is BuilderCall.Ok ->
               when (val c = r.value) {
                 PairClaim.Pending -> Unit
                 PairClaim.Refused -> return signOut()
                 is PairClaim.Approved -> {
+                  store.put(KEY_SECRET, secret)
                   store.put(KEY_ID, c.deviceId)
                   store.put(KEY_KIND, c.kind.name)
                   _state.value = AuthState.Paired(c.deviceId, c.kind)
@@ -80,7 +93,7 @@ class DeviceAuth(
                 }
               }
           // Offline, rate limited or a server hiccup: keep trying until the code runs out.
-          DeviceCall.Offline, DeviceCall.RateLimited, is DeviceCall.Failed -> Unit
+          BuilderCall.Offline, BuilderCall.RateLimited, is BuilderCall.Failed -> Unit
           else -> return signOut()
         }
       }
@@ -95,47 +108,55 @@ class DeviceAuth(
   suspend fun passFor(spaceId: String): PassResult = mintLock.withLock { passLocked(spaceId) }
 
   private suspend fun passLocked(spaceId: String): PassResult {
-    val cached = passes[spaceId]
-    if (cached != null && cached.expiresAtMs - clock() > MIN_LEFT_MS) return PassResult.Ok(cached.pass, cached.sceneId)
     val id = store.get(KEY_ID)
     val secret = store.get(KEY_SECRET)
     if (id == null || secret == null) return PassResult.Revoked
-    return when (val r = api.mintPass(id, secret, spaceId)) {
-      is DeviceCall.Ok -> {
+    val cached = passes[spaceId]
+    if (cached != null && cached.expiresAtMs - clock() > MIN_LEFT_MS) return PassResult.Ok(cached.pass, cached.sceneId)
+    val startEpoch = epoch
+    val r = api.mintPass(id, secret, spaceId)
+    // Signed out (or re-paired) while the mint was in flight: its pass belongs to nobody now.
+    if (epoch != startEpoch || store.get(KEY_ID) != id) return PassResult.Revoked
+    return when (r) {
+      is BuilderCall.Ok -> {
         passes[spaceId] = r.value
         PassResult.Ok(r.value.pass, r.value.sceneId)
       }
-      DeviceCall.NoAccess, DeviceCall.NotFound -> PassResult.NoAccess
-      DeviceCall.Revoked, DeviceCall.BadSecret -> {
+      BuilderCall.NoAccess, BuilderCall.NotFound -> PassResult.NoAccess
+      BuilderCall.Revoked, BuilderCall.BadSecret -> {
         signOut()
         PassResult.Revoked
       }
-      else -> PassResult.Offline
+      BuilderCall.Offline -> PassResult.Offline
+      BuilderCall.RateLimited -> PassResult.Failed(429)
+      BuilderCall.Unauthorized -> PassResult.Failed(401)
+      is BuilderCall.Failed -> PassResult.Failed(r.status)
     }
   }
 
   /**
-   * Runs [block] with a pass for [spaceId]. If it answers [DeviceCall.Unauthorized] (the pass expired mid-call) the
-   * cached pass is dropped and [block] runs once more with a fresh one. A revoked device ends as [DeviceCall.Revoked].
+   * Runs [block] with a pass for [spaceId]. If it answers [BuilderCall.Unauthorized] (the pass expired mid-call) the
+   * cached pass is dropped and [block] runs once more with a fresh one. A revoked device ends as [BuilderCall.Revoked].
    */
-  suspend fun <T> withPass(spaceId: String, block: suspend (token: String) -> DeviceCall<T>): DeviceCall<T> {
+  suspend fun <T> withPass(spaceId: String, block: suspend (token: String) -> BuilderCall<T>): BuilderCall<T> {
     for (attempt in 1..2) {
       val pass =
           when (val p = passFor(spaceId)) {
             is PassResult.Ok -> p
-            PassResult.NoAccess -> return DeviceCall.NoAccess
-            PassResult.Revoked -> return DeviceCall.Revoked
-            PassResult.Offline -> return DeviceCall.Offline
+            PassResult.NoAccess -> return BuilderCall.NoAccess
+            PassResult.Revoked -> return BuilderCall.Revoked
+            PassResult.Offline -> return BuilderCall.Offline
+            is PassResult.Failed -> return BuilderCall.Failed(p.status)
           }
       val r = block(pass.token)
-      if (r is DeviceCall.Revoked) {
+      if (r is BuilderCall.Revoked) {
         signOut()
         return r
       }
-      if (r !is DeviceCall.Unauthorized || attempt == 2) return r
+      if (r !is BuilderCall.Unauthorized || attempt == 2) return r
       mintLock.withLock { passes.remove(spaceId) }
     }
-    return DeviceCall.Unauthorized
+    return BuilderCall.Unauthorized
   }
 
   /** Shared headset: ends the session on the server and forgets the pairing. Personal: only drops the cached passes. */
@@ -151,14 +172,21 @@ class DeviceAuth(
     signOut()
   }
 
-  /** The secret for headset-secret calls (the spaces list); null when signed out. */
-  fun credentials(): Pair<String, String>? {
-    val id = store.get(KEY_ID) ?: return null
-    val secret = store.get(KEY_SECRET) ?: return null
-    return id to secret
+  /** The spaces the approver can build on. A revoked device is signed out here like everywhere else. */
+  suspend fun spaces(): BuilderCall<List<DeviceSpace>> {
+    val id = store.get(KEY_ID)
+    val secret = store.get(KEY_SECRET)
+    if (id == null || secret == null) return BuilderCall.Revoked
+    val r = api.deviceSpaces(id, secret)
+    if (r is BuilderCall.Revoked || r is BuilderCall.BadSecret) {
+      if (store.get(KEY_ID) == id) signOut()
+      return BuilderCall.Revoked
+    }
+    return r
   }
 
   private fun signOut() {
+    epoch++
     store.put(KEY_ID, null)
     store.put(KEY_KIND, null)
     store.put(KEY_SECRET, null)
