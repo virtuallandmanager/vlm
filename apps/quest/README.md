@@ -122,6 +122,7 @@ Prepare a published test space with plan 1's dashboard, or with a direct API cal
 - [ ] Menu → **Look at the ring again** clears it and returns to the hint.
 - [ ] Open a space from a link. A verified link from the browser needs plan 3's `assetlinks.json` with the release key's fingerprint, so until then use the intent: `adb shell am start -a android.intent.action.VIEW -d "https://vlm.gg/s/<code>"`. The app opens on the space page: the space's name, where to find it, "Look at the ring when you get there" and **Close**. Looking at that space's ring then shows the scene. Sent while the app is already open, it replaces the current space.
 - [ ] Menu → **Spaces** lists the spaces opened or visited, newest first; picking one opens its page.
+- [ ] Analytics: after a visit (scene shown, walk around for 30 s, take the headset off), the space's analytics on plan 1's dashboard show one visit on platform `ar-quest` with a path of positions in scene coordinates. A tracking-jump re-show within the visit does not count a second visit; looking at the ring again afterwards, or putting the headset back on, does. Nothing identifying the device is sent.
 
 Also worth noting while there:
 

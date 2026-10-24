@@ -14,6 +14,7 @@ import gg.vlm.spaces.api.ArFeed
 import gg.vlm.spaces.api.ArFeedSnapshot
 import gg.vlm.spaces.api.ArSpace
 import gg.vlm.spaces.api.FeedStatus
+import gg.vlm.spaces.api.VisitAnalytics
 import gg.vlm.spaces.planScene
 import gg.vlm.spaces.ring.CameraIntrinsics
 import gg.vlm.spaces.ring.RingCodec
@@ -22,9 +23,11 @@ import gg.vlm.spaces.ring.WallPlane
 import gg.vlm.spaces.ring.cameraToWorld
 import gg.vlm.spaces.ring.markerInCamera
 import gg.vlm.spaces.ring.wallHeading
+import gg.vlm.spaces.space.markerInScene
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.atan2
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -55,6 +58,7 @@ class VisitorController(
   private val api = ArApi(baseUrl)
   private val flow = VisitorFlow()
   private val feed = ArFeed(scope, api, onStatus = ::onFeedStatus, onSnapshot = ::onSnapshot)
+  private val analytics = VisitAnalytics(api::postAnalytics, System::currentTimeMillis)
   private val outline = RingOutline()
   private val trackingWatch = TrackingWatch()
   private val unreadableWatch = UnreadableWatch()
@@ -76,13 +80,40 @@ class VisitorController(
 
   init {
     ui.recentSpaces = prefs.recentSpaces
+    scope.launch {
+      while (true) {
+        delay(FLUSH_INTERVAL_MS)
+        flushAnalytics()
+      }
+    }
     refreshUi()
+  }
+
+  /** Posts queued analytics; a failure stays queued for the next flush. */
+  private suspend fun flushAnalytics() {
+    try {
+      analytics.flush()
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Log.w(TAG, "Analytics flush failed", e)
+    }
+  }
+
+  /** Ends the visit (the space is forgotten or the headset is off) and sends its `leave` at once. */
+  private fun endVisit() {
+    analytics.end()
+    scope.launch { flushAnalytics() }
   }
 
   /** Call every frame with the head pose, the newest camera rings, the camera's intrinsics and the room's walls. */
   fun tick(head: Pose, rings: CameraRings?, k: CameraIntrinsics?, walls: List<WallPlane>) {
     val now = SystemClock.elapsedRealtime()
     if (head != Pose()) {
+      (flow.state as? VisitorState.Shown)?.let { shown ->
+        val p = markerInScene(shown.root, head.t.vec(), 0.0)
+        analytics.position(Vec3(p.x, p.y, p.z))
+      }
       val fwd = head.q.times(Vector3(0f, 0f, 1f))
       val yaw = Math.toDegrees(atan2(fwd.x.toDouble(), fwd.z.toDouble()))
       if (trackingWatch.onHead(head.t.vec(), yaw)) {
@@ -103,6 +134,7 @@ class VisitorController(
 
   fun headsetOff() {
     dispatch(VisitorEvent.HeadsetOff)
+    endVisit()
     // A shared headset: the next person starts at the hint card with nothing loaded, unless a builder chose otherwise.
     if (!prefs.keepLoadedBetweenVisitors) dispatch(VisitorEvent.LookAgain)
     unreadableWatch.reset()
@@ -223,6 +255,7 @@ class VisitorController(
       }
       VisitorEffect.StopFeed -> {
         feed.stop()
+        endVisit()
         feedSpaceId = null
         space = null
         ui.feed = null
@@ -233,16 +266,19 @@ class VisitorController(
         val s = space
         val ring = steadyRing
         if (s != null && ring != null) visited(RingCodec.codeOf(ring), s.name)
+        space?.let { analytics.shown(it.id) }
         renderer.setRoot(fx.root)
         renderer.setVisible(true, now)
       }
       is VisitorEffect.Reanchor -> renderer.setRoot(fx.root)
       VisitorEffect.HideScene -> {
         renderer.setVisible(false, now)
+        analytics.hidden()
         outline.clear()
       }
       VisitorEffect.HideNow -> {
         renderer.hideNow()
+        analytics.hidden()
         outline.clear()
       }
       is VisitorEffect.FlashOutline -> {
@@ -303,6 +339,7 @@ class VisitorController(
   companion object {
     private const val TAG = "VLMSpaces"
     /** A camera frame older than this (camera stalled or stopped) shows no rings. */
+    private const val FLUSH_INTERVAL_MS = 10_000L
     private const val STALE_NS = 250_000_000L
   }
 }

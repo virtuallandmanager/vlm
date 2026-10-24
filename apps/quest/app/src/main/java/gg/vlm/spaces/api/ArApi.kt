@@ -30,6 +30,32 @@ class ArApi(baseUrl: String, private val userAgentVersion: Int = 1) {
   suspend fun feed(spaceId: String, since: String, token: String? = null): ApiResult<ArFeedSnapshot> =
       get("/api/ar/spaces/${enc(spaceId)}/feed?since=${enc(since)}", token, 40_000, ::parseFeed)
 
+  /** `POST /api/ar/spaces/:id/analytics`: true when the server took the batch. Anonymous; sends no token. */
+  suspend fun postAnalytics(spaceId: String, body: String): Boolean =
+      withContext(Dispatchers.IO) {
+        val c =
+            try {
+              URL("$base/api/ar/spaces/${enc(spaceId)}/analytics").openConnection() as HttpURLConnection
+            } catch (e: java.io.IOException) {
+              return@withContext false
+            }
+        try {
+          c.requestMethod = "POST"
+          c.connectTimeout = 15_000
+          c.readTimeout = 15_000
+          c.useCaches = false
+          c.doOutput = true
+          c.setRequestProperty("X-VLM-App-Version", userAgentVersion.toString())
+          c.setRequestProperty("Content-Type", "application/json")
+          c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+          c.responseCode in 200..299
+        } catch (e: java.io.IOException) {
+          false
+        } finally {
+          c.disconnect()
+        }
+      }
+
   private suspend fun <T> get(path: String, token: String?, readTimeoutMs: Int, parse: (String) -> T?): ApiResult<T> =
       withContext(Dispatchers.IO) {
         val c =
