@@ -57,7 +57,8 @@ fun Vec3.sdk() = Vector3(x.toFloat(), y.toFloat(), z.toFloat())
  * load straight from their https URL (NetworkedAssetLoader), so only .glb works. Sounds aren't played yet.
  *
  * The scene starts hidden. [setVisible] fades images and videos over [FADE_MS] by setting their materials' alpha
- * each [tick] (and a video layer's colour scale); models and sounds show and hide at the end of the fade.
+ * each [tick] (and a video layer's colour scale); models and sounds show and hide at the end of the fade. Videos play
+ * only while they are drawn and the app isn't [paused].
  */
 class SceneRenderer(private val activity: AppSystemActivity) {
   val root: Entity = Entity.create(listOf(Transform(Pose())))
@@ -75,6 +76,15 @@ class SceneRenderer(private val activity: AppSystemActivity) {
     }
 
   var onApplied: ((PlanDiff) -> Unit)? = null
+
+  /** The app is in the background: videos are paused whatever the fade says. */
+  var paused = false
+    set(value) {
+      if (field != value) {
+        field = value
+        syncPlayers()
+      }
+    }
 
   private var plan: List<RenderItem> = emptyList()
   private val shown = mutableMapOf<String, Shown>()
@@ -154,11 +164,18 @@ class SceneRenderer(private val activity: AppSystemActivity) {
     if (fade.mediaOn != appliedMedia) {
       appliedMedia = fade.mediaOn
       shown.values.forEach { s -> if (s.faded.isNotEmpty()) s.entities.forEach { it.setComponent(Visible(appliedMedia)) } }
+      syncPlayers()
     }
     if (fade.solidOn != appliedSolid) {
       appliedSolid = fade.solidOn
       shown.values.forEach { s -> if (s.faded.isEmpty()) s.entities.forEach { it.setComponent(Visible(appliedSolid)) } }
     }
+  }
+
+  /** Videos play while they are drawn and the app is in the foreground, and pause otherwise. */
+  private fun syncPlayers() {
+    val play = appliedMedia && !paused
+    shown.values.forEach { s -> s.player?.playWhenReady = play }
   }
 
   /** Sets [so]'s alpha: its materials' albedo (images multiply their texture by it) and, for a panel, its layer. */
@@ -259,7 +276,7 @@ class SceneRenderer(private val activity: AppSystemActivity) {
           repeatMode = if (item.loop) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
           volume = 0f // muted, like the other spikes until Sound is on
           prepare()
-          playWhenReady = true
+          playWhenReady = appliedMedia && !paused
         }
     val id = nextPanelId++
     activity.registerPanel(
@@ -287,6 +304,8 @@ class SceneRenderer(private val activity: AppSystemActivity) {
         try {
           withContext(Dispatchers.IO) {
             val c = URL(src).openConnection() as HttpURLConnection
+            c.connectTimeout = IMAGE_CONNECT_TIMEOUT_MS
+            c.readTimeout = IMAGE_READ_TIMEOUT_MS
             try {
               c.inputStream.use { BitmapFactory.decodeStream(it) }
             } finally {
@@ -317,6 +336,8 @@ class SceneRenderer(private val activity: AppSystemActivity) {
     private const val TAG = "VLMSpaces"
     private const val IMAGE_MESH = "mesh://vlm-image"
     const val FADE_MS = 400L
+    private const val IMAGE_CONNECT_TIMEOUT_MS = 15_000
+    private const val IMAGE_READ_TIMEOUT_MS = 30_000
     private var nextPanelId = 1_600_000
   }
 }
