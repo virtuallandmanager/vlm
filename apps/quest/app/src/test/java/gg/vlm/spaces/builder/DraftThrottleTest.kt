@@ -36,4 +36,42 @@ class DraftThrottleTest {
     throttle.reset("a")
     assertTrue(throttle.allow("a"))
   }
+
+  @Test
+  fun `a draft turned away comes due once the gap has passed`() {
+    assertTrue(throttle.allow("a"))
+    t += 30
+    assertFalse(throttle.allow("a"))
+    assertTrue(throttle.due().isEmpty())
+    t += 70
+    assertEquals(listOf("a"), throttle.due())
+    assertTrue("sent once", throttle.due().isEmpty())
+    t += 50
+    assertFalse("the due send counts as sent", throttle.allow("a"))
+  }
+
+  @Test
+  fun `flush lets a held-back draft out at once, and only if there is one`() {
+    assertTrue(throttle.allow("a"))
+    assertFalse(throttle.flush("a"))
+    t += 10
+    assertFalse(throttle.allow("a"))
+    assertTrue(throttle.flush("a"))
+    assertFalse(throttle.flush("a"))
+    assertTrue(throttle.due().isEmpty())
+  }
+
+  @Test
+  fun `a later allowed send clears the held-back draft, and reset drops it`() {
+    assertTrue(throttle.allow("a"))
+    t += 10
+    assertFalse(throttle.allow("a"))
+    t += 100
+    assertTrue(throttle.allow("a"))
+    assertTrue(throttle.due().isEmpty())
+    t += 10
+    assertFalse(throttle.allow("a"))
+    throttle.reset("a")
+    assertTrue(throttle.due().isEmpty())
+  }
 }

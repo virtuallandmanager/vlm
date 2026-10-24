@@ -66,22 +66,22 @@ class BuilderApiTest {
   @Test
   fun `a 409 held maps to Held with the holder's name`() {
     routes["POST /api/ar/drafts"] = json("""{"error":"held","holderName":"Sam"}""", 409)
-    val r = runBlocking { api().draft("sp1", "sk1", "el1", t) }
+    val r = runBlocking { api().draft("sp1", "sk1", "image", t) }
     assertEquals(BuilderCall.Ok(DraftAnswer.Held("Sam")), r)
   }
 
   @Test
   fun `a 503 maps to Unavailable`() {
     routes["POST /api/ar/drafts"] = json("""{"error":"drafts_unavailable"}""", 503)
-    assertEquals(BuilderCall.Ok(DraftAnswer.Unavailable), runBlocking { api().draft("sp1", "sk1", "el1", t) })
+    assertEquals(BuilderCall.Ok(DraftAnswer.Unavailable), runBlocking { api().draft("sp1", "sk1", "image", t) })
   }
 
   @Test
   fun `a 204 is Ok and the body carries the draft`() {
     routes["POST /api/ar/drafts"] = MockResponse().setResponseCode(204)
-    assertEquals(BuilderCall.Ok(DraftAnswer.Ok), runBlocking { api().draft("sp1", "sk1", "el1", t) })
+    assertEquals(BuilderCall.Ok(DraftAnswer.Ok), runBlocking { api().draft("sp1", "sk1", "image", t) })
     val b = bodies.single()
-    assertTrue(b, b.contains("\"sk\":\"sk1\"") && b.contains("\"element\":\"el1\"") && b.contains("\"y\":90.0"))
+    assertTrue(b, b.contains("\"sk\":\"sk1\"") && b.contains("\"element\":\"image\"") && b.contains("\"y\":90.0"))
   }
 
   @Test
@@ -118,5 +118,25 @@ class BuilderApiTest {
     assertEquals(BuilderCall.Ok(listOf("floor_far")), runBlocking { a.savePose("sp1", "m1", MarkerPose(1.0, 2.0, 3.0, 45.0), 1.4) })
     assertTrue(bodies[0], bodies[0].contains("\"scaleFactor\":{\"x\":0.5"))
     assertTrue(bodies[1], bodies[1].contains("\"heightAboveFloorM\":1.4") && bodies[1].contains("\"headingDeg\":45.0"))
+  }
+
+  @Test
+  fun `sceneSpaces reads the scene's spaces and otherPlaces leaves this one out`() {
+    routes["GET /api/scenes/sc1/ar/spaces"] =
+        json("""[{"id":"sp1","name":"Lobby","floors":[]},{"id":"sp2","name":"Gallery"},{"id":"sp3"},{"id":"sp4","name":"Shop"}]""")
+    val r = runBlocking { api().sceneSpaces("sp1", "sc1") }
+    val spaces = (r as BuilderCall.Ok).value
+    assertEquals(listOf(SpaceName("sp1", "Lobby"), SpaceName("sp2", "Gallery"), SpaceName("sp4", "Shop")), spaces)
+    assertEquals(listOf("Gallery", "Shop"), otherPlaces(spaces, "sp1"))
+  }
+
+  @Test
+  fun `deleteAdjustment and endDraft hit their routes`() {
+    routes["DELETE /api/ar/spaces/sp1/adjustments/in1"] = MockResponse().setResponseCode(204)
+    routes["POST /api/ar/drafts/end"] = MockResponse().setResponseCode(204)
+    val a = api()
+    assertEquals(BuilderCall.Ok(Unit), runBlocking { a.deleteAdjustment("sp1", "in1") })
+    assertEquals(BuilderCall.Ok(Unit), runBlocking { a.endDraft("sp1", "in1", false) })
+    assertTrue(bodies[1], bodies[1].contains("\"saved\":false") && bodies[1].contains("\"sk\":\"in1\""))
   }
 }

@@ -37,6 +37,7 @@ import com.meta.spatial.toolkit.TransformParent
 import com.meta.spatial.toolkit.VideoSurfacePanelRegistration
 import com.meta.spatial.toolkit.Visible
 import java.net.HttpURLConnection
+import gg.vlm.spaces.builder.ItemTransform
 import gg.vlm.spaces.space.RootPose
 import gg.vlm.spaces.space.SceneView
 import java.net.URL
@@ -60,6 +61,9 @@ fun Vec3.sdk() = Vector3(x.toFloat(), y.toFloat(), z.toFloat())
  * The scene starts hidden. [setVisible] fades images and videos over [FADE_MS] by setting their materials' alpha
  * each [tick] (and a video layer's colour scale); models and sounds show and hide at the end of the fade. Videos play
  * only while they are drawn and the app isn't [paused].
+ *
+ * In [builderMode], item meshes take ray hits (`MeshCollision.LineTest`) so the builder can pick them ([keyAt]), and
+ * [setOverrides] shows edited items where the builder has put them; visitors' meshes keep `NoCollision`.
  */
 class SceneRenderer(private val activity: AppSystemActivity) : SceneView {
   val root: Entity = Entity.create(listOf(Transform(Pose())))
@@ -69,6 +73,15 @@ class SceneRenderer(private val activity: AppSystemActivity) : SceneView {
    * z instead, the two differ by exactly this turn. Which one it does is checked on the headset (see README).
    */
   var modelTurn = true
+    set(value) {
+      if (field != value) {
+        field = value
+        rebuild()
+      }
+    }
+
+  /** Builder mode: item meshes can be hit by the pointer. Changing it rebuilds the items. */
+  var builderMode = false
     set(value) {
       if (field != value) {
         field = value
@@ -90,13 +103,21 @@ class SceneRenderer(private val activity: AppSystemActivity) : SceneView {
   private var plan: List<RenderItem> = emptyList()
   private val shown = mutableMapOf<String, Shown>()
 
-  /** [faded] are the entities whose alpha the fade sets (an image's quad, a video's panel); models have none. */
+  /**
+   * [faded] are the entities whose alpha the fade sets (an image's quad, a video's panel); models have none. The first
+   * of [entities] is the item's group (position and rotation); [sized] is the child its scale goes on, if any.
+   */
   private class Shown(
+      val item: RenderItem,
       val entities: List<Entity>,
       val player: ExoPlayer? = null,
       val panelId: Int? = null,
       val faded: List<Entity> = emptyList(),
+      val sized: Entity? = null,
   )
+
+  /** Builder edits by item key, and what [setOverrides] last put on each item. */
+  private var overrides: Map<String, ItemTransform> = emptyMap()
 
   private val fade = SceneFade(FADE_MS)
   /** What [sync] last put on the entities. */
@@ -130,6 +151,46 @@ class SceneRenderer(private val activity: AppSystemActivity) : SceneView {
   }
 
   override fun count() = plan.size
+
+  /** The key of the item [entity] belongs to (its group or a child), or null. */
+  fun keyAt(entity: Entity): String? = shown.entries.firstOrNull { (_, s) -> entity in s.entities }?.key
+
+  /**
+   * Shows the items in [next] (by key) at their builder transforms instead of the feed's; items no longer in it go
+   * back to the feed's. Call every frame while building; only changed items are touched.
+   */
+  fun setOverrides(next: Map<String, ItemTransform>) {
+    if (next == overrides) return
+    val prev = overrides
+    overrides = next
+    for (key in prev.keys + next.keys) if (prev[key] != next[key]) shown[key]?.let(::place)
+  }
+
+  /** Puts [s]'s group and sized child where its override (or else the feed) has it. */
+  private fun place(s: Shown) {
+    val o = overrides[s.item.key]
+    val g = s.entities.first()
+    if (o == null) {
+      g.setComponent(Transform(Pose(s.item.transform.position.sdk(), s.item.transform.rotation.sdk())))
+      s.sized?.setComponent(Scale(sizeFactor(s.item, s.item.transform.scale)))
+    } else {
+      g.setComponent(Transform(Pose(o.position.sdk(), Quat.yxzDegrees(o.rotation).sdk())))
+      s.sized?.setComponent(Scale(sizeFactor(s.item, o.scale)))
+    }
+  }
+
+  /**
+   * The Scale for an item's sized child at [scale]: a model takes it as it is; an image's quad and a video's panel were
+   * built at the feed's width and height, so they take the ratio.
+   */
+  private fun sizeFactor(item: RenderItem, scale: Vec3): Vector3 =
+      if (item.kind == RenderItem.Kind.MODEL) scale.sdk()
+      else
+          Vector3(
+              (Math.abs(scale.x) / maxOf(Math.abs(item.width), 0.001)).toFloat(),
+              (Math.abs(scale.y) / maxOf(Math.abs(item.height), 0.001)).toFloat(),
+              1f,
+          )
 
   /** Removes every item (the space was closed); whatever is added next starts hidden. */
   override fun clear() {
@@ -216,12 +277,14 @@ class SceneRenderer(private val activity: AppSystemActivity) : SceneView {
     val g = group(item)
     val s =
         when (item.kind) {
-          RenderItem.Kind.IMAGE -> child(g, imageMeshUri(item)).let { q -> Shown(listOf(g, q), faded = listOf(q)) }
-          RenderItem.Kind.MODEL -> Shown(listOf(g, model(g, item)))
+          RenderItem.Kind.IMAGE -> child(g, imageMeshUri(item)).let { q -> Shown(item, listOf(g, q), faded = listOf(q), sized = q) }
+          // A non-glb model's placeholder box keeps its own size.
+          RenderItem.Kind.MODEL -> model(g, item).let { m -> Shown(item, listOf(g, m), sized = m.takeIf { extOf(item.src) == "glb" }) }
           RenderItem.Kind.VIDEO -> video(g, item)
-          RenderItem.Kind.AUDIO -> Shown(listOf(g))
+          RenderItem.Kind.AUDIO -> Shown(item, listOf(g))
         }
     shown[item.key] = s
+    if (item.key in overrides) place(s)
     val on = if (s.faded.isEmpty()) appliedSolid else appliedMedia
     s.entities.forEach { it.setComponent(Visible(on)) }
     s.faded.forEach(::watchAlpha)
@@ -238,9 +301,12 @@ class SceneRenderer(private val activity: AppSystemActivity) : SceneView {
     s.entities.asReversed().forEach { it.destroy() }
   }
 
+  /** Builders pick items with the pointer; visitors' items never take a hit. */
+  private fun collision() = if (builderMode) MeshCollision.LineTest else MeshCollision.NoCollision
+
   private fun child(parent: Entity, mesh: Uri, vararg extra: com.meta.spatial.core.ComponentBase): Entity =
       Entity.create(
-          listOf(Mesh(mesh, hittable = MeshCollision.NoCollision), TransformParent(parent), Transform(Pose())) +
+          listOf(Mesh(mesh, hittable = collision()), TransformParent(parent), Transform(Pose())) +
               extra.toList()
       )
 
@@ -250,7 +316,7 @@ class SceneRenderer(private val activity: AppSystemActivity) : SceneView {
       Log.w(TAG, "only .glb models load; showing a placeholder for ${item.name}")
       return Entity.create(
           listOf(
-              Mesh(Uri.parse("mesh://box"), hittable = MeshCollision.NoCollision),
+              Mesh(Uri.parse("mesh://box"), hittable = collision()),
               Box(Vector3(-0.25f, 0f, -0.25f), Vector3(0.25f, 0.5f, 0.25f)),
               Material().apply { baseColor = Color4(1f, 0.2f, 0.6f, 1f) },
               TransformParent(parent),
@@ -260,7 +326,7 @@ class SceneRenderer(private val activity: AppSystemActivity) : SceneView {
     }
     return Entity.create(
         listOf(
-            Mesh(Uri.parse(item.src), hittable = MeshCollision.NoCollision),
+            Mesh(Uri.parse(item.src), hittable = collision()),
             TransformParent(parent),
             Transform(Pose(Vector3(0f), turn.sdk())),
             Scale(item.transform.scale.sdk()),
@@ -293,7 +359,7 @@ class SceneRenderer(private val activity: AppSystemActivity) : SceneView {
         )
     )
     val panel = Entity.create(listOf(Panel(id), TransformParent(parent), Transform(Pose())))
-    return Shown(listOf(parent, panel), player, id, faded = listOf(panel))
+    return Shown(item, listOf(parent, panel), player, id, faded = listOf(panel), sized = panel)
   }
 
   private suspend fun imageMesh(uri: Uri): SceneMesh {

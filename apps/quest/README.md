@@ -240,3 +240,19 @@ Not yet run (no headset was connected). The panel is built but not reachable fro
 - [ ] Move the printed ring 6 cm (or turn it over 1°): the line shows as a warning with **Re-record this ring**. Press it: only that ring's pose changes.
 - [ ] A ring with no pose more than 4 m (straight line) from the last anchor shows "Too far from the last ring to record accurately: walk back, or align from this ring instead" and no Record button.
 - [ ] A floor with a single ring shows "Add a second ring on this floor so visitors stay lined up".
+
+### Owner checks (builder HUD, picking and the transform bar, plan 3 Task 7)
+
+Not yet run (no headset was connected). The HUD (`R.id.builder_hud`, `BuilderHud`), `Picking`, `Gizmo`, `PickOutline` and `BuilderEditor` are built and compile, but nothing creates them until Task 10. The transform math is a port of `packages/vlm-core/src/transform/session.ts` and its tests; what follows is what only the headset can show.
+
+Unverified from the 0.14.0 jars and docs (confirmed there: `SemanticType.X.id` and `PointerEventType.X.id` are `getId()`, so `.id` is right; `IsdkSystem.registerObserver`, `PointerEvent.source / hitInfo.entity`, `Pose.forward()`, `ButtonBits.ButtonSqueezeL/R`):
+
+- [ ] **Picking an item.** In builder mode, items' meshes are `Mesh(hittable = LineTest)` (visitors keep `NoCollision`). Point the controller at an image and a model and pull the trigger, then pinch with a hand: the item is outlined in yellow and the bar shows. If no `Select` arrives, the mesh needs a collider (README check 4 above); videos (panels) and sounds may only be pickable from the Layout list.
+- [ ] **The ray while dragging.** `Picking` reads `PointerEvent.source`'s `Transform` every frame and takes its +Z as the ray. Drag an image along the floor in Move: it follows the ray's spot on the horizontal plane through the item. If it moves wrongly (or not at all), the source entity's pose isn't the pointer's world pose; switch to the controller pose from `AvatarBody` / `scene.getControllerPoseAtTime`.
+- [ ] **Release.** Let go of the trigger mid-drag: the drag ends (`Unselect` or `Cancel` from the same source) and the last pose is relayed (Decentraland shows it where it was dropped).
+- [ ] **Gizmo.** Move shows three coloured axis handles (dragging one moves along that axis only, with a guide line); Rotate shows three rings; Resize shows a white corner handle and coloured face handles (no Z for images). Handles are 12 cm boxes, rings 4 cm thick, at least 0.5 m across. Holding either grip snaps (15° turns, 0.1 scale steps, 0.25 stretch steps).
+- [ ] **Resizing an image or video live.** The quad (or panel) gets a `Scale` relative to the size it was built at. Check the image grows and shrinks while dragging, and that a video panel does too (if a panel ignores `Scale`, its size only updates when the feed rebuilds it after Save).
+- [ ] **Exact fields.** Tap a field: the system keyboard opens (a text keyboard, for the minus sign). Type a value and press Done, or tap elsewhere: the item moves. A bad entry goes back to the old value.
+- [ ] **Save, Everywhere and Just this place.** Pick, move, rotate and resize an image and a model; Save. Everywhere: Decentraland shows the change. Just this place: Decentraland doesn't, the AR feed does, and the Layout row gets the dot; **Reset to shared** then Save puts it back.
+- [ ] **Held.** While someone moves an item in Decentraland, try to drag it on the headset: the pick drops and the HUD says "<name> is moving this".
+- [ ] **Done.** With unsaved changes, Done asks "Save your changes before leaving?" (Save / Don't save / Cancel, wording the owner may change); with none it leaves at once.

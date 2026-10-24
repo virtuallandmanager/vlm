@@ -23,6 +23,11 @@ sealed interface DraftAnswer {
 
 data class PlacedItem(val elementId: String, val instanceId: String)
 
+data class SpaceName(val id: String, val name: String)
+
+/** The names of the scene's AR spaces other than [spaceId], for [hudWarnings]. */
+fun otherPlaces(spaces: List<SpaceName>, spaceId: String): List<String> = spaces.filter { it.id != spaceId }.map { it.name }
+
 /**
  * The calls the builder makes with an AR pass. Each takes the [spaceId] the pass is for and goes through
  * [DeviceAuth.withPass].
@@ -52,7 +57,10 @@ class BuilderApi(private val api: ArApi, private val auth: DeviceAuth) {
   suspend fun deleteAdjustment(spaceId: String, instanceId: String): BuilderCall<Unit> =
       call(spaceId, "DELETE", "/api/ar/spaces/${enc(spaceId)}/adjustments/${enc(instanceId)}", null) { Unit }
 
-  /** `POST /api/ar/drafts`: a live preview of a move; 409 `held` and 503 are answers, not failures. */
+  /**
+   * `POST /api/ar/drafts`: a live preview of a move; 409 `held` and 503 are answers, not failures. [sk] is the
+   * instance's sk; [element] is the element type (image, video, model, sound or ad_space), not the element's id.
+   */
   suspend fun draft(spaceId: String, sk: String, element: String, t: ItemTransform): BuilderCall<DraftAnswer> =
       auth.withPass(spaceId) { token ->
         api.bearer(
@@ -89,6 +97,20 @@ class BuilderApi(private val api: ArApi, private val auth: DeviceAuth) {
             put("saved", saved)
           },
       ) { Unit }
+
+  /**
+   * `GET /api/scenes/:sceneId/ar/spaces`: the scene's AR spaces (id and name), for the "also shown at" warning.
+   * Entries without an id or name are skipped.
+   */
+  suspend fun sceneSpaces(spaceId: String, sceneId: String): BuilderCall<List<SpaceName>> =
+      call(spaceId, "GET", "/api/scenes/${enc(sceneId)}/ar/spaces", null) { body ->
+        (runCatching { Json.parseToJsonElement(body) }.getOrNull() as? JsonArray)?.mapNotNull { e ->
+          val o = e as? JsonObject ?: return@mapNotNull null
+          val id = (o["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+          val name = (o["name"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+          SpaceName(id, name)
+        }
+      }
 
   /** `GET /api/scenes/:sceneId/library`: the models and images the builder can place. */
   suspend fun library(spaceId: String, sceneId: String): BuilderCall<JsonObject> =

@@ -7,4 +7,5 @@
   <item name="space_page" type="id" />
   <item name="pairing_panel" type="id" />
   <item name="align_panel" type="id" />
+  <item name="builder_hud" type="id" />
 </resources>
