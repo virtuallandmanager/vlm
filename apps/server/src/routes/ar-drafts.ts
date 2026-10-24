@@ -40,6 +40,14 @@ const draftSeq = new Map<string, number>()
 const inFlight = new Map<string, number>()
 /** `${deviceId}\n${sk}` -> the device's draft count when it ended sk: drafts older than that still in flight are dropped. */
 const ended = new Map<string, number>()
+/**
+ * Bumped each time a headset's session ends or it is revoked. A request remembers the value it arrived under, and one
+ * that arrived before its device ended never takes a hold: it may still have been in `authenticate` when the hook
+ * released the device's holds, and nothing would end its hold for 10 minutes.
+ */
+let endEpoch = 0
+const deviceEndedAt = new Map<string, number>()
+const arrivedAt = new WeakMap<FastifyRequest, number>()
 
 /** The pass's own scene, when the body's `sk` is an instance in it. */
 const boundSceneWithInstance: SceneFrom = async (r) => {
@@ -76,12 +84,16 @@ async function relayEnd(sceneId: string, sk: string, saved: boolean) {
 /** A headset's session ended or it was revoked: its drafts end unsaved. */
 onDeviceEnded(async (deviceId) => {
   draftTimes.delete(deviceId)
-  // Drafts already past `authenticate` must not re-take a hold once it's released.
-  for (const key of inFlight.keys()) if (key.startsWith(`${deviceId}\n`)) ended.set(key, draftSeq.get(deviceId) ?? 0)
+  deviceEndedAt.set(deviceId, ++endEpoch)
   await Promise.all(releaseAll(arKey(deviceId)).map(({ sceneId, sk }) => relayEnd(sceneId, sk, false)))
 })
 
 export default async function arDraftRoutes(app: FastifyInstance) {
+  // Encapsulated: only this plugin's routes.
+  app.addHook('onRequest', async (request) => {
+    arrivedAt.set(request, endEpoch)
+  })
+
   app.post<{ Body: Record<string, any> }>(
     '/api/ar/drafts',
     { preHandler: [authenticate], config: { scenePass: { sceneFrom: boundSceneWithInstance, ar: true } } },
@@ -105,6 +117,8 @@ export default async function arDraftRoutes(app: FastifyInstance) {
           if (seq <= endedAt) return reply.status(204).send() // sent before the headset ended sk: stale
           ended.delete(key)
         }
+        // Arrived before its device's session ended (or it was revoked): dropped. Nothing awaits from here to `hold`.
+        if ((deviceEndedAt.get(deviceId) ?? 0) > (arrivedAt.get(request) ?? 0)) return reply.status(204).send()
         const holder = holderOf(sceneId, sk)
         if (holder && holder.key !== arKey(deviceId)) return reply.status(409).send({ error: 'held', holderName: holder.name })
         const now = clock()
@@ -115,7 +129,8 @@ export default async function arDraftRoutes(app: FastifyInstance) {
         }
         times.push(now)
         draftTimes.set(deviceId, times)
-        hold(sceneId, sk, { key: arKey(deviceId), name, expiresAt: Date.now() + AR_HOLD_MS })
+        const { lapsed } = hold(sceneId, sk, { key: arKey(deviceId), name, expiresAt: Date.now() + AR_HOLD_MS })
+        if (lapsed) await relayEnd(sceneId, sk, false) // a lapsed hold replaced before the sweep reached it
         const msg = { element: body.element, sk, position: body.position, rotation: body.rotation, scale: body.scale, holderName: name }
         await Promise.all(roomsForScene(sceneId).map((room) => room.relayArDraft(msg)))
         return reply.status(204).send()

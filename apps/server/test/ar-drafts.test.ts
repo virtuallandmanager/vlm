@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { arDevices, sceneCollaborators } from '../src/db/schema.js'
 import { db } from '../src/db/connection.js'
@@ -152,6 +152,29 @@ describe('AR draft relay', () => {
     expect(holderOf(s.scene.id, s.inst2.id)).toBeUndefined()
   })
 
+  it("a draft still in flight when its session ends doesn't take a hold", async () => {
+    const s = await setup({ kind: 'shared' })
+    const real = db.query.users.findFirst.bind(db.query.users)
+    let slowed = false
+    const spy = vi.spyOn(db.query.users, 'findFirst').mockImplementation(((...args: any[]) => {
+      if (slowed) return (real as any)(...args)
+      slowed = true // only the draft's holder-name lookup is slowed
+      return new Promise((r) => setTimeout(r, 300)).then(() => (real as any)(...args))
+    }) as any)
+    try {
+      const pending = s.post(draft(s.inst.id))
+      await new Promise((r) => setTimeout(r, 100))
+      expect(slowed).toBe(true)
+      const ended = await app.inject({ method: 'POST', url: `/api/ar/devices/${s.headset.deviceId}/end`, payload: { secret: SECRET } })
+      expect(ended.statusCode).toBe(204)
+      expect((await pending).statusCode).toBe(204)
+      expect(holderOf(s.scene.id, s.inst.id)).toBeUndefined()
+      await s.editor.expectNone('transform_draft', 200)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('revoking the headset from the website ends its drafts', async () => {
     const s = await setup()
     expect((await s.post(draft(s.inst.id))).statusCode).toBe(204)
@@ -159,6 +182,33 @@ describe('AR draft relay', () => {
     const res = await app.inject({ method: 'DELETE', url: `/api/ar/devices/${s.headset.deviceId}`, headers: bearer(tokenFor(s.ownerU)) })
     expect(res.statusCode).toBeLessThan(300)
     expect(await s.editor.waitFor('transform_draft_end')).toEqual({ sk: s.inst.id, saved: false })
+  })
+
+  it('an editor taking over a lapsed headset hold relays its end first', async () => {
+    const s = await setup()
+    expect((await s.post(draft(s.inst.id))).statusCode).toBe(204)
+    await s.editor.waitFor('transform_draft')
+    holderOf(s.scene.id, s.inst.id)!.expiresAt = Date.now() - 1 // lapsed, not yet swept
+    s.editor.room.send('transform_draft', draft(s.inst.id, 6))
+    expect(await s.editor.waitFor('transform_draft_end')).toEqual({ sk: s.inst.id, saved: false })
+    expect(count(s.editor, 'transform_held')).toBe(0)
+    expect(holderOf(s.scene.id, s.inst.id)?.key).toBe(`room:${s.editor.room.sessionId}`)
+    runDraftSweep(Date.now() + 11 * MIN) // the editor's hold doesn't lapse
+    expect(holderOf(s.scene.id, s.inst.id)?.key).toBe(`room:${s.editor.room.sessionId}`)
+  })
+
+  it('a headset taking over a lapsed headset hold relays its end first', async () => {
+    const s = await setup()
+    const other = await pairedHeadset(s.editorU, s.scene.id)
+    expect((await s.post(draft(s.inst.id))).statusCode).toBe(204)
+    await s.editor.waitFor('transform_draft')
+    holderOf(s.scene.id, s.inst.id)!.expiresAt = Date.now() - 1
+    expect((await s.post(draft(s.inst.id, 8), other.pass)).statusCode).toBe(204)
+    expect(await s.editor.waitFor('transform_draft_end')).toEqual({ sk: s.inst.id, saved: false })
+    const got = await s.editor.waitFor('transform_draft')
+    expect([got.position.x, got.holderName]).toEqual([8, 'Eddie (headset)'])
+    const ends = s.editor.inbox.map((m) => m.type)
+    expect(ends).not.toContain('transform_draft_end')
   })
 
   it('a draft with no room still holds, and a room created later sees the hold', async () => {

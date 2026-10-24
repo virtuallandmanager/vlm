@@ -7,6 +7,7 @@ import { resetDb } from './helpers/db.js'
 import { createUser, createScene, createElement, createInstance, tokenFor, randomWallet } from './helpers/factories.js'
 import { startGameServer, joinScene, serverRoom } from './helpers/game-server.js'
 import { holderOf } from '../src/ws/draft-holds.js'
+import { roomsForScene } from '../src/ws/VLMSceneRoom.js'
 
 const draft = (sk: string, x = 5) => ({
   element: 'video',
@@ -228,6 +229,39 @@ describe('transform draft relay', () => {
     s.owner.room.send('transform_draft', draft(s.inst.id, 8))
     expect((await s.editor.waitFor('transform_draft')).position.x).toBe(8)
     expect(holderOf(s.scene.id, s.inst.id)?.key).toBe(`room:${s.owner.room.sessionId}`)
+  })
+
+  it('a client that leaves while its draft is in the guard leaves no hold behind', async () => {
+    const s = await setup()
+    const srv = serverRoom(s.owner.room.roomId)
+    const real = srv.getAccess.bind(srv)
+    let slowed = false
+    srv.getAccess = async (client: any) => {
+      if (!slowed && client.sessionId === s.owner.room.sessionId) {
+        slowed = true // only the draft's guard lookup is slowed
+        await new Promise((r) => setTimeout(r, 300))
+      }
+      return real(client)
+    }
+    s.owner.room.send('transform_draft', draft(s.inst.id))
+    await settle(50)
+    await s.owner.room.leave()
+    await settle(600)
+    expect(holderOf(s.scene.id, s.inst.id)).toBeUndefined()
+    await s.editor.expectNone('transform_draft', 10)
+  })
+
+  it('a disposed room leaves no room holds', async () => {
+    const s = await setup()
+    const srv = serverRoom(s.owner.room.roomId)
+    s.owner.room.send('transform_draft', draft(s.inst.id))
+    await s.editor.waitFor('transform_draft')
+    expect(holderOf(s.scene.id, s.inst.id)?.key).toBe(`room:${s.owner.room.sessionId}`)
+    srv.onLeave = () => {} // only onDispose may release it
+    for (const c of [s.owner, s.editor, s.viewer, s.visitor]) await c.room.leave()
+    for (let i = 0; i < 100 && roomsForScene(s.scene.id).length; i++) await settle(20)
+    expect(roomsForScene(s.scene.id)).toEqual([])
+    expect(holderOf(s.scene.id, s.inst.id)).toBeUndefined()
   })
 
   it('a venue renter (scene pass) never receives drafts and cannot send one', async () => {

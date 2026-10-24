@@ -17,14 +17,17 @@ export function holderOf(sceneId: string, sk: string): DraftHolder | undefined {
   return h && !lapsed(h, Date.now()) ? h : undefined
 }
 
-/** Takes or refreshes the hold. False when someone else holds sk. */
-export function hold(sceneId: string, sk: string, holder: DraftHolder): boolean {
-  const current = holderOf(sceneId, sk)
-  if (current && current.key !== holder.key) return false
+/**
+ * Takes or refreshes the hold. `ok` is false when someone else holds sk. `lapsed` is another holder's lapsed hold this
+ * one replaced before the sweep reached it: the caller tells editors it ended.
+ */
+export function hold(sceneId: string, sk: string, holder: DraftHolder): { ok: boolean; lapsed?: DraftHolder } {
+  const previous = holds.get(sceneId)?.get(sk)
+  if (previous && previous.key !== holder.key && !lapsed(previous, Date.now())) return { ok: false }
   let scene = holds.get(sceneId)
   if (!scene) holds.set(sceneId, (scene = new Map()))
   scene.set(sk, holder)
-  return true
+  return previous && previous.key !== holder.key ? { ok: true, lapsed: previous } : { ok: true }
 }
 
 /** Drops the hold if `holderKey` has it. True when it did. */

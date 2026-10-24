@@ -86,6 +86,8 @@ export class VLMSceneRoom extends Room {
   private linkedPass: Map<string, { via: 'hyperfy' | 'ar'; id: string }> = new Map()
   /** Recent draft timestamps per session, for the 20-per-second limit. */
   private draftTimes = new Map<string, number[]>()
+  /** Every registry key this room has held under and not yet released everywhere, so dispose can release them all. */
+  private issuedHoldKeys = new Set<string>()
   /** Per-session count of transform_draft messages, taken on arrival (before the guard's await). */
   private draftSeq = new Map<string, number>()
   /** `${sk}\n${sessionId}` -> that session's draft count when it sent transform_end for sk. Older drafts still in
@@ -218,7 +220,12 @@ export class VLMSceneRoom extends Room {
         }
         times.push(now)
         this.draftTimes.set(client.sessionId, times)
-        hold(this.sceneId, sk, { key: roomKey(client.sessionId), name: this.holderName(client.sessionId) }) // free or ours: checked above, no await since
+        // Left during the guard's await: onLeave has already released this client's holds.
+        if (!this.clientMeta.has(client.sessionId)) return
+        // Free or ours (checked above, no await since); a lapsed headset hold replaced here gets its end relayed.
+        const { lapsed } = hold(this.sceneId, sk, { key: roomKey(client.sessionId), name: this.holderName(client.sessionId) })
+        this.issuedHoldKeys.add(roomKey(client.sessionId))
+        if (lapsed) await this.relayToEditors('transform_draft_end', { sk, saved: false })
         await this.relayToEditors(
           'transform_draft',
           {
@@ -415,6 +422,7 @@ export class VLMSceneRoom extends Room {
     for (const { sk } of releaseAll(roomKey(client.sessionId))) {
       this.relayToEditors('transform_draft_end', { sk, saved: false }, client).catch(() => {})
     }
+    this.issuedHoldKeys.delete(roomKey(client.sessionId))
 
     this.clientMeta.delete(client.sessionId)
     this.passExpiry.delete(client.sessionId)
@@ -431,7 +439,8 @@ export class VLMSceneRoom extends Room {
     const mine = roomsByScene.get(this.sceneId)
     mine?.delete(this)
     if (mine && !mine.size) roomsByScene.delete(this.sceneId)
-    for (const sessionId of this.clientMeta.keys()) releaseAll(roomKey(sessionId))
+    for (const key of this.issuedHoldKeys) releaseAll(key)
+    this.issuedHoldKeys.clear()
     this.draftTimes.clear()
     this.clientMeta.clear()
     this.accessCache.clear()
