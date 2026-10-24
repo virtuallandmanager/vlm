@@ -42,3 +42,17 @@ export function pairingCodeFromPath(pathname: string, paramCode: string | undefi
   const m = /^\/pair\/([^/]+)\/?$/.exec(pathname)
   return m ? normalizePairingCode(decode(m[1])) : null
 }
+
+/** The code for /pair/headset/<code>; same static-export rules as `pairingCodeFromPath`. */
+export function headsetPairingCodeFromPath(pathname: string, paramCode: string | undefined): string | null {
+  if (paramCode && paramCode !== '_') return normalizePairingCode(decode(paramCode))
+  const m = /^\/pair\/headset\/([^/]+)\/?$/.exec(pathname)
+  return m ? normalizePairingCode(decode(m[1])) : null
+}
+
+export function headsetErrorMessage(err: unknown): string {
+  const e = err instanceof Error ? (err as ApiError) : null
+  if (e?.body?.error === 'unverified') return 'Verify your email before approving a headset.'
+  if (e?.status === 404) return 'This code has expired or was already used. Ask the headset for a new one.'
+  return 'Something went wrong. Try again in a moment.'
+}

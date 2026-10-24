@@ -298,6 +298,10 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     app.get('/u/:code', (_request, reply) => reply.sendFile('u/_/index.html'))
     app.get('/u/:code/', (_request, reply) => reply.sendFile('u/_/index.html'))
 
+    // Headset pairing approval links (/pair/headset/<code>): own page at pair/headset/_/
+    app.get('/pair/headset/:code', (_request, reply) => reply.sendFile('pair/headset/_/index.html'))
+    app.get('/pair/headset/:code/', (_request, reply) => reply.sendFile('pair/headset/_/index.html'))
+
     // Hyperfy pairing approval links (/pair/<code>): same single page, at pair/_/ (the API lives under /api/hyperfy/pair)
     app.get('/pair/:code', (_request, reply) => reply.sendFile('pair/_/index.html'))
     app.get('/pair/:code/', (_request, reply) => reply.sendFile('pair/_/index.html'))

@@ -4,7 +4,7 @@ import { useAuth } from './auth'
 import { API_URL } from './config'
 import { requestHeaders } from './request-headers'
 import type { ArFileFormat, ArMounting } from './ar'
-import type { ArFloorView, ArMarkerView, ArSpaceView, AdminAd, AdminAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyPairingSummary, HyperfyWorldSummary } from 'vlm-shared'
+import type { ArDeviceKind, ArDeviceSummary, ArPairApprovalInfo, ArFloorView, ArMarkerView, ArSpaceView, AdminAd, AdminAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyPairingSummary, HyperfyWorldSummary } from 'vlm-shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
 /** Read a File as base64 (no `data:…;base64,` prefix) for JSON upload bodies. */
@@ -280,6 +280,14 @@ export function useApi() {
       apiFetch<{ result: 'approved' }>(`/api/hyperfy/pair/${encodeURIComponent(code)}/approve`, { method: 'POST' }),
     getHyperfyPairings: () => apiFetch<{ pairings: HyperfyPairingSummary[] }>('/api/hyperfy/pairings'),
     revokeHyperfyPairing: (id: string) => apiFetch<{ revoked: true }>(`/api/hyperfy/pairings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+    // AR headset pairing
+    getHeadsetPairingInfo: (code: string) =>
+      apiFetch<ArPairApprovalInfo>(`/api/ar/pair/${encodeURIComponent(code)}`),
+    approveHeadsetPairing: (code: string, kind: ArDeviceKind) =>
+      apiFetch<{ result: string }>(`/api/ar/pair/${encodeURIComponent(code)}/approve`, { method: 'POST', body: JSON.stringify({ kind }) }),
+    getHeadsets: () => apiFetch<ArDeviceSummary[]>('/api/ar/devices'),
+    revokeHeadset: (id: string) => apiFetch<void>(`/api/ar/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
     // Hyperfy worlds (self-run and VLM-hosted)
     getHyperfyWorlds: (sceneId: string) =>

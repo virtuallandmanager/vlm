@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { HyperfyPairingSummary } from 'vlm-shared'
-import { approvalPrompt, pairingErrorMessage, pairingRowLabel, pairingCodeFromPath } from './pairing'
+import { approvalPrompt, pairingErrorMessage, pairingRowLabel, pairingCodeFromPath, headsetPairingCodeFromPath, headsetErrorMessage } from './pairing'
 
 const apiErr = (message: string, status: number, body: Record<string, unknown>) => Object.assign(new Error(message), { status, body })
 
@@ -61,5 +61,30 @@ describe('pairingCodeFromPath', () => {
   it('rejects a code that cannot exist', () => {
     expect(pairingCodeFromPath('/pair/ABC0EF/', '_')).toBeNull()
     expect(pairingCodeFromPath('/pair/_/', '_')).toBeNull()
+  })
+})
+
+describe('headsetPairingCodeFromPath', () => {
+  it('reads the code from the address bar, in any case or format', () => {
+    expect(headsetPairingCodeFromPath('/pair/headset/ABC-234/', '_')).toBe('ABC234')
+    expect(headsetPairingCodeFromPath('/pair/headset/abc234', undefined)).toBe('ABC234')
+  })
+  it('takes the route param outside static export', () => {
+    expect(headsetPairingCodeFromPath('/pair/headset/x/', 'abc-234')).toBe('ABC234')
+  })
+  it('is null for other paths', () => {
+    expect(headsetPairingCodeFromPath('/pair/ABC234', '_')).toBeNull()
+  })
+})
+
+describe('headsetErrorMessage', () => {
+  it('explains an unverified account', () => {
+    expect(headsetErrorMessage(apiErr('unverified', 403, { error: 'unverified' }))).toBe('Verify your email before approving a headset.')
+  })
+  it('explains an expired or unknown code', () => {
+    expect(headsetErrorMessage(apiErr('not_found', 404, { error: 'not_found' }))).toBe('This code has expired or was already used. Ask the headset for a new one.')
+  })
+  it('falls back', () => {
+    expect(headsetErrorMessage(new Error('x'))).toBe('Something went wrong. Try again in a moment.')
   })
 })
