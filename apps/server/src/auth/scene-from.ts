@@ -13,8 +13,10 @@ declare module 'fastify' {
     /**
      * `hyperfy: true` also lets a Hyperfy HUD pass (via 'hyperfy') in. Default refused: such a pass is tied to a
      * revocable pairing, so only the HUD's own routes opt in, never ones that grant access or mint credentials.
+     * `ar: true` does the same for an AR headset pass (via 'ar'), tied to a revocable headset: only the routes the
+     * headset uses to read and build opt in.
      */
-    scenePass?: { sceneFrom: SceneFrom; hyperfy?: true }
+    scenePass?: { sceneFrom: SceneFrom; hyperfy?: true; ar?: true }
   }
 }
 

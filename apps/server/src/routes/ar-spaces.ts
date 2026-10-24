@@ -15,7 +15,7 @@ const optText = (v: unknown) => v === undefined || v === null || (typeof v === '
 const validDiameter = (v: unknown) => v === undefined || (isNum(v) && v >= MIN_DIAMETER_MM && v <= RING_MAX_DIAMETER_MM)
 
 export default async function arSpaceRoutes(app: FastifyInstance) {
-  // Setup is a dashboard job, not a headset one: no `ar: true` here.
+  // Setup is a dashboard job, not a headset one: only the read-only space list takes an AR pass (`ar: true`).
   const cfg = (sceneFrom: SceneFrom) => ({ preHandler: [authenticate], config: { scenePass: { sceneFrom } } })
 
   /** Resolves the scene (404 when unknown), then requires build access (403 no_access). */
@@ -37,7 +37,7 @@ export default async function arSpaceRoutes(app: FastifyInstance) {
   const missing = (reply: FastifyReply) => reply.status(404).send({ error: 'not_found' })
   const fromSceneId = fromParam('sceneId')
 
-  app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId/ar/spaces', cfg(fromSceneId), async (request, reply) => {
+  app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId/ar/spaces', { preHandler: [authenticate], config: { scenePass: { sceneFrom: fromSceneId, ar: true as const } } }, async (request, reply) => {
     const sceneId = await guard(request, reply, fromSceneId)
     if (!sceneId) return
     return reply.send(await listSpaces(sceneId))

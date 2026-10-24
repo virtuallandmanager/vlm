@@ -5,7 +5,7 @@ import {
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
   sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
-  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arDevices,
 } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { createVenue, createBooking, addGrant } from '../src/venues/service.js'
@@ -73,13 +73,16 @@ async function fixtures() {
   const [arSpace] = await db.insert(arSpaces).values({ sceneId: scene.id, name: 'B space' }).returning()
   const [arFloor] = await db.insert(arFloors).values({ spaceId: arSpace.id, name: 'Ground floor' }).returning()
   const [arMarker] = await db.insert(arMarkers).values({ floorId: arFloor.id, ringId: 123456, code: '0000000' }).returning()
+  const [arDevice] = await db.insert(arDevices).values({
+    userId: b.id, secretHash: 'b-device-secret-hash', kind: 'shared', status: 'claimed', codeExpiresAt: new Date(Date.now() + H), expiresAt: new Date(Date.now() + H),
+  }).returning()
   const [bKey] = await db.insert(apiKeys).values({ userId: b.id, name: 'B key', keyHash: 'b-hash', keyPrefix: 'vlm_k1_b' }).returning()
 
   const aScene = (await createScene(a, 'A scene')).scene
   const [aEvent] = await db.insert(events).values({ ownerId: a.id, name: 'A event' }).returning()
   return {
     a, b, collaborator, scene, preset, element, instance, roleWallet, wallet, dcl, hyperfy, stream, event, giveaway, item,
-    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, world, pairing, arSpace, arFloor, arMarker, aScene, aEvent,
+    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, world, pairing, arSpace, arFloor, arMarker, arDevice, aScene, aEvent,
   }
 }
 type F = Awaited<ReturnType<typeof fixtures>>
@@ -129,6 +132,11 @@ const CASES: Case[] = [
   { route: 'DELETE /api/ar/markers/:id', url: (f) => `/api/ar/markers/${f.arMarker.id}` },
   { route: 'GET /api/ar/markers/by-code/:code', url: () => `/api/ar/markers/by-code/${ringCodeOf(123456)}` },
   { route: 'GET /api/ar/spaces/:id/feed', url: (f) => `/api/ar/spaces/${f.arSpace.id}/feed` },
+  // AR headsets (B's shared headset; A guesses the secret)
+  { route: 'POST /api/ar/devices/:id/pass', url: (f) => `/api/ar/devices/${f.arDevice.id}/pass`, body: (f) => ({ secret: 'guess', spaceId: f.arSpace.id }) },
+  { route: 'POST /api/ar/devices/:id/end', url: (f) => `/api/ar/devices/${f.arDevice.id}/end`, body: () => ({ secret: 'guess' }) },
+  { route: 'POST /api/ar/devices/:id/spaces', url: (f) => `/api/ar/devices/${f.arDevice.id}/spaces`, body: () => ({ secret: 'guess' }) },
+  { route: 'DELETE /api/ar/devices/:id', url: (f) => `/api/ar/devices/${f.arDevice.id}` },
   // deploy
   { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.scene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET }) },
   { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.aScene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET, walletId: f.wallet.id }) },
@@ -222,6 +230,9 @@ const NOT_CROSS_ACCOUNT: Record<string, string> = {
   'GET /api/hyperfy/pair/:code': 'the pairing code is the auth: any signed-in user holding it sees the approval page',
   'POST /api/hyperfy/pair/:code/approve': 'the pairing code is the auth; approval checks the approver\'s own edit access to the world\'s scene (a stranger refuses the code, which is rate limited)',
   'POST /api/hyperfy/pair/:code/claim': 'the pairing code plus the browser secret is the auth',
+  'GET /api/ar/pair/:code': 'the pairing code is the auth: any signed-in account holding it sees the approval page',
+  'POST /api/ar/pair/:code/approve': "the pairing code is the auth; the headset then acts only with the approver's own build access, checked at each mint (rate limited)",
+  'POST /api/ar/pair/:code/claim': 'the pairing code plus the headset secret is the auth',
   'POST /api/orgs/accept-invite': 'invite token only; the token names the org',
   'GET /api/auth/google/callback': 'OAuth callback; no bearer',
   'GET /api/auth/discord/callback': 'OAuth callback; no bearer',
@@ -235,7 +246,7 @@ const TABLES = [
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
   sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
-  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arDevices,
 ]
 async function snapshot(f: F) {
   const all = await Promise.all(TABLES.map((t) => db.select().from(t as any)))

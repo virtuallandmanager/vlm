@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { createHash, randomInt, timingSafeEqual } from 'node:crypto'
+import { randomInt } from 'node:crypto'
 import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm'
 import { HYPERFY_PAIRING, type HyperfyPairingSummary, type HyperfyVouchLinked, type PairClaimResponse, type PairRenewResponse } from 'vlm-shared'
 import { db } from '../db/connection.js'
@@ -8,6 +8,7 @@ import { getSceneAccess, type SceneAccess } from '../auth/permissions.js'
 import type { Actor } from '../auth/actor.js'
 import { verifiedWalletsOf } from '../analytics/claims.js'
 import { issueHyperfyPass } from '../auth/scene-pass.js'
+import { sameHash, sha256 } from '../auth/hash.js'
 import { findWorldByKey, type HyperfyWorldRow } from './worlds.js'
 
 /**
@@ -15,13 +16,6 @@ import { findWorldByKey, type HyperfyWorldRow } from './worlds.js'
  * trades the code (plus the secret only it knows) for a short-lived scene pass. Codes and secrets are credentials:
  * only their sha256 is stored and they are never logged.
  */
-
-const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
-
-function sameHash(a: string, b: string): boolean {
-  const x = Buffer.from(a), y = Buffer.from(b)
-  return x.length === y.length && timingSafeEqual(x, y)
-}
 
 function newCode(): string {
   let code = ''

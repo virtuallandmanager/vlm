@@ -34,6 +34,7 @@ import apiKeyRoutes from './routes/api-keys.js'
 import hyperfyWorldRoutes from './routes/hyperfy-worlds.js'
 import hyperfyFeedRoutes from './routes/hyperfy-feed.js'
 import hyperfyPairingRoutes from './routes/hyperfy-pairing.js'
+import arDeviceRoutes from './routes/ar-devices.js'
 import arSpaceRoutes from './routes/ar-spaces.js'
 import arFeedRoutes from './routes/ar-feed.js'
 import adminRoutes from './routes/admin.js'
@@ -52,7 +53,7 @@ import { register, httpRequestsTotal, httpRequestDurationSeconds } from './metri
  * loads the web page /pair/<code>): log the route shape, never the code.
  */
 export const redactPairingCode = (url: string) =>
-  url.replace(/^(\/api\/hyperfy\/pair\/)[^/?#]+/, '$1:code').replace(/^(\/pair\/)[^/?#]+/, '$1:code')
+  url.replace(/^(\/api\/(?:hyperfy|ar)\/pair\/)[^/?#]+/, '$1:code').replace(/^(\/pair\/(?:headset\/)?)[^/?#]+/, '$1:code')
 
 /** The metric label for a request no route matched (404s, the SPA fallback): fixed, so a url never becomes a label. */
 export const UNMATCHED_ROUTE = 'unmatched'
@@ -103,12 +104,12 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   // JWT
   await registerJwt(app, config.jwtSecret)
 
-  // Every route, with whether it declares a scene-pass resolver and takes Hyperfy passes (the scene-pass guard test walks these).
-  const registeredRoutes: Array<{ method: string; url: string; scenePass: boolean; hyperfy: boolean }> = []
+  // Every route, with whether it declares a scene-pass resolver and takes Hyperfy or AR passes (the scene-pass guard test walks these).
+  const registeredRoutes: Array<{ method: string; url: string; scenePass: boolean; hyperfy: boolean; ar: boolean }> = []
   app.addHook('onRoute', (r) => {
     const methods = Array.isArray(r.method) ? r.method : [r.method]
-    const sp = (r.config as { scenePass?: { hyperfy?: boolean } } | undefined)?.scenePass
-    for (const m of methods) if (m !== 'HEAD' && m !== 'OPTIONS') registeredRoutes.push({ method: m, url: r.url, scenePass: !!sp, hyperfy: !!sp?.hyperfy })
+    const sp = (r.config as { scenePass?: { hyperfy?: boolean; ar?: boolean } } | undefined)?.scenePass
+    for (const m of methods) if (m !== 'HEAD' && m !== 'OPTIONS') registeredRoutes.push({ method: m, url: r.url, scenePass: !!sp, hyperfy: !!sp?.hyperfy, ar: !!sp?.ar })
   })
   app.decorate('registeredRoutes', registeredRoutes)
 
@@ -192,6 +193,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(hyperfyPairingRoutes)
   await app.register(arSpaceRoutes)
   await app.register(arFeedRoutes)
+  await app.register(arDeviceRoutes)
   await app.register(adminRoutes)
   await app.register(adminAdsRoutes)
   await app.register(advertiserLeadRoutes)

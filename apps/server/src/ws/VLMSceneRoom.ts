@@ -20,6 +20,7 @@ import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 import { config } from '../config.js'
 import { verifySessionToken, type SessionClaims } from '../auth/tokens.js'
 import { pairingActive } from '../hyperfy/pairing.js'
+import { deviceActive } from '../ar/devices.js'
 import { ANONYMOUS, actorFromClaims, type Actor } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess, toVenueAccessMessage, type SceneAccess } from '../auth/permissions.js'
 import { authorizeSceneMessage, propertiesOf, type GuardResult, type GuardTarget } from './scene-guard.js'
@@ -77,9 +78,14 @@ export class VLMSceneRoom extends Room {
   private static DRAFT_LIMIT = 20
   private static DRAFT_WINDOW_MS = 1000
 
-  /** A Hyperfy pass lives only as long as its pairing; a missing pairing id fails closed. */
-  private static async hyperfyPassRevoked(claims: SessionClaims | null): Promise<boolean> {
-    return claims?.via === 'hyperfy' && !(claims.pairingId && (await pairingActive(claims.pairingId)))
+  /**
+   * A Hyperfy pass lives only as long as its pairing, an AR pass only as long as its headset; a missing pairing or
+   * device id fails closed.
+   */
+  private static async linkedPassRevoked(claims: SessionClaims | null): Promise<boolean> {
+    if (claims?.via === 'hyperfy') return !(claims.pairingId && (await pairingActive(claims.pairingId)))
+    if (claims?.via === 'ar') return !(claims.deviceId && (await deviceActive(claims.deviceId)))
+    return false
   }
 
   async onAuth(_client: Client, options: JoinOptions): Promise<Actor> {
@@ -88,7 +94,7 @@ export class VLMSceneRoom extends Room {
     // Compare against the room's own scene (set in onCreate from the creating client's options, which
     // runs before the first onAuth) — never a joining client's options.sceneId, which joinById can fake.
     if (claims?.kind === 'scene' && (!claims.sceneId || claims.sceneId !== this.sceneId)) return ANONYMOUS
-    if (await VLMSceneRoom.hyperfyPassRevoked(claims)) return ANONYMOUS
+    if (await VLMSceneRoom.linkedPassRevoked(claims)) return ANONYMOUS
     if (claims?.kind === 'scene') this.passExpiry.set(_client.sessionId, ((claims as { exp?: number }).exp ?? 0) * 1000)
     return actorFromClaims(claims)
   }
@@ -110,7 +116,7 @@ export class VLMSceneRoom extends Room {
     this.onMessage('auth_renew', async (client: Client, message: any) => {
       const claims = verifySessionToken(message?.sessionToken)
       const actor = client.auth as Actor
-      const revoked = await VLMSceneRoom.hyperfyPassRevoked(claims)
+      const revoked = await VLMSceneRoom.linkedPassRevoked(claims)
       const ok =
         !revoked && claims?.kind === 'scene' && claims.sceneId === this.sceneId && !!actor?.userId && claims.id === actor.userId && this.passExpiry.has(client.sessionId)
       if (!ok) {

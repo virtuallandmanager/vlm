@@ -44,7 +44,7 @@ async function isBuilder(request: FastifyRequest, sceneId: string): Promise<bool
 export default async function arFeedRoutes(app: FastifyInstance) {
   app.get<{ Params: { code: string } }>(
     '/api/ar/markers/by-code/:code',
-    { config: { scenePass: { sceneFrom: markerSceneByCode } } }, // `ar: true` comes with Task 5
+    { config: { scenePass: { sceneFrom: markerSceneByCode, ar: true } } },
     async (request, reply) => {
       if (!(await signInIfPresent(request, reply))) return
       const marker = await markerByCode(request.params.code)
@@ -64,7 +64,7 @@ export default async function arFeedRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string }; Querystring: { since?: string } }>(
     '/api/ar/spaces/:id/feed',
     // Its own per-IP limit (bad tokens included); keep polls out of per-request logs.
-    { logLevel: 'warn', config: { rateLimit: false, scenePass: { sceneFrom: fromSpace } } },
+    { logLevel: 'warn', config: { rateLimit: false, scenePass: { sceneFrom: fromSpace, ar: true } } },
     async (request, reply) => {
       const limit = limiter.take(`ip:${request.ip}`, 1, AR_FEED_LIMIT.capacity, AR_FEED_LIMIT.refillPerSec)
       if (!limit.ok) return reply.status(429).send({ error: 'rate_limited', retryAfter: Math.ceil(limit.retryAfterMs / 1000) })

@@ -38,3 +38,25 @@ export function issueHyperfyPass(
   const exp = (app.jwt.decode(pass) as { exp: number }).exp
   return { pass, passExpiresAt: new Date(exp * 1000) }
 }
+
+/**
+ * An AR headset pass: a scene pass for one scene, tied to a paired headset so revoking it (or ending a shared
+ * headset's session) kills the pass at once. Lives `config.jwtAccessExpiry`, never past `notAfter` (the headset's own
+ * expiry). The wallet is the approving user's verified wallet, or null. No refresh token: the headset mints a new one.
+ */
+export function issueArPass(
+  app: FastifyInstance,
+  user: { id: string; role: string },
+  wallet: string | null,
+  b: { deviceId: string; sceneId: string; notAfter?: Date },
+): { pass: string; passExpiresAt: Date } {
+  const claims: SessionClaims = { ...sceneClaims(user, wallet, { sceneId: b.sceneId, locationId: null }), via: 'ar', deviceId: b.deviceId }
+  let pass = app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry })
+  let exp = (app.jwt.decode(pass) as { exp: number }).exp
+  if (b.notAfter && exp * 1000 > b.notAfter.getTime()) {
+    // A number here is seconds.
+    pass = app.jwt.sign(claims, { expiresIn: Math.max(1, Math.floor((b.notAfter.getTime() - Date.now()) / 1000)) })
+    exp = (app.jwt.decode(pass) as { exp: number }).exp
+  }
+  return { pass, passExpiresAt: new Date(exp * 1000) }
+}

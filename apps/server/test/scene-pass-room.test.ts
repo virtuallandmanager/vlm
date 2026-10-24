@@ -3,8 +3,9 @@ import { Client } from 'colyseus.js'
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene, createElement, tokenFor } from './helpers/factories.js'
 import { db } from '../src/db/connection.js'
-import { hyperfyPairings, hyperfyWorlds } from '../src/db/schema.js'
+import { arDevices, hyperfyPairings, hyperfyWorlds } from '../src/db/schema.js'
 import { revokePairing } from '../src/hyperfy/pairing.js'
+import { revokeDevice } from '../src/ar/devices.js'
 import { startGameServer, joinScene, serverRoom } from './helpers/game-server.js'
 
 const actorsIn = (roomId: string) => serverRoom(roomId).clients.map((c: any) => c.auth)
@@ -132,6 +133,41 @@ describe('scene pass in rooms', () => {
       c.room.send('auth_renew', { sessionToken: pass() })
       expect((await c.waitFor('vlm_error')).code).toBe('auth_renew_refused')
       c.room.send('auth_renew', { sessionToken: pass(null as any) })
+      expect((await c.waitFor('vlm_error')).code).toBe('auth_renew_refused')
+      c.room.leave()
+    })
+  })
+
+  describe('AR passes', () => {
+    async function arJoin() {
+      const owner = await createUser()
+      const { scene } = await createScene(owner, 'AR')
+      const [d] = await db.insert(arDevices).values({ userId: owner.id, secretHash: 'h', kind: 'personal', status: 'claimed', codeExpiresAt: new Date(), expiresAt: new Date(Date.now() + 3_600_000) }).returning()
+      const pass = (deviceId: string | undefined = d.id) => tokenFor(owner, { kind: 'scene', sceneId: scene.id, orgId: null, via: 'ar', deviceId })
+      return { owner, scene, d, pass }
+    }
+
+    it('a live AR pass joins as its user; a revoked one joins as anonymous', async () => {
+      const { owner, scene, d, pass } = await arJoin()
+      const live = await joinScene(gs.url, scene.id, pass())
+      expect(actorsIn(live.room.roomId).at(-1).userId).toBe(owner.id)
+      live.room.leave()
+      expect(await revokeDevice(d.id, owner.id)).toBe(true)
+      const revoked = await joinScene(gs.url, scene.id, pass())
+      expect(actorsIn(revoked.room.roomId).at(-1).userId).toBeNull()
+      revoked.room.leave()
+      const noId = await joinScene(gs.url, scene.id, pass(null as any))
+      expect(actorsIn(noId.room.roomId).at(-1).userId).toBeNull()
+      noId.room.leave()
+    })
+
+    it('auth_renew refuses a revoked AR pass', async () => {
+      const { owner, scene, d, pass } = await arJoin()
+      const c = await joinScene(gs.url, scene.id, pass())
+      c.room.send('auth_renew', { sessionToken: pass() })
+      await c.waitFor('auth_renew_ack')
+      await revokeDevice(d.id, owner.id)
+      c.room.send('auth_renew', { sessionToken: pass() })
       expect((await c.waitFor('vlm_error')).code).toBe('auth_renew_refused')
       c.room.leave()
     })

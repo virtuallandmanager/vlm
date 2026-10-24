@@ -965,6 +965,24 @@ export const arMarkers = pgTable('ar_markers', {
   floorIdx: index('ar_markers_floor_idx').on(t.floorId),
 }))
 
+// A headset paired to a VLM user. The headset holds a secret (only its sha256 is stored) and shows a code; the user
+// approves the code on the website as personal or shared. Codes and secrets are credentials: never logged.
+export const arDevices = pgTable('ar_devices', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }), // the approver; null until approval
+  codeHash: text('code_hash').unique(), // SHA-256 of the pairing code; null once claimed
+  secretHash: text('secret_hash').notNull(), // SHA-256 of the headset's secret, sent at start
+  deviceName: text('device_name'),
+  kind: text('kind'), // personal | shared, set on approval
+  status: text('status').notNull().default('pending'), // pending | approved | refused | claimed | revoked
+  codeExpiresAt: timestamp('code_expires_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }), // set on claim; slides forward on each pass for a personal headset
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  userIdx: index('ar_devices_user_idx').on(t.userId),
+}))
+
 // ── Password Reset Tokens ───────────────────────────────────────────────────
 
 export const passwordResetTokens = pgTable('password_reset_tokens', {

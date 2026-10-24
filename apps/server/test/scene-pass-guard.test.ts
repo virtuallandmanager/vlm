@@ -5,9 +5,9 @@ import { testApp, createUser, createScene, createElement, createInstance, tokenF
 import { createAnalyticsScene } from './helpers/analytics.js'
 import { createSetup } from './helpers/setups.js'
 import { verifySessionToken } from '../src/auth/tokens.js'
-import { issueHyperfyPass } from '../src/auth/scene-pass.js'
+import { issueArPass, issueHyperfyPass } from '../src/auth/scene-pass.js'
 import { db } from '../src/db/connection.js'
-import { hyperfyPairings, hyperfyWorlds } from '../src/db/schema.js'
+import { arDevices, arSpaces, hyperfyPairings, hyperfyWorlds } from '../src/db/schema.js'
 
 const pass = (u: any, sceneId: string | null, locationId: string | null = null) => tokenFor(u, { kind: 'scene', sceneId, locationId, orgId: null })
 
@@ -36,6 +36,11 @@ const PUBLIC_EXACT = [
   'POST /api/hyperfy/pairings/:id/renew', // the pairing's browser secret is the auth
   'POST /api/hyperfy/pairings/vouch', // world-secret auth; a hosted world speaks for its player
   'GET /api/hyperfy/app.hyp', // public: the built VLM Hyperfy app download
+  'POST /api/ar/pair', // public: a headset starts a pairing with the hash of its secret
+  'POST /api/ar/pair/:code/claim', // the code plus the headset secret is the auth
+  'POST /api/ar/devices/:id/pass', // the headset secret is the auth
+  'POST /api/ar/devices/:id/end', // the headset secret is the auth
+  'POST /api/ar/devices/:id/spaces', // the headset secret is the auth
   'POST /api/ingest', // DCL signed fetch / ingest key
   'POST /api/analytics/claims/check-signed', // DCL signed fetch
   'POST /api/ads/serve', // DCL signed fetch (ads for the signed scene's spaces)
@@ -355,6 +360,68 @@ describe('scene pass guard', () => {
       const id = el.json().element.id
       expect((await app.inject({ method: 'POST', url: `/api/elements/${id}/instances`, headers: h, payload: t })).statusCode).toBe(201)
       expect((await app.inject({ method: 'DELETE', url: `/api/elements/${id}`, headers: h })).statusCode).toBe(204)
+    })
+  })
+
+  describe('AR passes (refused unless the route opts in)', () => {
+    // The headset's routes; nothing else accepts an AR pass.
+    const AR_ROUTES = [
+      'GET /api/scenes/:sceneId',
+      'POST /api/presets/:presetId/elements',
+      'PUT /api/elements/:elementId',
+      'DELETE /api/elements/:elementId',
+      'POST /api/elements/:elementId/instances',
+      'PUT /api/instances/:instanceId',
+      'GET /api/scenes/:sceneId/library',
+      'POST /api/scenes/:sceneId/library',
+      'GET /api/ar/markers/by-code/:code',
+      'GET /api/ar/spaces/:id/feed',
+      'GET /api/scenes/:sceneId/ar/spaces',
+    ].sort()
+
+    /** A live AR pass for the owner's own scene, plus ids under that scene for the walk. */
+    async function fixture() {
+      const owner = await createUser({ wallet: '0x00000000000000000000000000000000000000a3' })
+      const { scene, preset } = await createScene(owner)
+      const element = await createElement(preset.id)
+      const instance = await createInstance(element.id)
+      const [space] = await db.insert(arSpaces).values({ sceneId: scene.id, name: 'S' }).returning()
+      const [device] = await db.insert(arDevices).values({
+        userId: owner.id, secretHash: 'guard-secret-hash', kind: 'personal', status: 'claimed', codeExpiresAt: new Date(), expiresAt: new Date(Date.now() + 3600_000),
+      }).returning()
+      const { pass: ap } = issueArPass(app, owner, owner.wallet ?? null, { deviceId: device.id, sceneId: scene.id })
+      const url = (u: string) =>
+        u.replace(/:sceneId/g, scene.id).replace(/:presetId/g, preset.id).replace(/:elementId/g, element.id).replace(/:instanceId/g, instance.id)
+          .replace(/:id/g, space.id).replace(/:[A-Za-z]+/g, '00000000-0000-0000-0000-000000000000')
+      return { owner, scene, ap, url }
+    }
+
+    it('only the headset routes opt in', async () => {
+      const all = (app as any).registeredRoutes as Array<{ method: string; url: string; scenePass: boolean; ar: boolean }>
+      expect(all.filter((r) => r.ar).map((r) => `${r.method} ${r.url}`).sort()).toEqual(AR_ROUTES)
+      expect(all.filter((r) => r.ar && !r.scenePass)).toEqual([])
+    })
+
+    it('every route without the opt-in refuses an AR pass for its own scene (route walk)', async () => {
+      const f = await fixture()
+      const all = (app as any).registeredRoutes as Array<{ method: string; url: string; scenePass: boolean; ar: boolean }>
+      const routes = all.filter((r) => !r.ar && !isPublic(r.method, r.url))
+      expect(routes.length).toBeGreaterThan(50)
+      const offenders: string[] = []
+      for (const r of routes) {
+        const res = await app.inject({ method: r.method as any, url: f.url(r.url), headers: { authorization: `Bearer ${f.ap}` }, payload: { sceneId: f.scene.id, wallet: '0x00000000000000000000000000000000000000b5', role: 'cohost' } })
+        let error: unknown
+        try { error = res.json().error } catch { error = undefined }
+        if (res.statusCode !== 403 || error !== 'ar_pass_not_allowed') offenders.push(`${r.method} ${r.url} → ${res.statusCode} ${String(error)}`)
+      }
+      expect(offenders).toEqual([])
+    })
+
+    it('a revoked headset refuses its pass everywhere, opted-in routes included', async () => {
+      const f = await fixture()
+      await db.update(arDevices).set({ status: 'revoked' })
+      const res = await app.inject({ method: 'GET', url: `/api/scenes/${f.scene.id}`, headers: { authorization: `Bearer ${f.ap}` } })
+      expect([res.statusCode, res.json().error]).toEqual([401, 'device_revoked'])
     })
   })
 })

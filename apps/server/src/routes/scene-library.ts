@@ -20,13 +20,13 @@ export default async function sceneLibraryRoutes(app: FastifyInstance) {
   })
   const access = (request: any, sceneId: string) => getSceneAccess(actorFromClaims(request.user), sceneId)
 
-  app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId/library', { config: { scenePass: { sceneFrom: fromParam('sceneId'), hyperfy: true } } }, async (request, reply) => {
+  app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId/library', { config: { scenePass: { sceneFrom: fromParam('sceneId'), hyperfy: true, ar: true } } }, async (request, reply) => {
     if ((await access(request, request.params.sceneId)).level === 'none') return reply.status(403).send({ error: 'forbidden' })
     return reply.send({ items: await listSceneLibrary(request.params.sceneId) })
   })
 
   // A scene pass (the Hyperfy HUD) may add public catalog models only: it can't pull the account's own files into a scene.
-  app.post<{ Params: { sceneId: string }; Body: { mediaAssetId?: string; assetItemId?: string } }>('/api/scenes/:sceneId/library', { config: { scenePass: { sceneFrom: fromParam('sceneId'), hyperfy: true } } }, async (request, reply) => {
+  app.post<{ Params: { sceneId: string }; Body: { mediaAssetId?: string; assetItemId?: string } }>('/api/scenes/:sceneId/library', { config: { scenePass: { sceneFrom: fromParam('sceneId'), hyperfy: true, ar: true } } }, async (request, reply) => {
     const { sceneId } = request.params
     const { mediaAssetId, assetItemId } = request.body ?? {}
     if (isScenePass(request.user) && !assetItemId) return reply.status(403).send({ error: 'forbidden' })

@@ -5,6 +5,7 @@ import { db } from '../db/connection.js'
 import { apiKeys, users } from '../db/schema.js'
 import '../auth/scene-from.js' // FastifyContextConfig.scenePass
 import { pairingLive } from '../hyperfy/pairing.js'
+import { deviceLive } from '../ar/devices.js'
 
 export interface AuthUser {
   id: string
@@ -18,9 +19,10 @@ export interface AuthUser {
   kind?: 'account' | 'scene'
   sceneId?: string | null
   locationId?: string | null
-  via?: 'hyperfy'
+  via?: 'hyperfy' | 'ar'
   pairingId?: string
   worldId?: string
+  deviceId?: string
 }
 
 declare module 'fastify' {
@@ -31,7 +33,7 @@ declare module 'fastify' {
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    payload: { id: string; email: string | null; role: string; orgId?: string | null; wallet?: string | null; verified?: boolean; guest?: boolean; refresh?: boolean; kind?: 'account' | 'scene'; sceneId?: string | null; locationId?: string | null; via?: 'hyperfy'; pairingId?: string; worldId?: string }
+    payload: { id: string; email: string | null; role: string; orgId?: string | null; wallet?: string | null; verified?: boolean; guest?: boolean; refresh?: boolean; kind?: 'account' | 'scene'; sceneId?: string | null; locationId?: string | null; via?: 'hyperfy' | 'ar'; pairingId?: string; worldId?: string; deviceId?: string }
     user: AuthUser
   }
 }
@@ -116,6 +118,13 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     // Default deny for Hyperfy passes too: only routes that opt in (the HUD's) take one.
     if (decoded.via === 'hyperfy' && request.routeOptions.config?.scenePass && !request.routeOptions.config.scenePass.hyperfy) {
       return reply.status(403).send({ error: 'hyperfy_pass_not_allowed' })
+    }
+    // An AR pass lives only as long as its headset, and works only on the routes the headset uses (`ar: true`).
+    if (decoded.via === 'ar' && !(decoded.deviceId && (await deviceLive(decoded.deviceId)))) {
+      return reply.status(401).send({ error: 'device_revoked' })
+    }
+    if (decoded.via === 'ar' && !request.routeOptions.config?.scenePass?.ar) {
+      return reply.status(403).send({ error: 'ar_pass_not_allowed' })
     }
     if (decoded.kind === 'scene') {
       // Default deny: a scene pass works only on routes that declare how to find their scene,
