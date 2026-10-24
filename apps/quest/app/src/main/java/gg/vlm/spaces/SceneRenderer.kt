@@ -32,6 +32,7 @@ import com.meta.spatial.toolkit.Transform
 import com.meta.spatial.toolkit.TransformParent
 import com.meta.spatial.toolkit.VideoSurfacePanelRegistration
 import java.net.HttpURLConnection
+import gg.vlm.spaces.space.RootPose
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -88,12 +89,11 @@ class SceneRenderer(private val activity: AppSystemActivity) {
     onApplied?.invoke(d)
   }
 
-  /** Puts the scene centre, VLM (8, 0, 8), at `centre` with VLM north (+Z) turned `yaw` radians from world +Z. */
-  fun place(centre: Vector3, yaw: Double) {
-    val q = Quat.axisAngle(0.0, 1.0, 0.0, yaw)
-    val offset = q.rotate(VLM_SCENE_CENTER)
+  /** Puts the scene origin at `pose.position`, turned `pose.yawDeg` degrees about +Y (level: no pitch or roll). */
+  fun setRoot(pose: RootPose) {
+    val q = Quat.axisAngle(0.0, 1.0, 0.0, Math.toRadians(pose.yawDeg))
     root.setComponent(
-        Transform(Pose(Vector3(centre.x - offset.x.toFloat(), centre.y, centre.z - offset.z.toFloat()), q.sdk()))
+        Transform(Pose(Vector3(pose.position.x.toFloat(), pose.position.y.toFloat(), pose.position.z.toFloat()), q.sdk()))
     )
   }
 

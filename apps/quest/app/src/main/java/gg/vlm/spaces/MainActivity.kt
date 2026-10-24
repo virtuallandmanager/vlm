@@ -56,6 +56,7 @@ import gg.vlm.spaces.ring.cameraToWorld
 import gg.vlm.spaces.ring.markerInCamera
 import gg.vlm.spaces.ring.nearestToCentre
 import gg.vlm.spaces.ring.wallHeading
+import gg.vlm.spaces.space.RootPose
 import java.io.File
 import kotlin.math.atan2
 import kotlin.math.sqrt
@@ -162,7 +163,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
         environmentIntensity = 0.4f,
     )
     scene.updateIBLEnvironment("environment.env")
-    renderer.place(centre, yaw)
+    placeRoot()
     panel = Entity.createPanelEntity(R.id.control_panel, Transform(Pose(Vector3(-0.5f, 1.3f, 0.8f))), Grabbable())
     sceneReady = true
     applyOcclusion()
@@ -233,12 +234,20 @@ class MainActivity : AppSystemActivity(), PanelActions {
             .also { it.start(id) }
   }
 
+  /** Spike bridge until Task 6: scene centre (VLM 8,0,8) at `centre`, north turned `yaw` radians. */
+  private fun placeRoot() {
+    val offset = Quat.axisAngle(0.0, 1.0, 0.0, yaw).rotate(VLM_SCENE_CENTER)
+    renderer.setRoot(
+        RootPose(Vec3(centre.x - offset.x, centre.y.toDouble(), centre.z - offset.z), Math.toDegrees(yaw))
+    )
+  }
+
   override fun placeAhead() {
     val head = scene.getViewerPose()
     val fwd = flat(head.q.times(Vector3(0f, 0f, 1f))) ?: Vector3(0f, 0f, 1f)
     centre = Vector3(head.t.x + fwd.x * 2, 0f, head.t.z + fwd.z * 2)
     yaw = atan2(fwd.x.toDouble(), fwd.z.toDouble())
-    renderer.place(centre, yaw)
+    placeRoot()
     state.placement = "Scene centre 2 m ahead, north pointing away from you"
   }
 
@@ -255,7 +264,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
 
   override fun turn(degrees: Double) {
     yaw += Math.toRadians(degrees)
-    renderer.place(centre, yaw)
+    placeRoot()
     state.placement = "Turned ${"%+.0f".format(degrees)}° (north at ${"%.0f".format(Math.toDegrees(yaw))}°)"
   }
 
@@ -296,7 +305,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
       state.placement =
           "Aligned to ${nameOf(id)} without a wall (${noWallReason()}): centre under it, north from you through it"
     }
-    renderer.place(centre, yaw)
+    placeRoot()
     Log.i(TAG, "Aligned to ${nameOf(id)} at $m (mean of ${avg.count}, spread ${"%.1f".format(avg.spread()!! * 100)} cm), yaw ${"%.2f".format(Math.toDegrees(yaw))}°, wall heading $heading")
   }
 
