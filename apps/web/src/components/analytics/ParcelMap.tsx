@@ -77,7 +77,7 @@ export function ParcelMap({ parcels, baseParcel, cells, metric = 'dwell', live }
       {h && (
         <div
           role="status"
-          className="pointer-events-none absolute z-10 rounded-lg bg-gray-800 px-3 py-2 text-xs shadow-lg ring-1 ring-white/10 whitespace-nowrap"
+          className="pointer-events-none absolute z-10 rounded-md bg-gray-800 px-3 py-2 text-xs shadow-lg ring-1 ring-white/10 whitespace-nowrap"
           style={{
             left: `${((px(h.x) + k / 2) / W) * 100}%`,
             top: `${(py(h.z + 1) / height) * 100}%`,

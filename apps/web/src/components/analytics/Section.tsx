@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Skeleton } from '@/components/ui'
 
 export type SectionState = 'loading' | 'error' | 'empty' | 'ready'
 
@@ -10,16 +11,16 @@ export function Section({ title, action, state, onRetry, children }: {
   children?: ReactNode
 }) {
   return (
-    <section className="bg-gray-900 rounded-xl p-4" aria-busy={state === 'loading'}>
+    <section className="rounded-lg border border-gray-800 bg-gray-900 p-4" aria-busy={state === 'loading'}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-white">{title}</h2>
+        <h2 className="text-lg font-semibold">{title}</h2>
         {action}
       </div>
-      {state === 'loading' && <p className="text-sm text-gray-400">Loading…</p>}
+      {state === 'loading' && <Skeleton rows={2} className="h-12" />}
       {state === 'error' && (
         <p className="text-sm text-gray-400" role="alert">
           Couldn&apos;t load —{' '}
-          <button type="button" onClick={onRetry} className="text-blue-500 hover:text-blue-400 underline-offset-2 hover:underline">
+          <button type="button" onClick={onRetry} className="text-blue-400 hover:text-blue-300 underline-offset-2 hover:underline">
             Retry
           </button>
         </p>

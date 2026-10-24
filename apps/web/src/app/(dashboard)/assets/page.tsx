@@ -4,15 +4,15 @@ import { useAuth } from '@/lib/auth'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { CATALOG_STYLES, CATALOG_VENUES, type CatalogPack } from 'vlm-shared'
+import Link from 'next/link'
 import { creditLine, licenseLabel } from '@/lib/catalog'
+import { countLabel, formatBytes, plural } from '@/lib/format'
+import { CubeIcon, GridIcon, LayersIcon, ListIcon, PlusIcon } from '@/components/icons'
+import { Badge, ConfirmAction, EmptyState, PageHeader, PrimaryButton, RowMenu, SearchField, SelectField, useStoredView, ViewToggle, Skeleton } from '@/components/ui'
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
-}
+const VIEW_KEY = 'vlm.assets.view'
+const fieldClass = 'w-full rounded-md border border-gray-800 bg-gray-950 px-3 py-2 text-sm outline-none focus:border-blue-400'
+const assetHref = (id: string) => `/assets?id=${id}`
 
 function formatTriangles(count: number): string {
   if (count >= 1_000_000) return (count / 1_000_000).toFixed(1) + 'M'
@@ -22,10 +22,10 @@ function formatTriangles(count: number): string {
 
 // ── Upload Form ─────────────────────────────────────────────────────────────
 
-function UploadForm({ onUploaded }: { onUploaded: (asset: any) => void }) {
+function UploadForm({ onUploaded, onClose }: { onUploaded: (asset: any) => void; onClose: () => void }) {
   const api = useApi()
-  const [open, setOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('')
@@ -50,6 +50,7 @@ function UploadForm({ onUploaded }: { onUploaded: (asset: any) => void }) {
     e.preventDefault()
     if (!file || !name) return
     setUploading(true)
+    setError(null)
     try {
       const base64 = await fileToBase64(file)
       const tags = tagsInput
@@ -70,25 +71,16 @@ function UploadForm({ onUploaded }: { onUploaded: (asset: any) => void }) {
       })
       onUploaded(asset)
       reset()
-      setOpen(false)
+      onClose()
     } catch (err: any) {
-      alert('Upload failed: ' + (err.message || 'Unknown error'))
+      setError('Upload failed: ' + (err.message || 'Unknown error'))
     } finally {
       setUploading(false)
     }
   }
 
   return (
-    <div className="mb-6">
-      <button
-        onClick={() => setOpen(!open)}
-        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700"
-      >
-        {open ? 'Cancel Upload' : '+ Upload Asset'}
-      </button>
-
-      {open && (
-        <form onSubmit={handleSubmit} className="mt-4 rounded-xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="mb-6 space-y-4 rounded-lg border border-gray-800 bg-gray-900 p-5">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className="block text-xs text-gray-400 mb-1">File (.glb) *</label>
@@ -101,7 +93,7 @@ function UploadForm({ onUploaded }: { onUploaded: (asset: any) => void }) {
                   setFile(f)
                   if (f && !name) setName(f.name.replace(/\.(glb|gltf)$/i, ''))
                 }}
-                className="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm"
+                className={fieldClass}
               />
             </div>
             <div>
@@ -111,7 +103,7 @@ function UploadForm({ onUploaded }: { onUploaded: (asset: any) => void }) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Asset name"
-                className="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                className={fieldClass}
               />
             </div>
             <div className="md:col-span-2">
@@ -121,7 +113,7 @@ function UploadForm({ onUploaded }: { onUploaded: (asset: any) => void }) {
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
                 placeholder="Optional description"
-                className="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                className={fieldClass}
               />
             </div>
             <div>
@@ -131,7 +123,7 @@ function UploadForm({ onUploaded }: { onUploaded: (asset: any) => void }) {
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 placeholder="e.g. architecture, nature, furniture"
-                className="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                className={fieldClass}
               />
             </div>
             <div>
@@ -141,7 +133,7 @@ function UploadForm({ onUploaded }: { onUploaded: (asset: any) => void }) {
                 value={tagsInput}
                 onChange={(e) => setTagsInput(e.target.value)}
                 placeholder="modern, outdoor, low-poly"
-                className="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                className={fieldClass}
               />
             </div>
             <div>
@@ -149,7 +141,7 @@ function UploadForm({ onUploaded }: { onUploaded: (asset: any) => void }) {
               <select
                 value={license}
                 onChange={(e) => setLicense(e.target.value)}
-                className="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                className={fieldClass}
               >
                 <option value="cc0">CC0 (Public Domain)</option>
                 <option value="cc-by">CC-BY (Attribution)</option>
@@ -163,36 +155,38 @@ function UploadForm({ onUploaded }: { onUploaded: (asset: any) => void }) {
                 value={author}
                 onChange={(e) => setAuthor(e.target.value)}
                 placeholder="Author name"
-                className="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                className={fieldClass}
               />
             </div>
           </div>
-          <div className="flex justify-end">
+          {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700">
+              Cancel
+            </button>
             <button
               type="submit"
               disabled={uploading || !file || !name}
-              className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-md bg-blue-600 px-5 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
             >
               {uploading ? 'Uploading...' : 'Upload'}
             </button>
           </div>
         </form>
-      )}
-    </div>
   )
 }
 
 // ── Asset Detail View ───────────────────────────────────────────────────────
 
-function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: () => void; onDeleted: (id: string) => void }) {
+function AssetDetail({ assetId, onDeleted }: { assetId: string; onDeleted: (id: string) => void }) {
   const api = useApi()
   const { token } = useAuth()
   const [asset, setAsset] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
 
   // Edit state
   const [editName, setEditName] = useState('')
@@ -222,6 +216,7 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
 
   const handleSave = async () => {
     setSaving(true)
+    setError(null)
     try {
       const tags = editTags
         .split(',')
@@ -236,7 +231,7 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
       setAsset(updated)
       setEditing(false)
     } catch (err: any) {
-      alert('Save failed: ' + (err.message || 'Unknown error'))
+      setError('Save failed: ' + (err.message || 'Unknown error'))
     } finally {
       setSaving(false)
     }
@@ -247,7 +242,7 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
       await api.deleteAsset(assetId)
       onDeleted(assetId)
     } catch (err: any) {
-      alert('Delete failed: ' + (err.message || 'Unknown error'))
+      setError('Delete failed: ' + (err.message || 'Unknown error'))
     }
   }
 
@@ -259,7 +254,7 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
     }
   }
 
-  if (loading) return <p className="text-gray-400">Loading asset...</p>
+  if (loading) return <Skeleton />
   if (!asset) return <p className="text-gray-500">Asset not found.</p>
 
   // Uploads store { width, height, depth }; catalog models store their bounding box { x, y, z } in meters
@@ -267,15 +262,27 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
   const dims = raw ? { width: raw.width ?? raw.x, height: raw.height ?? raw.y, depth: raw.depth ?? raw.z } : null
 
   return (
-    <div>
-      <button onClick={onBack} className="text-sm text-gray-400 hover:text-white mb-4">
-        &larr; Back to Assets
-      </button>
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        crumbs={['Tools', { label: 'Assets', href: '/assets' }, asset.name]}
+        title={asset.name}
+        subtitle={asset.description || undefined}
+        actions={!asset.packId && !editing && (
+          // Catalog models are VLM's, not yours: view and add only
+          <div className="flex items-center gap-2">
+            <button onClick={startEditing} className="rounded-md bg-gray-800 px-3 py-1.5 text-xs hover:bg-gray-700">Edit</button>
+            <ConfirmAction prompt="Delete this asset?" confirmLabel="Delete" onConfirm={handleDelete}
+              className="rounded-md bg-red-900/30 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/50">
+              Delete
+            </ConfirmAction>
+          </div>
+        )}
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Thumbnail */}
         <div className="lg:col-span-1">
-          <div className="rounded-xl border border-gray-800 bg-gray-900 overflow-hidden aspect-square flex items-center justify-center">
+          <div className="rounded-lg border border-gray-800 bg-gray-900 overflow-hidden aspect-square flex items-center justify-center">
             {asset.thumbnailUrl ? (
               <img src={asset.thumbnailUrl} alt={asset.name} className="w-full h-full object-cover" />
             ) : (
@@ -289,6 +296,7 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
 
         {/* Metadata */}
         <div className="lg:col-span-2 space-y-4">
+          {error && <p className="text-sm text-red-400" role="alert">{error}</p>}
           {editing ? (
             <div className="space-y-3">
               <div>
@@ -297,7 +305,7 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full rounded-md bg-gray-950 px-3 py-2 text-sm outline-none focus:border-blue-400 border border-gray-800"
                 />
               </div>
               <div>
@@ -306,7 +314,7 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   rows={3}
-                  className="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full rounded-md bg-gray-950 px-3 py-2 text-sm outline-none focus:border-blue-400 border border-gray-800"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -316,7 +324,7 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
                     type="text"
                     value={editCategory}
                     onChange={(e) => setEditCategory(e.target.value)}
-                    className="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full rounded-md bg-gray-950 px-3 py-2 text-sm outline-none focus:border-blue-400 border border-gray-800"
                   />
                 </div>
                 <div>
@@ -325,7 +333,7 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
                     type="text"
                     value={editTags}
                     onChange={(e) => setEditTags(e.target.value)}
-                    className="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full rounded-md bg-gray-950 px-3 py-2 text-sm outline-none focus:border-blue-400 border border-gray-800"
                   />
                 </div>
               </div>
@@ -333,13 +341,13 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
                 >
                   {saving ? 'Saving...' : 'Save'}
                 </button>
                 <button
                   onClick={() => setEditing(false)}
-                  className="rounded-lg bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
+                  className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
                 >
                   Cancel
                 </button>
@@ -347,65 +355,15 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
             </div>
           ) : (
             <>
-              <div className="flex items-start justify-between">
-                <div>
-                  <h1 className="text-2xl font-bold">{asset.name}</h1>
-                  {asset.description && <p className="text-gray-400 mt-1">{asset.description}</p>}
-                  {asset.pack && <p className="text-xs text-gray-500 mt-1">{creditLine(asset)}</p>}
-                </div>
-                {/* Catalog models are VLM's, not yours: view and add only */}
-                {!asset.packId && <div className="flex gap-2">
-                  <button
-                    onClick={startEditing}
-                    className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs hover:bg-gray-700"
-                  >
-                    Edit
-                  </button>
-                  {confirmDelete ? (
-                    <div className="flex gap-1">
-                      <button
-                        onClick={handleDelete}
-                        className="rounded-lg bg-red-600 px-3 py-1.5 text-xs hover:bg-red-700"
-                      >
-                        Confirm
-                      </button>
-                      <button
-                        onClick={() => setConfirmDelete(false)}
-                        className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs hover:bg-gray-700"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmDelete(true)}
-                      className="rounded-lg bg-red-900/30 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/50"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>}
-              </div>
+              {asset.pack && <p className="text-xs text-gray-500">{creditLine(asset)}</p>}
 
               <AddToScene assetId={asset.id} />
 
               {/* Badges row */}
-              <div className="flex flex-wrap gap-2">
-                {asset.category && (
-                  <span className="rounded-full bg-blue-900/40 px-2.5 py-0.5 text-xs text-blue-300">
-                    {asset.category}
-                  </span>
-                )}
-                {asset.license && (
-                  <span className="rounded-full bg-green-900/40 px-2.5 py-0.5 text-xs text-green-300">
-                    {licenseLabel(asset.license)}
-                  </span>
-                )}
-                {asset.tags?.map((tag: string) => (
-                  <span key={tag} className="rounded-full bg-gray-800 px-2.5 py-0.5 text-xs text-gray-300">
-                    {tag}
-                  </span>
-                ))}
+              <div className="flex flex-wrap items-center gap-2">
+                {asset.category && <Badge tone="info">{asset.category}</Badge>}
+                {asset.tags?.map((tag: string) => <Badge key={tag}>{tag}</Badge>)}
+                {asset.license && <span className="text-xs text-gray-400 first-letter:uppercase">{licenseLabel(asset.license)}</span>}
               </div>
 
               {/* Stats grid */}
@@ -453,12 +411,12 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
                 <div>
                   <p className="text-xs text-gray-500 mb-1">CDN URL</p>
                   <div className="flex items-center gap-2">
-                    <code className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-xs text-gray-300 truncate block">
+                    <code className="flex-1 rounded-md bg-gray-800 px-3 py-2 text-xs text-gray-300 truncate block">
                       {asset.cdnUrl}
                     </code>
                     <button
                       onClick={copyUrl}
-                      className="rounded-lg bg-gray-800 px-3 py-2 text-xs hover:bg-gray-700 whitespace-nowrap"
+                      className="rounded-md bg-gray-800 px-3 py-2 text-xs hover:bg-gray-700 whitespace-nowrap"
                     >
                       {copied ? 'Copied!' : 'Copy'}
                     </button>
@@ -469,7 +427,7 @@ function AssetDetail({ assetId, onBack, onDeleted }: { assetId: string; onBack: 
               {/* Storage key */}
               <div>
                 <p className="text-xs text-gray-500 mb-1">Storage Key</p>
-                <code className="rounded-lg bg-gray-800 px-3 py-2 text-xs text-gray-400 block">
+                <code className="rounded-md bg-gray-800 px-3 py-2 text-xs text-gray-400 block">
                   {asset.storageKey}
                 </code>
               </div>
@@ -519,10 +477,10 @@ function AddToScene({ assetId }: { assetId: string }) {
     <div className="rounded-lg border border-gray-800 bg-gray-900 p-3">
       <p className="text-xs text-gray-500 mb-2">Add to a scene&apos;s Media Library</p>
       <div className="flex gap-2">
-        <select value={sceneId} onChange={(e) => setSceneId(e.target.value)} className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500">
+        <select value={sceneId} onChange={(e) => setSceneId(e.target.value)} className="flex-1 rounded-md bg-gray-950 px-3 py-2 text-sm outline-none focus:border-blue-400 border border-gray-800">
           {scenes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <button onClick={add} disabled={busy} className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50">
+        <button onClick={add} disabled={busy} className="rounded-md bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50">
           {busy ? 'Adding…' : 'Add to scene'}
         </button>
       </div>
@@ -548,6 +506,10 @@ export default function AssetsPage() {
   const [categories, setCategories] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [listError, setListError] = useState<string | null>(null)
+  const [libraryTotal, setLibraryTotal] = useState<number | null>(null)
+  const [showUpload, setShowUpload] = useState(false)
+  const [view, chooseView] = useStoredView(VIEW_KEY, ['grid', 'list'], 'grid')
 
   // Filters
   const [search, setSearch] = useState('')
@@ -574,13 +536,14 @@ export default function AssetsPage() {
       const data = await api.getAssets(params)
       setAssets((prev) => (more ? [...prev, ...data.assets] : data.assets))
       setTotal(data.total)
+      if (!filtering) setLibraryTotal(data.total)
     } catch {
       // ignore
     } finally {
       setLoading(false)
       setLoadingMore(false)
     }
-  }, [search, categoryFilter, tagFilter, styleFilter, venueFilter, packFilter, token, assets.length])
+  }, [search, categoryFilter, tagFilter, styleFilter, venueFilter, packFilter, filtering, token, assets.length])
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -612,6 +575,7 @@ export default function AssetsPage() {
   const handleUploaded = (asset: any) => {
     setAssets((prev) => [asset, ...prev])
     setTotal((prev) => prev + 1)
+    setLibraryTotal((prev) => (prev === null ? prev : prev + 1))
     // Refresh categories in case new one was added
     fetchCategories()
   }
@@ -619,6 +583,7 @@ export default function AssetsPage() {
   const handleDeleted = (id: string) => {
     setAssets((prev) => prev.filter((a) => a.id !== id))
     setTotal((prev) => prev - 1)
+    setLibraryTotal((prev) => (prev === null ? prev : prev - 1))
     router.push('/assets')
   }
 
@@ -627,144 +592,110 @@ export default function AssetsPage() {
     return (
       <AssetDetail
         assetId={selectedId}
-        onBack={() => router.push('/assets')}
         onDeleted={handleDeleted}
       />
     )
   }
 
+  const clearFilters = () => {
+    setSearchInput('')
+    setSearch('')
+    setCategoryFilter('')
+    setTagFilter('')
+    setStyleFilter('')
+    setVenueFilter('')
+    setPackFilter('')
+  }
+
+  const deleteAsset = async (id: string) => {
+    setListError(null)
+    try {
+      await api.deleteAsset(id)
+      setAssets((prev) => prev.filter((a) => a.id !== id))
+      setTotal((prev) => prev - 1)
+      setLibraryTotal((prev) => (prev === null ? prev : prev - 1))
+    } catch (err: any) {
+      setListError('Delete failed: ' + (err.message || 'Unknown error'))
+    }
+  }
+
   // ── List view ─────────────────────────────────────────────────────────────
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">3D Asset Library</h1>
-        <span className="text-sm text-gray-500">{total} asset{total !== 1 ? 's' : ''}</span>
-      </div>
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        crumbs={['Tools', 'Assets']}
+        title="3D Asset Library"
+        count={libraryTotal === null ? undefined : countLabel(libraryTotal)}
+        subtitle="Browse and manage your 3D assets."
+        actions={<PrimaryButton onClick={() => setShowUpload(!showUpload)}><PlusIcon size={16} /> Upload Asset</PrimaryButton>}
+      />
 
-      <UploadForm onUploaded={handleUploaded} />
+      {listError && <p className="mb-4 text-sm text-red-400" role="alert">{listError}</p>}
+      {showUpload && <UploadForm onUploaded={handleUploaded} onClose={() => setShowUpload(false)} />}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        <input
-          type="text"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Search assets..."
-          className="rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500 w-64"
-        />
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
-        >
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <SearchField value={searchInput} onChange={setSearchInput} placeholder="Search assets..." label="Search assets" />
+        <div className="ml-auto flex items-center gap-3">
+          {!loading && <span className="text-sm text-gray-400">{plural(total, 'asset')}</span>}
+          <ViewToggle value={view} onChange={chooseView} options={[['grid', GridIcon, 'Grid view'], ['list', ListIcon, 'List view']]} />
+        </div>
+      </div>
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <SelectField value={categoryFilter} onChange={setCategoryFilter} label="Category">
           <option value="">All Categories</option>
-          {categories.map((cat) => (
-            <option key={cat} value={cat}>
-              {cat}
-            </option>
-          ))}
-        </select>
-        <select value={styleFilter} onChange={(e) => setStyleFilter(e.target.value)} className="rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500">
+          {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+        </SelectField>
+        <SelectField value={styleFilter} onChange={setStyleFilter} label="Style">
           <option value="">All Styles</option>
           {CATALOG_STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select value={venueFilter} onChange={(e) => setVenueFilter(e.target.value)} className="rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500">
+        </SelectField>
+        <SelectField value={venueFilter} onChange={setVenueFilter} label="Venue">
           <option value="">Any Venue</option>
           {CATALOG_VENUES.map((v) => <option key={v} value={v}>{v[0].toUpperCase() + v.slice(1)}</option>)}
-        </select>
+        </SelectField>
         {packs.length > 0 && (
-          <select value={packFilter} onChange={(e) => setPackFilter(e.target.value)} className="rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500">
+          <SelectField value={packFilter} onChange={setPackFilter} label="Pack">
             <option value="">All Packs</option>
             {packs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          </SelectField>
         )}
-        <input
-          type="text"
-          value={tagFilter}
-          onChange={(e) => setTagFilter(e.target.value)}
-          placeholder="Filter by tag..."
-          className="rounded-lg bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500 w-40"
-        />
-        {filtering && (
-          <button
-            onClick={() => {
-              setSearchInput('')
-              setSearch('')
-              setCategoryFilter('')
-              setTagFilter('')
-              setStyleFilter('')
-              setVenueFilter('')
-              setPackFilter('')
-            }}
-            className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-700"
-          >
-            Clear Filters
-          </button>
-        )}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            placeholder="Filter by tag..."
+            aria-label="Filter by tag"
+            className="w-full min-w-0 rounded-md border border-gray-800 bg-gray-900 px-3 py-2.5 text-sm outline-none placeholder:text-gray-500 focus:border-blue-400"
+          />
+          {filtering && (
+            <button onClick={clearFilters} className="shrink-0 rounded-md border border-gray-800 px-3 text-sm text-gray-400 hover:bg-white/[0.05] hover:text-white">
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
-        <p className="text-gray-400">Loading assets...</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-hidden="true">
+          {[0, 1, 2, 3].map((i) => <div key={i} className="h-72 animate-pulse rounded-lg border border-gray-800 bg-gray-900" />)}
+        </div>
       ) : assets.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="text-4xl text-gray-600 mb-3">&#9651;</div>
-          <p className="text-gray-500">
-            {filtering
-              ? 'No assets match your filters.'
-              : 'No 3D assets yet. Upload one to get started.'}
-          </p>
+        filtering ? (
+          <p className="py-12 text-center text-gray-500">No assets match your filters.</p>
+        ) : (
+          <EmptyState icon={<LayersIcon size={40} />} title="No 3D assets yet"
+            body="Upload a .glb model to add it to your library and place it in your scenes."
+            action={<PrimaryButton onClick={() => setShowUpload(true)}><PlusIcon size={16} /> Upload Asset</PrimaryButton>} />
+        )
+      ) : view === 'grid' ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {assets.map((asset) => <AssetCard key={asset.id} asset={asset} onDelete={() => deleteAsset(asset.id)} />)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {assets.map((asset) => (
-            <button
-              key={asset.id}
-              onClick={() => router.push(`/assets?id=${asset.id}`)}
-              className="text-left rounded-xl border border-gray-800 bg-gray-900 overflow-hidden hover:border-gray-700 transition-colors"
-            >
-              {/* Thumbnail */}
-              <div className="h-40 bg-gray-800 flex items-center justify-center overflow-hidden">
-                {asset.thumbnailUrl ? (
-                  <img
-                    src={asset.thumbnailUrl}
-                    alt={asset.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="text-center text-gray-500">
-                    <div className="text-4xl mb-1">&#9651;</div>
-                    <div className="text-xs">3D Asset</div>
-                  </div>
-                )}
-              </div>
-              {/* Info */}
-              <div className="p-3">
-                <p className="text-sm font-medium truncate" title={asset.name}>
-                  {asset.name}
-                </p>
-                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                  {asset.category && (
-                    <span className="rounded-full bg-blue-900/40 px-2 py-0.5 text-[10px] text-blue-300">
-                      {asset.category}
-                    </span>
-                  )}
-                  {asset.license && (
-                    <span className="rounded-full bg-green-900/40 px-2 py-0.5 text-[10px] text-green-300">
-                      {licenseLabel(asset.license)}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
-                  <span>{formatBytes(asset.fileSizeBytes)}</span>
-                  {asset.triangleCount != null && (
-                    <span>{formatTriangles(asset.triangleCount)} tris</span>
-                  )}
-                  {asset.author && !asset.pack && <span className="truncate">{asset.author}</span>}
-                </div>
-                {asset.pack && <p className="mt-1.5 truncate text-[10px] text-gray-500" title={creditLine(asset)}>{creditLine(asset)}</p>}
-              </div>
-            </button>
-          ))}
+        <div className="rounded-lg border border-gray-800 bg-gray-900">
+          {assets.map((asset, i) => <AssetRow key={asset.id} asset={asset} first={i === 0} onDelete={() => deleteAsset(asset.id)} />)}
         </div>
       )}
       {!loading && assets.length < total && (
@@ -772,12 +703,84 @@ export default function AssetsPage() {
           <button
             onClick={() => fetchAssets(true)}
             disabled={loadingMore}
-            className="rounded-lg bg-gray-800 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+            className="rounded-md border border-gray-800 bg-gray-900 px-4 py-2 text-sm text-gray-300 hover:border-gray-700 hover:text-white disabled:opacity-50"
           >
-            {loadingMore ? 'Loading…' : `Load more (${assets.length} of ${total})`}
+            {loadingMore ? 'Loading…' : `Load more (${assets.length.toLocaleString('en-US')} of ${total.toLocaleString('en-US')})`}
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+function formatStats(asset: any): string {
+  return [formatBytes(asset.fileSizeBytes), asset.triangleCount != null ? `${formatTriangles(asset.triangleCount)} tris` : null].filter(Boolean).join('  |  ')
+}
+
+/** The model's render, or a cube where it has none yet. */
+function AssetThumb({ asset, className, compact = false }: { asset: any; className: string; compact?: boolean }) {
+  if (asset.thumbnailUrl) return <img src={asset.thumbnailUrl} alt="" className={`${className} object-cover`} />
+  return (
+    <div className={`${className} flex items-center justify-center bg-gray-800/60 text-gray-500`}>
+      <CubeIcon size={compact ? 22 : 56} strokeWidth={compact ? 1.5 : 1} />
+    </div>
+  )
+}
+
+function assetMenu(asset: any, onDelete: () => void, open: () => void) {
+  return [
+    { label: 'Open asset', onSelect: open },
+    ...(asset.cdnUrl ? [{ label: 'Copy URL', onSelect: () => { navigator.clipboard.writeText(asset.cdnUrl).catch(() => {}) } }] : []),
+    // Catalog models are VLM's, not yours: view and add only
+    ...(!asset.packId ? [{ label: 'Delete asset', onSelect: onDelete, danger: true, confirm: 'Click again to delete' }] : []),
+  ]
+}
+
+function AssetCard({ asset, onDelete }: { asset: any; onDelete: () => void }) {
+  const router = useRouter()
+  const license = asset.pack ? licenseLabel(asset.pack.license) : asset.license ? licenseLabel(asset.license) : null
+  return (
+    <article className="flex flex-col overflow-hidden rounded-lg border border-gray-800 bg-gray-900 transition-colors hover:border-gray-700">
+      <Link href={assetHref(asset.id)} tabIndex={-1} aria-hidden="true" className="bg-gradient-to-b from-gray-800/40 to-gray-950/40">
+        <AssetThumb asset={asset} className="h-44 w-full" />
+      </Link>
+      <div className="flex flex-1 flex-col px-4 pt-3 pb-4">
+        <div className="flex items-start justify-between gap-2">
+          <Link href={assetHref(asset.id)} className="min-w-0 truncate pt-1.5 font-semibold hover:text-blue-300" title={asset.name}>{asset.name}</Link>
+          <div className="-mr-2"><RowMenu label={`Actions for ${asset.name}`} items={assetMenu(asset, onDelete, () => router.push(assetHref(asset.id)))} /></div>
+        </div>
+        {asset.category && (
+          <Badge tone="info" className="mt-1 self-start">{asset.category}</Badge>
+        )}
+        <p className="mt-2 whitespace-pre font-mono text-xs text-gray-400">{formatStats(asset)}</p>
+        <div className="mt-2 flex items-end justify-between gap-3 text-xs text-gray-500">
+          <div className="min-w-0">
+            {asset.author && <p className="truncate">by {asset.author}</p>}
+            {asset.pack && <p className="truncate" title={creditLine(asset)}>pack {asset.pack.name}</p>}
+          </div>
+          {license && <span className="shrink-0 first-letter:uppercase">{license}</span>}
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function AssetRow({ asset, first, onDelete }: { asset: any; first: boolean; onDelete: () => void }) {
+  const router = useRouter()
+  return (
+    <div className={`flex items-center gap-4 px-4 py-3 ${first ? '' : 'border-t border-gray-800'}`}>
+      <Link href={assetHref(asset.id)} tabIndex={-1} aria-hidden="true" className="shrink-0 overflow-hidden rounded">
+        <AssetThumb asset={asset} className="h-12 w-16" compact />
+      </Link>
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-2">
+          <Link href={assetHref(asset.id)} className="truncate font-medium hover:text-blue-300">{asset.name}</Link>
+          {asset.category && <Badge tone="info">{asset.category}</Badge>}
+        </p>
+        <p className="truncate text-sm text-gray-500">{asset.pack ? creditLine(asset) : asset.author ? `by ${asset.author}` : asset.description || ''}</p>
+      </div>
+      <span className="hidden whitespace-pre font-mono text-xs text-gray-400 md:inline">{formatStats(asset)}</span>
+      <RowMenu label={`Actions for ${asset.name}`} items={assetMenu(asset, onDelete, () => router.push(assetHref(asset.id)))} />
     </div>
   )
 }

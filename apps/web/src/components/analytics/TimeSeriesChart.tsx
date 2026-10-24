@@ -116,7 +116,7 @@ export function TimeSeriesChart({ points, series, bucket, from, to }: {
       {h && hover !== null && (
         <div
           role="status"
-          className="pointer-events-none absolute top-0 z-10 rounded-lg bg-gray-800 px-3 py-2 text-xs shadow-lg ring-1 ring-white/10 whitespace-nowrap"
+          className="pointer-events-none absolute top-0 z-10 rounded-md bg-gray-800 px-3 py-2 text-xs shadow-lg ring-1 ring-white/10 whitespace-nowrap"
           style={{
             left: `${(x(hover) / W) * 100}%`,
             transform: x(hover) > W / 2 ? 'translateX(calc(-100% - 8px))' : 'translateX(8px)',

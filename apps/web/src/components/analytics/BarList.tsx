@@ -6,7 +6,7 @@ export function BarList({ title, counts }: { title: string; counts: Record<strin
   const max = Math.max(0, ...rows.map((r) => r.value))
   return (
     <div>
-      <h3 className="mb-2 text-sm font-medium text-gray-400">{title}</h3>
+      <h3 className="mb-2 text-sm font-medium text-gray-300">{title}</h3>
       {rows.length === 0 ? (
         <p className="text-sm text-gray-500">None yet</p>
       ) : (

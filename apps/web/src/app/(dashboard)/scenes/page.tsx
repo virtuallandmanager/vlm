@@ -1,17 +1,16 @@
 'use client'
 import { useApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
 import Link from 'next/link'
 import SceneEditorPage from './[sceneId]/client'
-import { ArrowUpRightIcon, CheckIcon, CopyIcon, GridIcon, ListIcon, PencilIcon, PlusIcon, ScenesIcon, SearchIcon } from '@/components/icons'
-import { PageHeader, PrimaryButton } from '@/components/ui'
-import { countLabel, filterScenes, placeholderHues, shortId } from '@/lib/scenes'
+import { ArrowUpRightIcon, CheckIcon, CopyIcon, GridIcon, ListIcon, PlusIcon, ScenesIcon } from '@/components/icons'
+import { EmptyState, InlineDescription, PageHeader, PrimaryButton, SearchField, useStoredView, ViewToggle, Skeleton } from '@/components/ui'
+import { filterScenes, placeholderHues, shortId } from '@/lib/scenes'
+import { countLabel, plural } from '@/lib/format'
 
 type Scene = { id: string; name: string; description?: string | null; thumbnailUrl?: string | null; relationship?: string }
-type View = 'grid' | 'list'
-
 const RELATIONSHIP_LABEL: Record<string, string> = { cohost: 'Co-host', editor: 'Editor', viewer: 'Viewer' }
 const VIEW_KEY = 'vlm.scenes.view'
 /** Only owners and co-hosts can change a scene's details. */
@@ -19,7 +18,7 @@ const canDescribe = (s: Scene) => !s.relationship || s.relationship === 'owner' 
 
 export default function ScenesPage() {
   return (
-    <Suspense fallback={<p className="text-gray-400">Loading...</p>}>
+    <Suspense fallback={<Skeleton />}>
       <ScenesContent />
     </Suspense>
   )
@@ -29,27 +28,13 @@ function ScenesContent() {
   const { token } = useAuth()
   const api = useApi()
   const searchParams = useSearchParams()
-  const router = useRouter()
   const selectedSceneId = searchParams.get('id')
   const [scenes, setScenes] = useState<Scene[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
   const [query, setQuery] = useState('')
-  const [view, setView] = useState<View>('grid')
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(VIEW_KEY)
-      if (saved === 'grid' || saved === 'list') setView(saved)
-    } catch {
-      // no storage: grid
-    }
-  }, [])
-  const chooseView = (v: View) => {
-    setView(v)
-    try { localStorage.setItem(VIEW_KEY, v) } catch { /* not remembered */ }
-  }
+  const [view, chooseView] = useStoredView(VIEW_KEY, ['grid', 'list'], 'grid')
 
   useEffect(() => {
     if (!token) return
@@ -73,11 +58,7 @@ function ScenesContent() {
   // Show scene editor when ?id= is present
   if (selectedSceneId) {
     return (
-      <div>
-        <button onClick={() => router.push('/scenes')}
-          className="mb-4 text-sm text-gray-400 hover:text-white">
-          ← Back to scenes
-        </button>
+      <div className="mx-auto max-w-7xl">
         <SceneEditorPage />
       </div>
     )
@@ -107,22 +88,10 @@ function ScenesContent() {
 
       {!loading && scenes.length > 0 && (
         <div className="mb-6 flex flex-wrap items-center gap-3">
-          <label className="relative min-w-56 flex-1">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"><SearchIcon size={18} /></span>
-            <span className="sr-only">Search scenes</span>
-            <input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search scenes..."
-              className="w-full rounded-md border border-gray-800 bg-gray-900 py-2.5 pl-10 pr-3 text-sm outline-none placeholder:text-gray-500 focus:border-blue-400" />
-          </label>
+          <SearchField value={query} onChange={setQuery} placeholder="Search scenes..." label="Search scenes" />
           <div className="ml-auto flex items-center gap-3">
-          <span className="text-sm text-gray-400">{shown.length} scene{shown.length === 1 ? '' : 's'}</span>
-          <div className="flex rounded-md border border-gray-800 bg-gray-900 p-0.5" role="group" aria-label="View">
-            {([['grid', GridIcon, 'Grid view'], ['list', ListIcon, 'List view']] as const).map(([v, ViewIcon, label]) => (
-              <button key={v} onClick={() => chooseView(v)} aria-label={label} aria-pressed={view === v}
-                className={`rounded p-2 transition-colors ${view === v ? 'bg-blue-400/15 text-blue-300' : 'text-gray-500 hover:text-white'}`}>
-                <ViewIcon size={18} />
-              </button>
-            ))}
-          </div>
+            <span className="text-sm text-gray-400">{plural(shown.length, 'scene')}</span>
+            <ViewToggle value={view} onChange={chooseView} options={[['grid', GridIcon, 'Grid view'], ['list', ListIcon, 'List view']]} />
           </div>
         </div>
       )}
@@ -132,12 +101,9 @@ function ScenesContent() {
           {[0, 1].map(i => <div key={i} className="h-80 animate-pulse rounded-lg border border-gray-800 bg-gray-900" />)}
         </div>
       ) : scenes.length === 0 ? (
-        <div className="flex flex-col items-center rounded-lg border border-dashed border-gray-800 px-6 py-16 text-center">
-          <span className="mb-4 text-gray-600"><ScenesIcon size={40} /></span>
-          <p className="text-lg font-medium">No scenes yet</p>
-          <p className="mt-1 mb-6 text-sm text-gray-400">A scene is one of your virtual worlds. Create one to start placing media and running events.</p>
-          <PrimaryButton onClick={() => setShowCreate(true)}><PlusIcon size={16} /> Create Scene</PrimaryButton>
-        </div>
+        <EmptyState icon={<ScenesIcon size={40} />} title="No scenes yet"
+          body="A scene is one of your virtual worlds. Create one to start placing media and running events."
+          action={<PrimaryButton onClick={() => setShowCreate(true)}><PlusIcon size={16} /> Create Scene</PrimaryButton>} />
       ) : shown.length === 0 ? (
         <p className="py-12 text-center text-gray-500">No scenes match “{query.trim()}”.</p>
       ) : view === 'grid' ? (
@@ -204,7 +170,8 @@ function SceneCard({ scene, onDescribe }: { scene: Scene; onDescribe: (id: strin
           <Link href={sceneHref(scene.id)} className="hover:text-blue-300">{scene.name}</Link>
           <RoleBadge scene={scene} />
         </h2>
-        <Description scene={scene} onSave={onDescribe} />
+        <InlineDescription value={scene.description} canEdit={canDescribe(scene)} onSave={d => onDescribe(scene.id, d)}
+          label="Scene description" placeholder="What happens in this scene?" />
       </div>
       <footer className="flex items-center justify-between gap-3 border-t border-gray-800 px-6 py-3.5">
         <CopyId id={scene.id} />
@@ -213,61 +180,6 @@ function SceneCard({ scene, onDescribe }: { scene: Scene; onDescribe: (id: strin
         </Link>
       </footer>
     </article>
-  )
-}
-
-/** The description, or (for those who can edit it) an "Add description" action that edits in place. */
-function Description({ scene, onSave }: { scene: Scene; onSave: (id: string, description: string) => Promise<void> }) {
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  if (editing) {
-    const save = async (e: React.FormEvent) => {
-      e.preventDefault()
-      setSaving(true)
-      setError(null)
-      try {
-        await onSave(scene.id, draft.trim())
-        setEditing(false)
-      } catch {
-        setError("Couldn't save the description")
-      } finally {
-        setSaving(false)
-      }
-    }
-    return (
-      <form onSubmit={save} className="mt-3">
-        <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={2} autoFocus maxLength={500}
-          aria-label="Scene description" placeholder="What happens in this scene?"
-          className="w-full resize-none rounded-md border border-gray-800 bg-gray-950 px-3 py-2 text-sm outline-none focus:border-blue-400" />
-        {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
-        <div className="mt-2 flex gap-2">
-          <button type="submit" disabled={saving} className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium hover:bg-blue-700 disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
-          <button type="button" onClick={() => setEditing(false)} className="rounded-md bg-gray-800 px-3 py-1.5 text-xs hover:bg-gray-700">Cancel</button>
-        </div>
-      </form>
-    )
-  }
-  if (scene.description) {
-    return (
-      <p className="group mt-3 line-clamp-2 text-sm text-gray-400">
-        {scene.description}
-        {canDescribe(scene) && (
-          <button onClick={() => { setDraft(scene.description ?? ''); setEditing(true) }} aria-label="Edit description"
-            className="ml-2 inline-flex align-middle text-gray-600 opacity-0 hover:text-white group-hover:opacity-100 focus:opacity-100">
-            <PencilIcon size={14} />
-          </button>
-        )}
-      </p>
-    )
-  }
-  if (!canDescribe(scene)) return <p className="mt-3 text-sm text-gray-600">No description</p>
-  return (
-    <button onClick={() => { setDraft(''); setEditing(true) }} className="mt-3 flex items-center gap-2 text-sm text-gray-400 hover:text-white">
-      <PencilIcon size={16} /> Add description
-    </button>
   )
 }
 

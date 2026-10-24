@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { LinkedWallets } from './LinkedWallets'
 import { LinkedHyperfySessions } from './LinkedHyperfySessions'
 import { PairedHeadsets } from './PairedHeadsets'
+import { Badge, PageHeader, PlatformBadge, Skeleton, tableHeadBand, type Tone } from '@/components/ui'
 
 function formatBytes(bytes: number): string {
   if (bytes === Infinity) return 'Unlimited'
@@ -46,6 +47,8 @@ function UsageBar({ label, current, limit, formatValue }: {
     </div>
   )
 }
+
+const TIER_TONE: Record<string, Tone> = { free: 'neutral', creator: 'info', pro: 'violet', studio: 'warning', enterprise: 'success' }
 
 export default function SettingsPage() {
   const { user, token, updateUser, logout } = useAuth()
@@ -329,16 +332,14 @@ export default function SettingsPage() {
     }
   }
 
-  if (loading) return <p className="text-gray-400">Loading organizations...</p>
+  if (loading) return <Skeleton />
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Settings</h1>
-      </div>
+    <div className="mx-auto max-w-7xl">
+      <PageHeader crumbs={['System', 'Settings']} title="Settings" subtitle="Your account, organizations, billing and API keys." />
 
       {error && (
-        <div className="mb-4 rounded-lg bg-red-900/50 border border-red-700 px-4 py-2 text-sm text-red-300">
+        <div className="mb-4 rounded-md bg-red-900/50 border border-red-700 px-4 py-2 text-sm text-red-300">
           {error}
         </div>
       )}
@@ -348,7 +349,7 @@ export default function SettingsPage() {
         <h2 className="text-lg font-semibold mb-4">Account</h2>
         <div className="space-y-6">
           {/* Display Name */}
-          <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+          <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
             <h3 className="text-sm font-medium text-gray-300 mb-3">Display Name</h3>
             <form onSubmit={handleUpdateProfile} className="flex gap-3">
               <input
@@ -356,12 +357,12 @@ export default function SettingsPage() {
                 value={displayName}
                 onChange={e => setDisplayName(e.target.value)}
                 placeholder="Your display name"
-                className="flex-1 rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
               />
               <button
                 type="submit"
                 disabled={profileSaving || displayName.trim() === (user?.displayName || '')}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
                 {profileSaving ? 'Saving...' : profileSuccess ? 'Saved!' : 'Save'}
               </button>
@@ -375,15 +376,15 @@ export default function SettingsPage() {
           <PairedHeadsets />
 
           {/* Change Password */}
-          <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+          <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
             <h3 className="text-sm font-medium text-gray-300 mb-3">Change Password</h3>
             {passwordError && (
-              <div className="mb-3 rounded-lg bg-red-900/50 border border-red-700 px-4 py-2 text-sm text-red-300">
+              <div className="mb-3 rounded-md bg-red-900/50 border border-red-700 px-4 py-2 text-sm text-red-300">
                 {passwordError}
               </div>
             )}
             {passwordSuccess && (
-              <div className="mb-3 rounded-lg bg-green-900/50 border border-green-700 px-4 py-2 text-sm text-green-300">
+              <div className="mb-3 rounded-md bg-green-900/50 border border-green-700 px-4 py-2 text-sm text-green-300">
                 Password changed successfully
               </div>
             )}
@@ -393,26 +394,26 @@ export default function SettingsPage() {
                 value={currentPassword}
                 onChange={e => setCurrentPassword(e.target.value)}
                 placeholder="Current password"
-                className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
               />
               <input
                 type="password"
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
                 placeholder="New password"
-                className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
               />
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
                 placeholder="Confirm new password"
-                className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
               />
               <button
                 type="submit"
                 disabled={passwordSaving || !currentPassword || !newPassword || !confirmPassword}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
                 {passwordSaving ? 'Changing...' : 'Change Password'}
               </button>
@@ -420,14 +421,14 @@ export default function SettingsPage() {
           </div>
 
           {/* Danger Zone */}
-          <div className="rounded-xl border border-red-900 bg-gray-900 p-6">
+          <div className="rounded-lg border border-red-900 bg-gray-900 p-6">
             <h3 className="text-sm font-medium text-red-400 mb-2">Danger Zone</h3>
             <p className="text-sm text-gray-400 mb-4">
               Once you delete your account, there is no going back. All your data will be permanently removed.
             </p>
             <button
               onClick={() => setShowDeleteModal(true)}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+              className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
             >
               Delete Account
             </button>
@@ -438,13 +439,13 @@ export default function SettingsPage() {
       {/* Delete Account Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-lg border border-gray-700 bg-gray-900 p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-white mb-2">Delete Account</h3>
             <p className="text-sm text-gray-400 mb-4">
               This action is irreversible. Enter your password to confirm.
             </p>
             {deleteError && (
-              <div className="mb-3 rounded-lg bg-red-900/50 border border-red-700 px-4 py-2 text-sm text-red-300">
+              <div className="mb-3 rounded-md bg-red-900/50 border border-red-700 px-4 py-2 text-sm text-red-300">
                 {deleteError}
               </div>
             )}
@@ -453,19 +454,19 @@ export default function SettingsPage() {
               value={deletePassword}
               onChange={e => setDeletePassword(e.target.value)}
               placeholder="Your password"
-              className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-red-500 mb-4"
+              className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none mb-4 focus:border-blue-400 border border-gray-800"
             />
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => { setShowDeleteModal(false); setDeletePassword(''); setDeleteError(null) }}
-                className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium hover:bg-gray-700 transition-colors"
+                className="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium hover:bg-gray-700 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteAccount}
                 disabled={deleteLoading || !deletePassword}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
               >
                 {deleteLoading ? 'Deleting...' : 'Delete My Account'}
               </button>
@@ -479,7 +480,7 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Your Organizations</h2>
           <button onClick={() => setShowCreate(!showCreate)}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700">
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700">
             + Create Organization
           </button>
         </div>
@@ -488,9 +489,9 @@ export default function SettingsPage() {
           <form onSubmit={handleCreateOrg} className="mb-6 flex gap-2">
             <input type="text" value={newOrgName} onChange={e => setNewOrgName(e.target.value)}
               placeholder="Organization name" autoFocus
-              className="flex-1 rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500" />
-            <button type="submit" className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700">Create</button>
-            <button type="button" onClick={() => setShowCreate(false)} className="rounded-lg bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700">Cancel</button>
+              className="flex-1 rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800" />
+            <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700">Create</button>
+            <button type="button" onClick={() => setShowCreate(false)} className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700">Cancel</button>
           </form>
         )}
 
@@ -499,7 +500,7 @@ export default function SettingsPage() {
         ) : (
           <div className="space-y-3">
             {orgs.map(org => (
-              <div key={org.id} className="rounded-xl border border-gray-800 bg-gray-900 overflow-hidden">
+              <div key={org.id} className="rounded-lg border border-gray-800 bg-gray-900 overflow-hidden">
                 {/* Org header */}
                 <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-800/50 transition-colors"
                   onClick={() => handleToggleExpand(org.id)}>
@@ -508,7 +509,7 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold">{org.name}</h3>
                         {activeOrgId === org.id && (
-                          <span className="rounded-full bg-green-900/50 border border-green-700 px-2 py-0.5 text-xs text-green-400">Active</span>
+                          <Badge tone="success">Active</Badge>
                         )}
                       </div>
                       <p className="mt-0.5 text-sm text-gray-400">
@@ -520,7 +521,7 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-2">
                     {activeOrgId !== org.id && (
                       <button onClick={(e) => { e.stopPropagation(); handleSwitchOrg(org.id) }}
-                        className="rounded-lg bg-gray-700 px-3 py-1.5 text-xs font-medium hover:bg-gray-600 transition-colors">
+                        className="rounded-md bg-gray-700 px-3 py-1.5 text-xs font-medium hover:bg-gray-600 transition-colors">
                         Switch
                       </button>
                     )}
@@ -534,20 +535,20 @@ export default function SettingsPage() {
                     <h4 className="text-sm font-medium text-gray-300 mb-3">Members</h4>
 
                     {membersLoading === org.id ? (
-                      <p className="text-sm text-gray-500">Loading members...</p>
+                      <Skeleton rows={2} className="h-12" />
                     ) : (members[org.id] || []).length === 0 ? (
                       <p className="text-sm text-gray-500">No members found.</p>
                     ) : (
                       <div className="space-y-2 mb-4">
                         {(members[org.id] || []).map((member: any) => (
-                          <div key={member.userId} className="flex items-center justify-between rounded-lg bg-gray-800 px-3 py-2">
+                          <div key={member.userId} className="flex items-center justify-between rounded-md bg-gray-800 px-3 py-2">
                             <div>
                               <p className="text-sm text-white">{member.displayName || member.email || member.userId}</p>
                               <p className="text-xs text-gray-400 capitalize">{member.role}</p>
                             </div>
                             {isAdminOrOwner(org) && member.userId !== user?.id && (
                               <button onClick={() => handleRemoveMember(org.id, member.userId)}
-                                className="rounded-lg bg-red-900/50 border border-red-800 px-2 py-1 text-xs text-red-400 hover:bg-red-900 transition-colors">
+                                className="rounded-md bg-red-900/50 border border-red-800 px-2 py-1 text-xs text-red-400 hover:bg-red-900 transition-colors">
                                 Remove
                               </button>
                             )}
@@ -563,14 +564,14 @@ export default function SettingsPage() {
                         <div className="flex gap-2">
                           <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
                             placeholder="Email address"
-                            className="flex-1 rounded-lg bg-gray-800 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                            className="flex-1 rounded-md bg-gray-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400 border border-gray-800" />
                           <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}
-                            className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500">
+                            className="rounded-md bg-gray-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400 border border-gray-800">
                             <option value="member">Member</option>
                             <option value="admin">Admin</option>
                           </select>
                           <button onClick={() => handleInvite(org.id)}
-                            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700">
+                            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700">
                             Invite
                           </button>
                         </div>
@@ -588,31 +589,24 @@ export default function SettingsPage() {
       <section className="mt-10">
         <h2 className="text-lg font-semibold mb-4">Billing & Usage</h2>
         {billingLoading ? (
-          <p className="text-gray-400">Loading billing info...</p>
+          <Skeleton rows={2} className="h-12" />
         ) : billingEnabled === false ? (
-          <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+          <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
             <div className="flex items-center gap-3 mb-2">
-              <span className="rounded-full bg-green-900/50 border border-green-700 px-3 py-1 text-sm font-medium text-green-400">Self-Hosted</span>
+              <Badge tone="success">Self-Hosted</Badge>
             </div>
             <p className="text-gray-300">All features unlocked. Billing is not enabled on this instance.</p>
           </div>
         ) : (
           <div className="space-y-4">
             {/* Current Plan */}
-            <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+            <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-gray-400">Current Plan</span>
-                  <span className={`rounded-full px-3 py-1 text-sm font-medium border ${
-                    billingTier === 'free' ? 'bg-gray-800 border-gray-600 text-gray-300' :
-                    billingTier === 'creator' ? 'bg-blue-900/50 border-blue-700 text-blue-400' :
-                    billingTier === 'pro' ? 'bg-purple-900/50 border-purple-700 text-purple-400' :
-                    billingTier === 'studio' ? 'bg-amber-900/50 border-amber-700 text-amber-400' :
-                    billingTier === 'enterprise' ? 'bg-emerald-900/50 border-emerald-700 text-emerald-400' :
-                    'bg-gray-800 border-gray-600 text-gray-300'
-                  }`}>
+                  <Badge tone={TIER_TONE[billingTier] ?? 'neutral'}>
                     {billingTier.charAt(0).toUpperCase() + billingTier.slice(1)}
-                  </span>
+                  </Badge>
                 </div>
                 {billingTier !== 'free' && (
                   <button
@@ -627,7 +621,7 @@ export default function SettingsPage() {
                         setBillingActionLoading(null)
                       }
                     }}
-                    className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-600 transition-colors disabled:opacity-50"
+                    className="rounded-md bg-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-600 transition-colors disabled:opacity-50"
                   >
                     {billingActionLoading === 'portal' ? 'Redirecting...' : 'Manage Subscription'}
                   </button>
@@ -663,7 +657,7 @@ export default function SettingsPage() {
 
             {/* Upgrade Options */}
             {billingTier !== 'enterprise' && (
-              <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+              <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
                 <h3 className="text-sm font-medium text-gray-300 mb-3">Upgrade Plan</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {(['creator', 'pro', 'studio', 'enterprise'] as const)
@@ -690,18 +684,18 @@ export default function SettingsPage() {
                             setBillingActionLoading(null)
                           }
                         }}
-                        className={`rounded-xl border p-4 text-left transition-colors disabled:opacity-50 ${
+                        className={`rounded-lg border p-4 text-left transition-colors disabled:opacity-50 ${
                           tier === 'creator' ? 'border-blue-800 hover:bg-blue-900/20' :
                           tier === 'pro' ? 'border-purple-800 hover:bg-purple-900/20' :
-                          tier === 'studio' ? 'border-amber-800 hover:bg-amber-900/20' :
-                          'border-emerald-800 hover:bg-emerald-900/20'
+                          tier === 'studio' ? 'border-yellow-800 hover:bg-yellow-900/20' :
+                          'border-green-800 hover:bg-green-900/20'
                         }`}
                       >
                         <span className={`text-sm font-semibold ${
                           tier === 'creator' ? 'text-blue-400' :
                           tier === 'pro' ? 'text-purple-400' :
-                          tier === 'studio' ? 'text-amber-400' :
-                          'text-emerald-400'
+                          tier === 'studio' ? 'text-yellow-400' :
+                          'text-green-400'
                         }`}>
                           {tier.charAt(0).toUpperCase() + tier.slice(1)}
                         </span>
@@ -728,23 +722,23 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">API Keys</h2>
           <button onClick={() => { setShowCreateKey(!showCreateKey); setCreatedKey(null) }}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700">
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700">
             + Create API Key
           </button>
         </div>
 
         {/* Newly created key banner */}
         {createdKey && (
-          <div className="mb-6 rounded-xl border border-yellow-700 bg-yellow-900/30 p-4">
+          <div className="mb-6 rounded-lg border border-yellow-700 bg-yellow-900/30 p-4">
             <p className="text-sm font-medium text-yellow-300 mb-2">
               This key will only be shown once. Copy it now.
             </p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 rounded-lg bg-gray-900 px-4 py-2 text-sm text-white font-mono select-all break-all">
+              <code className="flex-1 rounded-md bg-gray-900 px-4 py-2 text-sm text-white font-mono select-all break-all">
                 {createdKey}
               </code>
               <button onClick={handleCopyKey}
-                className="shrink-0 rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-600 transition-colors">
+                className="shrink-0 rounded-md bg-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-600 transition-colors">
                 {keyCopied ? 'Copied!' : 'Copy'}
               </button>
             </div>
@@ -760,20 +754,20 @@ export default function SettingsPage() {
           <form onSubmit={handleCreateApiKey} className="mb-6 flex gap-2">
             <input type="text" value={newKeyName} onChange={e => setNewKeyName(e.target.value)}
               placeholder="Key name (e.g. production, ci/cd)" autoFocus
-              className="flex-1 rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500" />
-            <button type="submit" className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700">Create</button>
-            <button type="button" onClick={() => setShowCreateKey(false)} className="rounded-lg bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700">Cancel</button>
+              className="flex-1 rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800" />
+            <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700">Create</button>
+            <button type="button" onClick={() => setShowCreateKey(false)} className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700">Cancel</button>
           </form>
         )}
 
         {apiKeysLoading ? (
-          <p className="text-gray-400">Loading API keys...</p>
+          <Skeleton rows={2} className="h-12" />
         ) : apiKeys.length === 0 ? (
           <p className="text-gray-500">No API keys yet. Create one to get started.</p>
         ) : (
           <div className="space-y-3">
             {apiKeys.map(key => (
-              <div key={key.id} className="flex items-center justify-between rounded-xl border border-gray-800 bg-gray-900 p-4">
+              <div key={key.id} className="flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900 p-4">
                 <div className="min-w-0">
                   <p className="font-medium text-white">{key.name}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-400">
@@ -787,17 +781,17 @@ export default function SettingsPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-red-400">Delete?</span>
                       <button onClick={() => handleDeleteApiKey(key.id)}
-                        className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors">
+                        className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors">
                         Confirm
                       </button>
                       <button onClick={() => setDeletingKeyId(null)}
-                        className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium hover:bg-gray-700 transition-colors">
+                        className="rounded-md bg-gray-800 px-3 py-1.5 text-xs font-medium hover:bg-gray-700 transition-colors">
                         Cancel
                       </button>
                     </div>
                   ) : (
                     <button onClick={() => setDeletingKeyId(key.id)}
-                      className="rounded-lg bg-red-900/50 border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900 transition-colors">
+                      className="rounded-md bg-red-900/50 border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900 transition-colors">
                       Delete
                     </button>
                   )}
@@ -816,24 +810,24 @@ export default function SettingsPage() {
         </p>
 
         {hooksLoading ? (
-          <p className="text-gray-400">Loading platform hooks...</p>
+          <Skeleton rows={2} className="h-12" />
         ) : hooks.length === 0 ? (
-          <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+          <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
             <p className="text-gray-500">No platform hooks registered. External platforms register hooks automatically when they connect.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-800">
+          <div className="overflow-x-auto rounded-lg border border-gray-800">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-800 bg-gray-900">
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Scene</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Platform</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Callback URL</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Element</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Mode</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Failures</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Registered</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider"></th>
+              <thead className={tableHeadBand}>
+                <tr>
+                  <th className="px-4 py-3">Scene</th>
+                  <th className="px-4 py-3">Platform</th>
+                  <th className="px-4 py-3">Callback URL</th>
+                  <th className="px-4 py-3">Element</th>
+                  <th className="px-4 py-3">Mode</th>
+                  <th className="px-4 py-3">Failures</th>
+                  <th className="px-4 py-3">Registered</th>
+                  <th className="px-4 py-3 text-right"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800 bg-gray-900/50">
@@ -841,7 +835,7 @@ export default function SettingsPage() {
                   <tr key={hook.id} className="hover:bg-gray-800/50 transition-colors">
                     <td className="px-4 py-3 text-white whitespace-nowrap">{hook.sceneName}</td>
                     <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
-                      <span className="rounded-full bg-gray-800 border border-gray-700 px-2 py-0.5 text-xs">{hook.platform}</span>
+                      <PlatformBadge platform={hook.platform} />
                     </td>
                     <td className="px-4 py-3 text-gray-300 max-w-[200px]">
                       <span className="block truncate font-mono text-xs" title={hook.callbackUrl}>
@@ -856,13 +850,7 @@ export default function SettingsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
-                      <span className={`rounded-full px-2 py-0.5 text-xs ${
-                        hook.mode === 'controller'
-                          ? 'bg-purple-900/50 border border-purple-700 text-purple-400'
-                          : 'bg-blue-900/50 border border-blue-700 text-blue-400'
-                      }`}>
-                        {hook.mode}
-                      </span>
+                      <Badge tone={hook.mode === 'controller' ? 'violet' : 'info'}>{hook.mode}</Badge>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className={`text-xs font-medium ${hook.failureCount > 0 ? 'text-red-400' : 'text-gray-500'}`}>
@@ -877,17 +865,17 @@ export default function SettingsPage() {
                         <div className="flex items-center justify-end gap-2">
                           <span className="text-xs text-red-400">Delete?</span>
                           <button onClick={() => handleDeleteHook(hook.id)}
-                            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors">
+                            className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors">
                             Confirm
                           </button>
                           <button onClick={() => setDeletingHookId(null)}
-                            className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium hover:bg-gray-700 transition-colors">
+                            className="rounded-md bg-gray-800 px-3 py-1.5 text-xs font-medium hover:bg-gray-700 transition-colors">
                             Cancel
                           </button>
                         </div>
                       ) : (
                         <button onClick={() => setDeletingHookId(hook.id)}
-                          className="rounded-lg bg-red-900/50 border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900 transition-colors">
+                          className="rounded-md bg-red-900/50 border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900 transition-colors">
                           Delete
                         </button>
                       )}
