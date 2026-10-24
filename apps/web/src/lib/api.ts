@@ -3,7 +3,8 @@ import { useCallback } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
 import { requestHeaders } from './request-headers'
-import type { AdminAd, AdminAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyPairingSummary, HyperfyWorldSummary } from 'vlm-shared'
+import type { ArFileFormat, ArMounting } from './ar'
+import type { ArFloorView, ArMarkerView, ArSpaceView, AdminAd, AdminAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyPairingSummary, HyperfyWorldSummary } from 'vlm-shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
 /** Read a File as base64 (no `data:…;base64,` prefix) for JSON upload bodies. */
@@ -86,6 +87,36 @@ export function useApi() {
       apiFetch<{ collaborator: any }>(`/api/scenes/${sceneId}/collaborators/${userId}`, { method: 'PUT', body: JSON.stringify({ role }) }),
     removeSceneCollaborator: (sceneId: string, userId: string) =>
       apiFetch(`/api/scenes/${sceneId}/collaborators/${userId}`, { method: 'DELETE' }),
+
+    // AR spaces
+    getArSpaces: (sceneId: string) => apiFetch<ArSpaceView[]>(`/api/scenes/${sceneId}/ar/spaces`),
+    createArSpace: (sceneId: string, body: { name: string; place?: string | null }) =>
+      apiFetch<ArSpaceView>(`/api/scenes/${sceneId}/ar/spaces`, { method: 'POST', body: JSON.stringify(body) }),
+    updateArSpace: (id: string, patch: { name?: string; place?: string | null; lat?: number | null; lng?: number | null; published?: boolean }) =>
+      apiFetch<ArSpaceView>(`/api/ar/spaces/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    deleteArSpace: (id: string) => apiFetch(`/api/ar/spaces/${id}`, { method: 'DELETE' }),
+    addArFloor: (spaceId: string, body: { name: string; heightM: number }) =>
+      apiFetch<ArFloorView>(`/api/ar/spaces/${spaceId}/floors`, { method: 'POST', body: JSON.stringify(body) }),
+    updateArFloor: (id: string, patch: { name?: string; heightM?: number; sortOrder?: number }) =>
+      apiFetch<ArFloorView>(`/api/ar/floors/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    deleteArFloor: (id: string) => apiFetch(`/api/ar/floors/${id}`, { method: 'DELETE' }),
+    addArMarker: (floorId: string, body: { diameterMm?: number; whereText?: string | null }) =>
+      apiFetch<ArMarkerView>(`/api/ar/floors/${floorId}/markers`, { method: 'POST', body: JSON.stringify(body) }),
+    updateArMarker: (id: string, patch: { diameterMm?: number; whereText?: string | null }) =>
+      apiFetch<ArMarkerView>(`/api/ar/markers/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    deleteArMarker: (id: string) => apiFetch(`/api/ar/markers/${id}`, { method: 'DELETE' }),
+    arMarkerFileUrl: (id: string, format: ArFileFormat, mounting: ArMounting = 'none') =>
+      `${API_URL}/api/ar/markers/${id}/files?format=${format}&mounting=${mounting}`,
+    /** Authenticated download (a plain link can't send the bearer header). Filename comes from Content-Disposition. */
+    downloadArMarkerFile: async (id: string, format: ArFileFormat, mounting: ArMounting = 'none'): Promise<{ blob: Blob; filename: string }> => {
+      const res = await fetch(`${API_URL}/api/ar/markers/${id}/files?format=${format}&mounting=${mounting}`, { headers: requestHeaders(token, {}) })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        throw Object.assign(new Error(err.error || `API error ${res.status}`), { status: res.status, body: err })
+      }
+      const m = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')
+      return { blob: await res.blob(), filename: m?.[1] ?? `vlm-ring-${id}.${format}` }
+    },
 
     // Scene roles (wallet-based)
     getSceneRoles: (sceneId: string) =>
