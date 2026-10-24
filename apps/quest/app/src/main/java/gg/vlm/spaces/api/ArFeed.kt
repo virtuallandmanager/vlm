@@ -1,5 +1,6 @@
 package gg.vlm.spaces.api
 
+import gg.vlm.spaces.space.SpaceFeed
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -19,16 +20,16 @@ class ArFeed(
     private val api: ArApi,
     private val onStatus: (FeedStatus) -> Unit,
     private val onSnapshot: (ArFeedSnapshot) -> Unit,
-) {
+) : SpaceFeed {
   private var job: Job? = null
 
-  fun start(spaceId: String, token: (() -> String?)? = null) {
+  override fun start(spaceId: String, token: (() -> String?)?) {
     stop()
     onStatus(FeedStatus.CONNECTING)
     job = scope.launch { loop(spaceId, token) }
   }
 
-  fun stop() {
+  override fun stop() {
     job?.cancel()
     job = null
   }

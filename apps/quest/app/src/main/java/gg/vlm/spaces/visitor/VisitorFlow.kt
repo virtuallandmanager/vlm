@@ -8,6 +8,7 @@ import gg.vlm.spaces.api.FeedStatus as FeedConnection
 import gg.vlm.spaces.api.MarkerLookup
 import gg.vlm.spaces.ring.RingCodec
 import gg.vlm.spaces.space.RootPose
+import gg.vlm.spaces.space.SteadyPose
 import gg.vlm.spaces.space.rootFromMarker
 
 /** The visitor's words, kept word for word (the plan's Global Constraints), and the plain words for failures. */
@@ -61,7 +62,8 @@ sealed interface VisitorEvent {
   data class Lookup(val code: String, val result: ApiResult<MarkerLookup>) : VisitorEvent
   /** No unreadable candidate has been seen for a while: "Step closer" goes back to the hint. */
   data object UnreadableGone : VisitorEvent
-  data class Feed(val snapshot: ArFeedSnapshot) : VisitorEvent
+  /** A new snapshot, with the averaged poses of the space's rings steady in view as it arrived. */
+  data class Feed(val snapshot: ArFeedSnapshot, val steady: Map<Long, SteadyPose> = emptyMap()) : VisitorEvent
   data class FeedStatus(val status: FeedConnection) : VisitorEvent
   data class Steady(val ringId: Long, val world: Vec3, val headingDeg: Double) : VisitorEvent
   data object TrackingJump : VisitorEvent
@@ -105,6 +107,8 @@ class VisitorFlow {
   private var feedSpaceId: String? = null
   /** The space itself, from its first snapshot. */
   private var space: ArSpace? = null
+  /** The ring the shown scene was last placed from. */
+  private var anchorRing: Long? = null
   /** The code of the lookup we are waiting on, and the ring that started it (null for [VisitorEvent.OpenSpace]). */
   private var pendingCode: String? = null
   private var lookupRing: Long? = null
@@ -138,7 +142,7 @@ class VisitorFlow {
         }
         is VisitorEvent.RingAgreed -> ringAgreed(event.ringId, nowMs)
         is VisitorEvent.Lookup -> lookup(event, nowMs)
-        is VisitorEvent.Feed -> feed(event.snapshot)
+        is VisitorEvent.Feed -> feed(event.snapshot, event.steady)
         is VisitorEvent.FeedStatus -> feedStatus(event.status, nowMs)
         is VisitorEvent.Steady -> steady(event)
         VisitorEvent.TrackingJump -> hide()
@@ -237,21 +241,51 @@ class VisitorFlow {
     retryAt[ring] = nowMs + delay
   }
 
-  private fun feed(snapshot: ArFeedSnapshot): List<VisitorEffect> {
+  private fun feed(snapshot: ArFeedSnapshot, steady: Map<Long, SteadyPose>): List<VisitorEffect> {
     if (feedSpaceId == null || snapshot.space.id != feedSpaceId) return emptyList()
     val s = snapshot.space
     val ids = ringIds(s)
-    val changed = space?.let { ringIds(it) != ids } ?: true
-    val first = space == null
+    val old = space
+    val changed = old?.let { ringIds(it) != ids } ?: true
+    val first = old == null
     space = s
     if (first) feedRing?.let(retryDelay::remove)
+    val fx = mutableListOf<VisitorEffect>()
     state =
         when (val st = state) {
-          is VisitorState.Shown -> st.copy(space = s)
+          is VisitorState.Shown -> reanchor(st, old, s, steady, fx)
           is VisitorState.Locking -> VisitorState.Locking(s)
           else -> if (first || st is VisitorState.NotSetUp || st is VisitorState.Failed) VisitorState.Locking(s) else st
         }
-    return if (changed) listOf(VisitorEffect.SetRegistered(ids)) else emptyList()
+    if (changed) fx += VisitorEffect.SetRegistered(ids)
+    return fx
+  }
+
+  /**
+   * The shown scene after a newer snapshot [s]: where it was, unless the anchor ring's saved pose has changed. Then it
+   * is placed afresh from that ring's averaged pose if the ring is steady in view ([steady]); otherwise it is hidden
+   * at once (it is in the wrong place) to lock again.
+   */
+  private fun reanchor(
+      shown: VisitorState.Shown,
+      old: ArSpace?,
+      s: ArSpace,
+      steady: Map<Long, SteadyPose>,
+      fx: MutableList<VisitorEffect>,
+  ): VisitorState {
+    val ring = anchorRing ?: return shown.copy(space = s)
+    val saved = s.markerByRing(ring)?.second?.pose
+    if (saved != null && saved == old?.markerByRing(ring)?.second?.pose) return shown.copy(space = s)
+    val seen = steady[ring]
+    if (saved != null && seen != null) {
+      val root = rootFromMarker(seen.world, seen.headingDeg, saved)
+      fx += VisitorEffect.Reanchor(root)
+      return VisitorState.Shown(s, root)
+    }
+    anchorRing = null
+    fx += VisitorEffect.HideNow
+    fx += VisitorEffect.ResetAveragers
+    return VisitorState.Locking(s)
   }
 
   private fun feedStatus(status: FeedConnection, nowMs: Long): List<VisitorEffect> {
@@ -263,6 +297,7 @@ class VisitorFlow {
         // the server doesn't know, once the ring is out of view (a space opened by code has no ring, so it stays).
         feedSpaceId = null
         space = null
+        anchorRing = null
         failed(feedRing, nowMs, VisitorCopy.NOT_OPEN)
         notOpenRing = feedRing
         notOpenSeenMs = nowMs
@@ -308,6 +343,7 @@ class VisitorFlow {
     }
     val root = rootFromMarker(e.world, e.headingDeg, saved)
     state = VisitorState.Shown(s, root)
+    anchorRing = e.ringId
     return if (shown != null) listOf(VisitorEffect.Reanchor(root))
     else listOf(VisitorEffect.ShowScene(root), VisitorEffect.FlashOutline(e.ringId))
   }
@@ -319,6 +355,7 @@ class VisitorFlow {
   private fun hide(): List<VisitorEffect> {
     val s = space ?: return emptyList()
     state = VisitorState.Locking(s)
+    anchorRing = null
     return listOf(VisitorEffect.HideNow, VisitorEffect.ResetAveragers)
   }
 
@@ -333,6 +370,7 @@ class VisitorFlow {
     feedSpaceId = null
     feedRing = null
     space = null
+    anchorRing = null
     lookupRing = null
     pendingCode = null
     notOpenRing = null

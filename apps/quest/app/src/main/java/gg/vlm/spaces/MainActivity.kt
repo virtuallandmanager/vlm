@@ -47,6 +47,9 @@ import com.meta.spatial.toolkit.UIPanelSettings
 import com.meta.spatial.toolkit.Visible
 import com.meta.spatial.toolkit.createPanelEntity
 import com.meta.spatial.vr.VRFeature
+import gg.vlm.spaces.api.ArApi
+import gg.vlm.spaces.api.ArFeed
+import gg.vlm.spaces.api.VisitAnalytics
 import gg.vlm.spaces.ring.CameraStatus
 import gg.vlm.spaces.ring.PassthroughCamera
 import gg.vlm.spaces.ring.PoseAverager
@@ -60,6 +63,8 @@ import gg.vlm.spaces.ring.wallHeading
 import gg.vlm.spaces.visitor.CameraRings
 import gg.vlm.spaces.visitor.HintCard
 import gg.vlm.spaces.visitor.LazyFollow
+import gg.vlm.spaces.space.SpaceSession
+import gg.vlm.spaces.visitor.RingOutline
 import gg.vlm.spaces.visitor.MenuActions
 import gg.vlm.spaces.visitor.MenuButton
 import gg.vlm.spaces.visitor.SpacePage
@@ -149,7 +154,20 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     state.occlusion = prefs.occlusion
     // Release builds always use https://vlm.gg; debug builds take a `baseUrl` extra (saved for next time).
     state.serverUrl = prefs.baseUrl(intent.getStringExtra("baseUrl"))
-    visitor = VisitorController(scope, state.serverUrl, renderer, prefs, state) { ids -> tracker.registered = ids }
+    val api = ArApi(state.serverUrl)
+    val session =
+        SpaceSession(renderer, { onStatus, onSnapshot -> ArFeed(scope, api, onStatus, onSnapshot) }, RingOutline(), SystemClock::elapsedRealtime)
+    val analytics = VisitAnalytics(api::postAnalytics, System::currentTimeMillis)
+    visitor =
+        VisitorController(
+            scope,
+            session,
+            lookup = { code -> api.lookup(code) },
+            analytics = analytics,
+            prefs = prefs,
+            ui = state,
+            setRegistered = { ids -> tracker.registered = ids },
+        )
     // A vlm.gg/s link that launched the app (a re-created activity doesn't open it again).
     if (savedInstanceState == null) openLink(intent)
 

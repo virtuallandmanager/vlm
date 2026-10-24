@@ -37,9 +37,9 @@ fun analyticsPostFor(status: Int): AnalyticsPost =
 class ArApi(baseUrl: String, private val userAgentVersion: Int = 1) {
   private val base = baseUrl.trim().trimEnd('/')
 
-  /** `GET /api/ar/markers/by-code/:code` */
-  suspend fun lookup(code: String): ApiResult<MarkerLookup> =
-      get("/api/ar/markers/by-code/${enc(code)}", null, 15_000, ::parseLookup)
+  /** `GET /api/ar/markers/by-code/:code`; a builder's [token] also finds unpublished spaces it may edit. */
+  suspend fun lookup(code: String, token: String? = null): ApiResult<MarkerLookup> =
+      get("/api/ar/markers/by-code/${enc(code)}", token, 15_000, ::parseLookup)
 
   /** `GET /api/ar/spaces/:id/feed?since=`: the server holds the request up to 25 s until the version changes. */
   suspend fun feed(spaceId: String, since: String, token: String? = null): ApiResult<ArFeedSnapshot> =

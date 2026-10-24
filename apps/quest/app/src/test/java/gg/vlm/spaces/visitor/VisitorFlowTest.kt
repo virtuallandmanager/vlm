@@ -10,6 +10,7 @@ import gg.vlm.spaces.api.FeedStatus
 import gg.vlm.spaces.api.MarkerLookup
 import gg.vlm.spaces.api.MarkerPose
 import gg.vlm.spaces.ring.RingCodec
+import gg.vlm.spaces.space.SteadyPose
 import gg.vlm.spaces.space.rootFromMarker
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -518,5 +519,55 @@ class VisitorFlowTest {
     on(VisitorEvent.RingAgreed(ringOther))
     on(VisitorEvent.Lookup(RingCodec.codeOf(ringOther), ApiResult.NotFound))
     assertEquals(false, menuButtonShown(flow.state, flow.spaceChosen))
+  }
+
+  // ── a newer snapshot moves the anchor ring ──
+
+  private val moved = MarkerPose(1.2, 1.5, 2.0, 80.0)
+
+  @Test fun `a new saved pose for the anchor ring re-anchors from its averaged pose in view`() {
+    toShown()
+    val seen = SteadyPose(Vec3(0.1, 1.5, 0.05), 12.0)
+    val fx = on(VisitorEvent.Feed(snap(space(rings = listOf(marker("m1", ringA, moved), marker("m2", ringA2))), "2"), mapOf(ringA to seen)))
+    val root = rootFromMarker(seen.world, seen.headingDeg, moved)
+    assertEquals(listOf<VisitorEffect>(VisitorEffect.Reanchor(root)), fx)
+    assertEquals(root, (flow.state as VisitorState.Shown).root)
+  }
+
+  @Test fun `a new saved pose for the anchor ring out of view hides the scene to lock again`() {
+    toShown()
+    val newer = space(rings = listOf(marker("m1", ringA, moved), marker("m2", ringA2)))
+    // only the other ring is steady in view: it isn't what the scene was placed from
+    val fx = on(VisitorEvent.Feed(snap(newer, "2"), mapOf(ringA2 to SteadyPose(Vec3(0.0, 1.5, 0.0), 10.0))))
+    assertEquals(listOf(VisitorEffect.HideNow, VisitorEffect.ResetAveragers), fx)
+    assertEquals(VisitorState.Locking(newer), flow.state)
+    // seen steady again: shown afresh from the new pose
+    val again = on(VisitorEvent.Steady(ringA, Vec3(0.0, 1.5, 0.0), 10.0))
+    val root = rootFromMarker(Vec3(0.0, 1.5, 0.0), 10.0, moved)
+    assertEquals(listOf(VisitorEffect.ShowScene(root), VisitorEffect.FlashOutline(ringA)), again)
+  }
+
+  @Test fun `the anchor ring losing its saved pose hides the scene`() {
+    toShown()
+    val fx = on(VisitorEvent.Feed(snap(space(rings = listOf(marker("m1", ringA, null), marker("m2", ringA2))), "2")))
+    assertEquals(listOf(VisitorEffect.HideNow, VisitorEffect.ResetAveragers), fx)
+    assertTrue(flow.state is VisitorState.Locking)
+  }
+
+  @Test fun `a new pose for another ring leaves the shown scene where it is`() {
+    toShown()
+    val before = (flow.state as VisitorState.Shown).root
+    val fx = on(VisitorEvent.Feed(snap(space(rings = listOf(marker("m1", ringA), marker("m2", ringA2, moved))), "2")))
+    assertTrue(fx.isEmpty())
+    assertEquals(before, (flow.state as VisitorState.Shown).root)
+  }
+
+  @Test fun `the anchor follows the ring the scene was last placed from`() {
+    toShown()
+    // re-anchored from ring A2: a move of A no longer matters, a move of A2 does
+    on(VisitorEvent.Steady(ringA2, Vec3(0.0, 1.5, 0.0), 10.0))
+    assertTrue(on(VisitorEvent.Feed(snap(space(rings = listOf(marker("m1", ringA, moved), marker("m2", ringA2))), "2"))).isEmpty())
+    val fx = on(VisitorEvent.Feed(snap(space(rings = listOf(marker("m1", ringA, moved), marker("m2", ringA2, moved))), "3")))
+    assertEquals(listOf(VisitorEffect.HideNow, VisitorEffect.ResetAveragers), fx)
   }
 }

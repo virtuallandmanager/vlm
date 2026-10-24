@@ -14,6 +14,7 @@ import com.meta.spatial.toolkit.TransformParent
 import gg.vlm.spaces.Quat
 import gg.vlm.spaces.Vec3
 import gg.vlm.spaces.sdk
+import gg.vlm.spaces.space.OutlineView
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -39,12 +40,12 @@ fun outlineSegments(diameterM: Double, count: Int = OUTLINE_SEGMENTS): List<Outl
  * The thin cyan ring flashed on a ring marker when the scene locks on: 48 boxes, 4 mm thick, the marker's printed
  * diameter, facing the marker's heading, shown for [OUTLINE_SHOW_MS]. Main thread only.
  */
-class RingOutline {
+class RingOutline : OutlineView {
   private var entities: List<Entity> = emptyList()
   private var hideAt = 0L
 
   /** Shows the outline at [world] facing [headingDeg] (degrees from +Z toward +X, into the room). */
-  fun flash(world: Vec3, headingDeg: Double, diameterM: Double, nowMs: Long) {
+  override fun flash(world: Vec3, headingDeg: Double, diameterM: Double, nowMs: Long) {
     clear()
     val turn = Quat.axisAngle(0.0, 1.0, 0.0, Math.toRadians(headingDeg))
     // A few millimetres off the wall, so the outline isn't lost in it.
@@ -72,11 +73,11 @@ class RingOutline {
     hideAt = nowMs + OUTLINE_SHOW_MS
   }
 
-  fun tick(nowMs: Long) {
+  override fun tick(nowMs: Long) {
     if (entities.isNotEmpty() && nowMs >= hideAt) clear()
   }
 
-  fun clear() {
+  override fun clear() {
     entities.asReversed().forEach { it.destroy() }
     entities = emptyList()
   }

@@ -36,6 +36,8 @@ android {
     targetCompatibility = JavaVersion.VERSION_17
   }
   kotlinOptions { jvmTarget = "17" }
+  // android.util.Log and the like do nothing in unit tests (the visitor controller's tests reach its log lines).
+  testOptions { unitTests.isReturnDefaultValues = true }
 }
 
 dependencies {

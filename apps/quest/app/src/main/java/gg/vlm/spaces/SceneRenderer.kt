@@ -38,6 +38,7 @@ import com.meta.spatial.toolkit.VideoSurfacePanelRegistration
 import com.meta.spatial.toolkit.Visible
 import java.net.HttpURLConnection
 import gg.vlm.spaces.space.RootPose
+import gg.vlm.spaces.space.SceneView
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -60,7 +61,7 @@ fun Vec3.sdk() = Vector3(x.toFloat(), y.toFloat(), z.toFloat())
  * each [tick] (and a video layer's colour scale); models and sounds show and hide at the end of the fade. Videos play
  * only while they are drawn and the app isn't [paused].
  */
-class SceneRenderer(private val activity: AppSystemActivity) {
+class SceneRenderer(private val activity: AppSystemActivity) : SceneView {
   val root: Entity = Entity.create(listOf(Transform(Pose())))
 
   /**
@@ -108,7 +109,7 @@ class SceneRenderer(private val activity: AppSystemActivity) {
     activity.registerAsyncMeshCreator(IMAGE_MESH) { _, uri -> imageMesh(uri) }
   }
 
-  fun apply(next: List<RenderItem>) {
+  override fun apply(next: List<RenderItem>) {
     val d = diffPlans(plan, next)
     d.remove.forEach(::remove)
     for (item in d.update) {
@@ -121,36 +122,36 @@ class SceneRenderer(private val activity: AppSystemActivity) {
   }
 
   /** Puts the scene origin at `pose.position`, turned `pose.yawDeg` degrees about +Y (level: no pitch or roll). */
-  fun setRoot(pose: RootPose) {
+  override fun setRoot(pose: RootPose) {
     val q = Quat.axisAngle(0.0, 1.0, 0.0, Math.toRadians(pose.yawDeg))
     root.setComponent(
         Transform(Pose(Vector3(pose.position.x.toFloat(), pose.position.y.toFloat(), pose.position.z.toFloat()), q.sdk()))
     )
   }
 
-  fun count() = plan.size
+  override fun count() = plan.size
 
   /** Removes every item (the space was closed); whatever is added next starts hidden. */
-  fun clear() {
+  override fun clear() {
     apply(emptyList())
     fade.clear()
     sync()
   }
 
   /** Fades the scene in or out over [FADE_MS] from wherever the current fade has got to. */
-  fun setVisible(on: Boolean, nowMs: Long) {
+  override fun setVisible(on: Boolean, nowMs: Long) {
     if (on) fade.show(nowMs) else fade.hide(nowMs)
     sync()
   }
 
   /** Hides the scene at once, without a fade. */
-  fun hideNow() {
+  override fun hideNow() {
     fade.hideNow()
     sync()
   }
 
   /** Advances the fade; call every frame. */
-  fun tick(nowMs: Long) {
+  override fun tick(nowMs: Long) {
     fade.tick(nowMs)
     sync()
   }

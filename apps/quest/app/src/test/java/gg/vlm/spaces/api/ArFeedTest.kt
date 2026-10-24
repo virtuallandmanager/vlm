@@ -54,6 +54,14 @@ class ArFeedTest {
   }
 
   @Test
+  fun `a builder's lookup sends its pass as a bearer token`() = runBlocking {
+    server.enqueue(MockResponse().setBody("""{"spaceId":"s","floorId":"f","markerId":"m","spaceName":"Loft","whereText":null}"""))
+    server.start()
+    ArApi(server.url("/").toString()).lookup("ABCD", "pass-1")
+    assertEquals("Bearer pass-1", server.takeRequest().getHeader("Authorization"))
+  }
+
+  @Test
   fun `the feed long-polls with since and stops on NOT_FOUND`() {
     val paths = CopyOnWriteArrayList<String>()
     var n = 0

@@ -2,6 +2,7 @@ package gg.vlm.spaces
 
 import android.content.Context
 import gg.vlm.spaces.visitor.RecentSpace
+import gg.vlm.spaces.visitor.VisitorPrefs
 import gg.vlm.spaces.visitor.decodeRecents
 import gg.vlm.spaces.visitor.encodeRecents
 
@@ -15,7 +16,7 @@ fun resolveBaseUrl(debug: Boolean, extra: String?, saved: String?): String {
 }
 
 /** The settings the app keeps on the headset. */
-class AppPrefs(context: Context) {
+class AppPrefs(context: Context) : VisitorPrefs {
   private val prefs = context.getSharedPreferences("vlm-spaces", Context.MODE_PRIVATE)
 
   var occlusion: Occlusion
@@ -26,12 +27,12 @@ class AppPrefs(context: Context) {
    * When true, taking the headset off hides the scene but keeps the space loaded; when false (the default) it ends the
    * visit, back at the hint card with nothing loaded. Builders turn it on (plan 3).
    */
-  var keepLoadedBetweenVisitors: Boolean
+  override var keepLoadedBetweenVisitors: Boolean
     get() = prefs.getBoolean("keepLoadedBetweenVisitors", false)
     set(value) = prefs.edit().putBoolean("keepLoadedBetweenVisitors", value).apply()
 
   /** Spaces opened or visited, newest first (see [remember]). */
-  var recentSpaces: List<RecentSpace>
+  override var recentSpaces: List<RecentSpace>
     get() = decodeRecents(prefs.getString("recentSpaces", null))
     set(value) = prefs.edit().putString("recentSpaces", encodeRecents(value)).apply()
 

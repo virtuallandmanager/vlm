@@ -4,26 +4,18 @@ import android.os.SystemClock
 import android.util.Log
 import com.meta.spatial.core.Pose
 import com.meta.spatial.core.Vector3
-import gg.vlm.spaces.AppPrefs
 import gg.vlm.spaces.AppState
-import gg.vlm.spaces.SceneRenderer
 import gg.vlm.spaces.Vec3
 import gg.vlm.spaces.api.ApiResult
-import gg.vlm.spaces.api.ArApi
-import gg.vlm.spaces.api.ArFeed
 import gg.vlm.spaces.api.ArFeedSnapshot
-import gg.vlm.spaces.api.ArSpace
 import gg.vlm.spaces.api.FeedStatus
+import gg.vlm.spaces.api.MarkerLookup
 import gg.vlm.spaces.api.VisitAnalytics
-import gg.vlm.spaces.planScene
 import gg.vlm.spaces.ring.CameraIntrinsics
 import gg.vlm.spaces.ring.RingCodec
 import gg.vlm.spaces.ring.RingDetection
 import gg.vlm.spaces.ring.WallPlane
-import gg.vlm.spaces.ring.cameraToWorld
-import gg.vlm.spaces.ring.circleNormals
-import gg.vlm.spaces.ring.markerInCamera
-import gg.vlm.spaces.ring.wallHeading
+import gg.vlm.spaces.space.SpaceSession
 import gg.vlm.spaces.space.markerInScene
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.atan2
@@ -43,35 +35,34 @@ class CameraRings(
     val receivedNs: Long,
 )
 
+/** What the visitor controller keeps between launches (`AppPrefs` on the headset). */
+interface VisitorPrefs {
+  val keepLoadedBetweenVisitors: Boolean
+  var recentSpaces: List<RecentSpace>
+}
+
 /**
- * Visitor mode, joined to the headset: owns the [VisitorFlow] and the space's feed, turns camera rings, head poses and
- * the lifecycle into the flow's events, and carries out its effects on the [renderer], the ring outline and the ring
- * tracker ([setRegistered]). Writes what the hint card says into [ui]. Main thread only.
+ * Visitor mode, joined to the headset: owns the [VisitorFlow], turns camera rings, head poses and the lifecycle into
+ * the flow's events, and carries out its effects on the space [session] (feed, scene, ring locks, outline), the ring
+ * tracker ([setRegistered]) and the visit [analytics]. Writes what the hint card says into [ui]. [clock] and
+ * [nanoClock] are `SystemClock.elapsedRealtime` and `elapsedRealtimeNanos` on the headset (the session's clock must
+ * match [clock]). Main thread only.
  */
 class VisitorController(
     private val scope: CoroutineScope,
-    baseUrl: String,
-    private val renderer: SceneRenderer,
-    private val prefs: AppPrefs,
+    private val session: SpaceSession,
+    private val lookup: suspend (code: String) -> ApiResult<MarkerLookup>,
+    private val analytics: VisitAnalytics,
+    private val prefs: VisitorPrefs,
     private val ui: AppState,
     private val setRegistered: (Set<Long>?) -> Unit,
+    private val clock: () -> Long = SystemClock::elapsedRealtime,
+    private val nanoClock: () -> Long = SystemClock::elapsedRealtimeNanos,
 ) {
-  private val api = ArApi(baseUrl)
   private val flow = VisitorFlow()
-  private val feed = ArFeed(scope, api, onStatus = ::onFeedStatus, onSnapshot = ::onSnapshot)
-  private val analytics = VisitAnalytics(api::postAnalytics, System::currentTimeMillis)
-  private val outline = RingOutline()
   private val trackingWatch = TrackingWatch()
   private val unreadableWatch = UnreadableWatch()
 
-  /** The space whose feed is running, and its latest snapshot's space (null until the first one). */
-  private var feedSpaceId: String? = null
-  private var space: ArSpace? = null
-
-  /** The space's rings in view. */
-  private val tracks = HashMap<Long, RingLock>()
-  /** Where each ring last locked, for its outline. */
-  private val lockedAt = HashMap<Long, Pair<Vec3, Double>>()
   private var lastFrameNs = 0L
   /** How gathering the space's rings went on the newest camera frame (the hint while locking). */
   private var gather = GatherStatus.NONE_IN_VIEW
@@ -87,6 +78,13 @@ class VisitorController(
   private var steadyRing: Long? = null
 
   init {
+    session.onStatus = ::onFeedStatus
+    session.onSnapshot = ::onSnapshot
+    session.onSteady = { id, world, heading ->
+      // A new steady pose locks on, or re-anchors a shown scene.
+      steadyRing = id
+      dispatch(VisitorEvent.Steady(id, world, heading))
+    }
     ui.recentSpaces = prefs.recentSpaces
     scope.launch {
       while (true) {
@@ -116,7 +114,7 @@ class VisitorController(
 
   /** Call every frame with the head pose, the newest camera rings, the camera's intrinsics and the room's walls. */
   fun tick(head: Pose, rings: CameraRings?, k: CameraIntrinsics?, walls: List<WallPlane>) {
-    val now = SystemClock.elapsedRealtime()
+    val now = clock()
     if (head != Pose()) {
       (flow.state as? VisitorState.Shown)?.let { shown ->
         val p = markerInScene(shown.root, head.t.vec(), 0.0)
@@ -130,15 +128,14 @@ class VisitorController(
         Log.i(TAG, "Tracking jumped: hiding the scene")
         dispatch(VisitorEvent.TrackingJump)
       }
-      val fresh = rings?.takeIf { SystemClock.elapsedRealtimeNanos() - it.receivedNs < STALE_NS }
+      val fresh = rings?.takeIf { nanoClock() - it.receivedNs < STALE_NS }
       if (fresh == null) noRings(now)
       else if (fresh.receivedNs != lastFrameNs) {
         lastFrameNs = fresh.receivedNs
         onFrame(fresh, head, k, walls, now)
       }
     }
-    renderer.tick(now)
-    outline.tick(now)
+    session.tick()
     dispatch(VisitorEvent.Tick) // also refreshes the panels
   }
 
@@ -188,16 +185,12 @@ class VisitorController(
   }
 
   /** The app is closing: stops the feed and releases the scene (video players included). */
-  fun stop() {
-    feed.stop()
-    outline.clear()
-    renderer.clear()
-  }
+  fun stop() = session.stop()
 
   // ── rings ────────────────────────────────────────────────────────────
 
   private fun noRings(now: Long) {
-    tracks.clear()
+    session.resetLocks()
     unreadableWatch.onFrame(false, now)?.let(::onUnreadable)
     gather = GatherStatus.NONE_IN_VIEW
   }
@@ -214,26 +207,7 @@ class VisitorController(
     if (st == VisitorState.Hint || st == VisitorState.StepCloser || st is VisitorState.Failed) {
       for (d in f.tracked) dispatch(VisitorEvent.RingAgreed(d.id))
     }
-
-    val seen = f.tracked.associateBy { it.id }
-    tracks.keys.retainAll(seen.keys)
-    val steps = ArrayList<LockStep>()
-    for ((id, d) in seen) {
-      val marker = space?.markerByRing(id)?.second ?: continue
-      if (k == null) continue
-      val w = cameraToWorld(markerInCamera(d, k, marker.diameterMm / 1000.0), head, k)
-      val step =
-          tracks
-              .getOrPut(id) { RingLock() }
-              .step(w.vec(), wallHeading(w, walls, head.t, circleNormals(d, k, head)), head.t.vec(), now)
-      steps += step
-      // A new steady pose locks on, or re-anchors a shown scene.
-      if (step.becameSteady) {
-        lockedAt[id] = step.world to step.headingDeg!!
-        steadyRing = id
-        dispatch(VisitorEvent.Steady(id, step.world, step.headingDeg))
-      }
-    }
+    val steps = session.onRings(f.tracked, head, k, walls)
     gather = gatherStatus(steps, unreadableSince != null)
   }
 
@@ -244,17 +218,8 @@ class VisitorController(
     dispatch(VisitorEvent.FeedStatus(s))
   }
 
-  /** An exception in here would end the feed's loop silently, so it's caught and logged. */
-  private fun onSnapshot(snapshot: ArFeedSnapshot) {
-    try {
-      if (snapshot.space.id != feedSpaceId) return
-      space = snapshot.space
-      renderer.apply(planScene(snapshot.scene))
-      dispatch(VisitorEvent.Feed(snapshot))
-    } catch (e: Exception) {
-      Log.e(TAG, "Snapshot ${snapshot.version} failed", e)
-    }
-  }
+  /** The session has applied the scene; the session catches and logs an exception in here. */
+  private fun onSnapshot(snapshot: ArFeedSnapshot) = dispatch(VisitorEvent.Feed(snapshot, session.steadyPoses()))
 
   // ── flow ─────────────────────────────────────────────────────────────
 
@@ -270,8 +235,8 @@ class VisitorController(
     try {
       while (pending.isNotEmpty()) {
         val next = pending.removeFirst()
-        val now = SystemClock.elapsedRealtime()
-        for (fx in flow.on(next, now)) run(fx, now)
+        val now = clock()
+        for (fx in flow.on(next, now)) run(fx)
       }
     } finally {
       // A throw must not leave events queued to replay, stale, on the next dispatch.
@@ -281,49 +246,36 @@ class VisitorController(
     refreshUi()
   }
 
-  private fun run(fx: VisitorEffect, now: Long) {
+  private fun run(fx: VisitorEffect) {
     when (fx) {
       is VisitorEffect.Lookup -> lookup(fx.code)
-      is VisitorEffect.StartFeed -> {
-        feedSpaceId = fx.spaceId
-        space = null
-        feed.start(fx.spaceId)
-      }
+      is VisitorEffect.StartFeed -> session.start(fx.spaceId)
       VisitorEffect.StopFeed -> {
-        feed.stop()
+        session.stop()
         endVisit()
-        feedSpaceId = null
-        space = null
         ui.feed = null
-        renderer.clear()
       }
       is VisitorEffect.ShowScene -> {
         // The scene is up, so the visit counts. The ring's own code names the space in the list.
-        val s = space
+        val s = session.snapshot()?.space
         val ring = steadyRing
         if (s != null && ring != null) visited(RingCodec.codeOf(ring), s.name)
-        space?.let { analytics.shown(it.id) }
-        renderer.setRoot(fx.root)
-        renderer.setVisible(true, now)
+        s?.let { analytics.shown(it.id) }
+        session.setRoot(fx.root)
+        session.show()
       }
-      is VisitorEffect.Reanchor -> renderer.setRoot(fx.root)
+      is VisitorEffect.Reanchor -> session.setRoot(fx.root)
       VisitorEffect.HideScene -> {
-        renderer.setVisible(false, now)
+        session.hide()
         analytics.hidden()
-        outline.clear()
       }
       VisitorEffect.HideNow -> {
-        renderer.hideNow()
+        session.hideNow()
         analytics.hidden()
-        outline.clear()
       }
-      is VisitorEffect.FlashOutline -> {
-        val at = lockedAt[fx.ringId]
-        val marker = space?.markerByRing(fx.ringId)?.second
-        if (at != null && marker != null) outline.flash(at.first, at.second, marker.diameterMm / 1000.0, now)
-      }
+      is VisitorEffect.FlashOutline -> session.flashOutline(fx.ringId)
       VisitorEffect.ResetAveragers -> {
-        tracks.clear()
+        session.resetLocks()
         gather = GatherStatus.NONE_IN_VIEW
       }
       is VisitorEffect.SetRegistered -> setRegistered(fx.ids)
@@ -336,7 +288,7 @@ class VisitorController(
     scope.launch {
       val r =
           try {
-            api.lookup(code)
+            lookup.invoke(code)
           } catch (e: CancellationException) {
             throw e
           } catch (e: Exception) {
@@ -366,7 +318,7 @@ class VisitorController(
     val st = flow.state
     ui.spacePage = spacePageFor(ui.spacePage, st)
     ui.spaceProblem = if (ui.spacePage?.spaceName == null) (st as? VisitorState.Failed)?.message else null
-    val now = SystemClock.elapsedRealtime()
+    val now = clock()
     val device =
         when {
           cameraDenied -> DeviceProblem.NO_CAMERA_PERMISSION
@@ -378,7 +330,7 @@ class VisitorController(
     ui.sceneShown = st is VisitorState.Shown
     ui.menuButtonShown = menuButtonShown(st, flow.spaceChosen)
     ui.visitorState = st::class.simpleName ?: ""
-    ui.itemCount = renderer.count()
+    ui.itemCount = session.itemCount()
   }
 
   private fun Vector3.vec() = Vec3(x.toDouble(), y.toDouble(), z.toDouble())
