@@ -15,6 +15,18 @@ sealed interface ApiResult<out T> {
   data class Failed(val status: Int) : ApiResult<Nothing>
 }
 
+/** What became of an analytics batch: taken, worth sending again later, or refused for good. */
+enum class AnalyticsPost { Sent, Retry, Drop }
+
+/** The fate of a batch the server answered with HTTP [status]: a 4xx other than 429 will never be taken. */
+fun analyticsPostFor(status: Int): AnalyticsPost =
+    when {
+      status in 200..299 -> AnalyticsPost.Sent
+      status == 429 -> AnalyticsPost.Retry
+      status in 400..499 -> AnalyticsPost.Drop
+      else -> AnalyticsPost.Retry
+    }
+
 /**
  * The AR endpoints of a VLM server. A bearer token is sent only when one is given. Tokens are never logged.
  * Safe to call from any dispatcher: requests run on IO.
@@ -30,14 +42,14 @@ class ArApi(baseUrl: String, private val userAgentVersion: Int = 1) {
   suspend fun feed(spaceId: String, since: String, token: String? = null): ApiResult<ArFeedSnapshot> =
       get("/api/ar/spaces/${enc(spaceId)}/feed?since=${enc(since)}", token, 40_000, ::parseFeed)
 
-  /** `POST /api/ar/spaces/:id/analytics`: true when the server took the batch. Anonymous; sends no token. */
-  suspend fun postAnalytics(spaceId: String, body: String): Boolean =
+  /** `POST /api/ar/spaces/:id/analytics` (see [analyticsPostFor]); offline is [AnalyticsPost.Retry]. Anonymous; sends no token. */
+  suspend fun postAnalytics(spaceId: String, body: String): AnalyticsPost =
       withContext(Dispatchers.IO) {
         val c =
             try {
               URL("$base/api/ar/spaces/${enc(spaceId)}/analytics").openConnection() as HttpURLConnection
             } catch (e: java.io.IOException) {
-              return@withContext false
+              return@withContext AnalyticsPost.Retry
             }
         try {
           c.requestMethod = "POST"
@@ -48,9 +60,9 @@ class ArApi(baseUrl: String, private val userAgentVersion: Int = 1) {
           c.setRequestProperty("X-VLM-App-Version", userAgentVersion.toString())
           c.setRequestProperty("Content-Type", "application/json")
           c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-          c.responseCode in 200..299
+          analyticsPostFor(c.responseCode)
         } catch (e: java.io.IOException) {
-          false
+          AnalyticsPost.Retry
         } finally {
           c.disconnect()
         }

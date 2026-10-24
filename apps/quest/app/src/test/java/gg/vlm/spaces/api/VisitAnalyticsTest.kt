@@ -16,13 +16,21 @@ import org.junit.Test
 class VisitAnalyticsTest {
   private var now = 1_700_000_000_000L
   private val posts = mutableListOf<Pair<String, JsonObject>>()
-  private var ok = true
+  /** What the server makes of the next posts; every attempt is counted. */
+  private var answer = AnalyticsPost.Sent
+  private var ok: Boolean
+    get() = answer == AnalyticsPost.Sent
+    set(v) {
+      answer = if (v) AnalyticsPost.Sent else AnalyticsPost.Retry
+    }
+  private var attempts = 0
 
   private val analytics =
       VisitAnalytics(
           post = { id, body ->
-            if (ok) posts += id to Json.parseToJsonElement(body).jsonObject
-            ok
+            attempts++
+            if (answer == AnalyticsPost.Sent) posts += id to Json.parseToJsonElement(body).jsonObject
+            answer
           },
           clock = { now },
       )
@@ -120,5 +128,50 @@ class VisitAnalyticsTest {
         events(posts[0].second)[0]["playerId"],
         events(posts[1].second)[0]["playerId"],
     )
+  }
+
+  @Test
+  fun `a batch the server refuses for good is dropped, not retried`() = runBlocking {
+    answer = AnalyticsPost.Drop
+    analytics.shown("gone")
+    analytics.end()
+    analytics.flush()
+    assertEquals(1, attempts)
+    answer = AnalyticsPost.Sent
+    analytics.flush()
+    assertEquals(1, attempts)
+    assertTrue(posts.isEmpty())
+  }
+
+  @Test
+  fun `a drop only drops that space's batch`() = runBlocking {
+    var calls = 0
+    val dropFirst =
+        VisitAnalytics(
+            post = { id, _ ->
+              calls++
+              if (id == "gone") AnalyticsPost.Drop else AnalyticsPost.Retry
+            },
+            clock = { now },
+        )
+    dropFirst.shown("gone")
+    dropFirst.shown("s2")
+    dropFirst.end()
+    dropFirst.flush()
+    assertEquals(2, calls)
+    dropFirst.flush()
+    assertEquals(3, calls) // only s2 is tried again
+  }
+
+  @Test
+  fun `the server's answer decides between sent, retry and drop`() {
+    assertEquals(AnalyticsPost.Sent, analyticsPostFor(200))
+    assertEquals(AnalyticsPost.Sent, analyticsPostFor(204))
+    assertEquals(AnalyticsPost.Drop, analyticsPostFor(400))
+    assertEquals(AnalyticsPost.Drop, analyticsPostFor(404))
+    assertEquals(AnalyticsPost.Drop, analyticsPostFor(413))
+    assertEquals(AnalyticsPost.Retry, analyticsPostFor(429))
+    assertEquals(AnalyticsPost.Retry, analyticsPostFor(500))
+    assertEquals(AnalyticsPost.Retry, analyticsPostFor(503))
   }
 }

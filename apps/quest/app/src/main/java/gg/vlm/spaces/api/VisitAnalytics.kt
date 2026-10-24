@@ -13,11 +13,12 @@ import kotlinx.serialization.json.put
  * Anonymous visit analytics, reported as platform `ar-quest`. One visit runs from the first [shown] of a space until
  * [end]; [hidden] only pauses it (a tracking jump re-shows the same space). The playerId is a fresh random UUID per
  * visit, never stored and never tied to the device. Events are timestamped with [clock] (epoch ms, as the server
- * checks them) and queued until [flush] posts them; a failed post keeps them (up to [MAX_QUEUED]) for the next flush.
+ * checks them) and queued until [flush] posts them; a post to retry keeps them (up to [MAX_QUEUED]) for the next flush,
+ * and one the server refused for good ([AnalyticsPost.Drop]) drops that space's batch.
  * Main thread only.
  */
 class VisitAnalytics(
-    private val post: suspend (spaceId: String, body: String) -> Boolean,
+    private val post: suspend (spaceId: String, body: String) -> AnalyticsPost,
     private val clock: () -> Long,
 ) {
   private class Queued(val spaceId: String, val type: String, val playerId: String, val t: Long, val pos: Vec3? = null)
@@ -71,14 +72,21 @@ class VisitAnalytics(
     while (queue.size > MAX_QUEUED) queue.removeAt(0)
   }
 
-  /** Posts what is queued, one request per space and at most [MAX_QUEUED] events each. Failures stay queued. */
+  /** Posts what is queued, one request per space and at most [MAX_QUEUED] events each. Retries stay queued. */
   suspend fun flush() {
     flushing.withLock {
       for (id in queue.map { it.spaceId }.distinct()) {
         val batch = queue.filter { it.spaceId == id }.take(MAX_QUEUED)
         if (batch.isEmpty()) continue
-        val ok = try { post(id, body(batch)) } catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e } catch (e: Exception) { false }
-        if (ok) queue.removeAll { q -> batch.any { it === q } }
+        val result =
+            try {
+              post(id, body(batch))
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+              throw e
+            } catch (e: Exception) {
+              AnalyticsPost.Retry
+            }
+        if (result != AnalyticsPost.Retry) queue.removeAll { q -> batch.any { it === q } }
       }
     }
   }
