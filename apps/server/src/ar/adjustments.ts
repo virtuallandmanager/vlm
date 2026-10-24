@@ -14,8 +14,9 @@ const vec = (v: unknown, fallback: number): Vec3 => {
 
 /**
  * The scene with a space's adjustments applied: position += dPosition, rotation += dRotation (degrees, per
- * component), scale *= scaleFactor, and `arAdjusted: true` so the headset can mark the instance. Pure: the input
- * is left alone.
+ * component), scale *= scaleFactor. Each adjusted instance also gets `arAdjusted: true` so the headset can mark it,
+ * `arShared` (its transform before the adjustment) and `arAdjustment`, so the builder can show and edit both. Pure:
+ * the input is left alone.
  */
 export function applyAdjustments(scene: SerializedScene, adj: ReadonlyMap<string, Adjustment>): SerializedScene {
   if (!adj.size) return scene
@@ -40,6 +41,8 @@ export function applyAdjustments(scene: SerializedScene, adj: ReadonlyMap<string
             rotation: { x: r.x + a.dRotation.x, y: r.y + a.dRotation.y, z: r.z + a.dRotation.z },
             scale: { x: s.x * a.scaleFactor.x, y: s.y * a.scaleFactor.y, z: s.z * a.scaleFactor.z },
             arAdjusted: true,
+            arShared: { position: p, rotation: r, scale: s },
+            arAdjustment: a,
           }
         }),
       }

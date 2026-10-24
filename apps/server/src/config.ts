@@ -15,6 +15,14 @@ function env(key: string): string | undefined {
 
 const mode: VLMMode = (env('VLM_MODE') as VLMMode) || 'single'
 
+/**
+ * True when Colyseus runs on Redis presence and driver, so a scene's rooms can live in other processes. Process-local
+ * state shared with the rooms (the draft-holds registry) is only whole when this is false.
+ */
+export function roomsDistributed(c: { useRedisPresence: boolean; redisUrl?: string } = config): boolean {
+  return c.useRedisPresence && !!c.redisUrl
+}
+
 /** Refuse to start a production-like server on the well-known development JWT secret. */
 export function assertProductionSecrets(c: { mode: VLMMode; nodeEnv?: string; jwtSecret: string }): void {
   const production = c.mode === 'cloud' || c.nodeEnv === 'production'

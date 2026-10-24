@@ -39,6 +39,9 @@ export function setArFeedHoldMs(ms: number): void {
  * Sign-in is optional here: no Authorization header is a visitor. A header is checked like any other, before
  * anything else is looked up (`authenticate`, which also holds a scene pass to this route's scene and refuses
  * the other kinds of pass). Returns false when `authenticate` already answered.
+ *
+ * A scene pass for another scene gets 403 here, not a visitor's answer: the headset must only send its pass for the
+ * space it was minted for, and call other spaces with no Authorization header.
  */
 async function signInIfPresent(request: FastifyRequest, reply: FastifyReply): Promise<boolean> {
   if (!request.headers.authorization) return true

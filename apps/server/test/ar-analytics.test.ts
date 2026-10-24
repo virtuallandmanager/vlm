@@ -69,6 +69,11 @@ describe('POST /api/ar/spaces/:id/analytics', () => {
     expect(await db.select().from(analyticsSessions)).toHaveLength(0)
   })
 
+  it('answers 404 for a space id that is not a uuid', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/ar/spaces/not-a-uuid/analytics', payload: batch() })
+    expect([res.statusCode, res.json().error]).toEqual([404, 'not_found'])
+  })
+
   it('refuses other platforms', async () => {
     await publish()
     for (const extra of [{ platform: 'hyperfy' }, { platform: 'ar-ios' }, {}]) {

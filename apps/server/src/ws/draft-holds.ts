@@ -1,7 +1,7 @@
 /**
  * Who is dragging which instance right now, for every scene on this process: the scene rooms (Decentraland editors,
  * key `room:<sessionId>`) and the AR draft routes (headsets, key `ar:<deviceId>`) share it, so one can't take an item
- * the other holds. Synchronous and in memory, so it only spans one process (`VLM_MODE=single`). Never persisted.
+ * the other holds. Synchronous and in memory, so it only spans one process: it is whole only while scene rooms can't live elsewhere (`roomsDistributed()` false). Never persisted.
  */
 
 export type DraftHolder = { key: string; name: string; expiresAt?: number }

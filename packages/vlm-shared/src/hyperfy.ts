@@ -1,5 +1,8 @@
 /** Shared vocabulary for Hyperfy worlds: the scene feed protocol and the visit analytics batch. */
 
+import type { Adjustment } from './ar.js'
+import type { Vec3 } from './types/math.js'
+
 export const HYPERFY_FEED = {
   version: 1,
   /** Long-poll hold, in ms. */
@@ -14,10 +17,26 @@ export const HYPERFY_FEED = {
   keyPrefix: 'vlmw_',
 } as const
 
+/**
+ * One serialized instance; other keys are allowed. In an AR space's feed, an instance with a "Just this place"
+ * adjustment has its transform adjusted and also carries `arAdjusted`, the shared (unadjusted) transform in `arShared`
+ * and the adjustment itself in `arAdjustment`.
+ */
+export interface SerializedSceneInstance {
+  sk?: string
+  position?: Vec3
+  rotation?: Vec3
+  scale?: Vec3
+  arAdjusted?: true
+  arShared?: { position: Vec3; rotation: Vec3; scale: Vec3 }
+  arAdjustment?: Adjustment
+  [key: string]: unknown
+}
+
 /** One serialized element (video, image, model, sound, ...) with its instances; other keys are allowed. */
 export interface SerializedSceneElement {
   sk?: string
-  instances?: unknown[]
+  instances?: SerializedSceneInstance[]
   [key: string]: unknown
 }
 

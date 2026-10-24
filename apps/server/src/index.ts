@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 const _require = createRequire(import.meta.url)
 const { Server: ColyseusServer } = _require('colyseus') as any
 const { WebSocketTransport } = _require('@colyseus/ws-transport') as any
-import { config, assertProductionSecrets } from './config.js'
+import { config, assertProductionSecrets, roomsDistributed } from './config.js'
 import { startHookCrons } from './integrations/platform-hooks.js'
 import { VLMSceneRoom } from './ws/VLMSceneRoom.js'
 import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
@@ -42,7 +42,7 @@ async function main() {
   let presence: any
   let driver: any
 
-  if (config.useRedisPresence && config.redisUrl) {
+  if (roomsDistributed()) {
     const { RedisPresence } = _require('@colyseus/redis-presence') as any
     const { RedisDriver } = _require('@colyseus/redis-driver') as any
     presence = new RedisPresence(config.redisUrl)

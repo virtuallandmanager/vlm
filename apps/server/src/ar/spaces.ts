@@ -58,6 +58,7 @@ export async function listSpaces(sceneId: string): Promise<ArSpaceView[]> {
 }
 
 export async function getSpace(id: string): Promise<ArSpaceView | null> {
+  if (!isUuid(id)) return null
   const [row] = await db.select().from(arSpaces).where(eq(arSpaces.id, id))
   return row ? (await viewsOf([row]))[0] : null
 }

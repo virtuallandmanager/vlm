@@ -7,6 +7,7 @@ import type { SceneFrom } from '../auth/scene-from.js'
 import { fromMarker, fromSpace, mayBuild } from '../ar/access.js'
 import { clearAdjustment, saveAdjustment } from '../ar/adjustments.js'
 import { setMarkerPose } from '../ar/spaces.js'
+import { endArDraftForSave } from './ar-drafts.js'
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const asVec3 = (v: unknown, ok: (n: number) => boolean = () => true): Vec3 | null => {
@@ -32,6 +33,12 @@ export default async function arBuilderRoutes(app: FastifyInstance) {
     return sceneId
   }
 
+  /** A headset that saved this place's version of an instance ends its live draft of it (see ar-drafts.ts). */
+  async function endHeadsetDraft(request: FastifyRequest, sceneId: string, instanceId: string) {
+    const u = request.user
+    if (u.via === 'ar' && u.deviceId) await endArDraftForSave(u.deviceId, sceneId, instanceId)
+  }
+
   app.put<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/ar/markers/:id/pose', cfg(fromMarker), async (request, reply) => {
     if (!(await guard(request, reply, fromMarker))) return
     const { x, y, z, headingDeg, heightAboveFloorM } = request.body ?? {}
@@ -41,7 +48,8 @@ export default async function arBuilderRoutes(app: FastifyInstance) {
   })
 
   app.put<{ Params: { id: string; instanceId: string }; Body: Record<string, unknown> }>('/api/ar/spaces/:id/adjustments/:instanceId', cfg(fromSpace), async (request, reply) => {
-    if (!(await guard(request, reply, fromSpace))) return
+    const sceneId = await guard(request, reply, fromSpace)
+    if (!sceneId) return
     const b = request.body ?? {}
     const dPosition = asVec3(b.dPosition)
     const dRotation = asVec3(b.dRotation)
@@ -51,11 +59,15 @@ export default async function arBuilderRoutes(app: FastifyInstance) {
     const result = await saveAdjustment(request.params.id, request.params.instanceId, adj)
     if (result === null) return reply.status(404).send({ error: 'not_found' })
     if (result === 'instance_not_in_scene') return reply.status(400).send({ error: result })
+    await endHeadsetDraft(request, sceneId, request.params.instanceId)
     return reply.send(adj)
   })
 
   app.delete<{ Params: { id: string; instanceId: string } }>('/api/ar/spaces/:id/adjustments/:instanceId', cfg(fromSpace), async (request, reply) => {
-    if (!(await guard(request, reply, fromSpace))) return
-    return (await clearAdjustment(request.params.id, request.params.instanceId)) ? reply.status(204).send() : reply.status(404).send({ error: 'not_found' })
+    const sceneId = await guard(request, reply, fromSpace)
+    if (!sceneId) return
+    if (!(await clearAdjustment(request.params.id, request.params.instanceId))) return reply.status(404).send({ error: 'not_found' })
+    await endHeadsetDraft(request, sceneId, request.params.instanceId)
+    return reply.status(204).send()
   })
 }

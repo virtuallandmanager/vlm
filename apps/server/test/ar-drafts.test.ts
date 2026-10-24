@@ -27,14 +27,14 @@ const MIN = 60_000
 describe('AR draft relay', () => {
   let gs: Awaited<ReturnType<typeof startGameServer>>
   let app: Awaited<ReturnType<typeof testApp>>
-  const prevMode = config.mode
+  const prev = { mode: config.mode, useRedisPresence: config.useRedisPresence, redisUrl: config.redisUrl }
   beforeEach(async () => {
     await resetDb()
     gs = await startGameServer()
     app = await testApp()
   })
   afterEach(async () => {
-    ;(config as any).mode = prevMode
+    Object.assign(config, prev)
     setArDraftClock(null)
     await app.close()
     await gs.stop()
@@ -184,13 +184,19 @@ describe('AR draft relay', () => {
     expect(await s.editor.waitFor('transform_draft_end')).toEqual({ sk: s.inst.id, saved: false })
   })
 
-  it('an editor taking over a lapsed headset hold relays its end first', async () => {
+  it('an editor taking over a lapsed headset hold relays its end to the other editors only', async () => {
     const s = await setup()
+    const other = await joinScene(gs.url, s.scene.id, tokenFor(s.ownerU))
+    await other.waitFor('scene_preset_update')
     expect((await s.post(draft(s.inst.id))).statusCode).toBe(204)
     await s.editor.waitFor('transform_draft')
+    await other.waitFor('transform_draft')
     holderOf(s.scene.id, s.inst.id)!.expiresAt = Date.now() - 1 // lapsed, not yet swept
     s.editor.room.send('transform_draft', draft(s.inst.id, 6))
-    expect(await s.editor.waitFor('transform_draft_end')).toEqual({ sk: s.inst.id, saved: false })
+    expect(await other.waitFor('transform_draft_end')).toEqual({ sk: s.inst.id, saved: false })
+    expect((await other.waitFor('transform_draft')).position.x).toBe(6)
+    // The new holder doesn't hear it: its client would snap its own drag back.
+    await s.editor.expectNone('transform_draft_end', 200)
     expect(count(s.editor, 'transform_held')).toBe(0)
     expect(holderOf(s.scene.id, s.inst.id)?.key).toBe(`room:${s.editor.room.sessionId}`)
     runDraftSweep(Date.now() + 11 * MIN) // the editor's hold doesn't lapse
@@ -209,6 +215,34 @@ describe('AR draft relay', () => {
     expect([got.position.x, got.holderName]).toEqual([8, 'Eddie (headset)'])
     const ends = s.editor.inbox.map((m) => m.type)
     expect(ends).not.toContain('transform_draft_end')
+  })
+
+  it('saving a "Just this place" adjustment ends the headset\'s draft of it unsaved', async () => {
+    const s = await setup()
+    const spaceId = (await app.inject({ method: 'POST', url: `/api/scenes/${s.scene.id}/ar/spaces`, headers: bearer(tokenFor(s.ownerU)), payload: { name: 'Hall' } })).json().id
+    expect((await s.post(draft(s.inst.id))).statusCode).toBe(204)
+    await s.editor.waitFor('transform_draft')
+    const adj = { dPosition: { x: 1, y: 0, z: 0 }, dRotation: { x: 0, y: 0, z: 0 }, scaleFactor: { x: 1, y: 1, z: 1 } }
+    const put = await app.inject({ method: 'PUT', url: `/api/ar/spaces/${spaceId}/adjustments/${s.inst.id}`, headers: bearer(s.headset.pass), payload: adj })
+    expect(put.statusCode).toBe(200)
+    expect(await s.editor.waitFor('transform_draft_end')).toEqual({ sk: s.inst.id, saved: false })
+    expect(holderOf(s.scene.id, s.inst.id)).toBeUndefined()
+
+    // Resetting to shared does the same.
+    expect((await s.post(draft(s.inst.id))).statusCode).toBe(204)
+    await s.editor.waitFor('transform_draft')
+    const del = await app.inject({ method: 'DELETE', url: `/api/ar/spaces/${spaceId}/adjustments/${s.inst.id}`, headers: bearer(s.headset.pass) })
+    expect(del.statusCode).toBe(204)
+    expect(await s.editor.waitFor('transform_draft_end')).toEqual({ sk: s.inst.id, saved: false })
+    expect(holderOf(s.scene.id, s.inst.id)).toBeUndefined()
+
+    // An account token's save leaves another holder's draft alone.
+    expect((await s.post(draft(s.inst.id))).statusCode).toBe(204)
+    await s.editor.waitFor('transform_draft')
+    const acct = await app.inject({ method: 'PUT', url: `/api/ar/spaces/${spaceId}/adjustments/${s.inst.id}`, headers: bearer(tokenFor(s.ownerU)), payload: adj })
+    expect(acct.statusCode).toBe(200)
+    await s.editor.expectNone('transform_draft_end', 200)
+    expect(holderOf(s.scene.id, s.inst.id)?.key).toBe(`ar:${s.headset.deviceId}`)
   })
 
   it('a draft with no room still holds, and a room created later sees the hold', async () => {
@@ -258,9 +292,18 @@ describe('AR draft relay', () => {
     expect([res.statusCode, res.json().error]).toEqual([403, 'no_access'])
   })
 
-  it('outside single mode the routes answer 503 drafts_unavailable', async () => {
+  it('cloud mode on one process without Redis relays drafts', async () => {
     const s = await setup()
-    ;(config as any).mode = 'scalable'
+    Object.assign(config, { mode: 'cloud', useRedisPresence: true, redisUrl: undefined })
+    expect((await s.post(draft(s.inst.id, 7))).statusCode).toBe(204)
+    expect((await s.editor.waitFor('transform_draft')).position.x).toBe(7)
+    expect((await s.end({ sk: s.inst.id, saved: true })).statusCode).toBe(204)
+    expect(await s.editor.waitFor('transform_draft_end')).toEqual({ sk: s.inst.id, saved: true })
+  })
+
+  it('with Redis presence the routes answer 503 drafts_unavailable', async () => {
+    const s = await setup()
+    Object.assign(config, { mode: 'cloud', useRedisPresence: true, redisUrl: 'redis://localhost:6379' })
     const res = await s.post(draft(s.inst.id))
     expect([res.statusCode, res.json().error]).toEqual([503, 'drafts_unavailable'])
     const ended = await s.end({ sk: s.inst.id, saved: false })

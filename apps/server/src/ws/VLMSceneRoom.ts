@@ -222,10 +222,11 @@ export class VLMSceneRoom extends Room {
         this.draftTimes.set(client.sessionId, times)
         // Left during the guard's await: onLeave has already released this client's holds.
         if (!this.clientMeta.has(client.sessionId)) return
-        // Free or ours (checked above, no await since); a lapsed headset hold replaced here gets its end relayed.
+        // Free or ours (checked above, no await since); a lapsed headset hold replaced here gets its end relayed, to
+        // everyone but the new holder: hearing it, the holder's client would snap its own drag back.
         const { lapsed } = hold(this.sceneId, sk, { key: roomKey(client.sessionId), name: this.holderName(client.sessionId) })
         this.issuedHoldKeys.add(roomKey(client.sessionId))
-        if (lapsed) await this.relayToEditors('transform_draft_end', { sk, saved: false })
+        if (lapsed) await this.relayToEditors('transform_draft_end', { sk, saved: false }, client)
         await this.relayToEditors(
           'transform_draft',
           {

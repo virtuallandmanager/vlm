@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { users } from '../db/schema.js'
-import { config } from '../config.js'
+import { roomsDistributed } from '../config.js'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess } from '../auth/permissions.js'
@@ -15,8 +15,13 @@ import { isValidDraft, roomsForScene } from '../ws/VLMSceneRoom.js'
 /**
  * The headset's live drafts. Quest has no Colyseus client, so it posts each draft here and the server relays it into
  * the scene room as the room's own `transform_draft` / `transform_draft_end`; Decentraland editors see no difference.
- * Holds live in the process-wide registry (`ws/draft-holds.ts`), so this needs `VLM_MODE=single`; elsewhere the
- * routes answer 503 `drafts_unavailable` and the headset saves without a live preview.
+ * Holds live in the process-wide registry (`ws/draft-holds.ts`), so this needs every scene room in this process: when
+ * Colyseus runs on Redis presence and driver (`roomsDistributed()`), the routes answer 503 `drafts_unavailable` and the
+ * headset saves without a live preview. Any mode on one process without Redis (cloud included) relays drafts.
+ *
+ * A headset drafting a "Just this place" edit ends its draft when it saves the adjustment: saving or clearing an
+ * adjustment with an AR pass releases that device's hold on the instance and relays `transform_draft_end
+ * { saved: false }` (the shared scene didn't change), so Decentraland editors drop the preview (`endArDraftForSave`).
  */
 
 /** A headset hold lapses this long after its last draft for the item. */
@@ -65,7 +70,7 @@ function arPass(request: FastifyRequest, reply: FastifyReply): { deviceId: strin
     void reply.status(403).send({ error: 'ar_pass_required' })
     return null
   }
-  if (config.mode !== 'single') {
+  if (roomsDistributed()) {
     void reply.status(503).send({ error: 'drafts_unavailable' })
     return null
   }
@@ -79,6 +84,21 @@ async function holderNameOf(userId: string): Promise<string> {
 
 async function relayEnd(sceneId: string, sk: string, saved: boolean) {
   await Promise.all(roomsForScene(sceneId).map((room) => room.relayArDraftEnd(sk, saved)))
+}
+
+/** Drafts for sk the device sent before it ended sk, still in flight, are dropped when they land. */
+function markEnded(deviceId: string, sk: string) {
+  const key = `${deviceId}\n${sk}`
+  if (inFlight.has(key)) ended.set(key, draftSeq.get(deviceId) ?? 0)
+}
+
+/**
+ * The headset saved (or cleared) a "Just this place" adjustment for sk: its draft of sk, if it holds one, ends unsaved,
+ * since the shared scene didn't change. Editors drop the preview and the item is free.
+ */
+export async function endArDraftForSave(deviceId: string, sceneId: string, sk: string): Promise<void> {
+  markEnded(deviceId, sk)
+  if (release(sceneId, sk, arKey(deviceId))) await relayEnd(sceneId, sk, false)
 }
 
 /** A headset's session ended or it was revoked: its drafts end unsaved. */
@@ -155,8 +175,7 @@ export default async function arDraftRoutes(app: FastifyInstance) {
       const { deviceId, sceneId } = pass
       const sk = request.body?.sk
       if (typeof sk !== 'string') return reply.status(400).send({ error: 'bad_request' })
-      const key = `${deviceId}\n${sk}`
-      if (inFlight.has(key)) ended.set(key, draftSeq.get(deviceId) ?? 0)
+      markEnded(deviceId, sk)
       if (release(sceneId, sk, arKey(deviceId))) await relayEnd(sceneId, sk, !!request.body.saved)
       return reply.status(204).send()
     },
