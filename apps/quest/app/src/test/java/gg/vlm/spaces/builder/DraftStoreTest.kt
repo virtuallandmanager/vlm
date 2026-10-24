@@ -156,4 +156,12 @@ class DraftStoreTest {
     store.expire(tenMin)
     assertFalse(store.drafts().isNotEmpty())
   }
+
+  @Test
+  fun `a mirrored item's just-here factor stays positive, the mirror staying in the shared scale`() {
+    val base = tr(v(0.0, 0.0, 0.0), s = v(-2.0, 1.0, 1.0))
+    store.edit("a", "image", base, null, tr(v(0.0, 0.0, 0.0), s = v(-3.0, 1.0, 1.0)), Scope.JUST_HERE)
+    val op = store.saveOps().single() as SaveOp.PutAdjustment
+    assertEquals(v(1.5, 1.0, 1.0), op.adjustment.scaleFactor)
+  }
 }

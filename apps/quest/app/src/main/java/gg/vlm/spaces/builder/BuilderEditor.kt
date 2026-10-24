@@ -56,9 +56,6 @@ enum class DoneStep {
   BUSY,
 }
 
-/** How long a saved item keeps its saved transform on screen while the feed catches up. */
-const val SAVED_SHOW_MS = 5_000L
-
 /**
  * The builder's edits of one space: picking, the [TransformSession] behind Move / Rotate / Resize and Exact, the
  * Everywhere / Just this place switch, live drafts and Save / Revert / Done.
@@ -66,8 +63,10 @@ const val SAVED_SHOW_MS = 5_000L
  * Every change goes to [store]; its shared transform ([DraftStore.Draft.sharedNow]) is relayed through [remote] as a
  * live draft, at most ten a second per item ([throttle], whose held-back last pose goes out from [tick] or when the
  * drag ends). A `Held` answer drops the pick and the item's draft and shows "<name> is moving this". **Save** runs the
- * store's [DraftStore.saveOps] item by item: an item whose calls all succeed is forgotten, one that fails keeps its
- * draft for another try. **Done** asks first when there's anything unsaved: yes saves and leaves once everything
+ * store's [DraftStore.saveOps] item by item: an item whose save call succeeds is forgotten (a failed draft end after it
+ * is retried on its own with the next save), one whose save call fails keeps its draft for another try. Until the
+ * feed shows a saved item again, it stays where it was saved, and further edits of it start from the shared
+ * transform and adjustment that save left. **Done** asks first when there's anything unsaved: yes saves and leaves once everything
  * saved, no reverts and leaves.
  *
  * [launch] runs a call off the frame (the app's main-thread coroutine scope; tests run it at once). Main thread only.
@@ -94,9 +93,19 @@ class BuilderEditor(
   private var scope = Scope.EVERYWHERE
   private var message: String? = null
   private var saving = false
+  /** A save's calls are under way (guards [runSave] itself; [saving] is set before it is launched). */
+  private var running = false
   private var confirmingDone = false
-  /** Saved items' transforms and when they were saved, shown until the feed has them (or [SAVED_SHOW_MS]). */
-  private val saved = HashMap<String, Pair<ItemTransform, Long>>()
+
+  /**
+   * What a save of an item left on the server, kept until the feed's version of the item changes from [feedItem]
+   * (or already shows it): where it is shown ([now]) and the [shared] transform and [adjustment] new edits start from.
+   */
+  private class SavedState(val feedItem: BuilderItem?, val now: ItemTransform, val shared: ItemTransform, val adjustment: Adjustment?)
+
+  private val saved = HashMap<String, SavedState>()
+  /** Draft ends that failed after their item saved, retried with the next save: sk to `saved`. */
+  private val endsToRetry = LinkedHashMap<String, Boolean>()
 
   val mode: TransformMode
     get() = session.mode
@@ -129,7 +138,7 @@ class BuilderEditor(
   /** What the scene should show for items that differ from the feed, by [BuilderItem.renderKey]. */
   fun overrides(): Map<String, ItemTransform> {
     val out = HashMap<String, ItemTransform>()
-    for ((sk, s) in saved) bySk[sk]?.let { out[it.renderKey] = s.first }
+    for ((sk, s) in saved) bySk[sk]?.let { out[it.renderKey] = s.now }
     for (d in store.drafts()) bySk[d.sk]?.let { out[it.renderKey] = d.now }
     pickedItem()?.let { (item, t) -> out[item.renderKey] = t }
     return out
@@ -143,10 +152,10 @@ class BuilderEditor(
     items = next
     bySk = next.associateBy { it.sk }
     runEnds(store.dropMissing(bySk.keys))
-    val now = clock()
+    // The feed has moved on for that item (this save, or anyone's later change): it is the truth again.
     saved.entries.removeAll { (sk, s) ->
       val item = bySk[sk]
-      item == null || TransformMath.sameTransform(item.now, s.first) || now - s.second > SAVED_SHOW_MS
+      item == null || item != s.feedItem || showsSaved(item, s)
     }
     val p = picked
     if (p != null && p !in bySk) {
@@ -168,7 +177,7 @@ class BuilderEditor(
   }
 
   fun unpick() {
-    if (session.dragging) session.endDrag()
+    if (session.dragging) endDrag()
     session.clear()
     picked = null
     changed()
@@ -210,7 +219,19 @@ class BuilderEditor(
   fun endDrag() {
     val sk = picked
     session.endDrag()
+    clearLock()
     if (sk != null) flush(sk)
+  }
+
+  /** An axis handle's lock (and its guide) lasts for its drag only. */
+  private fun clearLock() {
+    if (session.lock != MoveLock.FREE) session.setLock(MoveLock.FREE)
+  }
+
+  /** Drops a drag in progress without relaying or recording its last frame. */
+  private fun cancelDrag() {
+    session.cancelDrag()
+    clearLock()
   }
 
   /** An Exact field: [axis] of [mode]'s value (metres, degrees, or scale floored at [MIN_SCALE]). */
@@ -227,8 +248,9 @@ class BuilderEditor(
   /** **Reset to shared**: a Just this place edit back to the shared transform, which saves as a cleared adjustment. */
   fun resetToShared(sk: String) {
     val item = bySk[sk] ?: return
-    if (!item.adjusted || (session.dragging && picked == sk)) return
-    store.edit(sk, item.element, item.shared, item.adjustment, item.shared, Scope.JUST_HERE)
+    val (shared, adjustment) = basis(item)
+    if (adjustment == null || (session.dragging && picked == sk)) return
+    store.edit(sk, item.element, shared, adjustment, shared, Scope.JUST_HERE)
     relay(sk, flush = true)
     if (picked == sk) {
       scope = Scope.JUST_HERE
@@ -252,20 +274,30 @@ class BuilderEditor(
   }
 
   fun save() {
-    if (saving) return
+    if (!startSaving()) return
     launch { runSave() }
+  }
+
+  /** Marks a save as started (so a second tap is ignored at once); false if one already is. */
+  private fun startSaving(): Boolean {
+    if (saving) return false
+    saving = true
+    message = null
+    changed()
+    return true
   }
 
   /** Ends every draft unsaved and puts the items back where the feed has them. */
   fun revert() {
     if (saving) return
+    // First, so the drag's unsent frame can't bring a draft back once the store is cleared.
+    cancelDrag()
     val ops = store.revert()
     ops.forEach { throttle.reset(it.sk) }
     runEnds(ops)
     message = null
     val p = picked
     if (p != null) {
-      if (session.dragging) session.endDrag()
       scope = Scope.EVERYWHERE
       reselect(p)
     }
@@ -286,10 +318,13 @@ class BuilderEditor(
 
   /** The answer to [DONE_CONFIRM]: save and leave once all saved (a failure stays, with a message), or revert and leave. */
   fun confirmDone(save: Boolean) {
-    confirmingDone = false
     if (save) {
+      if (!startSaving()) return
+      confirmingDone = false
+      cancelDrag()
       launch { if (runSave()) leave() }
     } else {
+      confirmingDone = false
       revert()
       leave()
     }
@@ -302,14 +337,32 @@ class BuilderEditor(
   }
 
   private fun leave() {
-    if (session.dragging) session.endDrag()
+    cancelDrag()
     session.clear()
     picked = null
+    message = null
+    saved.clear()
+    // Last chance for draft ends that failed after their save; best effort (holds lapse anyway).
+    runEnds(endsToRetry.map { (sk, s) -> SaveOp.EndDraft(sk, s) })
+    endsToRetry.clear()
     onLeave?.invoke()
   }
 
+  /** The shared transform and adjustment an edit of [item] starts from: what its last save left, else the feed's. */
+  private fun basis(item: BuilderItem): Pair<ItemTransform, Adjustment?> =
+      saved[item.sk]?.let { it.shared to it.adjustment } ?: (item.shared to item.adjustment)
+
+  private fun showsSaved(item: BuilderItem, s: SavedState): Boolean =
+      TransformMath.sameTransform(item.shared, s.shared) &&
+          ((item.adjustment == null && s.adjustment == null) ||
+              (item.adjustment != null && s.adjustment != null && sameAdjustment(item.adjustment, s.adjustment)))
+
+  private fun sameAdjustment(a: Adjustment, b: Adjustment) =
+      TransformMath.sameVec(a.dPosition, b.dPosition) && TransformMath.sameVec(a.dRotation, b.dRotation) &&
+          TransformMath.sameVec(a.scaleFactor, b.scaleFactor)
+
   /** The item's transform as the builder should see it: its draft, else its just-saved transform, else the feed's. */
-  private fun shown(item: BuilderItem): ItemTransform = store.draft(item.sk)?.now ?: saved[item.sk]?.first ?: item.now
+  private fun shown(item: BuilderItem): ItemTransform = store.draft(item.sk)?.now ?: saved[item.sk]?.now ?: item.now
 
   private fun reselect(sk: String) {
     val item = bySk[sk] ?: return
@@ -319,7 +372,8 @@ class BuilderEditor(
 
   private fun sessionDraft(p: DraftPayload) {
     val item = bySk[p.sk] ?: return
-    store.edit(p.sk, item.element, item.shared, item.adjustment, p.transform, scope)
+    val (shared, adjustment) = basis(item)
+    store.edit(p.sk, item.element, shared, adjustment, p.transform, scope)
     relay(p.sk, flush = false)
     changed()
   }
@@ -353,36 +407,60 @@ class BuilderEditor(
     changed()
   }
 
-  /** Runs the save ops; true when every item saved. */
+  /**
+   * Runs the save ops; true when every item saved. An item counts as saved once its save call (instance, adjustment
+   * or cleared adjustment) succeeds; a draft end that fails after it is kept in [endsToRetry] and is all that is sent
+   * for it next time.
+   */
   private suspend fun runSave(): Boolean {
+    if (running) return false
+    running = true
     saving = true
-    message = null
-    changed()
+    for ((sk, s) in endsToRetry.entries.toList()) if (exec(SaveOp.EndDraft(sk, s)) is BuilderCall.Ok) endsToRetry.remove(sk)
     val before = store.drafts().associateBy { it.sk }
     var failed = 0
     for ((sk, ops) in store.saveOps().groupBy { it.sk }) {
-      val ok = ops.all { exec(it) is BuilderCall.Ok }
-      val draft = before[sk]
-      if (!ok) {
+      val draft = before[sk] ?: continue
+      val main = ops.filter { it !is SaveOp.EndDraft }
+      if (!main.all { exec(it) is BuilderCall.Ok }) {
         failed++
-      } else if (draft != null && store.draft(sk) == draft) {
-        // A draft edited again while it was saving is kept for the next save.
-        store.forget(sk)
-        throttle.reset(sk)
-        saved[sk] = draft.now to clock()
+        continue
       }
+      val endFailed = ops.filterIsInstance<SaveOp.EndDraft>().filter { exec(it) !is BuilderCall.Ok }
+      // A draft edited again while it was saving is kept for the next save (which ends it then).
+      if (store.draft(sk) != draft) continue
+      store.forget(sk)
+      throttle.reset(sk)
+      endFailed.forEach { endsToRetry[it.sk] = it.saved }
+      saved[sk] = savedState(draft, main)
     }
+    running = false
     saving = false
     if (failed > 0) message = saveFailedMessage(failed)
     changed()
     return failed == 0
   }
 
+  /** What saving [d] with [ops] left on the server. */
+  private fun savedState(d: DraftStore.Draft, ops: List<SaveOp>): SavedState {
+    var shared = d.base
+    var adjustment = d.adjustment
+    for (op in ops)
+        when (op) {
+          is SaveOp.UpdateInstance -> shared = op.transform
+          is SaveOp.PutAdjustment -> adjustment = op.adjustment
+          is SaveOp.DeleteAdjustment -> adjustment = null
+          is SaveOp.EndDraft -> Unit
+        }
+    return SavedState(bySk[d.sk], d.now, shared, adjustment)
+  }
+
   private suspend fun exec(op: SaveOp): BuilderCall<Unit> =
       when (op) {
         is SaveOp.UpdateInstance -> remote.updateInstance(op.sk, op.transform)
         is SaveOp.PutAdjustment -> remote.putAdjustment(op.sk, op.adjustment)
-        is SaveOp.DeleteAdjustment -> remote.deleteAdjustment(op.sk)
+        // Already gone (cleared elsewhere, or never there) is what was asked for.
+        is SaveOp.DeleteAdjustment -> remote.deleteAdjustment(op.sk).let { if (it == BuilderCall.NotFound) BuilderCall.Ok(Unit) else it }
         is SaveOp.EndDraft -> remote.endDraft(op.sk, op.saved)
       }
 

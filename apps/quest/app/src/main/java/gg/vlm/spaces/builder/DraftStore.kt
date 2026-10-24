@@ -1,6 +1,7 @@
 package gg.vlm.spaces.builder
 
 import gg.vlm.spaces.Vec3
+import kotlin.math.abs
 
 /** An item's place in the scene: scene coordinates, rotation in degrees. */
 data class ItemTransform(val position: Vec3, val rotation: Vec3, val scale: Vec3)
@@ -144,8 +145,11 @@ class DraftStore(private val clock: () -> Long) {
             Vec3(ratio(now.scale.x, base.scale.x), ratio(now.scale.y, base.scale.y), ratio(now.scale.z, base.scale.z)),
         )
 
-    /** A zero base component gives factor 1. */
-    fun ratio(now: Double, base: Double) = if (base == 0.0) 1.0 else now / base
+    /**
+     * A zero base component gives factor 1. Sizes are compared without their sign, so a mirrored (negative) shared
+     * scale keeps its mirror in the shared transform and the factor stays positive, as the server requires.
+     */
+    fun ratio(now: Double, base: Double) = if (base == 0.0) 1.0 else abs(now) / abs(base)
 
     /** A zero factor can't be taken back out; the component is left as it is. */
     fun div(v: Double, factor: Double) = if (factor == 0.0) v else v / factor

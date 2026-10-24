@@ -64,7 +64,8 @@ const val STRETCH_SNAP_STEP = 0.25
  * [onDraft] at most every [draftIntervalMs] while dragging (and once more when a drag ends). Scale never goes below
  * [MIN_SCALE]. Kotlin's [ItemTransform] is immutable, so the copies session.ts makes aren't needed.
  *
- * One addition: [setLock], so the gizmo's axis handles can choose the lock directly.
+ * Two additions: [setLock], so the gizmo's axis handles can choose the lock directly, and [cancelDrag], which ends a
+ * drag without flushing it.
  */
 class TransformSession(
     private val now: () -> Long,
@@ -199,6 +200,11 @@ class TransformSession(
   fun endDrag() {
     if (dragState == null) return
     flushIfChanged()
+    resetDrag()
+  }
+
+  /** Not in session.ts: drops the drag without sending its unsent frame (the edit is being reverted or abandoned). */
+  fun cancelDrag() {
     resetDrag()
   }
 

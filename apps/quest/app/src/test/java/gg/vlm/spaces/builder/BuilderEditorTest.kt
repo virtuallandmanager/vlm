@@ -22,12 +22,17 @@ class BuilderEditorTest {
     val relayed = ArrayList<ItemTransform>()
     var draftAnswer: BuilderCall<DraftAnswer> = BuilderCall.Ok(DraftAnswer.Ok)
     val failing = HashSet<String>()
+    val notFound = HashSet<String>()
     var during: (() -> Unit)? = null
 
     private fun unit(call: String): BuilderCall<Unit> {
       calls += call
       during?.invoke()
-      return if (failing.any { call.startsWith(it) }) BuilderCall.Failed(500) else BuilderCall.Ok(Unit)
+      return when {
+        failing.any { call.startsWith(it) } -> BuilderCall.Failed(500)
+        notFound.any { call.startsWith(it) } -> BuilderCall.NotFound
+        else -> BuilderCall.Ok(Unit)
+      }
     }
 
     override suspend fun draft(sk: String, element: String, t: ItemTransform): BuilderCall<DraftAnswer> {
@@ -189,17 +194,6 @@ class BuilderEditorTest {
     editor.setItems(listOf(poster, chair)) // a snapshot from before the save
     assertEquals(4.0, editor.overrides()["el1:in1"]!!.position.x, 1e-9)
     editor.setItems(listOf(poster.copy(now = tr(v(4.0, 1.0, 0.0)), shared = tr(v(4.0, 1.0, 0.0))), chair))
-    assertNull(editor.overrides()["el1:in1"])
-  }
-
-  @Test
-  fun `a saved place stops showing after a while even if the feed never has it`() {
-    loaded()
-    moveTo("in1", 4.0)
-    editor.save()
-    editor.unpick()
-    t += SAVED_SHOW_MS + 1
-    editor.setItems(listOf(poster, chair))
     assertNull(editor.overrides()["el1:in1"])
   }
 
@@ -393,5 +387,204 @@ class BuilderEditorTest {
     assertNull(m.bar)
     assertFalse(m.canSave)
     assertTrue(m.warnings.isEmpty())
+  }
+
+  // ── fix round 1 ──
+
+  private fun down(x: Double) = Ray(v(0.0, 10.0, 0.0), TransformMath.normalize(v(x, -9.0, 0.0)))
+
+  @Test
+  fun `revert mid-drag leaves no draft and relays nothing more`() {
+    loaded()
+    editor.pick("in1")
+    editor.beginDrag(Handle.Body, down(1.0))
+    editor.drag(down(2.0)) // relayed
+    t += 20
+    editor.drag(down(3.0)) // unsent: inside the session's 100 ms
+    val relayed = remote.relayed.size
+    editor.revert()
+    editor.endDrag()
+    editor.tick()
+    t += 200
+    editor.tick()
+    assertTrue(store.drafts().isEmpty())
+    assertEquals(relayed, remote.relayed.size)
+    assertEquals("end in1 false", remote.calls.last())
+  }
+
+  @Test
+  fun `leaving mid-drag (Done, save) leaves no draft behind and relays nothing after the save`() {
+    loaded()
+    moveTo("in1", 4.0)
+    assertEquals(DoneStep.CONFIRM, editor.done())
+    editor.beginDrag(Handle.Body, down(4.0))
+    t += 200
+    editor.drag(down(5.0))
+    t += 20
+    editor.drag(down(6.0)) // unsent
+    editor.confirmDone(save = true)
+    editor.endDrag()
+    t += 200
+    editor.tick()
+    assertEquals(1, left)
+    assertTrue(store.drafts().isEmpty())
+    assertEquals("end in1 true", remote.calls.last())
+  }
+
+  @Test
+  fun `leaving mid-drag (Done, don't save) leaves no draft behind`() {
+    loaded()
+    moveTo("in1", 4.0)
+    editor.done()
+    editor.beginDrag(Handle.Body, down(4.0))
+    t += 200
+    editor.drag(down(5.0))
+    t += 20
+    editor.drag(down(6.0))
+    editor.confirmDone(save = false)
+    editor.endDrag()
+    assertTrue(store.drafts().isEmpty())
+    assertEquals("end in1 false", remote.calls.last())
+  }
+
+  @Test
+  fun `a second Save tap while one is pending sends each call once`() {
+    val pending = ArrayList<suspend () -> Unit>()
+    val deferred = BuilderEditor(remote, store, { t }, { pending += it })
+    deferred.setItems(listOf(poster, chair))
+    deferred.pick("in1")
+    deferred.setExact(TransformMode.MOVE, Axis.X, 4.0)
+    runBlocking { pending.toList().forEach { it() } }
+    pending.clear()
+    remote.calls.clear()
+    deferred.save()
+    deferred.save()
+    deferred.done()
+    deferred.confirmDone(save = true)
+    assertTrue(deferred.view().saving)
+    runBlocking { pending.toList().forEach { it() } }
+    assertEquals(listOf("update in1 4.0", "end in1 true"), remote.calls)
+    assertFalse(deferred.view().saving)
+  }
+
+  @Test
+  fun `after a just-here save, an everywhere edit takes the new adjustment out`() {
+    loaded()
+    editor.pick("in2")
+    editor.setScope(Scope.JUST_HERE)
+    editor.setExact(TransformMode.MOVE, Axis.X, 3.5) // offset 1.5 from shared 2.0
+    editor.save()
+    editor.setItems(listOf(poster, chair)) // the feed hasn't caught up
+    editor.pick("in2")
+    assertEquals(Scope.EVERYWHERE, editor.view().scope)
+    editor.setExact(TransformMode.MOVE, Axis.X, 4.0)
+    remote.calls.clear()
+    editor.save()
+    assertEquals(listOf("update in2 2.5", "end in2 true"), remote.calls)
+  }
+
+  @Test
+  fun `after an everywhere save, a just-here edit measures from the new shared transform`() {
+    loaded()
+    moveTo("in2", 3.5) // shared becomes 3.0
+    editor.save()
+    editor.setItems(listOf(poster, chair))
+    editor.pick("in2")
+    editor.setScope(Scope.JUST_HERE)
+    editor.setExact(TransformMode.MOVE, Axis.X, 4.0)
+    remote.calls.clear()
+    editor.save()
+    assertEquals(listOf("adjust in2 1.0"), remote.calls)
+  }
+
+  @Test
+  fun `after a just-here save, moving back to the shared place clears the adjustment`() {
+    loaded()
+    editor.pick("in1")
+    editor.setScope(Scope.JUST_HERE)
+    editor.setExact(TransformMode.MOVE, Axis.X, 2.0)
+    editor.save()
+    editor.pick("in1")
+    editor.setScope(Scope.JUST_HERE)
+    editor.setExact(TransformMode.MOVE, Axis.X, 1.0)
+    remote.calls.clear()
+    editor.save()
+    assertEquals(listOf("clear in1"), remote.calls)
+  }
+
+  @Test
+  fun `once the feed changes for a saved item, its edits start from the feed again`() {
+    loaded()
+    moveTo("in2", 3.5)
+    editor.save()
+    val moved = chair.copy(now = tr(v(7.5, 0.0, 0.0)), shared = tr(v(7.0, 0.0, 0.0)))
+    editor.setItems(listOf(poster, moved))
+    editor.pick("in2")
+    editor.setScope(Scope.JUST_HERE)
+    editor.setExact(TransformMode.MOVE, Axis.X, 8.0)
+    remote.calls.clear()
+    editor.save()
+    assertEquals(listOf("adjust in2 1.0"), remote.calls)
+  }
+
+  @Test
+  fun `a saved place gives way at once when someone else moves the item`() {
+    loaded()
+    moveTo("in1", 4.0)
+    editor.save()
+    editor.unpick()
+    editor.setItems(listOf(poster.copy(now = tr(v(9.0, 1.0, 0.0)), shared = tr(v(9.0, 1.0, 0.0))), chair))
+    assertNull(editor.overrides()["el1:in1"])
+  }
+
+  @Test
+  fun `clearing an adjustment that is already gone counts as saved`() {
+    loaded()
+    editor.resetToShared("in2")
+    remote.notFound += "clear"
+    editor.save()
+    assertTrue(store.drafts().isEmpty())
+    assertNull(editor.view().message)
+  }
+
+  @Test
+  fun `a failed draft end after a saved instance retries only the draft end`() {
+    loaded()
+    moveTo("in1", 4.0)
+    remote.failing += "end in1"
+    editor.save()
+    assertTrue("the move saved", store.drafts().isEmpty())
+    assertNull(editor.view().message)
+    remote.failing.clear()
+    remote.calls.clear()
+    editor.save()
+    assertEquals(listOf("end in1 true"), remote.calls)
+    remote.calls.clear()
+    editor.save()
+    assertTrue(remote.calls.isEmpty())
+  }
+
+  @Test
+  fun `an axis handle's lock ends with its drag`() {
+    loaded()
+    editor.pick("in1")
+    editor.beginDrag(Handle.Body, down(1.0), MoveLock.Z)
+    assertEquals(MoveLock.Z, editor.lock)
+    editor.drag(down(2.0))
+    editor.endDrag()
+    assertEquals(MoveLock.FREE, editor.lock)
+  }
+
+  @Test
+  fun `leaving clears the message and the saved places`() {
+    loaded()
+    moveTo("in1", 4.0)
+    editor.save()
+    remote.draftAnswer = BuilderCall.Ok(DraftAnswer.Held("Sam"))
+    moveTo("in2", 3.0)
+    assertEquals("Sam is moving this", editor.view().message)
+    assertEquals(DoneStep.LEFT, editor.done())
+    assertNull(editor.view().message)
+    assertTrue(editor.overrides().isEmpty())
   }
 }
