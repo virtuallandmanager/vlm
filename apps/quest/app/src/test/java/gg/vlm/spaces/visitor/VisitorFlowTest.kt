@@ -239,6 +239,7 @@ class VisitorFlowTest {
             VisitorEffect.ResetAveragers,
             VisitorEffect.StopFeed,
             VisitorEffect.SetRegistered(null),
+            VisitorEffect.CloseSpacePage,
         ),
         fx.toSet(),
     )
@@ -366,5 +367,114 @@ class VisitorFlowTest {
     val before = flow.state
     on(VisitorEvent.UnreadableSeen(now - 5000))
     assertEquals(before, flow.state)
+  }
+
+  // ── the space page follows the flow ──
+
+  @Test fun `opening a space opens its page, after closing any old one`() {
+    val fx = on(VisitorEvent.OpenSpace("ABC123"))
+    val close = fx.indexOf(VisitorEffect.CloseSpacePage)
+    val open = fx.indexOf(VisitorEffect.ShowSpacePage("ABC123"))
+    assertTrue(close >= 0 && open > close)
+  }
+
+  @Test fun `looking again closes the page`() {
+    on(VisitorEvent.OpenSpace("ABC123"))
+    assertTrue(VisitorEffect.CloseSpacePage in on(VisitorEvent.LookAgain))
+    assertTrue(on(VisitorEvent.LookAgain).none { it is VisitorEffect.ShowSpacePage })
+  }
+
+  @Test fun `a space is chosen from the lookup answer until it is forgotten`() {
+    assertEquals(false, flow.spaceChosen)
+    on(VisitorEvent.RingAgreed(ringA))
+    assertEquals(false, flow.spaceChosen)
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), lookupOk()))
+    assertEquals(true, flow.spaceChosen)
+    on(VisitorEvent.FeedStatus(FeedStatus.OFFLINE))
+    assertEquals(true, flow.spaceChosen) // failed, but there is a space to leave
+    on(VisitorEvent.LookAgain)
+    assertEquals(false, flow.spaceChosen)
+  }
+
+  // ── feed not found backs off ──
+
+  @Test fun `feed not found after a found lookup puts the ring on the retry backoff`() {
+    val code = RingCodec.codeOf(ringA)
+    var delay = VisitorTuning.LOOKUP_RETRY_MIN_MS
+    repeat(5) {
+      assertEquals(listOf<VisitorEffect>(VisitorEffect.Lookup(code)), on(VisitorEvent.RingAgreed(ringA)))
+      on(VisitorEvent.Lookup(code, lookupOk()))
+      on(VisitorEvent.FeedStatus(FeedStatus.NOT_FOUND))
+      assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
+      // the found lookup doesn't reset the backoff: it keeps doubling
+      now += delay - 1
+      assertTrue(on(VisitorEvent.RingAgreed(ringA)).isEmpty())
+      now += 1
+      delay = minOf(delay * 2, VisitorTuning.LOOKUP_RETRY_MAX_MS)
+    }
+  }
+
+  @Test fun `a feed that delivers resets the backoff`() {
+    val code = RingCodec.codeOf(ringA)
+    on(VisitorEvent.RingAgreed(ringA))
+    on(VisitorEvent.Lookup(code, lookupOk()))
+    on(VisitorEvent.FeedStatus(FeedStatus.NOT_FOUND))
+    now += VisitorTuning.LOOKUP_RETRY_MIN_MS
+    on(VisitorEvent.RingAgreed(ringA))
+    on(VisitorEvent.Lookup(code, lookupOk()))
+    on(VisitorEvent.Feed(snap()))
+    // unpublished mid-visit: the backoff starts again from the minimum
+    on(VisitorEvent.FeedStatus(FeedStatus.NOT_FOUND))
+    now += VisitorTuning.LOOKUP_RETRY_MIN_MS
+    assertEquals(1, on(VisitorEvent.RingAgreed(ringA)).size)
+  }
+
+  // ── "isn't open" clears once the ring is gone ──
+
+  @Test fun `isn't open from the do-not-ask list goes back to the hint once the ring leaves view`() {
+    on(VisitorEvent.RingAgreed(ringOther))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringOther), ApiResult.NotFound))
+    on(VisitorEvent.Tick)
+    assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
+    // still in view: agreed every frame, the message stays
+    repeat(10) {
+      now += 500
+      on(VisitorEvent.RingAgreed(ringOther))
+      on(VisitorEvent.Tick)
+      assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
+    }
+    // out of view
+    now += VisitorTuning.UNREADABLE_HINT_MS - 1
+    on(VisitorEvent.Tick)
+    assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
+    now += 1
+    on(VisitorEvent.Tick)
+    assertEquals(VisitorState.Hint, flow.state)
+    // seen again: still on the list, so "isn't open" again without a lookup
+    assertTrue(on(VisitorEvent.RingAgreed(ringOther)).isEmpty())
+    assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
+  }
+
+  @Test fun `a fresh not found answer also clears once the ring is gone`() {
+    on(VisitorEvent.RingAgreed(ringOther))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringOther), ApiResult.NotFound))
+    now += VisitorTuning.UNREADABLE_HINT_MS
+    on(VisitorEvent.Tick)
+    assertEquals(VisitorState.Hint, flow.state)
+  }
+
+  @Test fun `other failures are not cleared by time`() {
+    on(VisitorEvent.RingAgreed(ringA))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), ApiResult.Offline))
+    now += 60_000
+    on(VisitorEvent.Tick)
+    assertEquals(VisitorState.Failed(VisitorCopy.OFFLINE), flow.state)
+    // nor is a feed's "isn't open" for a space opened by code
+    on(VisitorEvent.OpenSpace("ABC123"))
+    on(VisitorEvent.Lookup("ABC123", lookupOk("sp-b")))
+    on(VisitorEvent.FeedStatus(FeedStatus.NOT_FOUND))
+    now += 60_000
+    on(VisitorEvent.Tick)
+    assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
   }
 }

@@ -1,5 +1,6 @@
 package gg.vlm.spaces.visitor
 
+import android.content.Intent
 import gg.vlm.spaces.ring.RingCodec
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -17,6 +18,16 @@ private val SPACE_LINK = Regex("""^https://vlm\.gg/s/([^/?#]+)/?(?:[?#].*)?$""",
 fun spaceCodeFromUri(uri: String): String? {
   val raw = SPACE_LINK.matchEntire(uri.trim())?.groupValues?.get(1) ?: return null
   return RingCodec.parseCode(raw)?.let(RingCodec::codeOf)
+}
+
+/**
+ * The space code an intent with [action], [data] and [flags] asks to open: a VIEW of a space link. A VIEW relaunched
+ * from Recents (Android hands back the intent that first started the task) opens nothing: it isn't a new request.
+ */
+fun spaceCodeFromIntent(action: String?, data: String?, flags: Int): String? {
+  if (action != Intent.ACTION_VIEW) return null
+  if (flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
+  return data?.let(::spaceCodeFromUri)
 }
 
 /** A space the visitor opened or visited: its [code] (a ring's or a link's), its name, and when. */

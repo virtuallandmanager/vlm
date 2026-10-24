@@ -63,7 +63,7 @@ import gg.vlm.spaces.visitor.LazyFollow
 import gg.vlm.spaces.visitor.MenuActions
 import gg.vlm.spaces.visitor.MenuButton
 import gg.vlm.spaces.visitor.SpacePage
-import gg.vlm.spaces.visitor.spaceCodeFromUri
+import gg.vlm.spaces.visitor.spaceCodeFromIntent
 import gg.vlm.spaces.visitor.VisitorController
 import gg.vlm.spaces.visitor.VisitorCopy
 import gg.vlm.spaces.visitor.VisitorMenu
@@ -122,6 +122,12 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   private var wallTint: List<Entity> = emptyList()
   private var sceneReady = false
 
+  /**
+   * The permission dialog is up. It pauses the activity, but that pause isn't the headset coming off: ending the visit
+   * there would drop a space just opened from the link that launched the app. Cleared when the dialog answers.
+   */
+  private var askingPermissions = false
+
   private lateinit var camera: PassthroughCamera
   /** Only used on the camera's frame thread (PassthroughCamera runs one frame at a time). */
   private val detector = RingDetector()
@@ -166,6 +172,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     val missing = PERMISSIONS.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
     if (missing.isNotEmpty()) {
       state.markerStatus = "Waiting for the camera and spatial data permissions"
+      askingPermissions = true
       requestPermissions(missing.toTypedArray(), REQUEST_PERMISSIONS)
     } else {
       state.markerStatus = HOLD_MARKER // onResume starts the camera
@@ -180,8 +187,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   }
 
   private fun openLink(intent: Intent?) {
-    if (intent?.action != Intent.ACTION_VIEW) return
-    val code = intent.data?.toString()?.let(::spaceCodeFromUri) ?: return
+    val code = intent?.let { spaceCodeFromIntent(it.action, it.data?.toString(), it.flags) } ?: return
     openSpace(code)
   }
 
@@ -247,10 +253,11 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
 
   override fun onResume() {
     super.onResume()
+    renderer.paused = false
     visitor.headsetOn()
     hintFollow.recentre()
-    // Also catches permissions granted later in Settings.
-    if (cameraPermitted()) camera.start()
+    // Also catches permissions granted (or taken away) later in Settings.
+    if (cameraPermitted()) camera.start() else if (!askingPermissions) onCameraStatus(CameraStatus.NO_PERMISSION)
     // And a room scan made (or finished loading) while the app was in the background.
     if (sceneReady && !roomLoaded && !roomRequested && checkSelfPermission(PERMISSION_USE_SCENE) == PackageManager.PERMISSION_GRANTED) {
       roomAttempts = 0
@@ -261,7 +268,9 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   override fun onPause() {
     camera.stop()
     latestRings = null
-    visitor.headsetOff()
+    renderer.paused = true
+    // The permission dialog pausing the app isn't the headset coming off (see askingPermissions).
+    if (!askingPermissions) visitor.headsetOff()
     state.menuOpen = false
     super.onPause()
   }
@@ -269,8 +278,8 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   // ── panels and menu ──────────────────────────────────────────────────
 
   /**
-   * The hint card follows the head lazily; while the scene is shown (the card hidden) the "⋯" button sits 0.35 m below
-   * the card's place; the menu stays where it opened.
+   * The hint card follows the head lazily; the "⋯" button (while a space is up, see `menuButtonShown`) sits 0.35 m
+   * below the card's place; the menu stays where it opened.
    */
   private fun placePanels(head: Pose, now: Long) {
     val fwd = flat(head.q.times(Vector3(0f, 0f, 1f))) ?: Vector3(0f, 0f, 1f)
@@ -284,7 +293,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     }
     menuButton?.let {
       it.setComponent(Transform(Pose(Vector3(p.x, p.y - MENU_BUTTON_BELOW_M, p.z), facing)))
-      show(it, state.sceneShown)
+      show(it, state.menuButtonShown)
     }
     menuPanel?.let { show(it, state.menuOpen) }
     spacePagePanel?.let {
@@ -387,6 +396,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   private fun onCameraStatus(st: CameraStatus) {
     state.cameraStatus = st
     if (st != CameraStatus.STARTING && st != CameraStatus.RUNNING) latestRings = null
+    visitor.setCameraDenied(st == CameraStatus.NO_PERMISSION)
   }
 
   /**
@@ -473,6 +483,8 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
           }
           return@runOnUiThread
         }
+        // Missing, empty, or failed after its retries: the visitor is told to set up their space.
+        visitor.setRoomScanMissing(!(ok && walls.isNotEmpty()))
         state.wallStatus =
             when {
               ok && walls.isNotEmpty() -> "Room scan loaded: ${walls.size} walls"
@@ -565,10 +577,11 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
     super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     if (requestCode != REQUEST_PERMISSIONS) return
+    askingPermissions = false
     val sceneGranted = checkSelfPermission(PERMISSION_USE_SCENE) == PackageManager.PERMISSION_GRANTED
     state.markerStatus = if (sceneGranted) HOLD_MARKER else "Spatial data permission denied: room walls are unavailable"
     if (sceneGranted) loadRoom() else state.wallStatus = "Spatial data permission denied: no wall heading"
-    if (cameraPermitted()) camera.start() else state.cameraStatus = CameraStatus.NO_PERMISSION
+    if (cameraPermitted()) camera.start() else onCameraStatus(CameraStatus.NO_PERMISSION)
   }
 
   override fun onSpatialShutdown() {

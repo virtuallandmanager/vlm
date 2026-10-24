@@ -21,6 +21,8 @@ object VisitorTuning {
   const val MAX_TICK_GAP_S = 0.5
   /** How long a ring the server doesn't know stays on the do-not-ask list. */
   const val NOT_FOUND_RETRY_MS = 600_000L
+  /** How long a ring may hold still with no wall heading before the visitor is told the wall can't be seen. */
+  const val NO_WALL_HINT_MS = 3_000L
   /** How long an unreadable candidate must persist before "Step closer". */
   const val UNREADABLE_HINT_MS = 1500L
   /** A failed lookup is retried after this long, doubling per failure up to the cap; success resets it. */

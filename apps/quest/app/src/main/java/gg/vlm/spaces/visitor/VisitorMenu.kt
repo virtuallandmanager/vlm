@@ -91,6 +91,17 @@ private fun Wide(label: String, onClick: () -> Unit, enabled: Boolean = true, ou
   else Button(onClick, m, enabled) { Text(label, fontSize = 14.sp) }
 }
 
+/**
+ * Whether the "⋯" button shows in [state]: always while a space is up or on its way ([spaceChosen]: locking, not set
+ * up, or failed after its lookup), so the visitor always has a visible way out; never on the plain hint card.
+ */
+fun menuButtonShown(state: VisitorState, spaceChosen: Boolean): Boolean =
+    when (state) {
+      is VisitorState.Shown -> true
+      is VisitorState.Locking, is VisitorState.NotSetUp, is VisitorState.Failed -> spaceChosen
+      VisitorState.Hint, VisitorState.StepCloser, is VisitorState.Loading -> false
+    }
+
 /** The small "⋯" button that opens and closes the menu. */
 @Composable
 fun MenuButton(act: MenuActions) {

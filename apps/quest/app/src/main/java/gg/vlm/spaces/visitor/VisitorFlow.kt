@@ -34,6 +34,11 @@ object VisitorCopy {
   const val BUSY = "VLM is busy. Trying again…"
   const val COULDNT_OPEN = "Couldn't open this space. Try again in a moment."
   const val BAD_DATA = "Something's wrong with this space's data."
+
+  // New copy from the whole-branch review (the owner may reword these; see the README).
+  const val NO_ROOM_SCAN = "Set up your space on this headset first: Settings → Physical space → Space setup."
+  const val NO_CAMERA = "VLM Spaces needs camera access to find rings. Allow it in Settings → Apps → VLM Spaces."
+  const val NO_WALL = "Can't see the wall behind this ring. Look around the room so the headset can map it."
 }
 
 sealed interface VisitorState {
@@ -62,6 +67,8 @@ sealed interface VisitorEvent {
   data object HeadsetOn : VisitorEvent
   data object LookAgain : VisitorEvent
   data class OpenSpace(val code: String) : VisitorEvent
+  /** Time has passed (sent every frame): lets a stale "isn't open" go back to the hint. */
+  data object Tick : VisitorEvent
 }
 
 sealed interface VisitorEffect {
@@ -78,6 +85,10 @@ sealed interface VisitorEffect {
   data object ResetAveragers : VisitorEffect
   /** `null` = accept any ring (used while searching). */
   data class SetRegistered(val ids: Set<Long>?) : VisitorEffect
+  /** Open the space page for [code] (a link or a Spaces pick). */
+  data class ShowSpacePage(val code: String) : VisitorEffect
+  /** Close the space page: the space it was for is forgotten. */
+  data object CloseSpacePage : VisitorEffect
 }
 
 /**
@@ -95,9 +106,18 @@ class VisitorFlow {
   /** The code of the lookup we are waiting on, and the ring that started it (null for [VisitorEvent.OpenSpace]). */
   private var pendingCode: String? = null
   private var lookupRing: Long? = null
+  /** The ring whose lookup started the feed we are following (null for [VisitorEvent.OpenSpace]). */
+  private var feedRing: Long? = null
+  /** While "isn't open" is up for a ring on the do-not-ask list: that ring, and when it was last agreed. */
+  private var notOpenRing: Long? = null
+  private var notOpenSeenMs = 0L
   private val doNotAskUntil = mutableMapOf<Long, Long>()
   private val retryAt = mutableMapOf<Long, Long>()
   private val retryDelay = mutableMapOf<Long, Long>()
+
+  /** A space has been chosen (its lookup answered) and not forgotten; its feed may still be loading. */
+  val spaceChosen: Boolean
+    get() = feedSpaceId != null
 
   fun on(event: VisitorEvent, nowMs: Long): List<VisitorEffect> =
       when (event) {
@@ -109,7 +129,7 @@ class VisitorFlow {
         is VisitorEvent.RingAgreed -> ringAgreed(event.ringId, nowMs)
         is VisitorEvent.Lookup -> lookup(event, nowMs)
         is VisitorEvent.Feed -> feed(event.snapshot)
-        is VisitorEvent.FeedStatus -> feedStatus(event.status)
+        is VisitorEvent.FeedStatus -> feedStatus(event.status, nowMs)
         is VisitorEvent.Steady -> steady(event)
         VisitorEvent.TrackingJump -> hide()
         VisitorEvent.HeadsetOff -> hide()
@@ -118,8 +138,19 @@ class VisitorFlow {
         is VisitorEvent.OpenSpace ->
             forget(listOf(VisitorEffect.SetRegistered(null))) { VisitorState.Loading(event.code, null) }
                 .also { pendingCode = event.code }
-                .plus(VisitorEffect.Lookup(event.code))
+                .plus(listOf(VisitorEffect.ShowSpacePage(event.code), VisitorEffect.Lookup(event.code)))
+        VisitorEvent.Tick -> tick(nowMs)
       }
+
+  /** A ring on the do-not-ask list that has left view for a while no longer holds "isn't open": back to the hint. */
+  private fun tick(nowMs: Long): List<VisitorEffect> {
+    if (notOpenRing != null && state == VisitorState.Failed(VisitorCopy.NOT_OPEN) &&
+        nowMs - notOpenSeenMs >= VisitorTuning.UNREADABLE_HINT_MS) {
+      notOpenRing = null
+      state = VisitorState.Hint
+    }
+    return emptyList()
+  }
 
   private fun unreadable(sinceMs: Long, nowMs: Long): List<VisitorEffect> {
     if (state == VisitorState.Hint || state == VisitorState.StepCloser) {
@@ -134,10 +165,13 @@ class VisitorFlow {
     if (feedSpaceId != null || state is VisitorState.Loading) return emptyList()
     if ((doNotAskUntil[ringId] ?: Long.MIN_VALUE) > nowMs) {
       state = VisitorState.Failed(VisitorCopy.NOT_OPEN)
+      notOpenRing = ringId
+      notOpenSeenMs = nowMs
       return emptyList()
     }
     // A failed lookup holds its message until the retry time, so it can't flicker or hammer the server.
     if ((retryAt[ringId] ?: Long.MIN_VALUE) > nowMs) return emptyList()
+    notOpenRing = null
     val code = RingCodec.codeOf(ringId)
     lookupRing = ringId
     pendingCode = code
@@ -153,17 +187,21 @@ class VisitorFlow {
     when (val r = e.result) {
       is ApiResult.Ok -> {
         feedSpaceId = r.value.spaceId
+        feedRing = ring
         pendingCode = null
         lookupRing = null
-        if (ring != null) {
-          retryAt.remove(ring)
-          retryDelay.remove(ring)
-        }
+        // The backoff itself is only reset by the feed's first snapshot: a space that answers here but whose feed
+        // says not found must not loop on lookups.
+        if (ring != null) retryAt.remove(ring)
         state = loading.copy(spaceName = r.value.spaceName)
         return listOf(VisitorEffect.StartFeed(r.value.spaceId))
       }
       ApiResult.NotFound -> {
-        if (ring != null) doNotAskUntil[ring] = nowMs + VisitorTuning.NOT_FOUND_RETRY_MS
+        if (ring != null) {
+          doNotAskUntil[ring] = nowMs + VisitorTuning.NOT_FOUND_RETRY_MS
+          notOpenRing = ring
+          notOpenSeenMs = nowMs
+        }
         state = VisitorState.Failed(VisitorCopy.NOT_OPEN)
       }
       ApiResult.Offline -> failed(ring, nowMs, VisitorCopy.OFFLINE)
@@ -191,6 +229,7 @@ class VisitorFlow {
     val changed = space?.let { ringIds(it) != ids } ?: true
     val first = space == null
     space = s
+    if (first) feedRing?.let(retryDelay::remove)
     state =
         when (val st = state) {
           is VisitorState.Shown -> st.copy(space = s)
@@ -200,14 +239,16 @@ class VisitorFlow {
     return if (changed) listOf(VisitorEffect.SetRegistered(ids)) else emptyList()
   }
 
-  private fun feedStatus(status: FeedConnection): List<VisitorEffect> {
+  private fun feedStatus(status: FeedConnection, nowMs: Long): List<VisitorEffect> {
     if (feedSpaceId == null) return emptyList()
     return when (status) {
       FeedConnection.NOT_FOUND -> {
-        // The feed reports this but doesn't clear the scene, so do it here, shown or not.
+        // The feed reports this but doesn't clear the scene, so do it here, shown or not. The ring goes on the retry
+        // backoff: its lookup may well answer again, and the feed say not found again.
         feedSpaceId = null
         space = null
-        state = VisitorState.Failed(VisitorCopy.NOT_OPEN)
+        failed(feedRing, nowMs, VisitorCopy.NOT_OPEN)
+        feedRing = null
         listOf(
             VisitorEffect.HideScene,
             VisitorEffect.StopFeed,
@@ -262,17 +303,20 @@ class VisitorFlow {
     return listOf(VisitorEffect.HideNow, VisitorEffect.ResetAveragers)
   }
 
-  /** Drops the current space and everything pending, moving to the state [next] gives. */
+  /** Drops the current space, its page and everything pending, moving to the state [next] gives. */
   private fun forget(extra: List<VisitorEffect>, next: () -> VisitorState): List<VisitorEffect> {
     val fx = mutableListOf<VisitorEffect>()
     if (space != null) fx += VisitorEffect.HideScene
     fx += VisitorEffect.StopFeed
     fx += VisitorEffect.ResetAveragers
+    fx += VisitorEffect.CloseSpacePage
     fx += extra
     feedSpaceId = null
+    feedRing = null
     space = null
     lookupRing = null
     pendingCode = null
+    notOpenRing = null
     // A fresh look starts fresh: a failed lookup's backoff would otherwise hold the hint for up to 30 s.
     retryAt.clear()
     retryDelay.clear()

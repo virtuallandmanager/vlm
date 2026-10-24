@@ -23,16 +23,54 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gg.vlm.spaces.ring.RingCodec
 
-/** What the hint card says in [state], or null when it is hidden (the scene is shown). */
-fun hintText(state: VisitorState, tooFar: Boolean): String? =
-    when (state) {
-      VisitorState.Hint -> VisitorCopy.HINT
-      VisitorState.StepCloser -> VisitorCopy.TOO_FAR
-      is VisitorState.Loading -> VisitorCopy.opening(state.spaceName)
-      is VisitorState.Locking -> if (tooFar) VisitorCopy.TOO_FAR else VisitorCopy.HOLD_STILL
-      is VisitorState.NotSetUp -> VisitorCopy.NOT_SET_UP
-      is VisitorState.Failed -> state.message
-      is VisitorState.Shown -> null
+/** Something about the headset that stops rings being found or placed, whatever the flow is doing. */
+enum class DeviceProblem {
+  NO_CAMERA_PERMISSION,
+  /** No room scan, or it failed to load after its retries: no wall headings. */
+  NO_ROOM_SCAN,
+}
+
+/**
+ * What the hint card (and an open space page) says in [state], or null when it is hidden (the scene is shown). A
+ * [device] problem comes first, since nothing else can help until it is fixed. While locking it follows [gather];
+ * [unreadableForMs] is how long an unreadable ring has been seen.
+ */
+fun hintText(
+    state: VisitorState,
+    gather: GatherStatus = GatherStatus.NONE_IN_VIEW,
+    unreadableForMs: Long = 0,
+    device: DeviceProblem? = null,
+): String? =
+    when {
+      state is VisitorState.Shown -> null
+      device == DeviceProblem.NO_CAMERA_PERMISSION -> VisitorCopy.NO_CAMERA
+      device == DeviceProblem.NO_ROOM_SCAN -> VisitorCopy.NO_ROOM_SCAN
+      else ->
+          when (state) {
+            VisitorState.Hint -> VisitorCopy.HINT
+            VisitorState.StepCloser -> VisitorCopy.TOO_FAR
+            is VisitorState.Loading -> VisitorCopy.opening(state.spaceName)
+            is VisitorState.Locking -> lockingHint(gather, unreadableForMs)
+            is VisitorState.NotSetUp -> VisitorCopy.NOT_SET_UP
+            is VisitorState.Failed -> state.message
+            is VisitorState.Shown -> null
+          }
+    }
+
+/**
+ * The hint while locking: "Hold still…" only while a ring of the space is actually being gathered. With none in view
+ * (after a tracking jump, after the headset comes back on, a space opened from a link before arriving) it is the
+ * standard hint; a ring too far away, or one seen but unreadable for [VisitorTuning.UNREADABLE_HINT_MS], says step
+ * closer; a ring holding still with no wall heading says the wall can't be seen.
+ */
+fun lockingHint(gather: GatherStatus, unreadableForMs: Long): String =
+    when (gather) {
+      GatherStatus.NONE_IN_VIEW -> VisitorCopy.HINT
+      GatherStatus.GATHERING -> VisitorCopy.HOLD_STILL
+      GatherStatus.TOO_FAR -> VisitorCopy.TOO_FAR
+      GatherStatus.UNREADABLE ->
+          if (unreadableForMs >= VisitorTuning.UNREADABLE_HINT_MS) VisitorCopy.TOO_FAR else VisitorCopy.HINT
+      GatherStatus.NO_WALL -> VisitorCopy.NO_WALL
     }
 
 /** The hint card (0.5 × 0.3 m, 250 × 150 dp): a drawing of a ring marker and the line [text]. */

@@ -16,6 +16,8 @@ class AppState {
   /** The hint card's line, or null when the card is hidden (the scene is shown). */
   var hint by mutableStateOf<String?>(VisitorCopy.HINT)
   var sceneShown by mutableStateOf(false)
+  /** The "⋯" button shows (see `menuButtonShown`). */
+  var menuButtonShown by mutableStateOf(false)
   var menuOpen by mutableStateOf(false)
   /** A line under the menu's buttons, such as "Builder mode is coming soon"; null for none. */
   var menuNote by mutableStateOf<String?>(null)

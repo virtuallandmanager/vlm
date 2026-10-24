@@ -73,10 +73,14 @@ class VisitorController(
   /** Where each ring last locked, for its outline. */
   private val lockedAt = HashMap<Long, Pair<Vec3, Double>>()
   private var lastFrameNs = 0L
-  /** During Locking: the ring in view is too far away to lock (LockGate said TOO_FAR, none said STEADY). */
-  private var tooFar = false
+  /** How gathering the space's rings went on the newest camera frame (the hint while locking). */
+  private var gather = GatherStatus.NONE_IN_VIEW
+  /** When the current run of unreadable-ring sightings began (as [UnreadableWatch] reports it), or null. */
+  private var unreadableSince: Long? = null
   /** When [tick] last had a head pose, for the tracking watch's speed limits. */
   private var lastHeadMs: Long? = null
+  private var cameraDenied = false
+  private var roomScanMissing = false
 
   /** The ring that last became steady, for naming the space a scene was just shown for. */
   private var steadyRing: Long? = null
@@ -134,7 +138,7 @@ class VisitorController(
     }
     renderer.tick(now)
     outline.tick(now)
-    refreshUi()
+    dispatch(VisitorEvent.Tick) // also refreshes the panels
   }
 
   fun headsetOff() {
@@ -143,7 +147,10 @@ class VisitorController(
     // A shared headset: the next person starts at the hint card with nothing loaded, unless a builder chose otherwise.
     if (!prefs.keepLoadedBetweenVisitors) dispatch(VisitorEvent.LookAgain)
     unreadableWatch.reset()
+    unreadableSince = null
+    gather = GatherStatus.NONE_IN_VIEW
     lastFrameNs = 0L
+    refreshUi()
   }
 
   fun headsetOn() {
@@ -155,30 +162,46 @@ class VisitorController(
   fun lookAgain() = dispatch(VisitorEvent.LookAgain)
 
   /** Opens the space with [code] (from a link or the Spaces list): shows its page and looks it up. */
-  fun openSpace(code: String) {
-    ui.spacePage = SpacePageInfo(code, null, null)
-    dispatch(VisitorEvent.OpenSpace(code))
-  }
+  fun openSpace(code: String) = dispatch(VisitorEvent.OpenSpace(code))
 
   fun closeSpacePage() {
     ui.spacePage = null
   }
 
+  /** Whether the camera permission has been refused (the hint then says how to allow it). */
+  fun setCameraDenied(denied: Boolean) {
+    cameraDenied = denied
+    refreshUi()
+  }
+
+  /** Whether the room scan is missing, or failed to load after its retries (the hint then says how to make one). */
+  fun setRoomScanMissing(missing: Boolean) {
+    roomScanMissing = missing
+    refreshUi()
+  }
+
+  /** The app is closing: stops the feed and releases the scene (video players included). */
   fun stop() {
     feed.stop()
     outline.clear()
+    renderer.clear()
   }
 
   // ── rings ────────────────────────────────────────────────────────────
 
   private fun noRings(now: Long) {
     tracks.clear()
-    tooFar = false
-    unreadableWatch.onFrame(false, now)?.let(::dispatch)
+    unreadableWatch.onFrame(false, now)?.let(::onUnreadable)
+    gather = GatherStatus.NONE_IN_VIEW
+  }
+
+  private fun onUnreadable(e: VisitorEvent) {
+    unreadableSince = (e as? VisitorEvent.UnreadableSeen)?.sinceMs
+    dispatch(e)
   }
 
   private fun onFrame(f: CameraRings, head: Pose, k: CameraIntrinsics?, walls: List<WallPlane>, now: Long) {
-    unreadableWatch.onFrame(f.unreadable, now)?.let(::dispatch)
+    unreadableWatch.onFrame(f.unreadable, now)?.let(::onUnreadable)
     // The flow only acts on agreed rings while searching; there's no need to tell it every frame otherwise.
     val st = flow.state
     if (st == VisitorState.Hint || st == VisitorState.StepCloser || st is VisitorState.Failed) {
@@ -187,16 +210,16 @@ class VisitorController(
 
     val seen = f.tracked.associateBy { it.id }
     tracks.keys.retainAll(seen.keys)
-    var anyTooFar = false
-    var anySteady = false
+    val steps = ArrayList<LockStep>()
     for ((id, d) in seen) {
       val marker = space?.markerByRing(id)?.second ?: continue
       if (k == null) continue
       val w = cameraToWorld(markerInCamera(d, k, marker.diameterMm / 1000.0), head, k)
       val step =
-          tracks.getOrPut(id) { RingLock() }.step(w.vec(), wallHeading(w, walls, head.t, circleNormals(d, k, head)), head.t.vec())
-      if (step.gate == Gate.TOO_FAR) anyTooFar = true
-      if (step.gate == Gate.STEADY) anySteady = true
+          tracks
+              .getOrPut(id) { RingLock() }
+              .step(w.vec(), wallHeading(w, walls, head.t, circleNormals(d, k, head)), head.t.vec(), now)
+      steps += step
       // A new steady pose locks on, or re-anchors a shown scene.
       if (step.becameSteady) {
         lockedAt[id] = step.world to step.headingDeg!!
@@ -204,7 +227,7 @@ class VisitorController(
         dispatch(VisitorEvent.Steady(id, step.world, step.headingDeg))
       }
     }
-    tooFar = anyTooFar && !anySteady
+    gather = gatherStatus(steps, unreadableSince != null)
   }
 
   // ── feed ─────────────────────────────────────────────────────────────
@@ -294,9 +317,11 @@ class VisitorController(
       }
       VisitorEffect.ResetAveragers -> {
         tracks.clear()
-        tooFar = false
+        gather = GatherStatus.NONE_IN_VIEW
       }
       is VisitorEffect.SetRegistered -> setRegistered(fx.ids)
+      is VisitorEffect.ShowSpacePage -> ui.spacePage = SpacePageInfo(fx.code, null, null)
+      VisitorEffect.CloseSpacePage -> ui.spacePage = null
     }
   }
 
@@ -334,8 +359,16 @@ class VisitorController(
     val st = flow.state
     ui.spacePage = spacePageFor(ui.spacePage, st)
     ui.spaceProblem = if (ui.spacePage?.spaceName == null) (st as? VisitorState.Failed)?.message else null
-    ui.hint = hintText(st, tooFar)
+    val now = SystemClock.elapsedRealtime()
+    val device =
+        when {
+          cameraDenied -> DeviceProblem.NO_CAMERA_PERMISSION
+          roomScanMissing -> DeviceProblem.NO_ROOM_SCAN
+          else -> null
+        }
+    ui.hint = hintText(st, gather, unreadableSince?.let { now - it } ?: 0L, device)
     ui.sceneShown = st is VisitorState.Shown
+    ui.menuButtonShown = menuButtonShown(st, flow.spaceChosen)
     ui.visitorState = st::class.simpleName ?: ""
     ui.itemCount = renderer.count()
   }
@@ -344,8 +377,8 @@ class VisitorController(
 
   companion object {
     private const val TAG = "VLMSpaces"
-    /** A camera frame older than this (camera stalled or stopped) shows no rings. */
     private const val FLUSH_INTERVAL_MS = 10_000L
+    /** A camera frame older than this (camera stalled or stopped) shows no rings. */
     private const val STALE_NS = 250_000_000L
   }
 }

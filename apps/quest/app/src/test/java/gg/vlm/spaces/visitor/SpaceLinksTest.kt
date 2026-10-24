@@ -1,5 +1,6 @@
 package gg.vlm.spaces.visitor
 
+import android.content.Intent
 import gg.vlm.spaces.ring.RingCodec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -7,6 +8,16 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class SpaceLinksTest {
+  @Test fun `a VIEW intent of a space link opens it, a Recents relaunch of it doesn't`() {
+    val link = "https://vlm.gg/s/2E3D4C5"
+    assertEquals("2E3D4C5", spaceCodeFromIntent(Intent.ACTION_VIEW, link, 0))
+    assertEquals("2E3D4C5", spaceCodeFromIntent(Intent.ACTION_VIEW, link, Intent.FLAG_ACTIVITY_NEW_TASK))
+    assertNull(spaceCodeFromIntent(Intent.ACTION_VIEW, link, Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY))
+    assertNull(spaceCodeFromIntent(Intent.ACTION_MAIN, link, 0))
+    assertNull(spaceCodeFromIntent(Intent.ACTION_VIEW, null, 0))
+    assertNull(spaceCodeFromIntent(null, link, 0))
+  }
+
   @Test fun `a link with a trailing slash, query and hyphens gives the normalised code`() {
     assertEquals("2E3D4C5", spaceCodeFromUri("https://vlm.gg/s/2e3d-4c5/?ref=x"))
   }

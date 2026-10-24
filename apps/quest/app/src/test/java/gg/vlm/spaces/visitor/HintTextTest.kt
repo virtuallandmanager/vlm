@@ -9,26 +9,76 @@ import org.junit.Test
 
 class HintTextTest {
   private val space = ArSpace("sp", "Cafe", null, true, emptyList())
+  private val locking = VisitorState.Locking(space)
 
   @Test fun `the visitor copy word for word`() {
-    assertEquals("Look for a ring like this, at eye level near the entrance.", hintText(VisitorState.Hint, false))
-    assertEquals("Step closer to the ring", hintText(VisitorState.StepCloser, false))
-    assertEquals("Opening Cafe…", hintText(VisitorState.Loading("ABC", "Cafe"), false))
-    assertEquals("Opening…", hintText(VisitorState.Loading("ABC", null), false))
-    assertEquals("Hold still…", hintText(VisitorState.Locking(space), false))
-    assertEquals("This space isn't set up yet", hintText(VisitorState.NotSetUp("Cafe"), false))
-    assertEquals(VisitorCopy.OFFLINE, hintText(VisitorState.Failed(VisitorCopy.OFFLINE), false))
+    assertEquals("Look for a ring like this, at eye level near the entrance.", hintText(VisitorState.Hint))
+    assertEquals("Step closer to the ring", hintText(VisitorState.StepCloser))
+    assertEquals("Opening Cafe…", hintText(VisitorState.Loading("ABC", "Cafe")))
+    assertEquals("Opening…", hintText(VisitorState.Loading("ABC", null)))
+    assertEquals("Hold still…", hintText(locking, GatherStatus.GATHERING))
+    assertEquals("This space isn't set up yet", hintText(VisitorState.NotSetUp("Cafe")))
+    assertEquals(VisitorCopy.OFFLINE, hintText(VisitorState.Failed(VisitorCopy.OFFLINE)))
   }
 
-  @Test fun `locking with the ring too far says step closer`() {
-    assertEquals("Step closer to the ring", hintText(VisitorState.Locking(space), true))
+  @Test fun `the new device and wall copy`() {
+    assertEquals(
+        "Set up your space on this headset first: Settings → Physical space → Space setup.",
+        VisitorCopy.NO_ROOM_SCAN,
+    )
+    assertEquals(
+        "VLM Spaces needs camera access to find rings. Allow it in Settings → Apps → VLM Spaces.",
+        VisitorCopy.NO_CAMERA,
+    )
+    assertEquals(
+        "Can't see the wall behind this ring. Look around the room so the headset can map it.",
+        VisitorCopy.NO_WALL,
+    )
   }
 
-  @Test fun `too far only matters while locking`() {
-    assertEquals(VisitorCopy.HINT, hintText(VisitorState.Hint, true))
+  @Test fun `locking says hold still only while a ring is being gathered`() {
+    assertEquals(VisitorCopy.HINT, lockingHint(GatherStatus.NONE_IN_VIEW, 0))
+    assertEquals(VisitorCopy.HOLD_STILL, lockingHint(GatherStatus.GATHERING, 0))
+    assertEquals(VisitorCopy.TOO_FAR, lockingHint(GatherStatus.TOO_FAR, 0))
+    assertEquals(VisitorCopy.HINT, lockingHint(GatherStatus.UNREADABLE, VisitorTuning.UNREADABLE_HINT_MS - 1))
+    assertEquals(VisitorCopy.TOO_FAR, lockingHint(GatherStatus.UNREADABLE, VisitorTuning.UNREADABLE_HINT_MS))
+    assertEquals(VisitorCopy.NO_WALL, lockingHint(GatherStatus.NO_WALL, 0))
+  }
+
+  @Test fun `the hint card while locking follows the gather status`() {
+    assertEquals(VisitorCopy.HINT, hintText(locking))
+    assertEquals(VisitorCopy.HINT, hintText(locking, GatherStatus.NONE_IN_VIEW))
+    assertEquals(VisitorCopy.TOO_FAR, hintText(locking, GatherStatus.TOO_FAR))
+    assertEquals(VisitorCopy.TOO_FAR, hintText(locking, GatherStatus.UNREADABLE, 2_000))
+    assertEquals(VisitorCopy.NO_WALL, hintText(locking, GatherStatus.NO_WALL))
+  }
+
+  @Test fun `the gather status only matters while locking`() {
+    assertEquals(VisitorCopy.HINT, hintText(VisitorState.Hint, GatherStatus.TOO_FAR))
+    assertEquals(VisitorCopy.NOT_SET_UP, hintText(VisitorState.NotSetUp("Cafe"), GatherStatus.NO_WALL))
+  }
+
+  @Test fun `a device problem comes first, camera before room scan`() {
+    for (st in listOf(VisitorState.Hint, VisitorState.StepCloser, VisitorState.Loading("ABC", "Cafe"), locking, VisitorState.Failed(VisitorCopy.OFFLINE))) {
+      assertEquals(VisitorCopy.NO_CAMERA, hintText(st, GatherStatus.GATHERING, 0, DeviceProblem.NO_CAMERA_PERMISSION))
+      assertEquals(VisitorCopy.NO_ROOM_SCAN, hintText(st, GatherStatus.GATHERING, 0, DeviceProblem.NO_ROOM_SCAN))
+    }
   }
 
   @Test fun `no card while the scene is shown`() {
-    assertNull(hintText(VisitorState.Shown(space, RootPose(Vec3(0.0, 0.0, 0.0), 0.0)), false))
+    val shown = VisitorState.Shown(space, RootPose(Vec3(0.0, 0.0, 0.0), 0.0))
+    assertNull(hintText(shown))
+    assertNull(hintText(shown, GatherStatus.NO_WALL, 0, DeviceProblem.NO_ROOM_SCAN))
+  }
+
+  @Test fun `the menu button shows whenever a space is up, never on the plain hint`() {
+    val shown = VisitorState.Shown(space, RootPose(Vec3(0.0, 0.0, 0.0), 0.0))
+    assertEquals(true, menuButtonShown(shown, true))
+    assertEquals(true, menuButtonShown(locking, true))
+    assertEquals(true, menuButtonShown(VisitorState.NotSetUp("Cafe"), true))
+    assertEquals(true, menuButtonShown(VisitorState.Failed(VisitorCopy.OFFLINE), true))
+    assertEquals(false, menuButtonShown(VisitorState.Failed(VisitorCopy.NOT_OPEN), false))
+    assertEquals(false, menuButtonShown(VisitorState.Hint, false))
+    assertEquals(false, menuButtonShown(VisitorState.StepCloser, false))
   }
 }
