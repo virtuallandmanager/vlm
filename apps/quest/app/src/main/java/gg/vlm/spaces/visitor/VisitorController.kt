@@ -269,12 +269,15 @@ class VisitorController(
             Log.e(TAG, "Lookup failed", e)
             ApiResult.Failed(-1)
           }
-      if (r is ApiResult.Ok) {
+      dispatch(VisitorEvent.Lookup(code, r))
+      // Only a lookup the flow accepted counts; one it dropped as superseded is neither a visit nor the page's space.
+      val accepted = (flow.state as? VisitorState.Loading)?.let { it.code == code && it.spaceName != null } == true
+      if (r is ApiResult.Ok && accepted) {
         visited(code, r.value.spaceName)
         ui.spacePage = ui.spacePage?.takeIf { it.code == code }?.copy(spaceName = r.value.spaceName, whereText = r.value.whereText)
             ?: ui.spacePage
+        refreshUi()
       }
-      dispatch(VisitorEvent.Lookup(code, r))
     }
   }
 
@@ -287,6 +290,7 @@ class VisitorController(
 
   private fun refreshUi() {
     val st = flow.state
+    ui.spacePage = spacePageFor(ui.spacePage, st)
     ui.spaceProblem = if (ui.spacePage?.spaceName == null) (st as? VisitorState.Failed)?.message else null
     ui.hint = hintText(st, tooFar)
     ui.sceneShown = st is VisitorState.Shown
