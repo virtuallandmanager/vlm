@@ -3,14 +3,16 @@ package gg.vlm.spaces
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import gg.vlm.spaces.api.FeedStatus
 import gg.vlm.spaces.ring.CameraStatus
 import gg.vlm.spaces.ring.RING_TEST_MARKERS
 
 /** What the control panel shows. Written on the main thread by MainActivity, read by the Compose panel. */
 class AppState {
   var feedUrl by mutableStateOf("https://vlm.gg")
-  var worldKey by mutableStateOf("")
-  var feed by mutableStateOf(FeedStatus())
+  /** Temporary (until the visitor flow): the space to follow, typed by hand. */
+  var spaceId by mutableStateOf("")
+  var feed by mutableStateOf<FeedStatus?>(null)
   var itemCount by mutableStateOf(0)
   var modelTurn by mutableStateOf(true)
   var placement by mutableStateOf("Scene 2 m ahead of where you started")

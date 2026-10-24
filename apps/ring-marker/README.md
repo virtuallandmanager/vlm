@@ -1,6 +1,6 @@
 # VLM ring markers
 
-VLM's own marker: a round, printable plaque that a headset camera can find and read from across a room. It replaces the QR-code markers in `apps/ar-spike/markers/` for the AR spaces spikes. This folder is the reference implementation in Python: the code, the layout, print files, a synthetic camera test set and a reference detector. The Quest app (`apps/quest-spike`) ports the codec and detector to Kotlin and checks them against the same vectors and images.
+VLM's own marker: a round, printable plaque that a headset camera can find and read from across a room. It replaces the QR-code markers in `apps/ar-spike/markers/` for the AR spaces spikes. This folder is the reference implementation in Python: the code, the layout, print files, a synthetic camera test set and a reference detector. The Quest app (`apps/quest`) ports the codec and detector to Kotlin and checks them against the same vectors and images.
 
 ## What a marker is
 
@@ -64,4 +64,4 @@ python3 -m pytest -q
 - `test_testset.py`: the synthetic set generates, with exact ground truth.
 - `test_detect.py`: the reference detector against the synthetic set, including two markers in one frame, damage past the correction limit (no ID, never a wrong one), decoys (a plate, a clock, a disc in a ring), rotated markers, glare and shadow.
 
-The Quest port's tests (`apps/quest-spike`, `./gradlew :app:testDebugUnitTest`) read `vectors/codec.json` and `testset/` from here. Gradle regenerates the test set before the unit tests whenever the `ringmarker` sources change.
+The Quest port's tests (`apps/quest`, `./gradlew :app:testDebugUnitTest`) read `vectors/codec.json` and `testset/` from here. Gradle regenerates the test set before the unit tests whenever the `ringmarker` sources change.

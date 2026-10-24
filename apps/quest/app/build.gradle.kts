@@ -41,6 +41,7 @@ android {
 dependencies {
   implementation(libs.androidx.core.ktx)
   testImplementation(libs.junit)
+  testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 
   implementation(libs.meta.spatial.sdk.base)
   implementation(libs.meta.spatial.sdk.compose)

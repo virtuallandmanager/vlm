@@ -41,6 +41,8 @@ import com.meta.spatial.toolkit.TransformParent
 import com.meta.spatial.toolkit.UIPanelSettings
 import com.meta.spatial.toolkit.createPanelEntity
 import com.meta.spatial.vr.VRFeature
+import gg.vlm.spaces.api.ArApi
+import gg.vlm.spaces.api.ArFeed
 import gg.vlm.spaces.ring.CameraStatus
 import gg.vlm.spaces.ring.PassthroughCamera
 import gg.vlm.spaces.ring.PoseAverager
@@ -75,7 +77,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
   private val state = AppState()
   private lateinit var renderer: SceneRenderer
-  private lateinit var feed: FeedClient
+  private var feed: ArFeed? = null
   private var panel: Entity? = null
 
   /** The scene centre on the floor and VLM north's turn from world +Z, in radians. */
@@ -123,11 +125,10 @@ class MainActivity : AppSystemActivity(), PanelActions {
     NetworkedAssetLoader.init(File(cacheDir.canonicalPath), OkHttpAssetFetcher())
     renderer = SceneRenderer(this)
     renderer.onApplied = { state.itemCount = renderer.count() }
-    feed = FeedClient(scope, onStatus = { state.feed = it }, onSnapshot = { renderer.apply(planScene(it)) })
 
     val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
     state.feedUrl = intent.getStringExtra("feedUrl") ?: prefs.getString("feedUrl", null) ?: state.feedUrl
-    state.worldKey = intent.getStringExtra("worldKey") ?: prefs.getString("worldKey", null) ?: ""
+    state.spaceId = intent.getStringExtra("spaceId") ?: ""
     state.occlusion = prefs.getString("occlusion", null)?.let { n -> Occlusion.entries.firstOrNull { it.name == n } } ?: Occlusion.DEPTH
 
     camera =
@@ -147,7 +148,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
     } else {
       state.markerStatus = HOLD_MARKER // onResume starts the camera
     }
-    if (state.worldKey.isNotBlank()) connect()
+    if (state.spaceId.isNotBlank()) connect()
   }
 
   override fun onSceneReady() {
@@ -217,9 +218,19 @@ class MainActivity : AppSystemActivity(), PanelActions {
   override fun connect() {
     getSharedPreferences(PREFS, MODE_PRIVATE).edit()
         .putString("feedUrl", state.feedUrl.trim())
-        .putString("worldKey", state.worldKey.trim())
         .apply()
-    feed.start(state.feedUrl, state.worldKey)
+    val base = state.feedUrl.trim()
+    val id = state.spaceId.trim()
+    feed?.stop()
+    if (id.isEmpty() || !(base.startsWith("http://") || base.startsWith("https://"))) return
+    feed =
+        ArFeed(
+                scope,
+                ArApi(base),
+                onStatus = { state.feed = it },
+                onSnapshot = { renderer.apply(planScene(it.scene)) },
+            )
+            .also { it.start(id) }
   }
 
   override fun placeAhead() {
@@ -518,7 +529,7 @@ class MainActivity : AppSystemActivity(), PanelActions {
     occluders.forEach { it.destroy() }
     wallTint.forEach { it.destroy() }
     camera.close()
-    feed.stop()
+    feed?.stop()
     scope.cancel()
     super.onSpatialShutdown()
   }

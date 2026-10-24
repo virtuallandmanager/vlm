@@ -25,7 +25,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gg.vlm.spaces.ring.CameraStatus
@@ -48,25 +47,22 @@ fun ControlPanel(s: AppState, act: PanelActions) {
       OutlinedTextField(
           s.feedUrl,
           { s.feedUrl = it },
-          label = { Text("Feed URL") },
+          label = { Text("Server URL") },
           singleLine = true,
           keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
           modifier = Modifier.fillMaxWidth(),
       )
       OutlinedTextField(
-          s.worldKey,
-          { s.worldKey = it },
-          label = { Text("World key (vlmw_…)") },
+          s.spaceId,
+          { s.spaceId = it },
+          label = { Text("Space id (debug)") },
           singleLine = true,
-          visualTransformation = PasswordVisualTransformation(),
           modifier = Modifier.fillMaxWidth(),
       )
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Button(onClick = act::connect) { Text("Connect") }
         Column {
-          val v = s.feed.version?.let { " · version $it" } ?: ""
-          Line("${s.feed.state}$v · ${s.itemCount} items")
-          s.feed.lastError?.let { Line(it, Color(0xFFFF8A80)) }
+          Line("${s.feed?.name ?: "IDLE"} · ${s.itemCount} items")
         }
       }
 

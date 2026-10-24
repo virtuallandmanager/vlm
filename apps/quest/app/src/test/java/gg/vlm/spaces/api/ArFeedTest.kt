@@ -1,0 +1,83 @@
+package gg.vlm.spaces.api
+
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ArFeedTest {
+  private val server = MockWebServer()
+  private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+  @After
+  fun tearDown() {
+    scope.cancel()
+    runCatching { server.shutdown() }
+  }
+
+  private fun feedBody(version: String) =
+      """{"v":1,"version":"$version","space":{"id":"s1","name":"Loft","place":null,"lat":null,"lng":null,"published":true,"floors":[]},"scene":null}"""
+
+  @Test
+  fun `lookup maps 404, 429 and connection failure`() = runBlocking {
+    server.enqueue(MockResponse().setResponseCode(404).setBody("""{"error":"not_found"}"""))
+    server.enqueue(MockResponse().setResponseCode(429).setBody("""{"error":"rate_limited","retryAfter":3}"""))
+    server.start()
+    val api = ArApi(server.url("/").toString())
+    assertEquals(ApiResult.NotFound, api.lookup("ABCD"))
+    assertEquals(ApiResult.RateLimited, api.lookup("ABCD"))
+    server.shutdown()
+    assertEquals(ApiResult.Offline, api.lookup("ABCD"))
+  }
+
+  @Test
+  fun `lookup sends the app version and no token by default`() = runBlocking {
+    server.enqueue(MockResponse().setBody("""{"spaceId":"s","floorId":"f","markerId":"m","spaceName":"Loft","whereText":null}"""))
+    server.start()
+    val r = ArApi(server.url("/").toString()).lookup("AB CD")
+    assertEquals(MarkerLookup("s", "f", "m", "Loft", null), (r as ApiResult.Ok).value)
+    val req = server.takeRequest()
+    assertEquals("/api/ar/markers/by-code/AB+CD", req.path)
+    assertEquals("1", req.getHeader("X-VLM-App-Version"))
+    assertNull(req.getHeader("Authorization"))
+  }
+
+  @Test
+  fun `the feed long-polls with since and stops on NOT_FOUND`() {
+    val paths = CopyOnWriteArrayList<String>()
+    var n = 0
+    server.dispatcher =
+        object : Dispatcher() {
+          override fun dispatch(request: RecordedRequest): MockResponse {
+            paths += request.path!!
+            return when (n++) {
+              0 -> MockResponse().setBody(feedBody("a"))
+              else -> MockResponse().setResponseCode(404).setBody("""{"error":"not_found"}""")
+            }
+          }
+        }
+    server.start()
+    val statuses = CopyOnWriteArrayList<FeedStatus>()
+    val snaps = CopyOnWriteArrayList<String>()
+    ArFeed(scope, ArApi(server.url("/").toString()), { statuses += it }, { snaps += it.version }).start("s1") { "tok" }
+    val deadline = System.currentTimeMillis() + 10_000
+    while (FeedStatus.NOT_FOUND !in statuses && System.currentTimeMillis() < deadline) Thread.sleep(20)
+    assertEquals(listOf("/api/ar/spaces/s1/feed?since=", "/api/ar/spaces/s1/feed?since=a"), paths.toList())
+    assertEquals(listOf("a"), snaps.toList())
+    assertEquals(listOf(FeedStatus.CONNECTING, FeedStatus.LIVE, FeedStatus.NOT_FOUND), statuses.toList())
+    Thread.sleep(300)
+    assertEquals(2, paths.size) // stopped
+    assertTrue(server.requestCount == 2)
+  }
+}
