@@ -570,4 +570,12 @@ class VisitorFlowTest {
     val fx = on(VisitorEvent.Feed(snap(space(rings = listOf(marker("m1", ringA, moved), marker("m2", ringA2, moved))), "3")))
     assertEquals(listOf(VisitorEffect.HideNow, VisitorEffect.ResetAveragers), fx)
   }
+
+  @Test fun `a new printed diameter for the anchor ring hides the scene even when it is steady in view`() {
+    toShown()
+    val resized = space(rings = listOf(ArMarker("m1", ringA, RingCodec.codeOf(ringA), 120.0, null, pose), marker("m2", ringA2)))
+    val fx = on(VisitorEvent.Feed(snap(resized, "2"), mapOf(ringA to SteadyPose(Vec3(0.0, 1.5, 0.0), 10.0))))
+    assertEquals(listOf(VisitorEffect.HideNow, VisitorEffect.ResetAveragers), fx)
+    assertEquals(VisitorState.Locking(resized), flow.state)
+  }
 }

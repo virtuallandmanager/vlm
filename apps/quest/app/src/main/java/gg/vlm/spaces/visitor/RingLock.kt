@@ -21,11 +21,20 @@ data class LockStep(
     val tooSteep: Boolean = false,
 )
 
+/** The wall heading one frame gives a ring's lock (null for none), and whether the frame was [steep]. */
+data class LockHeading(val headingDeg: Double?, val steep: Boolean)
+
 /**
- * Whether [fix] was seen too far from head-on (over [VisitorTuning.MAX_VIEW_ANGLE_DEG]) for its heading to count:
- * near 45° one circle can't tell its own wall from a perpendicular one.
+ * The heading a lock may take from [fix] (see `wallFix`), given the circle's own [tiltDeg] (see `circleTiltDeg`). Near
+ * 45° one circle can't tell its own wall from a perpendicular one, so a frame is steep, and gives no heading, when
+ * the picked wall or the tilt says the view is over [VisitorTuning.MAX_VIEW_ANGLE_DEG] from head-on. The two are
+ * independent: a perpendicular wall taken for an unscanned one looks near head-on by the wall but steep by the tilt.
  */
-fun isTooSteep(fix: WallFix?): Boolean = fix != null && fix.viewAngleDeg > VisitorTuning.MAX_VIEW_ANGLE_DEG
+fun lockHeading(fix: WallFix?, tiltDeg: Double): LockHeading {
+  val steep =
+      fix != null && (fix.viewAngleDeg > VisitorTuning.MAX_VIEW_ANGLE_DEG || tiltDeg > VisitorTuning.MAX_VIEW_ANGLE_DEG)
+  return LockHeading(fix?.headingDeg?.takeUnless { steep }, steep)
+}
 
 /**
  * One ring in view: its averaged world position and wall heading, put through [LockGate] each camera frame. Heading
@@ -39,7 +48,7 @@ class RingLock(capacity: Int = VisitorTuning.AVERAGE_FRAMES, private val minFram
   /** Since when the position has held still with no wall heading, or null. */
   private var noWallSince: Long? = null
 
-  /** [steep]: this frame found the ring's wall but too far from head-on, so [headingDeg] is null (see [isTooSteep]). */
+  /** [steep]: this frame found the ring's wall but too far from head-on, so [headingDeg] is null (see [lockHeading]). */
   fun step(world: Vec3, headingDeg: Double?, head: Vec3, nowMs: Long, steep: Boolean = false): LockStep {
     positions.add(world)
     headings.add(headingDeg)

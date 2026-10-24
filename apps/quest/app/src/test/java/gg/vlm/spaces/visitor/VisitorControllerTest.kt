@@ -225,4 +225,29 @@ class VisitorControllerTest {
     assertTrue("\"type\":\"leave\"" in posted.single().second)
     assertTrue("hideNow" in view.calls)
   }
+
+  private val moved = MarkerPose(1.2, 1.5, 2.0, 80.0)
+  private val movedSpace =
+      space.copy(floors = listOf(space.floors[0].copy(markers = listOf(space.floors[0].markers[0].copy(pose = moved)))))
+
+  @Test fun `a snapshot that moves the anchor ring re-anchors the scene from the ring in view`() {
+    toShown()
+    view.calls.clear()
+    feed.onSnapshot(ArFeedSnapshot("2", movedSpace, null))
+    assertEquals(listOf("apply", "setRoot"), view.calls)
+    val root = rootFromMarker(Vec3(0.0, 1.6, 1.0), 180.0, moved)
+    assertEquals(root.yawDeg, view.placed!!.yawDeg, 1e-4)
+    assertEquals(root.position.x, view.placed!!.position.x, 1e-4)
+    assertEquals(root.position.z, view.placed!!.position.z, 1e-4)
+    assertTrue(ui.sceneShown)
+  }
+
+  @Test fun `a snapshot that moves the anchor ring out of view hides the scene at once`() {
+    toShown()
+    frame(emptyList()) // the ring has left view
+    view.calls.clear()
+    feed.onSnapshot(ArFeedSnapshot("2", movedSpace, null))
+    assertEquals(listOf("apply", "hideNow"), view.calls)
+    assertFalse(ui.sceneShown)
+  }
 }

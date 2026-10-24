@@ -146,6 +146,10 @@ fun circleNormals(d: RingDetection, k: CameraIntrinsics, head: Pose): List<Vec3>
   }
 }
 
+/** How far [d]'s circle is tilted from facing the camera, from its outline alone: `acos(minor / major)`, in degrees. */
+fun circleTiltDeg(d: RingDetection): Double =
+    Math.toDegrees(acos((if (d.semiMajor > 0) d.semiMinor / d.semiMajor else 1.0).coerceIn(0.0, 1.0)))
+
 /**
  * [k] (calibrated against a [refWidth] × [refHeight] reference, the sensor's pre-correction active array) at a
  * [width] × [height] stream. As in Meta's passthrough camera samples, the stream is taken to be the reference

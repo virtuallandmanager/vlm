@@ -6,6 +6,7 @@ import com.meta.spatial.core.Vector3
 import gg.vlm.spaces.Vec3
 import gg.vlm.spaces.Quat
 import gg.vlm.spaces.sdk
+import gg.vlm.spaces.visitor.lockHeading
 import java.io.File
 import kotlin.math.acos
 import kotlin.math.atan2
@@ -17,9 +18,7 @@ import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import gg.vlm.spaces.visitor.isTooSteep
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -267,21 +266,51 @@ class RingPoseTest {
     for (off in listOf(40.0, 45.0, 50.0)) {
       val eye = eyeAt(onA, wallA, 1.2, off)
       val (head, d) = view(eye, onA, wallA)
-      val fix = wallFix(onA.sdk(), listOf(walls[1]), eye.sdk(), circleNormals(d, k, head))
-      assertTrue("$off°: $fix", fix == null || isTooSteep(fix))
+      assertNull("$off°", lockedHeading(onA, listOf(walls[1]), eye, head, d))
     }
   }
+
+  /** The heading a lock takes from one frame: the picked wall, unless the view is too steep (see `lockHeading`). */
+  private fun lockedHeading(marker: Vec3, ws: List<WallPlane>, eye: Vec3, head: Pose, d: RingDetection): Double? =
+      lockHeading(wallFix(marker.sdk(), ws, eye.sdk(), circleNormals(d, k, head)), circleTiltDeg(d)).headingDeg
+
+  /** [d] with its outline's tilt reading [lowDeg] less than it should (blur squashes the major axis less). */
+  private fun tiltReadsLow(d: RingDetection, lowDeg: Double): RingDetection =
+      d.copy(semiMinor = d.semiMajor * cos(Math.toRadians(circleTiltDeg(d) - lowDeg)))
 
   @Test
   fun theMarkersOwnWallWithinHeadOnCounts() {
     val onA = Vec3(0.5, 1.5, 3.0)
-    for (off in listOf(20.0, 30.0)) {
+    for (off in listOf(20.0, 28.0)) {
       val eye = eyeAt(onA, wallA, 1.2, off)
       val (head, d) = view(eye, onA, wallA)
       val fix = wallFix(onA.sdk(), walls, eye.sdk(), circleNormals(d, k, head))!!
       assertEquals("$off°", 180.0, fix.headingDeg!!, 1e-4)
       assertEquals("$off°", off, fix.viewAngleDeg, 0.5)
-      assertFalse("$off°", isTooSteep(fix))
+      assertEquals("$off°", off, circleTiltDeg(d), 1.0)
+      assertEquals("$off°", 180.0, lockedHeading(onA, walls, eye, head, d)!!, 1e-4)
+    }
+  }
+
+  @Test
+  fun aTiltReadingLowStillNeverTakesALonePerpendicularWall() {
+    // Wall A unscanned, wall B 5 cm away, the tilt reading 5° low: by B the view looks 32-35° from head-on, and the
+    // tilt itself says 50-53°.
+    val onA = Vec3(1.95, 1.5, 3.0)
+    for (off in listOf(55.0, 56.0, 57.0, 58.0)) {
+      val eye = eyeAt(onA, wallA, 1.2, off)
+      val (head, d) = view(eye, onA, wallA)
+      assertNull("$off°", lockedHeading(onA, listOf(walls[1]), eye, head, tiltReadsLow(d, 5.0)))
+    }
+  }
+
+  @Test
+  fun aTiltReadingLowStillTakesTheMarkersOwnWall() {
+    val onA = Vec3(1.95, 1.5, 3.0)
+    for (off in listOf(20.0, 28.0)) {
+      val eye = eyeAt(onA, wallA, 1.2, off)
+      val (head, d) = view(eye, onA, wallA)
+      assertEquals("$off°", 180.0, lockedHeading(onA, walls, eye, head, tiltReadsLow(d, 5.0))!!, 1e-4)
     }
   }
 
@@ -293,7 +322,7 @@ class RingPoseTest {
     val (head, d) = view(eye, onA, wallA)
     val fix = wallFix(onA.sdk(), walls, eye.sdk(), circleNormals(d, k, head))!!
     assertNull(fix.headingDeg)
-    assertTrue(isTooSteep(fix))
+    assertTrue(lockHeading(fix, circleTiltDeg(d)).steep)
   }
 
   @Test

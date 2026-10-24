@@ -265,7 +265,8 @@ class VisitorFlow {
   /**
    * The shown scene after a newer snapshot [s]: where it was, unless the anchor ring's saved pose has changed. Then it
    * is placed afresh from that ring's averaged pose if the ring is steady in view ([steady]); otherwise it is hidden
-   * at once (it is in the wrong place) to lock again.
+   * at once (it is in the wrong place) to lock again. A changed printed diameter always hides it: the averaged pose
+   * was ranged from the old size.
    */
   private fun reanchor(
       shown: VisitorState.Shown,
@@ -275,10 +276,13 @@ class VisitorFlow {
       fx: MutableList<VisitorEffect>,
   ): VisitorState {
     val ring = anchorRing ?: return shown.copy(space = s)
-    val saved = s.markerByRing(ring)?.second?.pose
-    if (saved != null && saved == old?.markerByRing(ring)?.second?.pose) return shown.copy(space = s)
+    val now = s.markerByRing(ring)?.second
+    val was = old?.markerByRing(ring)?.second
+    val saved = now?.pose
+    val resized = now != null && was != null && now.diameterMm != was.diameterMm
+    if (!resized && saved != null && saved == was?.pose) return shown.copy(space = s)
     val seen = steady[ring]
-    if (saved != null && seen != null) {
+    if (!resized && saved != null && seen != null) {
       val root = rootFromMarker(seen.world, seen.headingDeg, saved)
       fx += VisitorEffect.Reanchor(root)
       return VisitorState.Shown(s, root)

@@ -60,13 +60,13 @@ import gg.vlm.spaces.ring.WallPlane
 import gg.vlm.spaces.ring.cameraToWorld
 import gg.vlm.spaces.ring.markerInCamera
 import gg.vlm.spaces.ring.wallHeading
+import gg.vlm.spaces.space.SpaceSession
 import gg.vlm.spaces.visitor.CameraRings
 import gg.vlm.spaces.visitor.HintCard
 import gg.vlm.spaces.visitor.LazyFollow
-import gg.vlm.spaces.space.SpaceSession
-import gg.vlm.spaces.visitor.RingOutline
 import gg.vlm.spaces.visitor.MenuActions
 import gg.vlm.spaces.visitor.MenuButton
+import gg.vlm.spaces.visitor.RingOutline
 import gg.vlm.spaces.visitor.SpacePage
 import gg.vlm.spaces.visitor.spaceCodeFromIntent
 import gg.vlm.spaces.visitor.VisitorController
@@ -156,7 +156,12 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     state.serverUrl = prefs.baseUrl(intent.getStringExtra("baseUrl"))
     val api = ArApi(state.serverUrl)
     val session =
-        SpaceSession(renderer, { onStatus, onSnapshot -> ArFeed(scope, api, onStatus, onSnapshot) }, RingOutline(), SystemClock::elapsedRealtime)
+        SpaceSession(
+            renderer,
+            { onStatus, onSnapshot -> ArFeed(scope, api, onStatus, onSnapshot) },
+            RingOutline(),
+            SystemClock::elapsedRealtime,
+        )
     val analytics = VisitAnalytics(api::postAnalytics, System::currentTimeMillis)
     visitor =
         VisitorController(

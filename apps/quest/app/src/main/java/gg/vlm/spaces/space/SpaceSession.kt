@@ -13,12 +13,13 @@ import gg.vlm.spaces.ring.RingDetection
 import gg.vlm.spaces.ring.WallPlane
 import gg.vlm.spaces.ring.cameraToWorld
 import gg.vlm.spaces.ring.circleNormals
+import gg.vlm.spaces.ring.circleTiltDeg
 import gg.vlm.spaces.ring.markerInCamera
 import gg.vlm.spaces.ring.wallFix
 import gg.vlm.spaces.visitor.Gate
 import gg.vlm.spaces.visitor.LockStep
 import gg.vlm.spaces.visitor.RingLock
-import gg.vlm.spaces.visitor.isTooSteep
+import gg.vlm.spaces.visitor.lockHeading
 
 /** Draws a space's scene (the headset's `SceneRenderer`; a fake in tests). */
 interface SceneView {
@@ -135,13 +136,15 @@ class SpaceSession(
     val space = snapshot?.space
     val steps = ArrayList<LockStep>()
     for ((id, d) in seen) {
-      val marker = space?.markerByRing(id)?.second ?: continue
-      if (k == null) continue
+      val marker = space?.markerByRing(id)?.second
+      if (marker == null || k == null) {
+        lastSteps.remove(id) // so steadyPoses() is this frame's alone
+        continue
+      }
       val w = cameraToWorld(markerInCamera(d, k, marker.diameterMm / 1000.0), head, k)
-      val fix = wallFix(w, walls, head.t, circleNormals(d, k, head))
-      val steep = isTooSteep(fix) // an ambiguous corner seen steeply is also told where to stand
-      val step =
-          tracks.getOrPut(id) { RingLock() }.step(w.vec(), fix?.headingDeg?.takeUnless { steep }, head.t.vec(), now, steep)
+      // An ambiguous corner seen steeply is also told where to stand.
+      val lh = lockHeading(wallFix(w, walls, head.t, circleNormals(d, k, head)), circleTiltDeg(d))
+      val step = tracks.getOrPut(id) { RingLock() }.step(w.vec(), lh.headingDeg, head.t.vec(), now, lh.steep)
       steps += step
       lastSteps[id] = step
       if (step.becameSteady) {
