@@ -1,6 +1,6 @@
 # Design Studio: AI-built Decentraland wearables and emotes
 
-Status: draft for the owner's review, 2026-10-24.
+Status: approved by the owner, 2026-10-24.
 
 Items marked **(owner)** were decided by the owner in conversation. Items marked **(call)** are the author's calls, open to change.
 
