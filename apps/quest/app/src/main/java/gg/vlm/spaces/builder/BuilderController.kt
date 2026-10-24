@@ -24,6 +24,7 @@ import gg.vlm.spaces.space.rootFromMarker
 import gg.vlm.spaces.space.rotateY
 import gg.vlm.spaces.visitor.CameraRings
 import gg.vlm.spaces.visitor.Handoff
+import gg.vlm.spaces.visitor.TrackingWatch
 import gg.vlm.spaces.visitor.VisitorLink
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.atan2
@@ -104,6 +105,8 @@ class BuilderController(
     var booking = false
     var otherPlaces: List<String> = emptyList()
     var note: String? = null
+    /** When [BuilderCopy.FINISH_FIRST] (the only note that times out) is taken down. */
+    var finishFirstUntil = 0L
   }
 
   private var stage = Stage.OFF
@@ -112,6 +115,9 @@ class BuilderController(
   private var generation = 0
   private var pairingJob: Job? = null
   private var head: Pose? = null
+  /** Spots tracking jumping while builder mode holds the space; [lastHeadMs] is when it last saw the head. */
+  private val trackingWatch = TrackingWatch()
+  private var lastHeadMs: Long? = null
   private var lastFrameNs = 0L
   /** The ids of the rings the newest camera frame trusted, for entering with a ring in view. */
   private var ringsInView: List<Long> = emptyList()
@@ -255,11 +261,18 @@ class BuilderController(
     session.onSteady = { id, world, heading -> onSteady(id, world, heading) }
     stage = Stage.PLACING
     lastFrameNs = 0L
+    resetWatch()
     b.passing = true
     go {
       val pass =
           try {
             auth.passFor(space.spaceId)
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            // Not left waiting in PLACING for a pass that will never come.
+            Log.e(TAG, "Couldn't get a pass", e)
+            PassResult.Failed(0)
           } finally {
             b.passing = false
             b.passAt = clock()
@@ -292,6 +305,7 @@ class BuilderController(
     if (b == null || !active) return false
     if (head != Pose()) {
       this.head = head
+      watchTracking(b, head)
       if (fresh == null) session.resetLocks()
       else if (fresh.receivedNs != lastFrameNs) {
         lastFrameNs = fresh.receivedNs
@@ -300,6 +314,7 @@ class BuilderController(
       }
     }
     session.tick()
+    expireNote(b)
     when (stage) {
       Stage.ALIGNING -> stickStep(b, sticks())
       Stage.BUILDING -> buildingFrame(b)
@@ -308,6 +323,35 @@ class BuilderController(
     refreshPass(b)
     refreshUi()
     return true
+  }
+
+  /**
+   * A head move faster than a person moves is the headset's tracking jumping: where the scene was placed is wrong
+   * now, so it is hidden at once and placed again from a ring (edits are kept). Wrong placement is worse than a delay.
+   */
+  private fun watchTracking(b: Build, head: Pose) {
+    val now = clock()
+    val dtS = lastHeadMs?.let { (now - it) / 1000.0 } ?: 0.0
+    lastHeadMs = now
+    if (!trackingWatch.onHead(head.t.vec(), yawOf(head), dtS)) return
+    Log.i(TAG, "Tracking jumped: placing the scene again")
+    relock(b)
+  }
+
+  private fun resetWatch() {
+    trackingWatch.reset()
+    lastHeadMs = null
+  }
+
+  /** "Finish building first" comes down after [FINISH_FIRST_MS]. */
+  private fun expireNote(b: Build) {
+    if (b.note == BuilderCopy.FINISH_FIRST && clock() >= b.finishFirstUntil) b.note = null
+  }
+
+  /** Any HUD action takes "Finish building first" down. */
+  private fun hudTouched() {
+    val b = build ?: return
+    if (b.note == BuilderCopy.FINISH_FIRST) b.note = null
   }
 
   /** The AR pass is minted again before it runs out (the cached one is served while it has over a minute left). */
@@ -421,6 +465,7 @@ class BuilderController(
   /** The align panel's **Save alignment**. */
   fun saveAlignment() {
     val b = build ?: return
+    if (stage != Stage.ALIGNING) return
     val flow = b.align ?: return
     val markerId = b.alignMarkerId ?: return
     val h = head?.t ?: return
@@ -494,6 +539,7 @@ class BuilderController(
     val b = build ?: return false
     if (!active) return false
     b.note = BuilderCopy.FINISH_FIRST
+    b.finishFirstUntil = clock() + FINISH_FIRST_MS
     refreshUi()
     return true
   }
@@ -581,6 +627,8 @@ class BuilderController(
   /** The ring panel's **Record this ring** / **Re-record this ring**. */
   fun recordRing() {
     val b = build ?: return
+    // Not while the scene is being placed again (a tracking jump, or Look at the ring again).
+    if (stage != Stage.BUILDING) return
     val flow = b.ringFlow ?: return
     val ring = b.ringInView ?: return
     val root = session.rootOf() ?: return
@@ -614,7 +662,8 @@ class BuilderController(
 
   /** The HUD's controls, on the current editor (the tab is kept here). */
   val hudActions: BuilderHudActions =
-      EditorHudActions({ build?.takeIf { stage == Stage.BUILDING }?.editor }) { tab ->
+      EditorHudActions({ hudTouched(); build?.takeIf { stage == Stage.BUILDING }?.editor }) { tab ->
+        hudTouched()
         build?.tab = tab
         refreshHud()
       }
@@ -678,6 +727,7 @@ class BuilderController(
     if (b == null || !active) return false
     b.offJob?.cancel()
     b.offJob = null
+    resetWatch()
     when (b.rules.headsetOn()) {
       Resume.RESUME_WITH_DRAFTS -> Unit
       Resume.RESUME_DRAFTS_EXPIRED -> b.editor.revert()
@@ -706,12 +756,15 @@ class BuilderController(
     build?.let { b ->
       b.rules.signOut()
       b.editor.revert()
-      leave(toShown = false, endSession = false)
+      // The session is ended by the unpair below, once: not also by leaving.
+      leave(toShown = false, endSession = false, unpairing = true)
     }
     go { auth.unpair() }
   }
 
   private fun leaveWithNote(note: String) {
+    // The drafts' holds are ended (best effort) rather than left for the server to time out.
+    build?.editor?.discard()
     leave(toShown = false, endSession = false)
     notice = note
     refreshUi()
@@ -720,9 +773,9 @@ class BuilderController(
   /**
    * Leaves builder mode for visitor mode: with the space still shown ([toShown], when it is placed and published), or
    * at the hint card with nothing loaded. A shared headset's session always ends here (it signs out); [endSession] also
-   * ends a personal one's (its cached passes are dropped).
+   * ends a personal one's (its cached passes are dropped). [unpairing]: the caller ends the session itself (Sign out).
    */
-  private fun leave(toShown: Boolean, endSession: Boolean) {
+  private fun leave(toShown: Boolean, endSession: Boolean, unpairing: Boolean = false) {
     val b = build ?: return
     val snapshot = session.snapshot()
     val root = session.rootOf()
@@ -748,7 +801,7 @@ class BuilderController(
     prompt = null
     if (handoff == null) session.stop()
     visitor.resume(handoff)
-    if (endSession || b.kind == DeviceKind.SHARED) go { auth.endSession() }
+    if (!unpairing && (endSession || b.kind == DeviceKind.SHARED)) go { auth.endSession() }
     refreshUi()
   }
 
@@ -836,5 +889,7 @@ class BuilderController(
     const val OFF_CHECK_MS = 5_000L
     /** A thumbstick held while aligning nudges the scene once this often. */
     const val STICK_STEP_MS = 100L
+    /** How long "Finish building first" stays up (unless a HUD action takes it down first). */
+    const val FINISH_FIRST_MS = 4_000L
   }
 }

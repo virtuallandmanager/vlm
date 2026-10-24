@@ -312,7 +312,7 @@ class BuilderControllerTest {
 
   // The camera at the head, looking along +z; the ring 1 m ahead, head-on, on a wall facing back at the head.
   private val k = CameraIntrinsics(867.0, 867.0, 640.0, 480.0, FloatArray(0), FloatArray(0))
-  private val head = Pose(Vector3(0f, 1.6f, 0f))
+  private var head = Pose(Vector3(0f, 1.6f, 0f))
   private val walls = listOf(WallPlane(Vector3(0f, 1.6f, 1f), Vector3(0f, 0f, -1f), 2f, 1.5f))
   private val seen = RingDetection(ring, 0, 0, 640.0, 480.0, 867.0 * 0.07 / 1.0, 867.0 * 0.07 / 1.0, 0.0, 0.0)
   private val ringWorld = Vec3(0.0, 1.6, 1.0)
@@ -696,5 +696,94 @@ class BuilderControllerTest {
     assertEquals(BuilderPrompt(AlignCopy.NO_ACCESS, button = "Close"), ui.builderPrompt)
     builder.cancel()
     assertNull(ui.builderPrompt)
+  }
+
+  // ── whole-branch review fixes ──
+
+  @Test fun `shared Sign out ends the session once`() {
+    toBuilding(DeviceKind.SHARED)
+    builder.signOut()
+    dispatcher.drain()
+    assertEquals(1, auth.unpairs)
+    assertEquals(0, auth.ends) // the unpair's /end is the only one
+    assertEquals(AuthState.SignedOut, auth.state.value)
+  }
+
+  @Test fun `a pass that throws on entering closes builder mode with a notice`() {
+    auth.pair(DeviceKind.PERSONAL)
+    auth.passThrows = true
+    auth.spacesAnswer = BuilderCall.Ok(listOf(spaceA))
+    frame()
+    builder.open()
+    dispatcher.drain()
+    assertFalse(ui.builderActive)
+    assertEquals(BuilderPrompt(BuilderCopy.COULDNT_OPEN, button = "Close"), ui.builderPrompt)
+    assertEquals(VisitorCopy.HINT, ui.hint)
+  }
+
+  @Test fun `a tracking jump hides the scene, keeps the edits and blocks building until a ring places it again`() {
+    toBuilding()
+    builder.hudActions.pick("in1")
+    builder.hudActions.setExact(TransformMode.MOVE, Axis.X, 2.5)
+    dispatcher.drain()
+    view.calls.clear()
+    head = Pose(Vector3(1.5f, 1.6f, 0f)) // 1.5 m in one frame
+    frame(rings = emptyList())
+    assertTrue("hideNow" in view.calls)
+    assertTrue(ui.builderActive)
+    assertNull(ui.hud)
+    assertNull(ui.ringCheck)
+    assertNull(tools.editor) // no carries or drags
+    assertEquals(BuilderCopy.lookAtRing("Cafe"), ui.builderPrompt?.text)
+    // Placing and recording wait for the scene to be placed again.
+    builder.place(ui.assets.entries!!.single())
+    builder.recordRing()
+    builder.saveAlignment()
+    dispatcher.drain()
+    assertTrue(calls.getValue("sp-a").placed.isEmpty())
+    assertTrue(calls.getValue("sp-a").poses.isEmpty())
+    // Back at the ring (from where the head is now), the build carries on with its edits.
+    head = Pose(Vector3(0f, 1.6f, 0f))
+    frame(rings = emptyList())
+    steady()
+    val hud = ui.hud!!
+    assertTrue(hud.rows.single().edited)
+    assertNotNull(tools.editor)
+    assertEquals(2.5, scene.shown.getValue("el1:in1").position.x, 1e-9)
+  }
+
+  @Test fun `Finish building first comes down after 4 s`() {
+    toBuilding()
+    builder.linkOpened()
+    assertEquals(BuilderCopy.FINISH_FIRST, ui.hud!!.message)
+    now += BuilderController.FINISH_FIRST_MS - 100
+    frame()
+    assertEquals(BuilderCopy.FINISH_FIRST, ui.hud!!.message)
+    now += 100
+    frame()
+    assertNull(ui.hud!!.message)
+  }
+
+  @Test fun `Finish building first comes down on the next HUD action`() {
+    toBuilding()
+    builder.linkOpened()
+    builder.hudActions.selectTab(HudTab.ASSETS)
+    assertNull(ui.hud!!.message)
+    builder.linkOpened()
+    builder.hudActions.pick("in1")
+    assertNull(ui.hud!!.message)
+  }
+
+  @Test fun `closing with a notice ends the drafts`() {
+    toBuilding()
+    builder.hudActions.pick("in1")
+    builder.hudActions.setExact(TransformMode.MOVE, Axis.X, 2.5)
+    dispatcher.drain()
+    val remote = calls.getValue("sp-a").editor
+    remote.sent.clear()
+    feed.onStatus(FeedStatus.NOT_FOUND)
+    dispatcher.drain()
+    assertFalse(ui.builderActive)
+    assertEquals(listOf("end in1 false"), remote.sent)
   }
 }
