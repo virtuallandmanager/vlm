@@ -6,6 +6,7 @@ import { createVenue, createBooking } from '../src/venues/service.js'
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene, createElement, createInstance, tokenFor, randomWallet } from './helpers/factories.js'
 import { startGameServer, joinScene, serverRoom } from './helpers/game-server.js'
+import { holderOf } from '../src/ws/draft-holds.js'
 
 const draft = (sk: string, x = 5) => ({
   element: 'video',
@@ -97,7 +98,7 @@ describe('transform draft relay', () => {
     await db.delete(sceneElementInstances).where(eq(sceneElementInstances.id, s.inst.id))
     s.owner.room.send('transform_end', { sk: s.inst.id, saved: false })
     expect(await s.editor.waitFor('transform_draft_end')).toEqual({ sk: s.inst.id, saved: false })
-    expect(serverRoom(s.owner.room.roomId).draftHolders.has(s.inst.id)).toBe(false)
+    expect(holderOf(s.scene.id, s.inst.id)).toBeUndefined()
   })
 
   it('rejects malformed drafts and relays nothing', async () => {
@@ -211,7 +212,7 @@ describe('transform draft relay', () => {
     s.owner.room.send('transform_draft', draft(s.inst.id))
     s.owner.room.send('transform_end', { sk: s.inst.id, saved: false })
     await settle(600)
-    expect(srv.draftHolders.has(s.inst.id)).toBe(false)
+    expect(holderOf(s.scene.id, s.inst.id)).toBeUndefined()
     await s.editor.expectNone('transform_draft', 10)
     s.editor.room.send('transform_draft', draft(s.inst.id, 7))
     await s.owner.waitFor('transform_draft')
@@ -226,7 +227,7 @@ describe('transform draft relay', () => {
     await s.editor.waitFor('transform_draft_end')
     s.owner.room.send('transform_draft', draft(s.inst.id, 8))
     expect((await s.editor.waitFor('transform_draft')).position.x).toBe(8)
-    expect(serverRoom(s.owner.room.roomId).draftHolders.get(s.inst.id)).toBe(s.owner.room.sessionId)
+    expect(holderOf(s.scene.id, s.inst.id)?.key).toBe(`room:${s.owner.room.sessionId}`)
   })
 
   it('a venue renter (scene pass) never receives drafts and cannot send one', async () => {

@@ -35,6 +35,7 @@ import hyperfyWorldRoutes from './routes/hyperfy-worlds.js'
 import hyperfyFeedRoutes from './routes/hyperfy-feed.js'
 import hyperfyPairingRoutes from './routes/hyperfy-pairing.js'
 import arDeviceRoutes from './routes/ar-devices.js'
+import arDraftRoutes from './routes/ar-drafts.js'
 import arSpaceRoutes from './routes/ar-spaces.js'
 import arFeedRoutes from './routes/ar-feed.js'
 import arBuilderRoutes from './routes/ar-builder.js'
@@ -196,6 +197,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(arFeedRoutes)
   await app.register(arBuilderRoutes)
   await app.register(arDeviceRoutes)
+  await app.register(arDraftRoutes)
   await app.register(adminRoutes)
   await app.register(adminAdsRoutes)
   await app.register(advertiserLeadRoutes)

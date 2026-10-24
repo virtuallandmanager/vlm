@@ -380,6 +380,8 @@ describe('scene pass guard', () => {
       'PUT /api/ar/markers/:id/pose',
       'PUT /api/ar/spaces/:id/adjustments/:instanceId',
       'DELETE /api/ar/spaces/:id/adjustments/:instanceId',
+      'POST /api/ar/drafts',
+      'POST /api/ar/drafts/end',
     ].sort()
 
     /** A live AR pass for the owner's own scene, plus ids under that scene for the walk. */

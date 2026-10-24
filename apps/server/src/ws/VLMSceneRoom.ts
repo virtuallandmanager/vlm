@@ -28,6 +28,7 @@ import { getSceneLibraryItem } from '../library/scene-library.js'
 import { venueTopic, publishSceneTouched, STREAMS_TOPIC, type VenueEvent, type StreamStatusEvent } from '../realtime/bus.js'
 import { normalizeUrl, withLiveStatus, withLiveVideo } from '../streaming/live-status.js'
 import type { VenueAccessMessage } from 'vlm-shared'
+import { hold, holderOf, release, releaseAll, sweepExpired } from './draft-holds.js'
 
 interface JoinOptions {
   sessionToken: string
@@ -44,11 +45,28 @@ interface ClientMeta {
   sceneId: string
 }
 
-const DRAFT_ELEMENTS = new Set(['image', 'video', 'model', 'sound', 'ad_space'])
+export const DRAFT_ELEMENTS = new Set(['image', 'video', 'model', 'sound', 'ad_space'])
 const isVec3 = (v: any) => !!v && typeof v === 'object' && ['x', 'y', 'z'].every((k) => Number.isFinite(v[k]) && typeof v[k] === 'number')
-function isValidDraft(m: any) {
+export function isValidDraft(m: any) {
   return !!m && DRAFT_ELEMENTS.has(m.element) && isVec3(m.position) && isVec3(m.rotation) && isVec3(m.scale)
 }
+
+/** A room client's key in the draft-hold registry. */
+const roomKey = (sessionId: string) => `room:${sessionId}`
+
+/** The scene rooms on this process, by scene, so the AR draft routes can relay into them. */
+const roomsByScene = new Map<string, Set<VLMSceneRoom>>()
+export function roomsForScene(sceneId: string): VLMSceneRoom[] {
+  return [...(roomsByScene.get(sceneId) ?? [])]
+}
+
+/** Ends every lapsed AR hold and tells the scene's editors. Runs every 30 s; exported so tests can pass their own `now`. */
+export function runDraftSweep(now = Date.now()): void {
+  for (const { sceneId, sk } of sweepExpired(now)) {
+    for (const room of roomsForScene(sceneId)) room.relayArDraftEnd(sk, false).catch(() => {})
+  }
+}
+setInterval(() => runDraftSweep(), 30_000).unref()
 
 export class VLMSceneRoom extends Room {
   private static activeRoomCount = 0
@@ -66,8 +84,6 @@ export class VLMSceneRoom extends Room {
   private passExpiry: Map<string, number> = new Map()
   /** Hyperfy and AR passes only: the pairing or headset the session's pass is tied to, re-checked on every access lookup. */
   private linkedPass: Map<string, { via: 'hyperfy' | 'ar'; id: string }> = new Map()
-  /** Transform drafts: instance sk -> sessionId of the editor currently dragging it. Never persisted. */
-  private draftHolders = new Map<string, string>()
   /** Recent draft timestamps per session, for the 20-per-second limit. */
   private draftTimes = new Map<string, number[]>()
   /** Per-session count of transform_draft messages, taken on arrival (before the guard's await). */
@@ -124,6 +140,10 @@ export class VLMSceneRoom extends Room {
     }
 
     this.sceneId = options.sceneId || ''
+    if (this.sceneId) {
+      if (!roomsByScene.has(this.sceneId)) roomsByScene.set(this.sceneId, new Set())
+      roomsByScene.get(this.sceneId)!.add(this)
+    }
     console.log(`[VLMSceneRoom] Created for scene ${this.sceneId} (active rooms: ${VLMSceneRoom.activeRoomCount})`)
     if (this.sceneId) this.presence.subscribe(venueTopic(this.sceneId), this.onVenueEventBound)
     if (this.sceneId) this.presence.subscribe(STREAMS_TOPIC, this.onStreamEventBound)
@@ -185,9 +205,9 @@ export class VLMSceneRoom extends Room {
           if ((seq as number) <= ended) return // sent before this client's end for sk: stale
           this.draftEnds.delete(endKey)
         }
-        const holder = this.draftHolders.get(sk)
-        if (holder && holder !== client.sessionId) {
-          client.send('transform_held', { sk, holderName: this.holderName(holder) })
+        const holder = holderOf(this.sceneId, sk)
+        if (holder && holder.key !== roomKey(client.sessionId)) {
+          client.send('transform_held', { sk, holderName: holder.name })
           return
         }
         const now = Date.now()
@@ -198,7 +218,7 @@ export class VLMSceneRoom extends Room {
         }
         times.push(now)
         this.draftTimes.set(client.sessionId, times)
-        this.draftHolders.set(sk, client.sessionId)
+        hold(this.sceneId, sk, { key: roomKey(client.sessionId), name: this.holderName(client.sessionId) }) // free or ours: checked above, no await since
         await this.relayToEditors(
           'transform_draft',
           {
@@ -239,11 +259,11 @@ export class VLMSceneRoom extends Room {
         const sk = message?.sk
         // Recorded when this client holds sk, or has a draft for sk still in its guard (it may not hold it yet)
         const endKey = `${sk}\n${client.sessionId}`
-        if (typeof sk === 'string' && (this.draftHolders.get(sk) === client.sessionId || this.draftsInFlight.has(endKey))) {
+        const isHolder = typeof sk === 'string' && holderOf(this.sceneId, sk)?.key === roomKey(client.sessionId)
+        if (typeof sk === 'string' && (isHolder || this.draftsInFlight.has(endKey))) {
           this.draftEnds.set(endKey, this.draftSeq.get(client.sessionId) ?? 0)
         }
-        if (typeof sk === 'string' && this.draftHolders.get(sk) === client.sessionId) {
-          this.draftHolders.delete(sk)
+        if (isHolder && release(this.sceneId, sk, roomKey(client.sessionId))) {
           await this.relayToEditors('transform_draft_end', { sk, saved: !!message.saved }, client)
           return
         }
@@ -392,9 +412,7 @@ export class VLMSceneRoom extends Room {
     this.draftSeq.delete(client.sessionId)
     for (const key of [...this.draftEnds.keys()]) if (key.endsWith(`\n${client.sessionId}`)) this.draftEnds.delete(key)
     for (const key of [...this.draftsInFlight.keys()]) if (key.endsWith(`\n${client.sessionId}`)) this.draftsInFlight.delete(key)
-    for (const [sk, holder] of [...this.draftHolders]) {
-      if (holder !== client.sessionId) continue
-      this.draftHolders.delete(sk)
+    for (const { sk } of releaseAll(roomKey(client.sessionId))) {
       this.relayToEditors('transform_draft_end', { sk, saved: false }, client).catch(() => {})
     }
 
@@ -410,7 +428,10 @@ export class VLMSceneRoom extends Room {
     console.log(`[VLMSceneRoom] Disposed (scene: ${this.sceneId}, active rooms: ${VLMSceneRoom.activeRoomCount})`)
     if (this.sceneId) this.presence.unsubscribe(venueTopic(this.sceneId), this.onVenueEventBound)
     if (this.sceneId) this.presence.unsubscribe(STREAMS_TOPIC, this.onStreamEventBound)
-    this.draftHolders.clear()
+    const mine = roomsByScene.get(this.sceneId)
+    mine?.delete(this)
+    if (mine && !mine.size) roomsByScene.delete(this.sceneId)
+    for (const sessionId of this.clientMeta.keys()) releaseAll(roomKey(sessionId))
     this.draftTimes.clear()
     this.clientMeta.clear()
     this.accessCache.clear()
@@ -442,6 +463,16 @@ export class VLMSceneRoom extends Room {
   private holderName(sessionId: string): string {
     const name = this.clientMeta.get(sessionId)?.displayName
     return name && name !== 'Guest' ? name : 'Another editor'
+  }
+
+  /** A headset's draft (POST /api/ar/drafts), relayed to this scene's editors as a room draft would be. */
+  async relayArDraft(msg: { element: string; sk: string; position: unknown; rotation: unknown; scale: unknown; holderName: string }) {
+    await this.relayToEditors('transform_draft', { ...msg, holderSessionId: 'headset' })
+  }
+
+  /** A headset's draft ended (saved, reverted, lapsed or its session over). */
+  async relayArDraftEnd(sk: string, saved: boolean) {
+    await this.relayToEditors('transform_draft_end', { sk, saved })
   }
 
   /** Send to every client (but `except`, when given) whose access includes scene.edit. */
