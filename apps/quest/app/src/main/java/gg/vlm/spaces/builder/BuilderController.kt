@@ -32,92 +32,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.JsonObject
-
-/** The builder's calls for one space ([callsFor] in the app, a fake in tests). */
-interface BuilderSpaceCalls {
-  /** The editor's draft and save calls. */
-  val editor: BuilderRemote
-
-  suspend fun scene(sceneId: String): BuilderCall<JsonObject>
-
-  suspend fun sceneSpaces(sceneId: String): BuilderCall<List<SpaceName>>
-
-  suspend fun library(sceneId: String): BuilderCall<JsonObject>
-
-  suspend fun place(presetId: String, entry: LibraryEntry, t: ItemTransform): BuilderCall<PlacedItem>
-
-  suspend fun savePose(markerId: String, pose: MarkerPose, heightAboveFloorM: Double): BuilderCall<List<String>>
-}
-
-/** [BuilderApi]'s calls for [spaceId]. */
-fun BuilderApi.callsFor(spaceId: String): BuilderSpaceCalls {
-  val api = this
-  return object : BuilderSpaceCalls {
-    override val editor = api.forSpace(spaceId)
-
-    override suspend fun scene(sceneId: String) = api.scene(spaceId, sceneId)
-
-    override suspend fun sceneSpaces(sceneId: String) = api.sceneSpaces(spaceId, sceneId)
-
-    override suspend fun library(sceneId: String) = api.library(spaceId, sceneId)
-
-    override suspend fun place(presetId: String, entry: LibraryEntry, t: ItemTransform) = api.placeEntry(spaceId, presetId, entry, t)
-
-    override suspend fun savePose(markerId: String, pose: MarkerPose, heightAboveFloorM: Double) =
-        api.savePose(spaceId, markerId, pose, heightAboveFloorM)
-  }
-}
-
-/** The renderer's builder side (`SceneRenderer`; a fake in tests). */
-interface BuilderScene {
-  /** Item meshes take pointer hits. */
-  var builderMode: Boolean
-
-  /** Edited items shown where the builder has put them, by render key. */
-  fun setOverrides(next: Map<String, ItemTransform>)
-}
-
-/** The pointer, gizmo and pick outline (`HeadsetBuilderTools` on the headset; a fake in tests). */
-interface BuilderTools {
-  /** Starts picking and dragging [editor]'s items in the scene placed at [root]. */
-  fun start(editor: BuilderEditor, root: () -> RootPose?)
-
-  /** Call every frame while started. */
-  fun tick()
-
-  /** Lets go of anything held and removes the gizmo and outline. */
-  fun stop()
-}
-
-/** The thumbsticks and grip while aligning: each is −1, 0 or 1 (left stick right/forward, right stick right); [fine] is the grip. */
-data class AlignSticks(val leftX: Double = 0.0, val leftY: Double = 0.0, val rightX: Double = 0.0, val fine: Boolean = false)
-
-/**
- * The small builder panel: a line, the spaces to choose from (none when it is only a message), and the label of its
- * button ([BuilderController.cancel]).
- */
-data class BuilderPrompt(val text: String, val spaces: List<DeviceSpace> = emptyList(), val button: String = "Cancel")
-
-/** The align panel's content while aligning. */
-data class AlignUi(val state: AlignState, val notes: List<String>)
-
-/** The ring panel's content while building, with a ring of the floor steady in view. */
-data class RingCheckUi(val view: RingCheckView, val status: String?)
-
-/** Builder copy that isn't in the plan's list (the owner may reword it; see the README). */
-object BuilderCopy {
-  const val FINDING_SPACES = "Finding your spaces…"
-  const val CHOOSE_SPACE = "Choose a space to build"
-  const val NO_SPACES = "This account has no spaces to build on yet"
-  const val OFFLINE = "Can't reach vlm.gg: check the connection and try again"
-  const val SPACES_FAILED = "Couldn't load your spaces: try again"
-  const val COULDNT_OPEN = "Couldn't open this space for building: try again"
-  const val PAIRING_ENDED = "Pairing didn't finish: tap Builder to try again"
-  const val LOOK_AT_LINED_UP_RING = "Look at a ring that is already lined up on this floor"
-
-  fun lookAtRing(spaceName: String) = "Look at a ring of $spaceName"
-}
 
 /**
  * Builder mode, joined to the headset: the counterpart of `VisitorController`. It owns the builder's lifecycle:
@@ -211,7 +125,17 @@ class BuilderController(
 
   init {
     scope.launch { auth.state.collect(::onAuth) }
+    // A shared session never outlives the app process: one restored from storage, with nothing being built, ends now.
+    endIfShared()
     refreshUi()
+  }
+
+  /**
+   * Builder mode is leaving to OFF: a shared headset's session ends with it, whatever the reason, so the next person
+   * never inherits the pairing (or the spaces it can see).
+   */
+  private fun endIfShared() {
+    if ((auth.state.value as? AuthState.Paired)?.kind == DeviceKind.SHARED) go { auth.endSession() }
   }
 
   // ── entering ─────────────────────────────────────────────────────────
@@ -305,6 +229,7 @@ class BuilderController(
         generation++
         stage = Stage.OFF
         prompt = null
+        endIfShared()
         refreshUi()
       }
       // Leaving before the scene is placed again: edits kept from before the headset came off are dropped.
@@ -317,7 +242,8 @@ class BuilderController(
   }
 
   private fun enter(space: DeviceSpace) {
-    val kind = (auth.state.value as? AuthState.Paired)?.kind ?: return
+    // Signed out since the list was fetched: ask to pair again rather than leave the list up.
+    val kind = (auth.state.value as? AuthState.Paired)?.kind ?: return signedOutElsewhere()
     val g = ++generation
     visitor.pause()
     val b = Build(space, kind, calls(space.spaceId))
@@ -331,10 +257,14 @@ class BuilderController(
     lastFrameNs = 0L
     b.passing = true
     go {
-      val pass = auth.passFor(space.spaceId)
+      val pass =
+          try {
+            auth.passFor(space.spaceId)
+          } finally {
+            b.passing = false
+            b.passAt = clock()
+          }
       if (g != generation) return@go
-      b.passing = false
-      b.passAt = clock()
       when (pass) {
         is PassResult.Ok -> {
           b.token = pass.token
@@ -353,9 +283,9 @@ class BuilderController(
 
   /**
    * Call every frame with the head pose, the newest camera rings, the camera's intrinsics, the room's walls and the
-   * sticks. Returns whether builder mode holds the session (visitor mode is paused and needn't be ticked).
+   * sticks (read only while aligning). Returns whether builder mode holds the session (visitor mode is paused and needn't be ticked).
    */
-  fun tick(head: Pose, rings: CameraRings?, k: CameraIntrinsics?, walls: List<WallPlane>, sticks: AlignSticks): Boolean {
+  fun tick(head: Pose, rings: CameraRings?, k: CameraIntrinsics?, walls: List<WallPlane>, sticks: () -> AlignSticks): Boolean {
     val fresh = rings?.takeIf { nanoClock() - it.receivedNs < STALE_NS }
     ringsInView = fresh?.tracked?.map { it.id } ?: emptyList()
     val b = build
@@ -371,7 +301,7 @@ class BuilderController(
     }
     session.tick()
     when (stage) {
-      Stage.ALIGNING -> stickStep(b, sticks)
+      Stage.ALIGNING -> stickStep(b, sticks())
       Stage.BUILDING -> buildingFrame(b)
       else -> Unit
     }
@@ -386,11 +316,24 @@ class BuilderController(
     val g = generation
     b.passing = true
     go {
-      val pass = auth.passFor(b.space.spaceId)
+      // A refresh that throws is tried again after the next interval, not every frame.
+      val pass =
+          try {
+            auth.passFor(b.space.spaceId)
+          } finally {
+            b.passing = false
+            b.passAt = clock()
+          }
       if (g != generation) return@go
-      b.passing = false
-      b.passAt = clock()
-      if (pass is PassResult.Ok) b.token = pass.token
+      when (pass) {
+        is PassResult.Ok -> b.token = pass.token
+        // The account lost its edit rights while building.
+        PassResult.NoAccess -> leaveWithNote(AlignCopy.NO_ACCESS)
+        PassResult.Revoked -> signedOutElsewhere()
+        // Offline or a hiccup: the current pass serves until the next try.
+        PassResult.Offline, is PassResult.Failed -> Unit
+      }
+      refreshUi()
     }
   }
 
@@ -420,6 +363,7 @@ class BuilderController(
             b.alignFloorId = floor.id
             b.alignRoot = null
             b.alignSaved = null
+            b.note = null
             stage = Stage.ALIGNING
             sight(b, world, headingDeg)
           }
@@ -545,6 +489,15 @@ class BuilderController(
     stage = Stage.PLACING
   }
 
+  /** A space link opened while builder mode holds the space: it says to finish first. Returns whether it did. */
+  fun linkOpened(): Boolean {
+    val b = build ?: return false
+    if (!active) return false
+    b.note = BuilderCopy.FINISH_FIRST
+    refreshUi()
+    return true
+  }
+
   /** The menu's **Look at the ring again** while building: places the scene afresh from the next ring. */
   fun lookAgain(): Boolean {
     val b = build ?: return false
@@ -661,53 +614,9 @@ class BuilderController(
 
   /** The HUD's controls, on the current editor (the tab is kept here). */
   val hudActions: BuilderHudActions =
-      object : BuilderHudActions {
-        private fun editor() = build?.takeIf { stage == Stage.BUILDING }?.editor
-
-        override fun selectTab(tab: HudTab) {
-          build?.tab = tab
-          refreshHud()
-        }
-
-        override fun pick(sk: String) {
-          editor()?.pick(sk)
-        }
-
-        override fun resetToShared(sk: String) {
-          editor()?.resetToShared(sk)
-        }
-
-        override fun setMode(mode: TransformMode) {
-          editor()?.setMode(mode)
-        }
-
-        override fun setScope(scope: Scope) {
-          editor()?.setScope(scope)
-        }
-
-        override fun setExact(mode: TransformMode, axis: Axis, value: Double) {
-          editor()?.setExact(mode, axis, value)
-        }
-
-        override fun save() {
-          editor()?.save()
-        }
-
-        override fun revert() {
-          editor()?.revert()
-        }
-
-        override fun done() {
-          editor()?.done()
-        }
-
-        override fun confirmDone(save: Boolean) {
-          editor()?.confirmDone(save)
-        }
-
-        override fun cancelDone() {
-          editor()?.cancelDone()
-        }
+      EditorHudActions({ build?.takeIf { stage == Stage.BUILDING }?.editor }) { tab ->
+        build?.tab = tab
+        refreshHud()
       }
 
   // ── the feed ─────────────────────────────────────────────────────────
@@ -743,13 +652,16 @@ class BuilderController(
     b.rules.headsetOff()
     relock(b)
     b.offJob?.cancel()
-    b.offJob =
-        scope.launch {
-          while (true) {
-            delay(OFF_CHECK_MS)
-            offTick()
+    // Only a shared session ends while the headset is off; a personal one is judged when it is back on.
+    if (b.kind == DeviceKind.SHARED) {
+      b.offJob =
+          scope.launch {
+            while (true) {
+              delay(OFF_CHECK_MS)
+              offTick()
+            }
           }
-        }
+    }
     refreshUi()
     return true
   }
@@ -806,15 +718,23 @@ class BuilderController(
   }
 
   /**
-   * Leaves builder mode for visitor mode: with the space still shown ([toShown], when it is placed), or at the hint
-   * card with nothing loaded. [endSession] ends the headset's session (a shared headset signs out).
+   * Leaves builder mode for visitor mode: with the space still shown ([toShown], when it is placed and published), or
+   * at the hint card with nothing loaded. A shared headset's session always ends here (it signs out); [endSession] also
+   * ends a personal one's (its cached passes are dropped).
    */
   private fun leave(toShown: Boolean, endSession: Boolean) {
     val b = build ?: return
     val snapshot = session.snapshot()
     val root = session.rootOf()
     val ring = b.anchorRing
-    val handoff = if (toShown && stage == Stage.BUILDING && snapshot != null && root != null && ring != null) Handoff(snapshot, root, ring) else null
+    // Only a published space is handed over: its snapshot is then exactly what the visitor feed serves (the pass only
+    // adds access to unpublished spaces), so nothing the builder's pass could see is left up for the next person.
+    val handoff =
+        if (toShown && stage == Stage.BUILDING && snapshot != null && snapshot.space.published && root != null && ring != null) {
+          Handoff(snapshot, root, ring)
+        } else {
+          null
+        }
     generation++
     b.offJob?.cancel()
     b.editor.onChange = null
@@ -828,7 +748,7 @@ class BuilderController(
     prompt = null
     if (handoff == null) session.stop()
     visitor.resume(handoff)
-    if (endSession) go { auth.endSession() }
+    if (endSession || b.kind == DeviceKind.SHARED) go { auth.endSession() }
     refreshUi()
   }
 
@@ -865,7 +785,7 @@ class BuilderController(
           else -> null
         }
     ui.align =
-        b?.align?.takeIf { stage == Stage.ALIGNING }?.let { f -> AlignUi(f.state, listOfNotNull(f.sizeMessage) + f.warningLines()) }
+        b?.align?.takeIf { stage == Stage.ALIGNING }?.let { f -> AlignUi(f.state, listOfNotNull(b.note, f.sizeMessage) + f.warningLines()) }
     ui.ringCheck =
         if (stage != Stage.BUILDING || b == null) null
         else {

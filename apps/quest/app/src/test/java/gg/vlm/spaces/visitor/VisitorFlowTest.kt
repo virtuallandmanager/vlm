@@ -584,7 +584,10 @@ class VisitorFlowTest {
     val root = rootFromMarker(Vec3(0.0, 1.6, 1.0), 180.0, pose)
     val fx = on(VisitorEvent.Adopt(snap(), root, ringA))
     assertEquals(VisitorState.Shown(space(), root), flow.state)
-    assertEquals(listOf(VisitorEffect.StartFeed("sp-a"), VisitorEffect.SetRegistered(setOf(ringA, ringA2))), fx)
+    assertEquals(
+        listOf(VisitorEffect.ShowScene(root), VisitorEffect.StartFeed("sp-a"), VisitorEffect.SetRegistered(setOf(ringA, ringA2))),
+        fx,
+    )
     assertTrue(flow.spaceChosen)
     // The same space's snapshots keep it where it is; seeing its ring again re-anchors it.
     assertEquals(listOf<VisitorEffect>(), on(VisitorEvent.Feed(snap(v = "2"))))

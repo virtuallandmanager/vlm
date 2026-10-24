@@ -317,7 +317,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
       wallsReadAt = now
     }
     val rings = latestRings
-    if (!builder.tick(head, rings, camera.intrinsics, walls, alignSticks())) visitor.tick(head, rings, camera.intrinsics, walls)
+    if (!builder.tick(head, rings, camera.intrinsics, walls, ::alignSticks)) visitor.tick(head, rings, camera.intrinsics, walls)
     if (head != Pose()) {
       placePanels(head, now)
       builderPanels.update(head)
@@ -434,6 +434,8 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   override fun openSpace(code: String) {
     state.menuOpen = false
     state.spacesOpen = false
+    // A link (or the Spaces list) while building: builder mode says to finish first.
+    if (builder.linkOpened()) return
     spacePagePlaced = false
     visitor.openSpace(code)
   }

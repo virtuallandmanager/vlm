@@ -165,7 +165,10 @@ class VisitorFlow {
         VisitorEvent.Tick -> tick(nowMs)
       }
 
-  /** The space builder mode was showing, shown where it is; its feed restarts as a visitor's (published only). */
+  /**
+   * The space builder mode was showing, shown where it is (a visit starts); its feed restarts as a visitor's
+   * (published only).
+   */
   private fun adopt(e: VisitorEvent.Adopt): List<VisitorEffect> {
     val s = e.snapshot.space
     // Visitor mode was paused with nothing loaded, so only forget's bookkeeping matters here, not its effects.
@@ -174,7 +177,8 @@ class VisitorFlow {
     feedRing = e.ringId
     space = s
     anchorRing = e.ringId
-    return listOf(VisitorEffect.StartFeed(s.id), VisitorEffect.SetRegistered(ringIds(s)))
+    // ShowScene first, while the session still has the snapshot: it starts the visit (analytics) for the space shown.
+    return listOf(VisitorEffect.ShowScene(e.root), VisitorEffect.StartFeed(s.id), VisitorEffect.SetRegistered(ringIds(s)))
   }
 
   /** A ring whose space isn't open that has left view for a while no longer holds "isn't open": back to the hint. */

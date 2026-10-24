@@ -132,8 +132,8 @@ class BuilderControllerTest {
   }
 
   /** Pairing as DeviceAuth does it: Pairing while it polls, then Paired as [approveAs], or SignedOut if cancelled. */
-  private class FakeAuth : BuilderAuth {
-    override val state = MutableStateFlow<AuthState>(AuthState.SignedOut)
+  private class FakeAuth(start: AuthState = AuthState.SignedOut) : BuilderAuth {
+    override val state = MutableStateFlow(start)
     var approveAs: DeviceKind? = null
     var spacesAnswer: BuilderCall<List<DeviceSpace>> = BuilderCall.Ok(emptyList())
     var pairings = 0
@@ -141,6 +141,7 @@ class BuilderControllerTest {
     var unpairs = 0
     val passesFor = mutableListOf<String>()
     var passAnswer: PassResult? = null
+    var passThrows = false
 
     fun pair(kind: DeviceKind) {
       state.value = AuthState.Paired("dev1", kind)
@@ -161,6 +162,7 @@ class BuilderControllerTest {
 
     override suspend fun passFor(spaceId: String): PassResult {
       passesFor += spaceId
+      if (passThrows) throw IllegalStateException("boom")
       passAnswer?.let { return it }
       return if (state.value is AuthState.Paired) PassResult.Ok("jwt", "sc1") else PassResult.Revoked
     }
@@ -277,12 +279,13 @@ class BuilderControllerTest {
   private lateinit var feed: FakeFeed
   private val session = SpaceSession(view, { onStatus, onSnapshot -> FakeFeed(onStatus, onSnapshot).also { feed = it } }, FakeOutline(), { now })
   private val ui = AppState()
+  private val posted = mutableListOf<String>()
   private val visitor =
       VisitorController(
           scope,
           session,
           lookup = { ApiResult.NotFound },
-          analytics = VisitAnalytics({ _, _ -> AnalyticsPost.Sent }, { 1_700_000_000_000L }),
+          analytics = VisitAnalytics({ _, body -> posted += body; AnalyticsPost.Sent }, { 1_700_000_000_000L }),
           prefs = FakePrefs(),
           ui = ui,
           setRegistered = {},
@@ -323,7 +326,7 @@ class BuilderControllerTest {
     now += 16
     nowNs += 16_000_000
     val r = CameraRings(rings, rings.lastOrNull(), false, nowNs)
-    if (!builder.tick(head, r, k, walls, sticks)) visitor.tick(head, r, k, walls)
+    if (!builder.tick(head, r, k, walls, { sticks })) visitor.tick(head, r, k, walls)
     dispatcher.drain()
   }
 
@@ -418,6 +421,7 @@ class BuilderControllerTest {
   @Test fun `a shared headset off for over 2 minutes signs out and is back at the hint card with nothing loaded`() {
     toBuilding(DeviceKind.SHARED)
     assertTrue(builder.headsetOff())
+    assertEquals(1, dispatcher.tasks.size) // the off timer
     now += 2 * 60_000L + 1
     builder.offTick()
     dispatcher.drain()
@@ -481,10 +485,140 @@ class BuilderControllerTest {
     assertEquals(1, auth.ends) // a personal headset only drops its passes
     assertTrue(auth.state.value is AuthState.Paired)
     assertTrue(ui.ownerControls)
-    // Visitor mode carries on from there.
+    // Visitor mode carries on from there, as a visit: leaving it sends the visit's enter and leave.
     snapshot("2")
     frame()
     assertTrue(ui.sceneShown)
+    visitor.lookAgain()
+    dispatcher.drain()
+    val body = posted.joinToString()
+    assertTrue(body, "\"type\":\"enter\"" in body && "\"type\":\"leave\"" in body)
+  }
+
+  @Test fun `Done on an unpublished space leaves nothing loaded for the next person`() {
+    toBuilding(space = arSpace().copy(published = false))
+    builder.hudActions.done()
+    dispatcher.drain()
+    assertFalse(ui.builderActive)
+    assertEquals(VisitorCopy.HINT, ui.hint)
+    assertNull(session.spaceId)
+    assertEquals(0, session.itemCount())
+  }
+
+  // ── a shared headset signs out whenever builder mode closes ──
+
+  private fun sharedChoosing() {
+    auth.pair(DeviceKind.SHARED)
+    auth.spacesAnswer = BuilderCall.Ok(listOf(spaceA, spaceB))
+    builder.open()
+    dispatcher.drain()
+    assertEquals(listOf(spaceA, spaceB), ui.builderPrompt?.spaces)
+  }
+
+  @Test fun `shared, cancelling the pick list signs out`() {
+    sharedChoosing()
+    builder.cancel()
+    dispatcher.drain()
+    assertEquals(AuthState.SignedOut, auth.state.value)
+    assertNull(ui.builderPrompt)
+    assertFalse(ui.ownerControls)
+  }
+
+  @Test fun `shared, the headset coming off at the pick list signs out`() {
+    sharedChoosing()
+    assertFalse(builder.headsetOff()) // visitor mode handles the rest
+    dispatcher.drain()
+    assertEquals(AuthState.SignedOut, auth.state.value)
+    assertNull(ui.builderPrompt)
+  }
+
+  @Test fun `shared, Done signs out`() {
+    toBuilding(DeviceKind.SHARED)
+    builder.hudActions.done()
+    dispatcher.drain()
+    assertEquals(AuthState.SignedOut, auth.state.value)
+    assertFalse(ui.ownerControls)
+    assertEquals(0, auth.pairings) // our own sign-out: nothing asks to pair again
+  }
+
+  @Test fun `shared, a pass refused on entering signs out`() {
+    auth.pair(DeviceKind.SHARED)
+    auth.passAnswer = PassResult.NoAccess
+    auth.spacesAnswer = BuilderCall.Ok(listOf(spaceA))
+    frame()
+    builder.open()
+    dispatcher.drain()
+    assertEquals(AuthState.SignedOut, auth.state.value)
+    assertEquals(AlignCopy.NO_ACCESS, ui.builderPrompt?.text)
+    assertEquals(VisitorCopy.HINT, ui.hint)
+  }
+
+  @Test fun `shared, the feed saying not found mid-build signs out`() {
+    toBuilding(DeviceKind.SHARED)
+    feed.onStatus(FeedStatus.NOT_FOUND)
+    dispatcher.drain()
+    assertEquals(AuthState.SignedOut, auth.state.value)
+    assertFalse(ui.builderActive)
+    assertNull(session.spaceId)
+    assertEquals(AlignCopy.NO_ACCESS, ui.builderPrompt?.text)
+  }
+
+  @Test fun `a shared pairing restored at startup is ended at once, a personal one is kept`() {
+    for (kind in DeviceKind.entries) {
+      val a = FakeAuth(AuthState.Paired("dev1", kind))
+      val u = AppState()
+      BuilderController(scope, session, a, { FakeCalls() }, visitor, FakeScene(), FakeTools(), u, { now }, { nowNs })
+      dispatcher.drain()
+      if (kind == DeviceKind.SHARED) {
+        assertEquals(1, a.ends)
+        assertEquals(AuthState.SignedOut, a.state.value)
+        assertFalse(u.ownerControls)
+      } else {
+        assertEquals(0, a.ends)
+        assertTrue(u.ownerControls)
+      }
+    }
+  }
+
+  @Test fun `edit rights lost mid-build close builder mode with the notice, and a shared headset signs out`() {
+    toBuilding(DeviceKind.SHARED)
+    auth.passAnswer = PassResult.NoAccess
+    now += BuilderController.PASS_REFRESH_MS
+    frame()
+    assertFalse(ui.builderActive)
+    assertEquals(AlignCopy.NO_ACCESS, ui.builderPrompt?.text)
+    assertEquals(AuthState.SignedOut, auth.state.value)
+  }
+
+  @Test fun `a pass refresh that fails is tried again after the interval, not every frame`() {
+    toBuilding()
+    val before = auth.passesFor.size
+    auth.passThrows = true
+    now += BuilderController.PASS_REFRESH_MS
+    frame()
+    frame()
+    assertEquals(before + 1, auth.passesFor.size)
+    auth.passThrows = false
+    now += BuilderController.PASS_REFRESH_MS
+    frame()
+    assertEquals(before + 2, auth.passesFor.size)
+    assertTrue(ui.builderActive)
+  }
+
+  @Test fun `a space link while building says to finish first`() {
+    toBuilding()
+    assertTrue(builder.linkOpened())
+    assertEquals(BuilderCopy.FINISH_FIRST, ui.hud!!.message)
+    assertTrue(ui.builderActive)
+    builder.hudActions.done()
+    dispatcher.drain()
+    assertFalse(builder.linkOpened())
+  }
+
+  @Test fun `a personal headset off launches no off timer`() {
+    toBuilding(DeviceKind.PERSONAL)
+    builder.headsetOff()
+    assertEquals(0, dispatcher.tasks.size) // nothing launched to watch the time
   }
 
   @Test fun `a headset revoked while building goes back to the hint card and is asked to pair again`() {
