@@ -42,6 +42,8 @@ android {
 
 dependencies {
   implementation(libs.androidx.core.ktx)
+  implementation("androidx.security:security-crypto:1.1.0-alpha06")
+  implementation("io.nayuki:qrcodegen:1.8.0")
   testImplementation(libs.junit)
   testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 
