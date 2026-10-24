@@ -4,4 +4,5 @@
   <item name="hint_card" type="id" />
   <item name="visitor_menu" type="id" />
   <item name="menu_button" type="id" />
+  <item name="space_page" type="id" />
 </resources>

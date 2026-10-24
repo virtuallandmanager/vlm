@@ -120,6 +120,8 @@ Prepare a published test space with plan 1's dashboard, or with a direct API cal
 - [ ] Live depth hides the scene behind a hand and furniture.
 - [ ] Taking the headset off and on hides the scene; looking at the ring shows it again.
 - [ ] Menu → **Look at the ring again** clears it and returns to the hint.
+- [ ] Open a space from a link. A verified link from the browser needs plan 3's `assetlinks.json` with the release key's fingerprint, so until then use the intent: `adb shell am start -a android.intent.action.VIEW -d "https://vlm.gg/s/<code>"`. The app opens on the space page: the space's name, where to find it, "Look at the ring when you get there" and **Close**. Looking at that space's ring then shows the scene. Sent while the app is already open, it replaces the current space.
+- [ ] Menu → **Spaces** lists the spaces opened or visited, newest first; picking one opens its page.
 
 Also worth noting while there:
 

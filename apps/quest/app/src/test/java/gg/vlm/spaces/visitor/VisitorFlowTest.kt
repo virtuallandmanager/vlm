@@ -225,7 +225,7 @@ class VisitorFlowTest {
 
   @Test fun `taking the headset off hides the scene until a ring is seen again`() {
     toShown()
-    assertEquals(listOf(VisitorEffect.HideScene, VisitorEffect.ResetAveragers), on(VisitorEvent.HeadsetOff))
+    assertEquals(listOf(VisitorEffect.HideNow, VisitorEffect.ResetAveragers), on(VisitorEvent.HeadsetOff))
     assertTrue(on(VisitorEvent.HeadsetOn).none { it is VisitorEffect.ShowScene })
     assertTrue(on(VisitorEvent.Steady(ringA, Vec3(0.0, 1.5, 0.0), 10.0)).any { it is VisitorEffect.ShowScene })
   }
@@ -275,6 +275,15 @@ class VisitorFlowTest {
     assertTrue(on(VisitorEvent.Feed(snap(space("sp-a"), "9"))).isEmpty())
     on(VisitorEvent.Feed(snap(b)))
     assertEquals(VisitorState.Locking(b), flow.state)
+  }
+
+  @Test fun `opening a link while another space is shown clears it`() {
+    toShown()
+    val fx = on(VisitorEvent.OpenSpace("2E3D4C5"))
+    assertEquals(VisitorEffect.HideScene, fx.first())
+    assertTrue(VisitorEffect.StopFeed in fx)
+    assertEquals(VisitorEffect.Lookup("2E3D4C5"), fx.last())
+    assertEquals(VisitorState.Loading("2E3D4C5", null), flow.state)
   }
 
   @Test fun `feed not found fails plainly, hides the scene and stops`() {

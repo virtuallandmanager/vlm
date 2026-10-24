@@ -1,6 +1,7 @@
 package gg.vlm.spaces
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.SystemClock
@@ -61,6 +62,8 @@ import gg.vlm.spaces.visitor.HintCard
 import gg.vlm.spaces.visitor.LazyFollow
 import gg.vlm.spaces.visitor.MenuActions
 import gg.vlm.spaces.visitor.MenuButton
+import gg.vlm.spaces.visitor.SpacePage
+import gg.vlm.spaces.visitor.spaceCodeFromUri
 import gg.vlm.spaces.visitor.VisitorController
 import gg.vlm.spaces.visitor.VisitorCopy
 import gg.vlm.spaces.visitor.VisitorMenu
@@ -92,6 +95,9 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   private var hintPanel: Entity? = null
   private var menuButton: Entity? = null
   private var menuPanel: Entity? = null
+  private var spacePagePanel: Entity? = null
+  /** The space page has been put in front of the visitor since it opened. */
+  private var spacePagePlaced = false
   private var developerPanel: Entity? = null
   private val hintFollow = LazyFollow()
   /** The last [Visible] set on each panel, so it's only set when it changes. */
@@ -138,6 +144,8 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     // Release builds always use https://vlm.gg; debug builds take a `baseUrl` extra (saved for next time).
     state.serverUrl = prefs.baseUrl(intent.getStringExtra("baseUrl"))
     visitor = VisitorController(scope, state.serverUrl, renderer, prefs, state) { ids -> tracker.registered = ids }
+    // A vlm.gg/s link that launched the app (a re-created activity doesn't open it again).
+    if (savedInstanceState == null) openLink(intent)
 
     camera =
         PassthroughCamera(
@@ -164,6 +172,19 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     }
   }
 
+  /** A link opened while the app was running. */
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    openLink(intent)
+  }
+
+  private fun openLink(intent: Intent?) {
+    if (intent?.action != Intent.ACTION_VIEW) return
+    val code = intent.data?.toString()?.let(::spaceCodeFromUri) ?: return
+    openSpace(code)
+  }
+
   override fun onSceneReady() {
     super.onSceneReady()
     scene.setReferenceSpace(ReferenceSpace.LOCAL_FLOOR)
@@ -178,6 +199,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     hintPanel = Entity.createPanelEntity(R.id.hint_card, Transform(Pose()))
     menuButton = Entity.createPanelEntity(R.id.menu_button, Transform(Pose())).also { show(it, false) }
     menuPanel = Entity.createPanelEntity(R.id.visitor_menu, Transform(Pose())).also { show(it, false) }
+    spacePagePanel = Entity.createPanelEntity(R.id.space_page, Transform(Pose())).also { show(it, false) }
     if (BuildConfig.DEBUG) {
       developerPanel = Entity.createPanelEntity(R.id.control_panel, Transform(Pose()), Grabbable()).also { show(it, false) }
     }
@@ -191,6 +213,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
           composePanel(R.id.hint_card, 0.5f, 0.3f) { HintCard(state.hint ?: "") },
           composePanel(R.id.menu_button, 0.08f, 0.08f) { MenuButton(this) },
           composePanel(R.id.visitor_menu, 0.5f, 0.6f) { VisitorMenu(state, this, BuildConfig.DEBUG) },
+          composePanel(R.id.space_page, 0.5f, 0.4f) { SpacePage(state, ::closeSpacePage) },
           if (BuildConfig.DEBUG) composePanel(R.id.control_panel, 0.7f, 0.9f) { ControlPanel(state, this) } else null,
       )
 
@@ -257,13 +280,23 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     val p = card.position.sdk()
     hintPanel?.let {
       it.setComponent(Transform(Pose(p, facing)))
-      show(it, state.hint != null)
+      show(it, state.hint != null && state.spacePage == null)
     }
     menuButton?.let {
       it.setComponent(Transform(Pose(Vector3(p.x, p.y - MENU_BUTTON_BELOW_M, p.z), facing)))
       show(it, state.sceneShown)
     }
     menuPanel?.let { show(it, state.menuOpen) }
+    spacePagePanel?.let {
+      val open = state.spacePage != null
+      // It appears where the visitor is looking when it opens, and stays there.
+      if (open && !spacePagePlaced) {
+        it.setComponent(Transform(aheadPose(head, 0.8f, -0.05f)))
+        spacePagePlaced = true
+      }
+      if (!open) spacePagePlaced = false
+      show(it, open)
+    }
     developerPanel?.let { show(it, state.developerOpen) }
   }
 
@@ -285,9 +318,23 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
 
   override fun toggleMenu() {
     state.menuNote = null
+    state.spacesOpen = false
     state.menuOpen = !state.menuOpen
     if (state.menuOpen) menuPanel?.setComponent(Transform(aheadPose(scene.getViewerPose(), 0.8f, -0.1f)))
   }
+
+  override fun toggleSpaces() {
+    state.spacesOpen = !state.spacesOpen
+  }
+
+  override fun openSpace(code: String) {
+    state.menuOpen = false
+    state.spacesOpen = false
+    spacePagePlaced = false
+    visitor.openSpace(code)
+  }
+
+  private fun closeSpacePage() = visitor.closeSpacePage()
 
   override fun lookAgain() {
     visitor.lookAgain()

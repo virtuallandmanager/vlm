@@ -16,6 +16,7 @@ import gg.vlm.spaces.api.ArSpace
 import gg.vlm.spaces.api.FeedStatus
 import gg.vlm.spaces.planScene
 import gg.vlm.spaces.ring.CameraIntrinsics
+import gg.vlm.spaces.ring.RingCodec
 import gg.vlm.spaces.ring.RingDetection
 import gg.vlm.spaces.ring.WallPlane
 import gg.vlm.spaces.ring.cameraToWorld
@@ -70,7 +71,11 @@ class VisitorController(
   /** During Locking: the ring in view is too far away to lock (LockGate said TOO_FAR, none said STEADY). */
   private var tooFar = false
 
+  /** The ring that last became steady, for naming the space a scene was just shown for. */
+  private var steadyRing: Long? = null
+
   init {
+    ui.recentSpaces = prefs.recentSpaces
     refreshUi()
   }
 
@@ -111,6 +116,16 @@ class VisitorController(
 
   fun lookAgain() = dispatch(VisitorEvent.LookAgain)
 
+  /** Opens the space with [code] (from a link or the Spaces list): shows its page and looks it up. */
+  fun openSpace(code: String) {
+    ui.spacePage = SpacePageInfo(code, null, null)
+    dispatch(VisitorEvent.OpenSpace(code))
+  }
+
+  fun closeSpacePage() {
+    ui.spacePage = null
+  }
+
   fun stop() {
     feed.stop()
     outline.clear()
@@ -147,6 +162,7 @@ class VisitorController(
       // A new steady pose locks on, or re-anchors a shown scene.
       if (step.becameSteady) {
         lockedAt[id] = step.world to step.headingDeg!!
+        steadyRing = id
         dispatch(VisitorEvent.Steady(id, step.world, step.headingDeg))
       }
     }
@@ -190,6 +206,8 @@ class VisitorController(
         for (fx in flow.on(next, now)) run(fx, now)
       }
     } finally {
+      // A throw must not leave events queued to replay, stale, on the next dispatch.
+      pending.clear()
       dispatching = false
     }
     refreshUi()
@@ -211,6 +229,10 @@ class VisitorController(
         renderer.clear()
       }
       is VisitorEffect.ShowScene -> {
+        // The scene is up, so the visit counts. The ring's own code names the space in the list.
+        val s = space
+        val ring = steadyRing
+        if (s != null && ring != null) visited(RingCodec.codeOf(ring), s.name)
         renderer.setRoot(fx.root)
         renderer.setVisible(true, now)
       }
@@ -247,12 +269,25 @@ class VisitorController(
             Log.e(TAG, "Lookup failed", e)
             ApiResult.Failed(-1)
           }
+      if (r is ApiResult.Ok) {
+        visited(code, r.value.spaceName)
+        ui.spacePage = ui.spacePage?.takeIf { it.code == code }?.copy(spaceName = r.value.spaceName, whereText = r.value.whereText)
+            ?: ui.spacePage
+      }
       dispatch(VisitorEvent.Lookup(code, r))
     }
   }
 
+  /** Puts the space first in the recent list and saves it. */
+  private fun visited(code: String, spaceName: String) {
+    val list = remember(ui.recentSpaces, RecentSpace(code, spaceName, System.currentTimeMillis()))
+    ui.recentSpaces = list
+    prefs.recentSpaces = list
+  }
+
   private fun refreshUi() {
     val st = flow.state
+    ui.spaceProblem = if (ui.spacePage?.spaceName == null) (st as? VisitorState.Failed)?.message else null
     ui.hint = hintText(st, tooFar)
     ui.sceneShown = st is VisitorState.Shown
     ui.visitorState = st::class.simpleName ?: ""

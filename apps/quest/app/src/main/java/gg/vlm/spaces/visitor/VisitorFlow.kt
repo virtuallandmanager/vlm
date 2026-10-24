@@ -21,6 +21,9 @@ object VisitorCopy {
   const val LIVE_DEPTH = "Live depth"
   const val OCCLUSION_OFF = "Off"
   const val SPACES = "Spaces"
+  const val NO_SPACES = "No spaces yet"
+  const val LOOK_AT_RING = "Look at the ring when you get there"
+  const val CLOSE = "Close"
   const val BUILDER = "Builder"
   const val BUILDER_SOON = "Builder mode is coming soon"
 
@@ -108,8 +111,8 @@ class VisitorFlow {
         is VisitorEvent.Feed -> feed(event.snapshot)
         is VisitorEvent.FeedStatus -> feedStatus(event.status)
         is VisitorEvent.Steady -> steady(event)
-        VisitorEvent.TrackingJump -> hide(VisitorEffect.HideNow)
-        VisitorEvent.HeadsetOff -> hide(VisitorEffect.HideScene)
+        VisitorEvent.TrackingJump -> hide()
+        VisitorEvent.HeadsetOff -> hide()
         VisitorEvent.HeadsetOn -> emptyList()
         VisitorEvent.LookAgain -> forget(listOf(VisitorEffect.SetRegistered(null))) { VisitorState.Hint }
         is VisitorEvent.OpenSpace ->
@@ -250,13 +253,13 @@ class VisitorFlow {
   }
 
   /**
-   * Tracking jumped or the headset came off: hide ([how]: at once for a jump, faded otherwise), and wait for a ring to
-   * be seen again. The feed keeps running.
+   * Tracking jumped or the headset came off: hide at once (a kept-loaded scene must not linger at a stale root), and
+   * wait for a ring to be seen again. The feed keeps running.
    */
-  private fun hide(how: VisitorEffect): List<VisitorEffect> {
+  private fun hide(): List<VisitorEffect> {
     val s = space ?: return emptyList()
     state = VisitorState.Locking(s)
-    return listOf(how, VisitorEffect.ResetAveragers)
+    return listOf(VisitorEffect.HideNow, VisitorEffect.ResetAveragers)
   }
 
   /** Drops the current space and everything pending, moving to the state [next] gives. */

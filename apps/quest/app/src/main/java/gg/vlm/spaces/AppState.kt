@@ -6,6 +6,8 @@ import androidx.compose.runtime.setValue
 import gg.vlm.spaces.api.FeedStatus
 import gg.vlm.spaces.ring.CameraStatus
 import gg.vlm.spaces.ring.RING_TEST_MARKERS
+import gg.vlm.spaces.visitor.RecentSpace
+import gg.vlm.spaces.visitor.SpacePageInfo
 import gg.vlm.spaces.visitor.VisitorCopy
 
 /** What the panels show. Written on the main thread by MainActivity and the visitor controller, read by Compose. */
@@ -18,6 +20,14 @@ class AppState {
   /** A line under the menu's buttons, such as "Builder mode is coming soon"; null for none. */
   var menuNote by mutableStateOf<String?>(null)
   var occlusion by mutableStateOf(Occlusion.DEPTH)
+  /** The menu's Spaces list is open. */
+  var spacesOpen by mutableStateOf(false)
+  /** Spaces opened or visited, newest first. */
+  var recentSpaces by mutableStateOf<List<RecentSpace>>(emptyList())
+  /** The space page's content, or null when the page is closed. */
+  var spacePage by mutableStateOf<SpacePageInfo?>(null)
+  /** Why the open space page can't show its space (the lookup failed), or null. */
+  var spaceProblem by mutableStateOf<String?>(null)
 
   // ── developer panel (debug builds) ──
   var developerOpen by mutableStateOf(false)

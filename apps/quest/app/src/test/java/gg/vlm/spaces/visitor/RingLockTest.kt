@@ -58,4 +58,17 @@ class RingLockTest {
     repeat(VisitorTuning.MIN_FRAMES - 1) { l.step(near, 180.0, head) }
     assertTrue(l.step(near, 180.0, head).becameSteady)
   }
+
+  @Test fun `dropping out of steady and settling again without clear is a new edge`() {
+    val l = RingLock()
+    var edges = 0
+    repeat(VisitorTuning.MIN_FRAMES) { if (l.step(near, 180.0, head).becameSteady) edges++ }
+    assertEquals(1, edges)
+    // a wobble leaves the gate, and stays in the window until enough steady frames push it out
+    assertEquals(Gate.GATHERING, l.step(Vec3(0.1, 1.6, 1.0), 180.0, head).gate)
+    var back = 0
+    repeat(VisitorTuning.AVERAGE_FRAMES + VisitorTuning.MIN_FRAMES) { if (l.step(near, 180.0, head).becameSteady) back++ }
+    assertEquals(1, back)
+    assertEquals(Gate.STEADY, l.step(near, 180.0, head).gate)
+  }
 }

@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -30,6 +32,9 @@ import gg.vlm.spaces.Occlusion
 interface MenuActions {
   fun toggleMenu()
   fun lookAgain()
+  fun toggleSpaces()
+  /** Opens the space page for [code] and starts looking it up. */
+  fun openSpace(code: String)
   fun setOcclusion(o: Occlusion)
   fun openBuilder()
   /** Debug builds only. */
@@ -62,8 +67,16 @@ fun VisitorMenu(s: AppState, act: MenuActions, developer: Boolean) {
           else OutlinedButton({ act.setOcclusion(o) }, m, contentPadding = pad) { text() }
         }
       }
-      // The spaces list arrives with the space page (Task 7).
-      Wide(VisitorCopy.SPACES, {}, enabled = false)
+      Wide(VisitorCopy.SPACES, act::toggleSpaces)
+      if (s.spacesOpen) {
+        Column(
+            Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+          if (s.recentSpaces.isEmpty()) Text(VisitorCopy.NO_SPACES, color = Color(0xFFE0E0E0), fontSize = 13.sp)
+          s.recentSpaces.forEach { r -> Wide(r.spaceName, { act.openSpace(r.code) }, outlined = true) }
+        }
+      }
       Wide(VisitorCopy.BUILDER, act::openBuilder)
       if (developer) Wide("Developer", act::toggleDeveloper, outlined = true)
       s.menuNote?.let { Text(it, color = Color(0xFFE0E0E0), fontSize = 13.sp) }

@@ -1,6 +1,9 @@
 package gg.vlm.spaces
 
 import android.content.Context
+import gg.vlm.spaces.visitor.RecentSpace
+import gg.vlm.spaces.visitor.decodeRecents
+import gg.vlm.spaces.visitor.encodeRecents
 
 const val DEFAULT_BASE_URL = "https://vlm.gg"
 
@@ -26,6 +29,11 @@ class AppPrefs(context: Context) {
   var keepLoadedBetweenVisitors: Boolean
     get() = prefs.getBoolean("keepLoadedBetweenVisitors", false)
     set(value) = prefs.edit().putBoolean("keepLoadedBetweenVisitors", value).apply()
+
+  /** Spaces opened or visited, newest first (see [remember]). */
+  var recentSpaces: List<RecentSpace>
+    get() = decodeRecents(prefs.getString("recentSpaces", null))
+    set(value) = prefs.edit().putString("recentSpaces", encodeRecents(value)).apply()
 
   /** The server for this launch (see [resolveBaseUrl]); a debug build saves a `baseUrl` intent extra for next time. */
   fun baseUrl(extra: String?): String {

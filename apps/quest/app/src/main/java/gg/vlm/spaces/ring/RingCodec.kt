@@ -213,4 +213,20 @@ object RingCodec {
   /** The 32-bit [id] as 7 Crockford base32 characters. */
   fun codeOf(id: Long): String =
       String(CharArray(7) { i -> CROCKFORD[((id shr (30 - 5 * i)) and 31).toInt()] })
+
+  /**
+   * Reads a typed or linked code, the way the server's `parseRingCode` does: case-insensitive, I/L as 1, O as 0,
+   * hyphens and spaces ignored, exactly 7 characters whose value is below 2^32. Null when it isn't one.
+   */
+  fun parseCode(code: String): Long? {
+    val clean = code.uppercase().filter { it != '-' && !it.isWhitespace() }.replace('I', '1').replace('L', '1').replace('O', '0')
+    if (clean.length != 7) return null
+    var value = 0L
+    for (ch in clean) {
+      val d = CROCKFORD.indexOf(ch)
+      if (d < 0) return null
+      value = value * 32 + d
+    }
+    return if (value < (1L shl 32)) value else null
+  }
 }
