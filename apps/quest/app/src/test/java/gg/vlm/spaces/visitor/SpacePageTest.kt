@@ -1,5 +1,6 @@
 package gg.vlm.spaces.visitor
 
+import gg.vlm.spaces.Vec3
 import gg.vlm.spaces.api.ArSpace
 import gg.vlm.spaces.space.RootPose
 import org.junit.Assert.assertEquals
@@ -31,7 +32,7 @@ class SpacePageTest {
 
   @Test fun `the page closes by itself when the scene is shown, and not before`() {
     val space = ArSpace("s", "Cafe", null, true, emptyList())
-    assertNull(spacePageFor(named, VisitorState.Shown(space, RootPose(0.0, 0.0, 0.0, 0.0))))
+    assertNull(spacePageFor(named, VisitorState.Shown(space, RootPose(Vec3(0.0, 0.0, 0.0), 0.0))))
     assertEquals(named, spacePageFor(named, VisitorState.Locking(space)))
     assertEquals(named, spacePageFor(named, VisitorState.Loading("2E3D4C5", "Cafe")))
     assertNull(spacePageFor(null, VisitorState.Hint))
