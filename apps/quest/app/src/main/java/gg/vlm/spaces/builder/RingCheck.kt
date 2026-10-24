@@ -45,8 +45,17 @@ data class RingInView(val ringId: Long, val world: Vec3, val headingDeg: Double)
 
 enum class RingButton { None, Record, ReRecord }
 
-/** What the panel shows for the ring in view; [line] and [suggestion] are null when there is nothing to say. */
-data class RingCheckView(val button: RingButton, val line: String?, val warn: Boolean, val suggestion: String?)
+/**
+ * What the panel shows for the ring in view; [line] and [suggestion] are null when there is nothing to say.
+ * [refusal] is why a ring that is off can't be re-recorded from here ([RingCheckCopy.TOO_FAR]), else null.
+ */
+data class RingCheckView(
+    val button: RingButton,
+    val line: String?,
+    val warn: Boolean,
+    val suggestion: String?,
+    val refusal: String? = null,
+)
 
 /**
  * The record / check / re-record journey for the other rings of one floor, with no view or I/O. [view] says what the
@@ -68,18 +77,21 @@ class RingCheckFlow(private val floor: ArFloor, status: String? = null) {
       else RingCheckView(RingButton.None, RingCheckCopy.TOO_FAR, false, suggestion)
     }
     val result = checkRing(expected, markerInScene(root, ring.world, ring.headingDeg))
-    return RingCheckView(if (result.warn) RingButton.ReRecord else RingButton.None, checkLine(result), result.warn, suggestion)
+    if (!result.warn) return RingCheckView(RingButton.None, checkLine(result), false, suggestion)
+    // Far from the anchor, the difference may be the drift itself: re-recording would save it as the ring's pose.
+    return if (mayRecord(ring.world, lastAnchorWorld)) RingCheckView(RingButton.ReRecord, checkLine(result), true, suggestion)
+    else RingCheckView(RingButton.None, checkLine(result), true, suggestion, RingCheckCopy.TOO_FAR)
   }
 
   /**
    * Starts saving the ring in view: its pose in the scene and its height above the floor (the world `y`, as in
-   * [AlignFlow]). Null when it is not on this floor, or when it has no pose and is out of recording range; a ring
-   * that has a pose is re-recorded wherever it is, since the builder is standing at it.
+   * [AlignFlow]). Null when it is not on this floor, or when it is out of recording range ([RECORD_RADIUS_M] from
+   * the last anchor), for Record and Re-record alike: drift grows with distance from the anchor.
    */
   fun requestSave(root: RootPose, lastAnchorWorld: Vec3, ring: RingInView): AlignSave? {
     if (status == RingCheckCopy.SAVING) return null
     val marker = floor.markers.firstOrNull { it.ringId == ring.ringId } ?: return null
-    if (marker.pose == null && !mayRecord(ring.world, lastAnchorWorld)) {
+    if (!mayRecord(ring.world, lastAnchorWorld)) {
       status = RingCheckCopy.TOO_FAR
       return null
     }

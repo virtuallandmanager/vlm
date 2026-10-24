@@ -115,19 +115,37 @@ class RingCheckTest {
     assertTrue(v.warn)
   }
 
-  @Test fun `re-record is allowed beyond the radius and saves only this ring's pose`() {
+  @Test fun `re-record saves only this ring's pose`() {
     val f = floor(marker(1, expected), marker(2, expected.copy(x = 5.0)))
     val ring = seen(1, expected, dx = 0.06)
-    val far = Vec3(100.0, 1.5, 100.0)
     val flow = RingCheckFlow(f)
-    val save = flow.requestSave(root, far, ring)!!
+    val save = flow.requestSave(root, ring.world, ring)!!
     assertEquals(expected.x + 0.06, save.pose.x, 1e-9)
     assertEquals(expected.z, save.pose.z, 1e-9)
     assertEquals(ring.world.y, save.heightAboveFloorM, 1e-9)
     assertEquals(RingCheckCopy.SAVING, flow.status)
-    assertNull(flow.requestSave(root, far, ring))
+    assertNull(flow.requestSave(root, ring.world, ring))
     flow.saved(BuilderCall.Ok(emptyList()))
     assertEquals("Ring saved", flow.status)
+  }
+
+  @Test fun `re-record past the radius is refused with Record's copy`() {
+    val f = floor(marker(1, expected), marker(2, expected.copy(x = 5.0)))
+    val ring = seen(1, expected, dx = 0.06)
+    val far = Vec3(ring.world.x + 4.1, ring.world.y, ring.world.z)
+    val flow = RingCheckFlow(f)
+    val v = flow.view(root, far, ring)
+    assertEquals(RingButton.None, v.button)
+    assertEquals("This ring is 6 cm and 0.0° from where it should be", v.line)
+    assertTrue(v.warn)
+    assertEquals("Too far from the last ring to record accurately: walk back, or align from this ring instead", v.refusal)
+    assertEquals(listOf(v.line, RingCheckCopy.TOO_FAR), ringCheckLines(v, null))
+    assertNull(flow.requestSave(root, far, ring))
+    assertEquals(RingCheckCopy.TOO_FAR, flow.status)
+    assertEquals(listOf(v.line, RingCheckCopy.TOO_FAR), ringCheckLines(v, flow.status)) // said once
+    // Within the radius it is offered again.
+    val near = Vec3(ring.world.x + 3.9, ring.world.y, ring.world.z)
+    assertEquals(RingButton.ReRecord, flow.view(root, near, ring).button)
   }
 
   @Test fun `a floor with one ring suggests a second`() {

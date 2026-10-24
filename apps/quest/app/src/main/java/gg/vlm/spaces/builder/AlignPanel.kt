@@ -29,10 +29,12 @@ fun alignLines(state: AlignState, extra: List<String>): List<String> =
     }
 
 /**
- * The lines for the ring in view ([RingCheckFlow.view]), top to bottom: the check or refusal line, the second-ring
- * suggestion, then the save [status]. The first is the warning when [RingCheckView.warn].
+ * The lines for the ring in view ([RingCheckFlow.view]), top to bottom: the check or refusal line, why it can't be
+ * re-recorded, the second-ring suggestion, then the save [status] (each said once). The first is the warning when
+ * [RingCheckView.warn].
  */
-fun ringCheckLines(view: RingCheckView, status: String?): List<String> = listOfNotNull(view.line, view.suggestion, status)
+fun ringCheckLines(view: RingCheckView, status: String?): List<String> =
+    listOfNotNull(view.line, view.refusal, view.suggestion, status).distinct()
 
 /**
  * The align panel: a view of [AlignFlow]'s [state]. [notes] are the printed-size message and, once saved, the floor
