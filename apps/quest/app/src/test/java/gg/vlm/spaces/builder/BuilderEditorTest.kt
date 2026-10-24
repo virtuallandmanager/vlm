@@ -97,6 +97,20 @@ class BuilderEditorTest {
   }
 
   @Test
+  fun `unpick and leaving drop a pending pick`() {
+    loaded()
+    editor.pickWhenPresent("in9")
+    editor.unpick()
+    val fresh = BuilderItem("in9", "el9:in9", "image", "New", tr(v(0.0, 0.0, 0.0)), tr(v(0.0, 0.0, 0.0)), null)
+    editor.setItems(listOf(poster, chair, fresh))
+    assertEquals(null, editor.picked)
+    editor.pickWhenPresent("in9x")
+    editor.done()
+    editor.setItems(listOf(poster, chair, fresh.copy(sk = "in9x", renderKey = "el9:in9x")))
+    assertEquals(null, editor.picked)
+  }
+
+  @Test
   fun `an everywhere edit relays the shared transform, without this place's offset`() {
     loaded()
     moveTo("in2", 3.5)

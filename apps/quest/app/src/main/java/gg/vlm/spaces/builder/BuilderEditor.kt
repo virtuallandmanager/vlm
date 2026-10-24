@@ -191,6 +191,7 @@ class BuilderEditor(
   }
 
   fun unpick() {
+    pending.clear()
     if (session.dragging) endDrag()
     session.clear()
     picked = null
@@ -372,6 +373,7 @@ class BuilderEditor(
   }
 
   private fun leave() {
+    pending.clear()
     cancelDrag()
     session.clear()
     picked = null

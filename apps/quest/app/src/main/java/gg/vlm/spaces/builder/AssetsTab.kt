@@ -34,6 +34,8 @@ import kotlinx.coroutines.withContext
 const val ASSETS_EMPTY = "Nothing in this scene's library yet"
 const val ASSETS_LOADING = "Loading the library…"
 const val ASSETS_FAILED = "Couldn't load the library"
+const val NOT_SHOWN_ON_HEADSET = "Not shown on the headset"
+private const val THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024
 const val PLACE_FAILED = "Couldn't place that: try again"
 
 /** The Assets tab's state: [entries] is null while the library loads or if it didn't ([failed]). */
@@ -53,9 +55,13 @@ fun AssetsTab(state: AssetsState, onPlace: (LibraryEntry) -> Unit) {
               Thumbnail(e.thumbnailUrl)
               Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                 Text(e.name, color = Color.White, fontSize = 14.sp, maxLines = 1)
-                Text(kindLabel(e.kind.name.lowercase()), color = Color(0xFFB0B8C8), fontSize = 12.sp)
+                Text(
+                    kindLabel(e.kind.name.lowercase()) + if (e.drawable) "" else ": $NOT_SHOWN_ON_HEADSET",
+                    color = Color(0xFFB0B8C8),
+                    fontSize = 12.sp,
+                )
               }
-              Button(onClick = { onPlace(e) }) { Text("Place") }
+              Button(onClick = { onPlace(e) }, enabled = e.drawable) { Text("Place") }
             }
           }
         }
@@ -72,7 +78,9 @@ private fun Thumbnail(url: String?) {
         withContext(Dispatchers.IO) {
           runCatching {
                 URL(url).openStream().use { s ->
-                  val bytes = s.readBytes()
+                  // At most 2 MB: a bigger file is no thumbnail (and no memory spike).
+                  val bytes = s.readNBytes(THUMBNAIL_MAX_BYTES + 1)
+                  if (bytes.size > THUMBNAIL_MAX_BYTES) return@use null
                   val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                   BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
                   val sample = Integer.highestOneBit((maxOf(bounds.outWidth, bounds.outHeight) / 96).coerceAtLeast(1))

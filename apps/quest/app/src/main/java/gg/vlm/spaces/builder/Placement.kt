@@ -1,6 +1,9 @@
 package gg.vlm.spaces.builder
 
+import gg.vlm.spaces.IMAGE_EXT
+import gg.vlm.spaces.VIDEO_EXT
 import gg.vlm.spaces.Vec3
+import gg.vlm.spaces.extOf
 import gg.vlm.spaces.space.RootPose
 import gg.vlm.spaces.space.rotateY
 import kotlinx.serialization.json.JsonArray
@@ -48,12 +51,23 @@ class PendingPick {
 
 enum class LibraryKind { IMAGE, VIDEO, MODEL }
 
-/** A library item that can be placed. [thumbnailUrl] is set where the library gives one (an image is its own). */
-data class LibraryEntry(val id: String, val kind: LibraryKind, val name: String, val url: String, val thumbnailUrl: String?)
+/**
+ * A library item. [thumbnailUrl] is set where the library gives one (an image is its own). [drawable] is false for a
+ * format the headset can't draw (it would place, then never show).
+ */
+data class LibraryEntry(
+    val id: String,
+    val kind: LibraryKind,
+    val name: String,
+    val url: String,
+    val thumbnailUrl: String?,
+    val drawable: Boolean = true,
+)
 
 /**
  * The placeable items of `GET /api/scenes/:id/library` (`{ items }`): ready ones with a url that are models, or media
- * whose contentType is an image or a video (sounds and untyped files are left out).
+ * whose contentType is an image or a video (sounds and untyped files are left out). Formats the headset can't draw
+ * (see [LibraryEntry.drawable]) are kept so the tab can show them disabled.
  */
 fun libraryEntries(body: JsonObject): List<LibraryEntry> =
     ((body["items"] as? JsonArray) ?: emptyList<Nothing>()).mapNotNull { e ->
@@ -62,18 +76,25 @@ fun libraryEntries(body: JsonObject): List<LibraryEntry> =
       val id = s("id") ?: return@mapNotNull null
       val url = s("url")?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
       if (s("status") != "ready") return@mapNotNull null
+      val type = s("contentType")
       val kind =
           when (s("kind")) {
             "model" -> LibraryKind.MODEL
             "media" ->
                 when {
-                  s("contentType")?.startsWith("image/") == true -> LibraryKind.IMAGE
-                  s("contentType")?.startsWith("video/") == true -> LibraryKind.VIDEO
+                  type?.startsWith("image/") == true -> LibraryKind.IMAGE
+                  type?.startsWith("video/") == true -> LibraryKind.VIDEO
                   else -> return@mapNotNull null
                 }
             else -> return@mapNotNull null
           }
-      LibraryEntry(id, kind, s("name") ?: kind.name.lowercase(), url, url.takeIf { kind == LibraryKind.IMAGE })
+      val drawable =
+          when (kind) {
+            LibraryKind.IMAGE -> extOf(url) in IMAGE_EXT
+            LibraryKind.VIDEO -> extOf(url) in VIDEO_EXT
+            LibraryKind.MODEL -> true
+          }
+      LibraryEntry(id, kind, s("name") ?: kind.name.lowercase(), url, url.takeIf { kind == LibraryKind.IMAGE && drawable }, drawable)
     }
 
 /** The active preset's id from `GET /api/scenes/:id` (`{ scene: { activePresetId } }`). */

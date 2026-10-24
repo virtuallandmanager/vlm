@@ -30,8 +30,9 @@ data class RenderItem(
   enum class Kind { VIDEO, IMAGE, MODEL, AUDIO }
 }
 
-private val VIDEO_EXT = setOf("mp4", "m3u8")
-private val IMAGE_EXT = setOf("png", "jpg", "jpeg", "webp")
+/** The formats the headset draws (shared with the Assets tab). */
+internal val VIDEO_EXT = setOf("mp4", "m3u8")
+internal val IMAGE_EXT = setOf("png", "jpg", "jpeg", "webp")
 private const val CLICK_NONE = 0.0
 private const val CLICK_EXTERNAL = 1.0
 private const val OFF_IMAGE = 1.0

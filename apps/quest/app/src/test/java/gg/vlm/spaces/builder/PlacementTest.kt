@@ -54,7 +54,7 @@ class PlacementTest {
   fun `rotation is normalised to 0 until 360`() {
     val t = placeAhead(Vec3(0.0, 1.0, 0.0), 10.0, RootPose(Vec3(0.0, 0.0, 0.0), 300.0))
     near(10.0 + 180.0 - 300.0 + 360.0, t.rotation.y)
-    assertTrue(t.rotation.y in 0.0..360.0)
+    assertTrue(t.rotation.y >= 0.0 && t.rotation.y < 360.0)
   }
 
   private fun rotate(deg: Double, v: Vec3): Vec3 {
@@ -125,5 +125,19 @@ class PlacementTest {
   fun `the active preset comes from the scene`() {
     assertEquals("p1", activePresetId(Json.parseToJsonElement("""{"scene":{"activePresetId":"p1"}}""").jsonObject))
     assertNull(activePresetId(Json.parseToJsonElement("""{"scene":{"activePresetId":null}}""").jsonObject))
+  }
+
+  @Test
+  fun `webm and gif entries are kept but not drawable, with no thumbnail`() {
+    val l =
+        lib(
+            """{"items":[
+              {"id":"1","kind":"media","name":"a.webm","contentType":"video/webm","url":"https://x/a.webm","status":"ready"},
+              {"id":"2","kind":"media","name":"b.gif","contentType":"image/gif","url":"https://x/b.gif?v=2","status":"ready"},
+              {"id":"3","kind":"media","name":"c.JPG","contentType":"image/jpeg","url":"https://x/c.JPG","status":"ready"},
+              {"id":"4","kind":"media","name":"d.m3u8","contentType":"video/mp4","url":"https://x/d.m3u8","status":"ready"}
+            ]}""")
+    assertEquals(listOf(false, false, true, true), l.map { it.drawable })
+    assertNull(l[1].thumbnailUrl)
   }
 }
