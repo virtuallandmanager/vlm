@@ -27,7 +27,8 @@ def test_ground_truth_geometry(tmp_path):
     m = by["range-RING120-1.8-0"]["markers"][0]
     assert abs(m["center_px"][0] - IMAGE[0] / 2) < 1e-6 and abs(m["center_px"][1] - IMAGE[1] / 2) < 1e-6
     assert by["rotated_73"]["markers"][0]["rotation_deg"] == 73
-    assert FOCAL_PX == 760.0
+    assert FOCAL_PX == 867.0
+    assert all(e["focal_px"] == FOCAL_PX for e in by.values())
     # the dot centre in the image is dark: ground truth sits on the dot
     for name in ("rotated_73", "two_markers"):
         im = np.asarray(Image.open(tmp_path / by[name]["file"]))

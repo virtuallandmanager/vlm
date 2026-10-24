@@ -23,7 +23,7 @@ from .codec import TEST_MARKERS
 from .layout import RING_RADII, finder_radii, plaque_side
 from .render import DARK, LIGHT, render
 
-FOCAL_PX = 760.0
+FOCAL_PX = 867.0
 IMAGE = (1280, 960)
 MIN_PPM, MAX_PPM = 0.6, 6.0
 
@@ -140,7 +140,8 @@ def generate(out_dir) -> list[dict]:
              "rotation_deg": rot % 360, "distance_m": dist, "angle_deg": ang, "diameter_mm": dia}
             for (i, (mid, dist, ang, rot, dia)) in enumerate(markers_meta)
         ]
-        manifest.append({"file": f"{name}.png", "name": name, "case": case, "markers": markers, "expect": expect})
+        manifest.append({"file": f"{name}.png", "name": name, "case": case, "markers": markers, "expect": expect,
+                         "focal_px": FOCAL_PX})
 
     def marker_case(name, case, label, d, angle=0.0, rot=0.0, damage=None, expect="ids"):
         mid, dia = TEST_MARKERS[label]
