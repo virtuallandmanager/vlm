@@ -80,6 +80,7 @@ class VisitorController(
   /** When [tick] last had a head pose, for the tracking watch's speed limits. */
   private var lastHeadMs: Long? = null
   private var cameraDenied = false
+  private var spatialDenied = false
   private var roomScanMissing = false
 
   /** The ring that last became steady, for naming the space a scene was just shown for. */
@@ -171,6 +172,12 @@ class VisitorController(
   /** Whether the camera permission has been refused (the hint then says how to allow it). */
   fun setCameraDenied(denied: Boolean) {
     cameraDenied = denied
+    refreshUi()
+  }
+
+  /** Whether the spatial data permission has been refused (the room scan can't be read; the hint says how to allow it). */
+  fun setSpatialDenied(denied: Boolean) {
+    spatialDenied = denied
     refreshUi()
   }
 
@@ -363,6 +370,7 @@ class VisitorController(
     val device =
         when {
           cameraDenied -> DeviceProblem.NO_CAMERA_PERMISSION
+          spatialDenied -> DeviceProblem.NO_SPATIAL_PERMISSION
           roomScanMissing -> DeviceProblem.NO_ROOM_SCAN
           else -> null
         }

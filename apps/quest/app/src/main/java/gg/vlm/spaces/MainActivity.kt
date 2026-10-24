@@ -211,7 +211,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     }
     sceneReady = true
     applyOcclusion()
-    if (checkSelfPermission(PERMISSION_USE_SCENE) == PackageManager.PERMISSION_GRANTED) loadRoom()
+    if (scenePermitted()) loadRoom()
   }
 
   override fun registerPanels(): List<PanelRegistration> =
@@ -258,8 +258,9 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     hintFollow.recentre()
     // Also catches permissions granted (or taken away) later in Settings.
     if (cameraPermitted()) camera.start() else if (!askingPermissions) onCameraStatus(CameraStatus.NO_PERMISSION)
+    if (!askingPermissions) visitor.setSpatialDenied(!scenePermitted())
     // And a room scan made (or finished loading) while the app was in the background.
-    if (sceneReady && !roomLoaded && !roomRequested && checkSelfPermission(PERMISSION_USE_SCENE) == PackageManager.PERMISSION_GRANTED) {
+    if (sceneReady && !roomLoaded && !roomRequested && scenePermitted()) {
       roomAttempts = 0
       loadRoom()
     }
@@ -389,6 +390,8 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   }
 
   // ── developer readings ───────────────────────────────────────────────
+
+  private fun scenePermitted(): Boolean = checkSelfPermission(PERMISSION_USE_SCENE) == PackageManager.PERMISSION_GRANTED
 
   private fun cameraPermitted(): Boolean =
       CAMERA_PERMISSIONS.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
@@ -578,7 +581,8 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     if (requestCode != REQUEST_PERMISSIONS) return
     askingPermissions = false
-    val sceneGranted = checkSelfPermission(PERMISSION_USE_SCENE) == PackageManager.PERMISSION_GRANTED
+    val sceneGranted = scenePermitted()
+    visitor.setSpatialDenied(!sceneGranted)
     state.markerStatus = if (sceneGranted) HOLD_MARKER else "Spatial data permission denied: room walls are unavailable"
     if (sceneGranted) loadRoom() else state.wallStatus = "Spatial data permission denied: no wall heading"
     if (cameraPermitted()) camera.start() else onCameraStatus(CameraStatus.NO_PERMISSION)

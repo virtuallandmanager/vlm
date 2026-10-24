@@ -29,10 +29,11 @@ Shortcuts and open questions:
 
 ### New visitor copy (the owner may reword)
 
-Added in the whole-branch review fixes, so a visitor is never left without an instruction. They show on the hint card, and on the space page when it is open. The camera and room scan lines take precedence over everything but a shown scene.
+Added in the whole-branch review fixes, so a visitor is never left without an instruction. They show on the hint card, and on the space page when it is open. The camera, spatial data and room scan lines take precedence over everything but a shown scene.
 
 - Room scan missing, or failed to load after its retries: "Set up your space on this headset first: Settings → Physical space → Space setup."
 - Camera permission denied: "VLM Spaces needs camera access to find rings. Allow it in Settings → Apps → VLM Spaces."
+- Spatial data permission denied (the room scan can't be read): "VLM Spaces needs spatial data access to line spaces up with the room. Allow it in Settings → Apps → VLM Spaces."
 - A ring that holds still but has had no wall heading for over 3 s (the scan missed its wall, or the wall disagrees with the ring's tilt): "Can't see the wall behind this ring. Look around the room so the headset can map it."
 
 ## Build

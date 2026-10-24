@@ -477,4 +477,46 @@ class VisitorFlowTest {
     on(VisitorEvent.Tick)
     assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
   }
+
+  // ── a feed's "isn't open" ──
+
+  @Test fun `feed not found after a ring's lookup clears to the hint once the ring leaves view`() {
+    on(VisitorEvent.RingAgreed(ringA))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), lookupOk()))
+    on(VisitorEvent.FeedStatus(FeedStatus.NOT_FOUND))
+    assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
+    // still in view, held by the retry backoff: the message stays
+    repeat(3) {
+      now += 500
+      assertTrue(on(VisitorEvent.RingAgreed(ringA)).isEmpty())
+      on(VisitorEvent.Tick)
+      assertEquals(VisitorState.Failed(VisitorCopy.NOT_OPEN), flow.state)
+    }
+    now += VisitorTuning.UNREADABLE_HINT_MS
+    on(VisitorEvent.Tick)
+    assertEquals(VisitorState.Hint, flow.state)
+  }
+
+  @Test fun `a feed's isn't open counts as a chosen space for the menu button until it clears`() {
+    on(VisitorEvent.RingAgreed(ringA))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), lookupOk()))
+    on(VisitorEvent.FeedStatus(FeedStatus.NOT_FOUND))
+    assertEquals(true, menuButtonShown(flow.state, flow.spaceChosen))
+    now += VisitorTuning.UNREADABLE_HINT_MS
+    on(VisitorEvent.Tick)
+    assertEquals(false, flow.spaceChosen)
+    // opened by code: no ring to leave view, so the message and the button stay until Look again
+    on(VisitorEvent.OpenSpace("ABC123"))
+    on(VisitorEvent.Lookup("ABC123", lookupOk("sp-b")))
+    on(VisitorEvent.FeedStatus(FeedStatus.NOT_FOUND))
+    now += 60_000
+    on(VisitorEvent.Tick)
+    assertEquals(true, menuButtonShown(flow.state, flow.spaceChosen))
+    on(VisitorEvent.LookAgain)
+    assertEquals(false, flow.spaceChosen)
+    // the server not knowing a ring is not a chosen space
+    on(VisitorEvent.RingAgreed(ringOther))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringOther), ApiResult.NotFound))
+    assertEquals(false, menuButtonShown(flow.state, flow.spaceChosen))
+  }
 }

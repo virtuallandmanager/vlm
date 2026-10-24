@@ -38,6 +38,8 @@ object VisitorCopy {
   // New copy from the whole-branch review (the owner may reword these; see the README).
   const val NO_ROOM_SCAN = "Set up your space on this headset first: Settings → Physical space → Space setup."
   const val NO_CAMERA = "VLM Spaces needs camera access to find rings. Allow it in Settings → Apps → VLM Spaces."
+  const val NO_SPATIAL_DATA =
+      "VLM Spaces needs spatial data access to line spaces up with the room. Allow it in Settings → Apps → VLM Spaces."
   const val NO_WALL = "Can't see the wall behind this ring. Look around the room so the headset can map it."
 }
 
@@ -108,16 +110,24 @@ class VisitorFlow {
   private var lookupRing: Long? = null
   /** The ring whose lookup started the feed we are following (null for [VisitorEvent.OpenSpace]). */
   private var feedRing: Long? = null
-  /** While "isn't open" is up for a ring on the do-not-ask list: that ring, and when it was last agreed. */
+  /**
+   * While "isn't open" is up for a ring (one on the do-not-ask list, or one whose space's feed said not found): that
+   * ring, and when it was last agreed.
+   */
   private var notOpenRing: Long? = null
   private var notOpenSeenMs = 0L
+  /** The chosen space's feed said not found, and "isn't open" is still up for it. */
+  private var chosenNotOpen = false
   private val doNotAskUntil = mutableMapOf<Long, Long>()
   private val retryAt = mutableMapOf<Long, Long>()
   private val retryDelay = mutableMapOf<Long, Long>()
 
-  /** A space has been chosen (its lookup answered) and not forgotten; its feed may still be loading. */
+  /**
+   * A space has been chosen (its lookup answered) and not forgotten; its feed may still be loading, or have said the
+   * space isn't open (while that message is up).
+   */
   val spaceChosen: Boolean
-    get() = feedSpaceId != null
+    get() = feedSpaceId != null || chosenNotOpen
 
   fun on(event: VisitorEvent, nowMs: Long): List<VisitorEffect> =
       when (event) {
@@ -142,11 +152,12 @@ class VisitorFlow {
         VisitorEvent.Tick -> tick(nowMs)
       }
 
-  /** A ring on the do-not-ask list that has left view for a while no longer holds "isn't open": back to the hint. */
+  /** A ring whose space isn't open that has left view for a while no longer holds "isn't open": back to the hint. */
   private fun tick(nowMs: Long): List<VisitorEffect> {
     if (notOpenRing != null && state == VisitorState.Failed(VisitorCopy.NOT_OPEN) &&
         nowMs - notOpenSeenMs >= VisitorTuning.UNREADABLE_HINT_MS) {
       notOpenRing = null
+      chosenNotOpen = false
       state = VisitorState.Hint
     }
     return emptyList()
@@ -170,8 +181,12 @@ class VisitorFlow {
       return emptyList()
     }
     // A failed lookup holds its message until the retry time, so it can't flicker or hammer the server.
-    if ((retryAt[ringId] ?: Long.MIN_VALUE) > nowMs) return emptyList()
+    if ((retryAt[ringId] ?: Long.MIN_VALUE) > nowMs) {
+      if (ringId == notOpenRing) notOpenSeenMs = nowMs
+      return emptyList()
+    }
     notOpenRing = null
+    chosenNotOpen = false
     val code = RingCodec.codeOf(ringId)
     lookupRing = ringId
     pendingCode = code
@@ -244,10 +259,14 @@ class VisitorFlow {
     return when (status) {
       FeedConnection.NOT_FOUND -> {
         // The feed reports this but doesn't clear the scene, so do it here, shown or not. The ring goes on the retry
-        // backoff: its lookup may well answer again, and the feed say not found again.
+        // backoff: its lookup may well answer again, and the feed say not found again. "Isn't open" clears like a ring
+        // the server doesn't know, once the ring is out of view (a space opened by code has no ring, so it stays).
         feedSpaceId = null
         space = null
         failed(feedRing, nowMs, VisitorCopy.NOT_OPEN)
+        notOpenRing = feedRing
+        notOpenSeenMs = nowMs
+        chosenNotOpen = true
         feedRing = null
         listOf(
             VisitorEffect.HideScene,
@@ -317,6 +336,7 @@ class VisitorFlow {
     lookupRing = null
     pendingCode = null
     notOpenRing = null
+    chosenNotOpen = false
     // A fresh look starts fresh: a failed lookup's backoff would otherwise hold the hint for up to 30 s.
     retryAt.clear()
     retryDelay.clear()

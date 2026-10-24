@@ -18,11 +18,14 @@ sealed interface ApiResult<out T> {
 /** What became of an analytics batch: taken, worth sending again later, or refused for good. */
 enum class AnalyticsPost { Sent, Retry, Drop }
 
-/** The fate of a batch the server answered with HTTP [status]: a 4xx other than 429 will never be taken. */
+/**
+ * The fate of a batch the server answered with HTTP [status]: a 4xx other than 408 (request timeout) and 429 will
+ * never be taken.
+ */
 fun analyticsPostFor(status: Int): AnalyticsPost =
     when {
       status in 200..299 -> AnalyticsPost.Sent
-      status == 429 -> AnalyticsPost.Retry
+      status == 408 || status == 429 -> AnalyticsPost.Retry
       status in 400..499 -> AnalyticsPost.Drop
       else -> AnalyticsPost.Retry
     }

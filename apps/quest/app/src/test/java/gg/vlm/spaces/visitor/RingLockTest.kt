@@ -119,4 +119,19 @@ class RingLockTest {
         gatherStatus(listOf(step(Gate.GATHERING, wallMissing = true), step(Gate.GATHERING)), false),
     )
   }
+
+  @Test fun `a far ring with no wall heading says step closer`() {
+    val l = RingLock()
+    var s = l.step(far, null, head, 0L)
+    repeat(20) { s = l.step(far, null, head, it * 300L) }
+    assertEquals(Gate.GATHERING, s.gate)
+    assertEquals(3.0, s.distanceM, 1e-9)
+    assertEquals(GatherStatus.TOO_FAR, gatherStatus(listOf(s), false))
+    // even once it has held still long enough to say the wall is missing: step closer first
+    assertTrue(s.wallMissing)
+    assertEquals(GatherStatus.TOO_FAR, gatherStatus(listOf(s), false))
+    // a near ring with no heading is still gathering
+    val n = RingLock()
+    assertEquals(GatherStatus.GATHERING, gatherStatus(listOf(n.step(near, null, head, 0L)), false))
+  }
 }

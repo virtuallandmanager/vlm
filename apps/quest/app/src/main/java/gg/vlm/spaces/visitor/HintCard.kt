@@ -26,6 +26,8 @@ import gg.vlm.spaces.ring.RingCodec
 /** Something about the headset that stops rings being found or placed, whatever the flow is doing. */
 enum class DeviceProblem {
   NO_CAMERA_PERMISSION,
+  /** Spatial data (scene) permission refused: the room scan can't be read, so no wall headings. */
+  NO_SPATIAL_PERMISSION,
   /** No room scan, or it failed to load after its retries: no wall headings. */
   NO_ROOM_SCAN,
 }
@@ -44,6 +46,7 @@ fun hintText(
     when {
       state is VisitorState.Shown -> null
       device == DeviceProblem.NO_CAMERA_PERMISSION -> VisitorCopy.NO_CAMERA
+      device == DeviceProblem.NO_SPATIAL_PERMISSION -> VisitorCopy.NO_SPATIAL_DATA
       device == DeviceProblem.NO_ROOM_SCAN -> VisitorCopy.NO_ROOM_SCAN
       else ->
           when (state) {

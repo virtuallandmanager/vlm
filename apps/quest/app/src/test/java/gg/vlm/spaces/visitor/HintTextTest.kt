@@ -31,6 +31,10 @@ class HintTextTest {
         VisitorCopy.NO_CAMERA,
     )
     assertEquals(
+        "VLM Spaces needs spatial data access to line spaces up with the room. Allow it in Settings → Apps → VLM Spaces.",
+        VisitorCopy.NO_SPATIAL_DATA,
+    )
+    assertEquals(
         "Can't see the wall behind this ring. Look around the room so the headset can map it.",
         VisitorCopy.NO_WALL,
     )
@@ -62,6 +66,7 @@ class HintTextTest {
     for (st in listOf(VisitorState.Hint, VisitorState.StepCloser, VisitorState.Loading("ABC", "Cafe"), locking, VisitorState.Failed(VisitorCopy.OFFLINE))) {
       assertEquals(VisitorCopy.NO_CAMERA, hintText(st, GatherStatus.GATHERING, 0, DeviceProblem.NO_CAMERA_PERMISSION))
       assertEquals(VisitorCopy.NO_ROOM_SCAN, hintText(st, GatherStatus.GATHERING, 0, DeviceProblem.NO_ROOM_SCAN))
+      assertEquals(VisitorCopy.NO_SPATIAL_DATA, hintText(st, GatherStatus.GATHERING, 0, DeviceProblem.NO_SPATIAL_PERMISSION))
     }
   }
 

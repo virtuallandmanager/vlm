@@ -5,8 +5,9 @@ import gg.vlm.spaces.ring.PoseAverager
 import kotlin.math.sqrt
 
 /**
- * One frame's verdict on a ring: its [gate], whether it has just become STEADY, its averaged pose, and whether its
- * position has held still for over [VisitorTuning.NO_WALL_HINT_MS] with no wall heading ([wallMissing]).
+ * One frame's verdict on a ring: its [gate], whether it has just become STEADY, its averaged pose, whether its
+ * position has held still for over [VisitorTuning.NO_WALL_HINT_MS] with no wall heading ([wallMissing]), and its
+ * averaged position's distance from the head ([distanceM]).
  */
 data class LockStep(
     val gate: Gate,
@@ -14,12 +15,13 @@ data class LockStep(
     val world: Vec3,
     val headingDeg: Double?,
     val wallMissing: Boolean = false,
+    val distanceM: Double = 0.0,
 )
 
 /**
  * One ring in view: its averaged world position and wall heading, put through [LockGate] each camera frame. Heading
  * comes from the wall the ring is on, so with no wall heading in the window the ring is GATHERING, never TOO_FAR or
- * STEADY. [LockStep.becameSteady] marks a new steady pose (the gate has just become STEADY). Main thread only.
+ * STEADY (its [LockStep.distanceM] still tells [gatherStatus] it is too far). [LockStep.becameSteady] marks a new steady pose (the gate has just become STEADY). Main thread only.
  */
 class RingLock(capacity: Int = VisitorTuning.AVERAGE_FRAMES, private val minFrames: Int = VisitorTuning.MIN_FRAMES) {
   private val positions = PoseAverager(capacity, minFrames)
@@ -33,14 +35,13 @@ class RingLock(capacity: Int = VisitorTuning.AVERAGE_FRAMES, private val minFram
     headings.add(headingDeg)
     val mean = positions.mean()!!
     val heading = headings.mean()
+    val dx = mean.x - head.x
+    val dy = mean.y - head.y
+    val dz = mean.z - head.z
+    val distance = sqrt(dx * dx + dy * dy + dz * dz)
     val gate =
         if (heading == null) Gate.GATHERING
-        else {
-          val dx = mean.x - head.x
-          val dy = mean.y - head.y
-          val dz = mean.z - head.z
-          LockGate.evaluate(positions.count, positions.spread()!!, headings.spread()!!, sqrt(dx * dx + dy * dy + dz * dz))
-        }
+        else LockGate.evaluate(positions.count, positions.spread()!!, headings.spread()!!, distance)
     val now = gate == Gate.STEADY
     val edge = now && !steady
     steady = now
@@ -49,7 +50,7 @@ class RingLock(capacity: Int = VisitorTuning.AVERAGE_FRAMES, private val minFram
     if (!stillWithoutWall) noWallSince = null
     else if (noWallSince == null) noWallSince = nowMs
     val wallMissing = noWallSince?.let { nowMs - it > VisitorTuning.NO_WALL_HINT_MS } == true
-    return LockStep(gate, edge, mean, heading, wallMissing)
+    return LockStep(gate, edge, mean, heading, wallMissing, distance)
   }
 
   fun clear() {
@@ -76,13 +77,16 @@ enum class GatherStatus {
 
 /**
  * The gather status for one camera frame: [steps] are the space's rings in view this frame, and [unreadableSeen]
- * says an unreadable ring is being seen.
+ * says an unreadable ring is being seen. A ring with no wall heading never reaches the gate's TOO_FAR, so its distance
+ * is checked here: stepping closer comes before finding the wall.
  */
 fun gatherStatus(steps: List<LockStep>, unreadableSeen: Boolean): GatherStatus =
     when {
       steps.isEmpty() -> if (unreadableSeen) GatherStatus.UNREADABLE else GatherStatus.NONE_IN_VIEW
       steps.any { it.gate == Gate.STEADY } -> GatherStatus.GATHERING
-      steps.any { it.gate == Gate.TOO_FAR } -> GatherStatus.TOO_FAR
+      steps.any {
+        it.gate == Gate.TOO_FAR || (it.headingDeg == null && it.distanceM > VisitorTuning.MAX_LOCK_DISTANCE_M)
+      } -> GatherStatus.TOO_FAR
       steps.all { it.wallMissing } -> GatherStatus.NO_WALL
       else -> GatherStatus.GATHERING
     }

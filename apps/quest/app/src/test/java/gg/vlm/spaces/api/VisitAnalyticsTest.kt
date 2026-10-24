@@ -170,6 +170,7 @@ class VisitAnalyticsTest {
     assertEquals(AnalyticsPost.Drop, analyticsPostFor(400))
     assertEquals(AnalyticsPost.Drop, analyticsPostFor(404))
     assertEquals(AnalyticsPost.Drop, analyticsPostFor(413))
+    assertEquals(AnalyticsPost.Retry, analyticsPostFor(408))
     assertEquals(AnalyticsPost.Retry, analyticsPostFor(429))
     assertEquals(AnalyticsPost.Retry, analyticsPostFor(500))
     assertEquals(AnalyticsPost.Retry, analyticsPostFor(503))
