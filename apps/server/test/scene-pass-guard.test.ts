@@ -36,6 +36,7 @@ const PUBLIC_EXACT = [
   'POST /api/hyperfy/pairings/:id/renew', // the pairing's browser secret is the auth
   'POST /api/hyperfy/pairings/vouch', // world-secret auth; a hosted world speaks for its player
   'GET /api/hyperfy/app.hyp', // public: the built VLM Hyperfy app download
+  'POST /api/ar/spaces/:id/analytics', // public for a published space (visits from a headset)
   'POST /api/ar/pair', // public: a headset starts a pairing with the hash of its secret
   'POST /api/ar/pair/:code/claim', // the code plus the headset secret is the auth
   'POST /api/ar/devices/:id/pass', // the headset secret is the auth

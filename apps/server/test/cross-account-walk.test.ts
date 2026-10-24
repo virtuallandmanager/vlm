@@ -135,6 +135,7 @@ const CASES: Case[] = [
   { route: 'DELETE /api/ar/spaces/:id/adjustments/:instanceId', url: (f) => `/api/ar/spaces/${f.arSpace.id}/adjustments/${f.instance.id}` },
   { route: 'DELETE /api/ar/markers/:id', url: (f) => `/api/ar/markers/${f.arMarker.id}` },
   { route: 'GET /api/ar/markers/by-code/:code', url: () => `/api/ar/markers/by-code/${ringCodeOf(123456)}` },
+  { route: 'POST /api/ar/spaces/:id/analytics', url: (f) => `/api/ar/spaces/${f.arSpace.id}/analytics`, body: () => ({ v: 1, platform: 'ar-quest', events: [{ type: 'enter', playerId: 'p1', t: Date.now() }] }) },
   { route: 'GET /api/ar/spaces/:id/feed', url: (f) => `/api/ar/spaces/${f.arSpace.id}/feed` },
   // AR headsets (B's shared headset; A guesses the secret)
   { route: 'POST /api/ar/devices/:id/pass', url: (f) => `/api/ar/devices/${f.arDevice.id}/pass`, body: (f) => ({ secret: 'guess', spaceId: f.arSpace.id }) },

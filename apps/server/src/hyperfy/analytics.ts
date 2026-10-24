@@ -17,40 +17,62 @@ export function hyperfySessionId(worldId: string, playerId: string, enterT: numb
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
-/** The world's analytics location (kind 'hyperfy'), created on first use and kept in step with the world. */
-async function ensureLocation(tx: Tx, world: HyperfyWorldRow) {
-  const locationKey = `hyperfy:${world.id}`
+/** Where a batch of visits is recorded: one analytics location, kept in step with its source (a Hyperfy world, an AR space). */
+export type VisitTarget = {
+  kind: 'hyperfy' | 'ar'
+  /** The source's id; seeds session ids. */
+  sourceId: string
+  /** Prefix of the analytics location key and of the per-location visitor hash input (`<prefix>:<id>`, `<prefix>:<playerId>`). */
+  keyPrefix: string
+  realm: string
+  platform: string
+  title: string
+  sceneId: string
+  hostUserId: string | null
+}
+
+/** The location, created on first use and kept in step with its source. */
+async function ensureLocation(tx: Tx, target: VisitTarget) {
+  const locationKey = `${target.keyPrefix}:${target.sourceId}`
   await tx
     .insert(analyticsScenes)
     .values({
-      kind: 'hyperfy',
+      kind: target.kind,
       locationKey,
-      realm: 'hyperfy',
-      title: world.name,
+      realm: target.realm,
+      title: target.title,
       salt: randomBytes(32).toString('hex'),
-      vlmSceneId: world.sceneId,
+      vlmSceneId: target.sceneId,
     })
     .onConflictDoNothing()
   const [scene] = await tx.select().from(analyticsScenes).where(eq(analyticsScenes.locationKey, locationKey))
-  if (scene.title !== world.name || scene.vlmSceneId !== world.sceneId) {
-    await tx.update(analyticsScenes).set({ title: world.name, vlmSceneId: world.sceneId, updatedAt: new Date() }).where(eq(analyticsScenes.id, scene.id))
+  if (scene.title !== target.title || scene.vlmSceneId !== target.sceneId) {
+    await tx.update(analyticsScenes).set({ title: target.title, vlmSceneId: target.sceneId, updatedAt: new Date() }).where(eq(analyticsScenes.id, scene.id))
   }
   // The setup row is what makes the location readable by the scene's team in the analytics overview.
   await tx
     .insert(locationSetups)
-    .values({ analyticsSceneId: scene.id, vlmSceneId: world.sceneId, hostUserId: world.ownerId })
+    .values({ analyticsSceneId: scene.id, vlmSceneId: target.sceneId, hostUserId: target.hostUserId })
     .onConflictDoNothing()
   return scene
 }
 
+/** Record a Hyperfy world's visitor events (see recordVisitBatch). */
+export function recordHyperfyBatch(world: HyperfyWorldRow, batch: HyperfyAnalyticsBatch): Promise<{ accepted: number }> {
+  return recordVisitBatch(
+    { kind: 'hyperfy', sourceId: world.id, keyPrefix: 'hyperfy', realm: 'hyperfy', platform: 'hyperfy', title: world.name, sceneId: world.sceneId, hostUserId: world.ownerId },
+    batch,
+  )
+}
+
 /**
- * Record a Hyperfy world's visitor events. Hyperfy players have no wallets and no names are carried, so
- * sessions are unverified guests keyed by a per-location hash of `hyperfy:<playerId>`.
+ * Record visitor events from a Hyperfy world or an AR space. Players have no wallets and no names are carried,
+ * so sessions are unverified guests keyed by a per-location hash of `<keyPrefix>:<playerId>`.
  * writeBatch is DCL-shaped (one session per batch), so this writes directly.
  */
-export async function recordHyperfyBatch(world: HyperfyWorldRow, batch: HyperfyAnalyticsBatch): Promise<{ accepted: number }> {
+export async function recordVisitBatch(target: VisitTarget, batch: HyperfyAnalyticsBatch): Promise<{ accepted: number }> {
   return db.transaction(async (tx) => {
-    const scene = await ensureLocation(tx, world)
+    const scene = await ensureLocation(tx, target)
     const open = new Map<string, { id: string; startedAt: number }>()
     const dirty = new Set<number>()
     let accepted = 0
@@ -59,7 +81,7 @@ export async function recordHyperfyBatch(world: HyperfyWorldRow, batch: HyperfyA
     const sessionFor = async (playerId: string, t: number) => {
       const known = open.get(playerId)
       if (known) return known
-      const hash = visitorHash(scene.salt, `hyperfy:${playerId}`)
+      const hash = visitorHash(scene.salt, `${target.keyPrefix}:${playerId}`)
       const [row] = await tx
         .select({ id: analyticsSessions.id, startedAt: analyticsSessions.startedAt })
         .from(analyticsSessions)
@@ -86,9 +108,9 @@ export async function recordHyperfyBatch(world: HyperfyWorldRow, batch: HyperfyA
     for (const e of batch.events) {
       lastT = Math.max(lastT, e.t)
       dirty.add(hourOf(e.t).getTime())
-      const hash = visitorHash(scene.salt, `hyperfy:${e.playerId}`)
+      const hash = visitorHash(scene.salt, `${target.keyPrefix}:${e.playerId}`)
       if (e.type === 'enter') {
-        const id = hyperfySessionId(world.id, e.playerId, e.t)
+        const id = hyperfySessionId(target.sourceId, e.playerId, e.t)
         const [prior] = await tx
           .select({ n: sql<number>`count(*)::int` })
           .from(analyticsSessions)
@@ -101,7 +123,7 @@ export async function recordHyperfyBatch(world: HyperfyWorldRow, batch: HyperfyA
             visitorHash: hash,
             isGuest: true,
             verified: false,
-            platform: 'hyperfy',
+            platform: target.platform,
             isReturning: prior.n > 0,
             startedAt: new Date(e.t),
             lastSeenAt: new Date(e.t),
@@ -111,7 +133,7 @@ export async function recordHyperfyBatch(world: HyperfyWorldRow, batch: HyperfyA
           .returning({ id: analyticsSessions.id })
         open.set(e.playerId, { id, startedAt: e.t })
         if (created.length) {
-          await tx.insert(analyticsEvents).values({ sceneId: scene.id, sessionId: id, seq: 0, visitorHash: hash, type: 'session.start', occurredAt: new Date(e.t), verified: false, data: { platform: 'hyperfy' } }).onConflictDoNothing()
+          await tx.insert(analyticsEvents).values({ sceneId: scene.id, sessionId: id, seq: 0, visitorHash: hash, type: 'session.start', occurredAt: new Date(e.t), verified: false, data: { platform: target.platform } }).onConflictDoNothing()
           accepted++
         }
         continue

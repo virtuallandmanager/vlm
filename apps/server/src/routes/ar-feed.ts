@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { AR_FEED, type ArFeedResponse, type ArMarkerLookup } from 'vlm-shared'
+import { AR_FEED, checkHyperfyAnalyticsBatch, type ArFeedResponse, type ArMarkerLookup } from 'vlm-shared'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess } from '../auth/permissions.js'
@@ -7,12 +7,23 @@ import { fromSpace, markerByCode, markerSceneByCode, mayBuild, spaceScene } from
 import { arSpaceSnapshot } from '../ar/snapshot.js'
 import { longPoll } from '../http/long-poll.js'
 import { TokenBucketLimiter } from '../analytics/limiter.js'
+import { getSpace } from '../ar/spaces.js'
+import { AR_ANALYTICS_PLATFORMS, recordArBatch } from '../ar/analytics.js'
 
 let holdMs: number = AR_FEED.holdMs
 
 // Per IP: a headset polls about 3 times a minute, plus bursts on edits and errors.
 export const AR_FEED_LIMIT = { capacity: 120, refillPerSec: 2 }
 let limiter = new TokenBucketLimiter()
+
+// Per IP: a headset flushes a batch every few seconds while someone is inside.
+export const AR_ANALYTICS_LIMIT = { capacity: 60, refillPerSec: 1 }
+let analyticsLimiter = new TokenBucketLimiter()
+
+/** Test hook. */
+export function setArAnalyticsLimiter(l: TokenBucketLimiter): void {
+  analyticsLimiter = l
+}
 
 /** Test hook. */
 export function setArFeedLimiter(l: TokenBucketLimiter): void {
@@ -89,6 +100,23 @@ export default async function arFeedRoutes(app: FastifyInstance) {
         },
         'not_found',
       )
+    },
+  )
+
+  app.post<{ Params: { id: string } }>(
+    '/api/ar/spaces/:id/analytics',
+    // Public for a published space; its own per-IP limit.
+    { logLevel: 'warn', config: { rateLimit: false } },
+    async (request, reply) => {
+      const limit = analyticsLimiter.take(`ip:${request.ip}`, 1, AR_ANALYTICS_LIMIT.capacity, AR_ANALYTICS_LIMIT.refillPerSec)
+      if (!limit.ok) return reply.status(429).send({ error: 'rate_limited', retryAfter: Math.ceil(limit.retryAfterMs / 1000) })
+      const space = await getSpace(request.params.id)
+      if (!space || !space.published) return reply.status(404).send({ error: 'not_found' })
+      const { platform, ...rest } = (request.body ?? {}) as Record<string, unknown>
+      if (typeof platform !== 'string' || !AR_ANALYTICS_PLATFORMS.has(platform)) return reply.status(400).send({ error: 'bad_platform' })
+      const checked = checkHyperfyAnalyticsBatch(rest, Date.now())
+      if (!checked.ok) return reply.status(400).send({ error: checked.error })
+      return reply.send(await recordArBatch(space, platform, checked.batch))
     },
   )
 }

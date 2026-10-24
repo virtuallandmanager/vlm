@@ -308,7 +308,7 @@ export const sceneCollaboratorsRelations = relations(sceneCollaborators, ({ one 
 
 // ── Analytics ────────────────────────────────────────────────────────────────
 
-export const analyticsSceneKindEnum = pgEnum('analytics_scene_kind', ['parcels', 'world', 'preview', 'hyperfy'])
+export const analyticsSceneKindEnum = pgEnum('analytics_scene_kind', ['parcels', 'world', 'preview', 'hyperfy', 'ar'])
 export const analyticsClaimStatusEnum = pgEnum('analytics_claim_status', ['active', 'lapsed'])
 
 export const analyticsScenes = pgTable('analytics_scenes', {
