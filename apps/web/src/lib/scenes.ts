@@ -5,11 +5,6 @@ export function shortId(id: string): string {
   return id.length > 8 ? `${id.slice(0, 8)}…` : id
 }
 
-/** The page header's count badge: at least two digits. */
-export function countLabel(n: number): string {
-  return String(n).padStart(2, '0')
-}
-
 export function filterScenes<T extends { name: string; description?: string | null }>(scenes: T[], query: string): T[] {
   const q = query.trim().toLowerCase()
   if (!q) return scenes

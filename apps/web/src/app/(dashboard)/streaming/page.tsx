@@ -3,10 +3,13 @@ import { useApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
+import { Badge, PageHeader, PrimaryButton, Skeleton, StatusDot, tableHead } from '@/components/ui'
+import { PlusIcon } from '@/components/icons'
+import { countLabel } from '@/lib/format'
 
 export default function StreamingPage() {
   return (
-    <Suspense fallback={<p className="text-gray-400">Loading...</p>}>
+    <Suspense fallback={<Skeleton />}>
       <StreamingContent />
     </Suspense>
   )
@@ -33,12 +36,7 @@ const statusLabels: Record<string, string> = {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-medium">
-      <span className={`inline-block h-2 w-2 rounded-full ${statusColors[status] || 'bg-gray-500'}`} />
-      {statusLabels[status] || status}
-    </span>
-  )
+  return <StatusDot dot={statusColors[status] || 'bg-gray-500'} label={statusLabels[status] || status} />
 }
 
 function formatDateTime(iso: string | null) {
@@ -161,13 +159,7 @@ function StreamingContent() {
   // ── Detail view ────────────────────────────────────────────────────────────
   if (selectedServerId) {
     return (
-      <div>
-        <button
-          onClick={() => router.push('/streaming')}
-          className="mb-4 text-sm text-gray-400 hover:text-white"
-        >
-          &larr; Back to servers
-        </button>
+      <div className="mx-auto max-w-7xl">
         <ServerDetail
           serverId={selectedServerId}
           onDeleted={() => {
@@ -180,29 +172,26 @@ function StreamingContent() {
   }
 
   // ── List view ──────────────────────────────────────────────────────────────
-  if (loading) return <p className="text-gray-400">Loading streaming servers...</p>
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Streaming</h1>
-        <button
-          onClick={() => setShowProvision(!showProvision)}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700"
-        >
-          + Provision Server
-        </button>
-      </div>
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        crumbs={['Tools', 'Streaming']}
+        title="Streaming"
+        count={loading ? undefined : countLabel(servers.length)}
+        subtitle="Run live video into your scenes."
+        actions={<PrimaryButton onClick={() => setShowProvision(!showProvision)}><PlusIcon size={16} /> Provision Server</PrimaryButton>}
+      />
 
       {showProvision && (
-        <form onSubmit={handleProvision} className="mb-6 space-y-3 rounded-xl border border-gray-800 bg-gray-900 p-4">
+        <form onSubmit={handleProvision} className="mb-6 space-y-3 rounded-lg border border-gray-800 bg-gray-900 p-4">
           <input
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Server name"
             autoFocus
-            className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
           />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
@@ -212,7 +201,7 @@ function StreamingContent() {
                 value={newRegion}
                 onChange={(e) => setNewRegion(e.target.value)}
                 placeholder="us-east-1"
-                className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
               />
             </div>
           </div>
@@ -221,14 +210,14 @@ function StreamingContent() {
             <button
               type="submit"
               disabled={provisioning}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
             >
               {provisioning ? 'Provisioning...' : 'Provision'}
             </button>
             <button
               type="button"
               onClick={() => setShowProvision(false)}
-              className="rounded-lg bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
+              className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
             >
               Cancel
             </button>
@@ -236,7 +225,9 @@ function StreamingContent() {
         </form>
       )}
 
-      {servers.length === 0 ? (
+      {loading ? (
+        <Skeleton />
+      ) : servers.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-500 mb-2">No streaming servers yet.</p>
           <p className="text-sm text-gray-600">Provision a server to start streaming via RTMP.</p>
@@ -260,7 +251,7 @@ function ServerCard({ server, onClick }: { server: any; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="rounded-xl border border-gray-800 bg-gray-900 p-4 hover:border-gray-600 transition-colors text-left w-full"
+      className="rounded-lg border border-gray-800 bg-gray-900 p-4 hover:border-gray-600 transition-colors text-left w-full"
     >
       <div className="flex items-start justify-between mb-2">
         <h3 className="font-semibold truncate mr-2">{server.name}</h3>
@@ -341,23 +332,23 @@ function ServerDetail({ serverId, onDeleted }: { serverId: string; onDeleted: ()
     }
   }
 
-  if (loading) return <p className="text-gray-400">Loading server details...</p>
+  if (loading) return <Skeleton />
   if (error && !server) return <p className="text-red-400">{error}</p>
   if (!server) return <p className="text-gray-400">Server not found.</p>
 
   return (
     <div className="space-y-6">
+      <PageHeader
+        crumbs={['Tools', { label: 'Streaming', href: '/streaming' }, server.name]}
+        title={server.name}
+        subtitle={<span className="capitalize">{server.type} server</span>}
+        actions={<StatusBadge status={server.status} />}
+      />
+
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       {/* Server Info */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-semibold">{server.name}</h2>
-            <p className="text-sm text-gray-400 mt-1 capitalize">{server.type} server</p>
-          </div>
-          <StatusBadge status={server.status} />
-        </div>
+      <div className="rounded-lg border border-gray-800 bg-gray-900 p-5">
 
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -412,21 +403,21 @@ function ServerDetail({ serverId, onDeleted }: { serverId: string; onDeleted: ()
       </div>
 
       {/* Sessions History */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
+      <div className="rounded-lg border border-gray-800 bg-gray-900 p-5">
         <h2 className="text-lg font-semibold mb-3">Sessions History</h2>
         {sessions.length === 0 ? (
           <p className="text-sm text-gray-500">No sessions recorded yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-800 text-left text-xs text-gray-400">
-                  <th className="pb-2 pr-4 font-medium">Started</th>
-                  <th className="pb-2 pr-4 font-medium">Ended</th>
-                  <th className="pb-2 pr-4 font-medium">Duration</th>
-                  <th className="pb-2 pr-4 font-medium">Peak Bitrate</th>
-                  <th className="pb-2 pr-4 font-medium">Peak Viewers</th>
-                  <th className="pb-2 font-medium">Recorded</th>
+              <thead className={tableHead}>
+                <tr className="border-b border-gray-800">
+                  <th className="pb-2 pr-4">Started</th>
+                  <th className="pb-2 pr-4">Ended</th>
+                  <th className="pb-2 pr-4">Duration</th>
+                  <th className="pb-2 pr-4">Peak Bitrate</th>
+                  <th className="pb-2 pr-4">Peak Viewers</th>
+                  <th className="pb-2">Recorded</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800/50">
@@ -441,9 +432,7 @@ function ServerDetail({ serverId, onDeleted }: { serverId: string; onDeleted: ()
                     <td className="py-2 pr-4 whitespace-nowrap">{session.peakViewers ?? '--'}</td>
                     <td className="py-2 whitespace-nowrap">
                       {session.recorded ? (
-                        <span className="inline-flex items-center rounded-full bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400">
-                          Recorded
-                        </span>
+                        <Badge tone="info">Recorded</Badge>
                       ) : (
                         <span className="text-gray-500">--</span>
                       )}
@@ -457,7 +446,7 @@ function ServerDetail({ serverId, onDeleted }: { serverId: string; onDeleted: ()
       </div>
 
       {/* Delete */}
-      <div className="rounded-xl border border-red-900/50 bg-gray-900 p-4">
+      <div className="rounded-lg border border-red-900/50 bg-gray-900 p-4">
         <h2 className="text-lg font-semibold text-red-400 mb-2">Danger Zone</h2>
         <p className="text-sm text-gray-400 mb-3">
           Terminating this server will stop all active streams and mark it as terminated.
@@ -465,7 +454,7 @@ function ServerDetail({ serverId, onDeleted }: { serverId: string; onDeleted: ()
         {!confirmDelete ? (
           <button
             onClick={() => setConfirmDelete(true)}
-            className="rounded-lg bg-red-600/20 px-4 py-2 text-sm text-red-400 hover:bg-red-600/30"
+            className="rounded-md bg-red-600/20 px-4 py-2 text-sm text-red-400 hover:bg-red-600/30"
           >
             Terminate Server
           </button>
@@ -475,13 +464,13 @@ function ServerDetail({ serverId, onDeleted }: { serverId: string; onDeleted: ()
             <button
               onClick={handleDelete}
               disabled={deleting}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50"
+              className="rounded-md bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50"
             >
               {deleting ? 'Terminating...' : 'Confirm Terminate'}
             </button>
             <button
               onClick={() => setConfirmDelete(false)}
-              className="rounded-lg bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
+              className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
             >
               Cancel
             </button>

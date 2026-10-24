@@ -8,10 +8,12 @@ import { useAuth } from '@/lib/auth'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
+import { Badge, ConfirmAction, PageHeader, PlatformBadge, PrimaryButton, Skeleton, StatusDot } from '@/components/ui'
+import { PlusIcon } from '@/components/icons'
 
 export default function DeployPage() {
   return (
-    <Suspense fallback={<p className="text-gray-400">Loading...</p>}>
+    <Suspense fallback={<Skeleton />}>
       <DeployContent />
     </Suspense>
   )
@@ -36,24 +38,7 @@ const statusLabels: Record<string, string> = {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-medium">
-      <span className={`inline-block h-2 w-2 rounded-full ${statusColors[status] || 'bg-gray-500'}`} />
-      {statusLabels[status] || status}
-    </span>
-  )
-}
-
-function PlatformBadge({ platform }: { platform: string }) {
-  const colors: Record<string, string> = {
-    decentraland: 'bg-purple-500/20 text-purple-400',
-    hyperfy: 'bg-cyan-500/20 text-cyan-400',
-  }
-  return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[platform] || 'bg-gray-500/20 text-gray-400'}`}>
-      {platform === 'decentraland' ? 'Decentraland' : platform === 'hyperfy' ? 'Hyperfy' : platform}
-    </span>
-  )
+  return <StatusDot dot={statusColors[status] || 'bg-gray-500'} label={statusLabels[status] || status} />
 }
 
 function formatDateTime(iso: string | null) {
@@ -183,9 +168,6 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
 
   const rotate = (w: HyperfyWorldSummary) => {
     const hosted = w.kind === 'hosted'
-    if (!confirm(hosted
-      ? `Make a new key for "${w.name}"? The world restarts to pick it up.`
-      : `Make a new key for "${w.name}"? The old key stops working right away.`)) return
     return run(async () => {
       const { world, key } = await api.rotateHyperfyWorldKey(w.id)
       replaceWorld(world)
@@ -200,7 +182,6 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
 
   const remove = (w: HyperfyWorldSummary) => {
     const hosted = w.kind === 'hosted'
-    if (!confirm(hosted ? destroyWorldPrompt(w.name) : removeWorldPrompt(w.name))) return
     return run(async () => {
       try {
         await api.deleteHyperfyWorld(w.id)
@@ -253,9 +234,12 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
   const now = new Date()
   const noSlotsLeft = slots !== null && slots.used >= slots.limit
   const link = (address: string) => (
-    <a href={`https://${address}`} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline">{address}</a>
+    <a href={`https://${address}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300">{address}</a>
   )
-  const actionClass = 'text-cyan-400 hover:text-cyan-300 disabled:opacity-50'
+  const rotatePrompt = (w: HyperfyWorldSummary) => w.kind === 'hosted'
+    ? `Make a new key for "${w.name}"? The world restarts to pick it up.`
+    : `Make a new key for "${w.name}"? The old key stops working right away.`
+  const actionClass = 'text-blue-400 hover:text-blue-300 disabled:opacity-50'
   const dangerClass = 'text-red-400 hover:text-red-300 disabled:opacity-50'
 
   return (
@@ -266,17 +250,17 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
       </div>
 
       {error && <p className="rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300" role="alert">{error}</p>}
-      {notice && <p className="rounded-lg border border-cyan-900/60 bg-cyan-950/40 px-4 py-3 text-sm text-cyan-300" role="status">{notice}</p>}
+      {notice && <p className="rounded-lg border border-blue-900/60 bg-blue-950/40 px-4 py-3 text-sm text-blue-300" role="status">{notice}</p>}
 
       {shown?.kind === 'key' && (
-        <div className="space-y-3 rounded-xl border border-cyan-500/40 bg-gray-900 p-5">
-          <p className="text-sm font-medium text-cyan-400">World key for {shown.worldName}</p>
+        <div className="space-y-3 rounded-lg border border-blue-500/40 bg-gray-900 p-5">
+          <p className="text-sm font-medium text-blue-400">World key for {shown.worldName}</p>
           <div className="flex items-center gap-2">
-            <code className="min-w-0 flex-1 break-all rounded-lg bg-gray-800 px-3 py-2 text-sm text-white">{shown.key}</code>
-            <button onClick={() => copy(shown.key)} className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-cyan-400 hover:bg-gray-700">{copied ? 'Copied' : 'Copy'}</button>
+            <code className="min-w-0 flex-1 break-all rounded-md bg-gray-800 px-3 py-2 text-sm text-white">{shown.key}</code>
+            <button onClick={() => copy(shown.key)} className="rounded-md bg-gray-800 px-3 py-2 text-sm text-blue-400 hover:bg-gray-700">{copied ? 'Copied' : 'Copy'}</button>
           </div>
           <p className="text-sm text-yellow-400">You won&apos;t see this key again.</p>
-          <a href={`${API_URL}/api/hyperfy/app.hyp`} className="inline-block rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500">Download VLM app (.hyp)</a>
+          <a href={`${API_URL}/api/hyperfy/app.hyp`} className="inline-block rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Download VLM app (.hyp)</a>
           <ol className="list-decimal space-y-1 pl-5 text-sm text-gray-300">
             {setupSteps(API_URL).map((step) => <li key={step}>{step}</li>)}
           </ol>
@@ -285,11 +269,11 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
       )}
 
       {shown?.kind === 'created' && (
-        <div className="space-y-3 rounded-xl border border-cyan-500/40 bg-gray-900 p-5">
-          <p className="text-sm font-medium text-cyan-400">{shown.worldName} is being set up</p>
+        <div className="space-y-3 rounded-lg border border-blue-500/40 bg-gray-900 p-5">
+          <p className="text-sm font-medium text-blue-400">{shown.worldName} is being set up</p>
           <p className="text-sm text-gray-300">Type <code className="rounded bg-gray-800 px-1.5 py-0.5 text-white">/admin {shown.adminCode}</code> in the world&apos;s chat to build.</p>
           <div>
-            <button onClick={() => copy(shown.adminCode)} className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-cyan-400 hover:bg-gray-700">{copied ? 'Copied' : 'Copy admin code'}</button>
+            <button onClick={() => copy(shown.adminCode)} className="rounded-md bg-gray-800 px-3 py-2 text-sm text-blue-400 hover:bg-gray-700">{copied ? 'Copied' : 'Copy admin code'}</button>
           </div>
           {shown.address && <p className="text-sm text-gray-300">Address: {link(shown.address)}</p>}
           <p className="text-sm text-gray-400">Setup takes about 2 to 3 minutes. The world shows as Live below when it&apos;s ready.</p>
@@ -299,13 +283,13 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
       )}
 
       {loading ? (
-        <p className="text-gray-400">Loading worlds...</p>
+        <Skeleton rows={2} className="h-12" />
       ) : worlds.length === 0 ? (
-        !error && <p className="rounded-xl border border-gray-800 bg-gray-900 py-6 text-center text-sm text-gray-500">No worlds connected to this scene yet.</p>
+        !error && <p className="rounded-lg border border-gray-800 bg-gray-900 py-6 text-center text-sm text-gray-500">No worlds connected to this scene yet.</p>
       ) : (
         <div className="space-y-2">
           {worlds.map((w) => w.kind === 'hosted' ? (
-            <div key={w.id} className="space-y-2 rounded-xl border border-gray-800 bg-gray-900 px-4 py-3">
+            <div key={w.id} className="space-y-2 rounded-lg border border-gray-800 bg-gray-900 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate font-medium">{w.name}</p>
@@ -324,8 +308,8 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
                   )}
                   {w.status === 'ended' && <button disabled={busy} onClick={() => restore(w)} className={actionClass}>Restore</button>}
                   {w.status === 'running' && <button disabled={busy} onClick={() => showAdminCode(w)} className={actionClass}>Show admin code</button>}
-                  {w.status === 'running' && <button disabled={busy} onClick={() => rotate(w)} className={actionClass}>New key</button>}
-                  <button disabled={busy} onClick={() => remove(w)} className={dangerClass}>Destroy</button>
+                  {w.status === 'running' && <ConfirmAction disabled={busy} danger={false} confirmLabel="New key" prompt={rotatePrompt(w)} onConfirm={() => rotate(w)} className={actionClass}>New key</ConfirmAction>}
+                  <ConfirmAction disabled={busy} confirmLabel="Destroy" prompt={destroyWorldPrompt(w.name)} onConfirm={() => remove(w)} className={dangerClass}>Destroy</ConfirmAction>
                 </div>
               </div>
               {editing?.id === w.id && (
@@ -337,10 +321,10 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
                       type="date"
                       value={editing.day}
                       onChange={(e) => setEditing({ id: w.id, day: e.target.value })}
-                      className="rounded-lg bg-gray-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-cyan-500"
+                      className="rounded-md bg-gray-950 px-3 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
                     />
                   </div>
-                  <button disabled={busy || !editing.day} onClick={() => saveEndDate(w, editing.day)} className="rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50">Save</button>
+                  <button disabled={busy || !editing.day} onClick={() => saveEndDate(w, editing.day)} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">Save</button>
                   <button onClick={() => setEditing(null)} className="text-sm text-gray-400 hover:text-white">Cancel</button>
                 </div>
               )}
@@ -352,14 +336,14 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
               )}
             </div>
           ) : (
-            <div key={w.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-800 bg-gray-900 px-4 py-3">
+            <div key={w.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-800 bg-gray-900 px-4 py-3">
               <div className="min-w-0">
                 <p className="truncate font-medium">{w.name}</p>
                 <p className="text-xs text-gray-500">Key {w.keyPrefix}… · {lastSeenLabel(w.lastSeenAt, now)}</p>
               </div>
               <div className="flex gap-3 text-sm">
-                <button disabled={busy} onClick={() => rotate(w)} className={actionClass}>New key</button>
-                <button disabled={busy} onClick={() => remove(w)} className={dangerClass}>Remove</button>
+                <ConfirmAction disabled={busy} danger={false} confirmLabel="New key" prompt={rotatePrompt(w)} onConfirm={() => rotate(w)} className={actionClass}>New key</ConfirmAction>
+                <ConfirmAction disabled={busy} confirmLabel="Remove" prompt={removeWorldPrompt(w.name)} onConfirm={() => remove(w)} className={dangerClass}>Remove</ConfirmAction>
               </div>
             </div>
           ))}
@@ -367,13 +351,13 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
       )}
 
       {slots?.hostingAvailable && (
-        <div className="space-y-3 rounded-xl border border-gray-800 bg-gray-900 p-4">
+        <div className="space-y-3 rounded-lg border border-gray-800 bg-gray-900 p-4">
           <p className="text-sm font-medium">Create a hosted world</p>
           {slotLine(slots.used, slots.limit) && <p className="text-xs text-gray-400">{slotLine(slots.used, slots.limit)}</p>}
           {noSlotsLeft ? (
             <p className="text-sm text-gray-300">
               {noSlotsLine(slots.limit)}{' '}
-              <Link href="/settings" className="text-cyan-400 hover:underline">See plans</Link>
+              <Link href="/settings" className="text-blue-400 hover:text-blue-300">See plans</Link>
             </p>
           ) : (
             <form onSubmit={createHosted} className="flex flex-wrap items-end gap-3">
@@ -385,7 +369,7 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
                   onChange={(e) => setHostedName(e.target.value)}
                   maxLength={100}
                   placeholder="My hosted world"
-                  className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
                 />
               </div>
               <div>
@@ -395,16 +379,16 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
                   type="date"
                   value={hostedEnd}
                   onChange={(e) => setHostedEnd(e.target.value)}
-                  className="rounded-lg bg-gray-800 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="rounded-md bg-gray-950 px-3 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
                 />
               </div>
-              <button type="submit" disabled={busy || !hostedName.trim()} className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50">Create world</button>
+              <button type="submit" disabled={busy || !hostedName.trim()} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">Create world</button>
             </form>
           )}
         </div>
       )}
 
-      <form onSubmit={connect} className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-800 bg-gray-900 p-4">
+      <form onSubmit={connect} className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-800 bg-gray-900 p-4">
         <div className="min-w-[12rem] flex-1">
           <label className="block text-xs text-gray-400 mb-1">Connect a world you run yourself</label>
           <input
@@ -412,10 +396,10 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
             onChange={(e) => setName(e.target.value)}
             maxLength={100}
             placeholder="My Hyperfy world"
-            className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-cyan-500"
+            className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
           />
         </div>
-        <button type="submit" disabled={busy || !name.trim()} className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50">Connect a world</button>
+        <button type="submit" disabled={busy || !name.trim()} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">Connect a world</button>
       </form>
     </div>
   )
@@ -589,22 +573,18 @@ function DeployContent() {
 
   // -- Render -----------------------------------------------------------------
 
-  if (loadingScenes) return <p className="text-gray-400">Loading...</p>
+  if (loadingScenes) return <Skeleton />
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Deploy</h1>
-        {selectedSceneId && (
-          <button
-            onClick={() => { setShowNewDeploy(!showNewDeploy); resetNewDeployForm() }}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700"
-          >
-            + New Deployment
-          </button>
+    <div className="mx-auto max-w-7xl space-y-8">
+      <PageHeader
+        crumbs={['Tools', 'Deploy']}
+        title="Deploy"
+        subtitle="Publish your scenes to their worlds."
+        actions={selectedSceneId && (
+          <PrimaryButton onClick={() => { setShowNewDeploy(!showNewDeploy); resetNewDeployForm() }}><PlusIcon size={16} /> New Deployment</PrimaryButton>
         )}
-      </div>
+      />
 
       {/* Scene Selector */}
       <div>
@@ -612,7 +592,7 @@ function DeployContent() {
         <select
           value={selectedSceneId}
           onChange={(e) => handleSceneChange(e.target.value)}
-          className="w-full max-w-md rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full max-w-md rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
         >
           <option value="">-- Choose a scene --</option>
           {scenes.map((scene) => (
@@ -634,7 +614,7 @@ function DeployContent() {
 
       {/* New Deployment Form */}
       {showNewDeploy && selectedSceneId && (
-        <form onSubmit={handleCreateDeployment} className="space-y-4 rounded-xl border border-gray-800 bg-gray-900 p-5">
+        <form onSubmit={handleCreateDeployment} className="space-y-4 rounded-lg border border-gray-800 bg-gray-900 p-5">
           <h2 className="text-lg font-semibold">New Deployment</h2>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -643,7 +623,7 @@ function DeployContent() {
               <select
                 value={newDeployType}
                 onChange={(e) => setNewDeployType(e.target.value as 'parcel' | 'world')}
-                className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
               >
                 <option value="parcel">Parcel</option>
                 <option value="world">World</option>
@@ -659,7 +639,7 @@ function DeployContent() {
                   value={newParcels}
                   onChange={(e) => setNewParcels(e.target.value)}
                   placeholder="e.g. 0,0 0,1 1,0 1,1"
-                  className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
                 />
               </div>
               <div>
@@ -669,7 +649,7 @@ function DeployContent() {
                   value={newContentServer}
                   onChange={(e) => setNewContentServer(e.target.value)}
                   placeholder="https://peer.decentraland.org/content"
-                  className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
                 />
               </div>
           </div>
@@ -680,14 +660,14 @@ function DeployContent() {
             <button
               type="submit"
               disabled={deploying}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
             >
               {deploying ? 'Deploying...' : 'Start Deployment'}
             </button>
             <button
               type="button"
               onClick={() => { setShowNewDeploy(false); resetNewDeployForm() }}
-              className="rounded-lg bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
+              className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
             >
               Cancel
             </button>
@@ -700,9 +680,9 @@ function DeployContent() {
         <div>
           <h2 className="text-lg font-semibold mb-3">Deployments</h2>
           {loadingDeployments ? (
-            <p className="text-gray-400">Loading deployments...</p>
+            <Skeleton rows={2} className="h-12" />
           ) : deployments.length === 0 ? (
-            <div className="text-center py-8 rounded-xl border border-gray-800 bg-gray-900">
+            <div className="text-center py-8 rounded-lg border border-gray-800 bg-gray-900">
               <p className="text-gray-500 mb-2">No deployments for this scene yet.</p>
               <p className="text-sm text-gray-600">Click &quot;+ New Deployment&quot; to get started.</p>
             </div>
@@ -730,14 +710,14 @@ function DeployContent() {
           <h2 className="text-lg font-semibold">Deploy Wallets</h2>
           <button
             onClick={() => setShowAddWallet(!showAddWallet)}
-            className="rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium hover:bg-gray-700"
+            className="rounded-md bg-gray-800 px-3 py-1.5 text-xs font-medium hover:bg-gray-700"
           >
             + Add Wallet
           </button>
         </div>
 
         {showAddWallet && (
-          <form onSubmit={handleAddWallet} className="mb-4 space-y-3 rounded-xl border border-gray-800 bg-gray-900 p-4">
+          <form onSubmit={handleAddWallet} className="mb-4 space-y-3 rounded-lg border border-gray-800 bg-gray-900 p-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Wallet Address</label>
@@ -747,7 +727,7 @@ function DeployContent() {
                   onChange={(e) => setWalletAddress(e.target.value)}
                   placeholder="0x..."
                   autoFocus
-                  className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
                 />
               </div>
               <div>
@@ -757,7 +737,7 @@ function DeployContent() {
                   value={walletLabel}
                   onChange={(e) => setWalletLabel(e.target.value)}
                   placeholder="My deploy wallet"
-                  className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
                 />
               </div>
             </div>
@@ -766,14 +746,14 @@ function DeployContent() {
               <button
                 type="submit"
                 disabled={addingWallet}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
               >
                 {addingWallet ? 'Adding...' : 'Add Wallet'}
               </button>
               <button
                 type="button"
                 onClick={() => { setShowAddWallet(false); setWalletError('') }}
-                className="rounded-lg bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
+                className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
               >
                 Cancel
               </button>
@@ -782,24 +762,22 @@ function DeployContent() {
         )}
 
         {loadingWallets ? (
-          <p className="text-gray-400 text-sm">Loading wallets...</p>
+          <Skeleton rows={2} className="h-12" />
         ) : wallets.length === 0 ? (
-          <div className="text-center py-6 rounded-xl border border-gray-800 bg-gray-900">
+          <div className="text-center py-6 rounded-lg border border-gray-800 bg-gray-900">
             <p className="text-gray-500 text-sm">No deploy wallets configured.</p>
             <p className="text-xs text-gray-600 mt-1">Add a wallet to deploy to Decentraland.</p>
           </div>
         ) : (
           <div className="space-y-2">
             {wallets.map((wallet) => (
-              <div key={wallet.id} className="flex items-center justify-between rounded-xl border border-gray-800 bg-gray-900 px-4 py-3">
+              <div key={wallet.id} className="flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900 px-4 py-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="text-xs font-medium text-gray-400 capitalize">{wallet.platform}</span>
                   <code className="text-sm text-gray-300 font-mono truncate">{wallet.walletAddress}</code>
                   {wallet.label && <span className="text-xs text-gray-500">({wallet.label})</span>}
                   {wallet.hasPrivateKey && (
-                    <span className="inline-flex items-center rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
-                      Key stored
-                    </span>
+                    <Badge tone="success">Key stored</Badge>
                   )}
                 </div>
                 <button
@@ -834,7 +812,7 @@ function DeploymentCard({
   const canCancel = deployment.status === 'pending' || deployment.status === 'building'
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 p-5 space-y-3">
+    <div className="rounded-lg border border-gray-800 bg-gray-900 p-5 space-y-3">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
@@ -861,7 +839,7 @@ function DeploymentCard({
         {target.instanceUrl && (
           <div>
             <span className="text-xs text-gray-500">Instance URL</span>
-            <a href={target.instanceUrl} target="_blank" rel="noreferrer" className="text-blue-400 font-mono text-xs truncate block hover:underline">
+            <a href={target.instanceUrl} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 font-mono text-xs truncate block hover:underline">
               {target.instanceUrl}
             </a>
           </div>
@@ -892,7 +870,7 @@ function DeploymentCard({
 
       {/* Error */}
       {deployment.errorMessage && (
-        <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
+        <div className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2">
           <p className="text-sm text-red-400">{deployment.errorMessage}</p>
         </div>
       )}
@@ -903,7 +881,7 @@ function DeploymentCard({
           <button
             onClick={onCancel}
             disabled={actionLoading}
-            className="rounded-lg bg-yellow-600/20 px-3 py-1.5 text-xs text-yellow-400 hover:bg-yellow-600/30 disabled:opacity-50"
+            className="rounded-md bg-yellow-600/20 px-3 py-1.5 text-xs text-yellow-400 hover:bg-yellow-600/30 disabled:opacity-50"
           >
             {actionLoading ? 'Cancelling...' : 'Cancel'}
           </button>
@@ -911,7 +889,7 @@ function DeploymentCard({
         <button
           onClick={onRedeploy}
           disabled={actionLoading}
-          className="rounded-lg bg-blue-600/20 px-3 py-1.5 text-xs text-blue-400 hover:bg-blue-600/30 disabled:opacity-50"
+          className="rounded-md bg-blue-600/20 px-3 py-1.5 text-xs text-blue-400 hover:bg-blue-600/30 disabled:opacity-50"
         >
           {actionLoading ? 'Redeploying...' : 'Redeploy'}
         </button>

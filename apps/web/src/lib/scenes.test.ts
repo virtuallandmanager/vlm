@@ -1,16 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { countLabel, filterScenes, placeholderHues, shortId } from './scenes'
+import { filterScenes, placeholderHues, shortId } from './scenes'
 
 describe('scene list helpers', () => {
   it('shortens an id to its first 8 characters', () => {
     expect(shortId('c0061176-3b67-4688-a115-a55a806e684a')).toBe('c0061176…')
     expect(shortId('abc')).toBe('abc')
-  })
-
-  it('pads the count to two digits', () => {
-    expect(countLabel(2)).toBe('02')
-    expect(countLabel(0)).toBe('00')
-    expect(countLabel(123)).toBe('123')
   })
 
   it('filters by name or description, ignoring case and spaces around the query', () => {

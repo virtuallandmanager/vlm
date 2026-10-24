@@ -1,11 +1,12 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import type { CatalogPack } from 'vlm-shared'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/lib/api'
 import { licenseLabel } from '@/lib/catalog'
+import { badgeClass, PageHeader, Skeleton, tableHeadBand } from '@/components/ui'
+import { countLabel } from '@/lib/format'
 
 /** Admin: switch catalog packs on and off. Off hides a pack from browsing and new picks; placed models stay. */
 export default function CatalogPacksPage() {
@@ -37,22 +38,21 @@ export default function CatalogPacksPage() {
   const models = packs?.reduce((n, p) => n + (p.enabled ? p.modelCount : 0), 0) ?? 0
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
-      <Link href="/admin" className="text-sm text-gray-400 hover:text-white">&larr; Admin</Link>
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold">Catalog packs</h1>
-        {packs && <span className="text-sm text-gray-500">{models} models available</span>}
-      </div>
-      <p className="text-sm text-gray-400">
-        Turning a pack off hides its models from the catalog and stops new adds right away. Models already in scenes keep working.
-      </p>
+    <div className="mx-auto max-w-7xl space-y-4">
+      <PageHeader
+        crumbs={['System', { label: 'Admin', href: '/admin' }, 'Catalog packs']}
+        title="Catalog packs"
+        count={packs ? countLabel(packs.length) : undefined}
+        subtitle={<p className="max-w-2xl">Turning a pack off hides its models from the catalog and stops new adds right away. Models already in scenes keep working.</p>}
+        actions={packs && <span className="text-sm text-gray-500">{models} models available</span>}
+      />
       {error && <p className="text-sm text-red-400">{error}</p>}
       {!packs ? (
-        <p className="text-gray-400">Loading packs…</p>
+        <Skeleton rows={2} className="h-12" />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-800">
+        <div className="overflow-x-auto rounded-lg border border-gray-800">
           <table className="w-full text-sm">
-            <thead className="bg-gray-900 text-left text-xs text-gray-500">
+            <thead className={tableHeadBand}>
               <tr><th className="p-3">Pack</th><th className="p-3">Source</th><th className="p-3">License</th><th className="p-3 text-right">Models</th><th className="p-3 text-right">Available</th></tr>
             </thead>
             <tbody>
@@ -67,7 +67,7 @@ export default function CatalogPacksPage() {
                       onClick={() => toggle(p)}
                       disabled={busy === p.id}
                       aria-pressed={p.enabled}
-                      className={`rounded-full px-3 py-1 text-xs disabled:opacity-50 ${p.enabled ? 'bg-green-700 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'}`}
+                      className={`${badgeClass(p.enabled ? 'success' : 'neutral')} hover:brightness-125 disabled:opacity-50`}
                     >
                       {p.enabled ? 'On' : 'Off'}
                     </button>

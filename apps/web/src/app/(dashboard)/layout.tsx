@@ -121,7 +121,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
       <main className="min-w-0 flex-1 px-4 py-5 md:px-10 md:py-8">
         {scenePass && (
-          <div className="mb-4 rounded-lg border border-gray-800 bg-gray-900 px-4 py-2 text-sm text-gray-300">
+          <div className="mb-4 rounded-md border border-gray-800 bg-gray-900 px-4 py-2 text-sm text-gray-300">
             Signed in from {sceneTitle} — <Link className="underline" href={signinPath(here)} onClick={logout}>sign in for full access</Link>
           </div>
         )}
