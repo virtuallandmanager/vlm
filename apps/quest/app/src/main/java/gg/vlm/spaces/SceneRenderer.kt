@@ -12,10 +12,13 @@ import com.meta.spatial.core.Entity
 import com.meta.spatial.core.Pose
 import com.meta.spatial.core.Quaternion
 import com.meta.spatial.core.Vector3
+import com.meta.spatial.core.Vector4
 import com.meta.spatial.runtime.AlphaMode
 import com.meta.spatial.runtime.MaterialSidedness
 import com.meta.spatial.runtime.SceneMaterial
+import com.meta.spatial.runtime.PanelSceneObject
 import com.meta.spatial.runtime.SceneMesh
+import com.meta.spatial.runtime.SceneObject
 import com.meta.spatial.runtime.SceneTexture
 import com.meta.spatial.toolkit.AppSystemActivity
 import com.meta.spatial.toolkit.Box
@@ -28,9 +31,11 @@ import com.meta.spatial.toolkit.PanelCreationSystem
 import com.meta.spatial.toolkit.PixelDisplayOptions
 import com.meta.spatial.toolkit.QuadShapeOptions
 import com.meta.spatial.toolkit.Scale
+import com.meta.spatial.toolkit.SceneObjectSystem
 import com.meta.spatial.toolkit.Transform
 import com.meta.spatial.toolkit.TransformParent
 import com.meta.spatial.toolkit.VideoSurfacePanelRegistration
+import com.meta.spatial.toolkit.Visible
 import java.net.HttpURLConnection
 import gg.vlm.spaces.space.RootPose
 import java.net.URL
@@ -50,6 +55,9 @@ fun Vec3.sdk() = Vector3(x.toFloat(), y.toFloat(), z.toFloat())
  *
  * Images load through the `mesh://vlm-image` creator, which downloads the picture and returns a textured quad. Models
  * load straight from their https URL (NetworkedAssetLoader), so only .glb works. Sounds aren't played yet.
+ *
+ * The scene starts hidden. [setVisible] fades images and videos over [FADE_MS] by setting their materials' alpha
+ * each [tick] (and a video layer's colour scale); models and sounds show and hide at the end of the fade.
  */
 class SceneRenderer(private val activity: AppSystemActivity) {
   val root: Entity = Entity.create(listOf(Transform(Pose())))
@@ -71,7 +79,23 @@ class SceneRenderer(private val activity: AppSystemActivity) {
   private var plan: List<RenderItem> = emptyList()
   private val shown = mutableMapOf<String, Shown>()
 
-  private class Shown(val entities: List<Entity>, val player: ExoPlayer? = null, val panelId: Int? = null)
+  /** [faded] are the entities whose alpha the fade sets (an image's quad, a video's panel); models have none. */
+  private class Shown(
+      val entities: List<Entity>,
+      val player: ExoPlayer? = null,
+      val panelId: Int? = null,
+      val faded: List<Entity> = emptyList(),
+  )
+
+  /** Where the fade is: [alpha] now, heading for [target] (0 or 1) since [fadeFrom] at [fadeStart]. */
+  private var alpha = 0f
+  private var target = 0f
+  private var fadeFrom = 0f
+  private var fadeStart = 0L
+  /** Images and videos are drawn while fading or shown; models and sounds only once fully shown. */
+  private var mediaOn = false
+  private var solidOn = false
+  private val sceneObjects = HashMap<Entity, SceneObject>()
 
   init {
     activity.registerAsyncMeshCreator(IMAGE_MESH) { _, uri -> imageMesh(uri) }
@@ -99,6 +123,60 @@ class SceneRenderer(private val activity: AppSystemActivity) {
 
   fun count() = plan.size
 
+  /** Removes every item (the space was closed). */
+  fun clear() = apply(emptyList())
+
+  /** Fades the scene in or out over [FADE_MS] from wherever the current fade has got to. */
+  fun setVisible(on: Boolean, nowMs: Long) {
+    val t = if (on) 1f else 0f
+    if (t == target) return
+    target = t
+    fadeFrom = alpha
+    fadeStart = nowMs
+    if (on) setMediaOn(true)
+  }
+
+  /** Advances the fade; call every frame. */
+  fun tick(nowMs: Long) {
+    if (alpha == target) return
+    val k = ((nowMs - fadeStart).toFloat() / FADE_MS).coerceIn(0f, 1f)
+    alpha = fadeFrom + (target - fadeFrom) * k
+    if (k >= 1f) alpha = target
+    shown.values.forEach { s -> s.faded.forEach { e -> sceneObjects[e]?.let { setAlpha(it, alpha) } } }
+    if (alpha == target) {
+      setSolidOn(target == 1f)
+      if (target == 0f) setMediaOn(false)
+    }
+  }
+
+  private fun setMediaOn(on: Boolean) {
+    mediaOn = on
+    shown.values.forEach { s -> if (s.faded.isNotEmpty()) s.entities.forEach { it.setComponent(Visible(on)) } }
+  }
+
+  private fun setSolidOn(on: Boolean) {
+    solidOn = on
+    shown.values.forEach { s -> if (s.faded.isEmpty()) s.entities.forEach { it.setComponent(Visible(on)) } }
+  }
+
+  /** Sets [so]'s alpha: its materials' albedo (images multiply their texture by it) and, for a panel, its layer. */
+  private fun setAlpha(so: SceneObject, a: Float) {
+    so.materials?.forEach { it.setAlbedoColor(android.graphics.Color.valueOf(1f, 1f, 1f, a)) }
+    (so as? PanelSceneObject)?.layer?.setColorScaleBias(Vector4(a, a, a, a), Vector4(0f, 0f, 0f, 0f))
+  }
+
+  /** Remembers [e]'s scene object once it exists, and gives it the current alpha. */
+  private fun watchAlpha(e: Entity) {
+    val future = activity.systemManager.findSystem<SceneObjectSystem>().getSceneObject(e) ?: return
+    future.thenAccept { so ->
+      activity.runOnUiThread {
+        if (shown.values.none { e in it.faded }) return@runOnUiThread
+        sceneObjects[e] = so
+        if (alpha < 1f) setAlpha(so, alpha)
+      }
+    }
+  }
+
   private fun rebuild() {
     val current = plan
     current.forEach { remove(it.key) }
@@ -116,17 +194,22 @@ class SceneRenderer(private val activity: AppSystemActivity) {
 
   private fun add(item: RenderItem) {
     val g = group(item)
-    shown[item.key] =
+    val s =
         when (item.kind) {
-          RenderItem.Kind.IMAGE -> Shown(listOf(g, child(g, imageMeshUri(item))))
+          RenderItem.Kind.IMAGE -> child(g, imageMeshUri(item)).let { q -> Shown(listOf(g, q), faded = listOf(q)) }
           RenderItem.Kind.MODEL -> Shown(listOf(g, model(g, item)))
           RenderItem.Kind.VIDEO -> video(g, item)
           RenderItem.Kind.AUDIO -> Shown(listOf(g))
         }
+    shown[item.key] = s
+    val on = if (s.faded.isEmpty()) solidOn else mediaOn
+    s.entities.forEach { it.setComponent(Visible(on)) }
+    s.faded.forEach(::watchAlpha)
   }
 
   private fun remove(key: String) {
     val s = shown.remove(key) ?: return
+    s.faded.forEach { sceneObjects.remove(it) }
     s.player?.release()
     s.panelId?.let {
       activity.panelRegistrations.remove(it)
@@ -190,7 +273,7 @@ class SceneRenderer(private val activity: AppSystemActivity) {
         )
     )
     val panel = Entity.create(listOf(Panel(id), TransformParent(parent), Transform(Pose())))
-    return Shown(listOf(parent, panel), player, id)
+    return Shown(listOf(parent, panel), player, id, faded = listOf(panel))
   }
 
   private suspend fun imageMesh(uri: Uri): SceneMesh {
@@ -231,6 +314,7 @@ class SceneRenderer(private val activity: AppSystemActivity) {
   companion object {
     private const val TAG = "VLMSpaces"
     private const val IMAGE_MESH = "mesh://vlm-image"
+    const val FADE_MS = 400L
     private var nextPanelId = 1_600_000
   }
 }

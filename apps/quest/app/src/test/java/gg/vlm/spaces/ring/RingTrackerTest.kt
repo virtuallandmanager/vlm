@@ -68,4 +68,22 @@ class RingTrackerTest {
     assertEquals(2L, picked?.id)
     assertEquals(null, nearestToCentre(emptyList(), 1280, 960))
   }
+
+  @Test
+  fun nullAcceptsAnyRing() {
+    val t = RingTracker(null)
+    repeat(2) { t.update(listOf(det(9))) }
+    assertEquals(listOf(9L), t.update(listOf(det(9))).map { it.id })
+  }
+
+  @Test
+  fun registeredCanChange() {
+    val t = RingTracker(null)
+    repeat(3) { t.update(listOf(det(9), det(7))) }
+    t.registered = setOf(7L)
+    assertEquals(listOf(7L), t.update(listOf(det(9), det(7))).map { it.id })
+    t.registered = null
+    repeat(2) { t.update(listOf(det(9))) }
+    assertEquals(listOf(9L), t.update(listOf(det(9))).map { it.id })
+  }
 }

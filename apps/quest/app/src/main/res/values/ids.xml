@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <resources>
   <item name="control_panel" type="id" />
+  <item name="hint_card" type="id" />
+  <item name="visitor_menu" type="id" />
+  <item name="menu_button" type="id" />
 </resources>

@@ -5,6 +5,8 @@ object VisitorTuning {
   /** The scene appears only when the ring is within this distance of the head. */
   const val MAX_LOCK_DISTANCE_M = 1.5
   const val MIN_FRAMES = 5
+  /** Camera frames averaged per ring position and heading. */
+  const val AVERAGE_FRAMES = 15
   const val MAX_SPREAD_M = 0.01
   const val MAX_HEADING_SPREAD_DEG = 1.0
   /** Head movement per tick beyond which tracking is taken to have jumped. */

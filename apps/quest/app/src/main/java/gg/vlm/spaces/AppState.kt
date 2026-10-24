@@ -6,16 +6,26 @@ import androidx.compose.runtime.setValue
 import gg.vlm.spaces.api.FeedStatus
 import gg.vlm.spaces.ring.CameraStatus
 import gg.vlm.spaces.ring.RING_TEST_MARKERS
+import gg.vlm.spaces.visitor.VisitorCopy
 
-/** What the control panel shows. Written on the main thread by MainActivity, read by the Compose panel. */
+/** What the panels show. Written on the main thread by MainActivity and the visitor controller, read by Compose. */
 class AppState {
-  var feedUrl by mutableStateOf("https://vlm.gg")
-  /** Temporary (until the visitor flow): the space to follow, typed by hand. */
-  var spaceId by mutableStateOf("")
+  // ── visitor ──
+  /** The hint card's line, or null when the card is hidden (the scene is shown). */
+  var hint by mutableStateOf<String?>(VisitorCopy.HINT)
+  var sceneShown by mutableStateOf(false)
+  var menuOpen by mutableStateOf(false)
+  /** A line under the menu's buttons, such as "Builder mode is coming soon"; null for none. */
+  var menuNote by mutableStateOf<String?>(null)
+  var occlusion by mutableStateOf(Occlusion.DEPTH)
+
+  // ── developer panel (debug builds) ──
+  var developerOpen by mutableStateOf(false)
+  var serverUrl by mutableStateOf(DEFAULT_BASE_URL)
+  var visitorState by mutableStateOf("")
   var feed by mutableStateOf<FeedStatus?>(null)
   var itemCount by mutableStateOf(0)
   var modelTurn by mutableStateOf(true)
-  var placement by mutableStateOf("Scene 2 m ahead of where you started")
   var markerStatus by mutableStateOf("Waiting for permissions")
   /** Null until the camera is first started. */
   var cameraStatus by mutableStateOf<CameraStatus?>(null)
@@ -24,7 +34,6 @@ class AppState {
   var poseLines by mutableStateOf(RING_TEST_MARKERS.map { "  not in view" })
   var wallStatus by mutableStateOf("Room scan not loaded yet")
   var lastRing by mutableStateOf("No ring marker read yet")
-  var occlusion by mutableStateOf(Occlusion.DEPTH)
   var occlusionStatus by mutableStateOf("Hidden behind anything real the headset's depth sees")
   /** Tints the room scan's walls and ceiling, to check they line up with the real ones. */
   var showWalls by mutableStateOf(false)
@@ -39,12 +48,8 @@ enum class Occlusion(val label: String) {
   DEPTH("Live depth"),
 }
 
-/** What the panel's buttons do. */
-interface PanelActions {
-  fun connect()
-  fun placeAhead()
-  fun turn(degrees: Double)
-  fun alignToMarker()
+/** What the developer panel's buttons do. */
+interface DeveloperActions {
   fun setModelTurn(on: Boolean)
   fun resetReadings()
   fun setOcclusion(o: Occlusion)

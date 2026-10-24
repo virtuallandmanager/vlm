@@ -1,0 +1,36 @@
+package gg.vlm.spaces
+
+import android.content.Context
+
+const val DEFAULT_BASE_URL = "https://vlm.gg"
+
+/** The server: always [DEFAULT_BASE_URL] in release; in debug builds an http(s) [extra], else the [saved] one. */
+fun resolveBaseUrl(debug: Boolean, extra: String?, saved: String?): String {
+  if (!debug) return DEFAULT_BASE_URL
+  fun ok(u: String?) = u?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+  return ok(extra) ?: ok(saved) ?: DEFAULT_BASE_URL
+}
+
+/** The settings the app keeps on the headset. */
+class AppPrefs(context: Context) {
+  private val prefs = context.getSharedPreferences("vlm-spaces", Context.MODE_PRIVATE)
+
+  var occlusion: Occlusion
+    get() = prefs.getString("occlusion", null)?.let { n -> Occlusion.entries.firstOrNull { it.name == n } } ?: Occlusion.DEPTH
+    set(value) = prefs.edit().putString("occlusion", value.name).apply()
+
+  /**
+   * When true, taking the headset off hides the scene but keeps the space loaded; when false (the default) it ends the
+   * visit, back at the hint card with nothing loaded. Builders turn it on (plan 3).
+   */
+  var keepLoadedBetweenVisitors: Boolean
+    get() = prefs.getBoolean("keepLoadedBetweenVisitors", false)
+    set(value) = prefs.edit().putBoolean("keepLoadedBetweenVisitors", value).apply()
+
+  /** The server for this launch (see [resolveBaseUrl]); a debug build saves a `baseUrl` intent extra for next time. */
+  fun baseUrl(extra: String?): String {
+    val url = resolveBaseUrl(BuildConfig.DEBUG, extra, prefs.getString("baseUrl", null))
+    if (BuildConfig.DEBUG && extra != null && url == extra.trim()) prefs.edit().putString("baseUrl", url).apply()
+    return url
+  }
+}

@@ -10,8 +10,22 @@ import gg.vlm.spaces.ring.RingCodec
 import gg.vlm.spaces.space.RootPose
 import gg.vlm.spaces.space.rootFromMarker
 
-/** The plain words shown when something goes wrong. */
+/** The visitor's words, kept word for word (the plan's Global Constraints), and the plain words for failures. */
 object VisitorCopy {
+  const val HINT = "Look for a ring like this, at eye level near the entrance."
+  const val TOO_FAR = "Step closer to the ring"
+  const val HOLD_STILL = "Hold still…"
+  const val NOT_SET_UP = "This space isn't set up yet"
+  const val LOOK_AGAIN = "Look at the ring again"
+  const val HIDE_BEHIND_WALLS = "Hide behind walls"
+  const val LIVE_DEPTH = "Live depth"
+  const val OCCLUSION_OFF = "Off"
+  const val SPACES = "Spaces"
+  const val BUILDER = "Builder"
+  const val BUILDER_SOON = "Builder mode is coming soon"
+
+  fun opening(spaceName: String?) = if (spaceName == null) "Opening…" else "Opening $spaceName…"
+
   const val NOT_OPEN = "This space isn't open right now."
   const val OFFLINE = "Can't reach VLM. Check the headset's Wi-Fi."
   const val BUSY = "VLM is busy. Trying again…"
@@ -250,6 +264,9 @@ class VisitorFlow {
     space = null
     lookupRing = null
     pendingCode = null
+    // A fresh look starts fresh: a failed lookup's backoff would otherwise hold the hint for up to 30 s.
+    retryAt.clear()
+    retryDelay.clear()
     state = next()
     return fx
   }

@@ -246,6 +246,21 @@ class VisitorFlowTest {
     assertEquals(1, on(VisitorEvent.RingAgreed(ringA)).size)
   }
 
+  @Test fun `look again drops a failed lookup's backoff so the ring is asked again at once`() {
+    on(VisitorEvent.RingAgreed(ringA))
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), ApiResult.Offline))
+    on(VisitorEvent.LookAgain)
+    assertEquals(VisitorState.Hint, flow.state)
+    assertEquals(
+        listOf<VisitorEffect>(VisitorEffect.Lookup(RingCodec.codeOf(ringA))),
+        on(VisitorEvent.RingAgreed(ringA)),
+    )
+    // and the backoff starts again from the minimum
+    on(VisitorEvent.Lookup(RingCodec.codeOf(ringA), ApiResult.Offline))
+    now += VisitorTuning.LOOKUP_RETRY_MIN_MS
+    assertEquals(1, on(VisitorEvent.RingAgreed(ringA)).size)
+  }
+
   @Test fun `opening a space clears the current one and looks the code up`() {
     toShown()
     val fx = on(VisitorEvent.OpenSpace("ABC123"))

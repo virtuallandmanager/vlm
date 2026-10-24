@@ -9,12 +9,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -24,15 +22,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gg.vlm.spaces.ring.CameraStatus
 import gg.vlm.spaces.ring.cameraStatusText
 
-/** The one panel: connection, scene placement and the marker detection-range test. */
+/** The developer panel (debug builds only, opened from the menu): the scene, occlusion and the marker readings. */
 @Composable
-fun ControlPanel(s: AppState, act: PanelActions) {
+fun ControlPanel(s: AppState, act: DeveloperActions) {
   MaterialTheme(colorScheme = darkColorScheme()) {
     Column(
         Modifier.fillMaxSize()
@@ -41,39 +38,11 @@ fun ControlPanel(s: AppState, act: PanelActions) {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-      Text("VLM Spaces", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+      Text("Developer", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
 
       Section("Scene")
-      OutlinedTextField(
-          s.feedUrl,
-          { s.feedUrl = it },
-          label = { Text("Server URL") },
-          singleLine = true,
-          keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-          modifier = Modifier.fillMaxWidth(),
-      )
-      OutlinedTextField(
-          s.spaceId,
-          { s.spaceId = it },
-          label = { Text("Space id (debug)") },
-          singleLine = true,
-          modifier = Modifier.fillMaxWidth(),
-      )
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Button(onClick = act::connect) { Text("Connect") }
-        Column {
-          Line("${s.feed?.name ?: "IDLE"} · ${s.itemCount} items")
-        }
-      }
-
-      Section("Placement")
-      Line(s.placement)
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = act::placeAhead) { Text("Place 2 m ahead") }
-        OutlinedButton(onClick = { act.turn(15.0) }) { Text("Turn ↻ 15°") }
-        OutlinedButton(onClick = { act.turn(-15.0) }) { Text("Turn ↺ 15°") }
-      }
-      Button(onClick = act::alignToMarker) { Text("Align to the marker") }
+      Line(s.serverUrl, mono = true)
+      Line("${s.visitorState} · feed ${s.feed?.name ?: "IDLE"} · ${s.itemCount} items")
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Switch(s.modelTurn, act::setModelTurn)
         Line("Turn models half a turn (check against Decentraland)")

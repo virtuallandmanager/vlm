@@ -3,18 +3,21 @@ package gg.vlm.spaces.ring
 import kotlin.math.hypot
 
 /**
- * Turns per-frame ring detections into trusted ones: an ID counts only if it is [registered], its
- * format version is in [SUPPORTED_VERSIONS], and it was detected in [framesToAgree] frames in a row. A frame that misses an ID resets its count, so one bad
- * decode never shows up as a marker. Not thread-safe; call [update] from the camera thread only.
+ * Turns per-frame ring detections into trusted ones: an ID counts only if it is [registered] (any ID while that is
+ * null), its format version is in [SUPPORTED_VERSIONS], and it was detected in [framesToAgree] frames in a row. A frame
+ * that misses an ID resets its count, so one bad decode never shows up as a marker. Call [update] from the camera
+ * thread only; [registered] may be set from any thread.
  */
-class RingTracker(private val registered: Set<Long>, private val framesToAgree: Int = 3) {
+class RingTracker(registered: Set<Long>?, private val framesToAgree: Int = 3) {
+  @Volatile var registered: Set<Long>? = registered
   private val streak = HashMap<Long, Int>()
 
   /** Feeds one frame's detections; returns the registered ones seen in the last [framesToAgree] frames. */
   fun update(detections: List<RingDetection>): List<RingDetection> {
+    val accept = registered
     val seen =
         detections
-            .filter { it.version in SUPPORTED_VERSIONS && it.id in registered }
+            .filter { it.version in SUPPORTED_VERSIONS && (accept == null || it.id in accept) }
             .distinctBy { it.id }
     val ids = seen.mapTo(HashSet()) { it.id }
     streak.keys.retainAll(ids)
