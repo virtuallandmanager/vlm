@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { AR_PAIRING, DEFAULT_VENUE_RULES, VENUE_ROLE_SCOPES } from 'vlm-shared'
+import { AR_PAIRING, DEFAULT_VENUE_RULES, VENUE_ROLE_SCOPES, ringCodeOf } from 'vlm-shared'
 import { db } from '../src/db/connection.js'
-import { accessGrants, arDevices, arSpaces, bookings, sceneCollaborators, venues } from '../src/db/schema.js'
+import { accessGrants, arDevices, arFloors, arMarkers, arSpaces, bookings, sceneCollaborators, venues } from '../src/db/schema.js'
 import { redactPairingCode } from '../src/app.js'
 import { config } from '../src/config.js'
 import { verifySessionToken } from '../src/auth/tokens.js'
@@ -254,10 +254,11 @@ describe('AR headset pairing and the AR pass', () => {
     expect((await mint('not-a-uuid', '00000000-0000-0000-0000-000000000000')).json().error).toBe('device_revoked')
     // An unverified account can't vouch for a headset.
     const unverified = await app.inject({ method: 'POST', url: `/api/ar/pair/${code}/approve`, headers: bearer(tokenFor(owner, { verified: false })), payload: { kind: 'personal' } })
-    expect(unverified.statusCode).toBe(403)
+    expect([unverified.statusCode, unverified.json().error]).toEqual([403, 'unverified'])
     // A code is approved once.
     expect((await approve(code, owner, 'personal')).statusCode).toBe(200)
-    expect((await approve(code, owner, 'shared')).statusCode).toBe(404)
+    const twice = await approve(code, owner, 'shared')
+    expect([twice.statusCode, twice.json()]).toEqual([404, { error: 'not_found' }])
   })
 
   it('lists the spaces the approver can build on', async () => {
@@ -267,15 +268,27 @@ describe('AR headset pairing and the AR pass', () => {
     const a = await sceneWithSpace(me, 'A')
     const b = await sceneWithSpace(other, 'B')
     await db.insert(sceneCollaborators).values({ sceneId: b.scene.id, userId: me.id, role: 'editor' })
-    await sceneWithSpace(third, 'C')
+    const c = await sceneWithSpace(third, 'C')
+    // Unpublished rings: the list is how the headset learns which space a ring it sees belongs to.
+    const ring = async (spaceId: string, ringId: number) => {
+      const [floor] = await db.insert(arFloors).values({ spaceId, name: 'Ground floor' }).returning()
+      const [m] = await db.insert(arMarkers).values({ floorId: floor.id, ringId, code: ringCodeOf(ringId) }).returning()
+      return { markerId: m.id, floorId: floor.id, code: m.code }
+    }
+    const ringA = await ring(a.space.id, 1001)
+    const ringB = await ring(b.space.id, 1002)
+    await ring(c.space.id, 1003)
     const deviceId = await pairAs(me, 'personal')
     const res = await app.inject({ method: 'POST', url: `/api/ar/devices/${deviceId}/spaces`, payload: { secret: SECRET } })
     expect(res.statusCode).toBe(200)
     const sorted = [...res.json()].sort((x, y) => x.spaceName.localeCompare(y.spaceName))
     expect(sorted).toEqual([
-      { spaceId: a.space.id, spaceName: 'A space', sceneId: a.scene.id, sceneName: 'A' },
-      { spaceId: b.space.id, spaceName: 'B space', sceneId: b.scene.id, sceneName: 'B' },
+      { spaceId: a.space.id, spaceName: 'A space', sceneId: a.scene.id, sceneName: 'A', markers: [ringA] },
+      { spaceId: b.space.id, spaceName: 'B space', sceneId: b.scene.id, sceneName: 'B', markers: [ringB] },
     ])
+    // The headset matches the ring it sees, then mints for that ring's space.
+    const seen = sorted.find((s: any) => s.markers.some((m: any) => m.code === ringB.code))
+    expect((await mint(deviceId, seen.spaceId)).json().sceneId).toBe(b.scene.id)
   })
 
   it('codes are kept out of logs', () => {

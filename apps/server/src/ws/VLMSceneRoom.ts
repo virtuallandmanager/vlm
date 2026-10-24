@@ -19,8 +19,8 @@ import {
 import { dispatchPlatformCallbacks } from '../integrations/platform-hooks.js'
 import { config } from '../config.js'
 import { verifySessionToken, type SessionClaims } from '../auth/tokens.js'
-import { pairingActive } from '../hyperfy/pairing.js'
-import { deviceActive } from '../ar/devices.js'
+import { pairingActive, pairingLive } from '../hyperfy/pairing.js'
+import { deviceActive, deviceLive } from '../ar/devices.js'
 import { ANONYMOUS, actorFromClaims, type Actor } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess, toVenueAccessMessage, type SceneAccess } from '../auth/permissions.js'
 import { authorizeSceneMessage, propertiesOf, type GuardResult, type GuardTarget } from './scene-guard.js'
@@ -64,6 +64,8 @@ export class VLMSceneRoom extends Room {
   private static ACCESS_TTL_MS = 10_000
   /** Scene passes only: when the client's pass expires (ms). After that it acts as an anonymous visitor until renewed. */
   private passExpiry: Map<string, number> = new Map()
+  /** Hyperfy and AR passes only: the pairing or headset the session's pass is tied to, re-checked on every access lookup. */
+  private linkedPass: Map<string, { via: 'hyperfy' | 'ar'; id: string }> = new Map()
   /** Transform drafts: instance sk -> sessionId of the editor currently dragging it. Never persisted. */
   private draftHolders = new Map<string, string>()
   /** Recent draft timestamps per session, for the 20-per-second limit. */
@@ -88,6 +90,19 @@ export class VLMSceneRoom extends Room {
     return false
   }
 
+  /** The pairing or headset a Hyperfy or AR pass is tied to; null for any other token. */
+  private static linkOf(claims: SessionClaims | null): { via: 'hyperfy' | 'ar'; id: string } | null {
+    if (claims?.via === 'hyperfy' && claims.pairingId) return { via: 'hyperfy', id: claims.pairingId }
+    if (claims?.via === 'ar' && claims.deviceId) return { via: 'ar', id: claims.deviceId }
+    return null
+  }
+
+  private setLink(sessionId: string, claims: SessionClaims | null) {
+    const link = VLMSceneRoom.linkOf(claims)
+    if (link) this.linkedPass.set(sessionId, link)
+    else this.linkedPass.delete(sessionId)
+  }
+
   async onAuth(_client: Client, options: JoinOptions): Promise<Actor> {
     const claims = verifySessionToken(options?.sessionToken)
     // A scene pass acts as its user only in its own scene; anywhere else it's an anonymous visitor.
@@ -96,6 +111,7 @@ export class VLMSceneRoom extends Room {
     if (claims?.kind === 'scene' && (!claims.sceneId || claims.sceneId !== this.sceneId)) return ANONYMOUS
     if (await VLMSceneRoom.linkedPassRevoked(claims)) return ANONYMOUS
     if (claims?.kind === 'scene') this.passExpiry.set(_client.sessionId, ((claims as { exp?: number }).exp ?? 0) * 1000)
+    this.setLink(_client.sessionId, claims)
     return actorFromClaims(claims)
   }
 
@@ -124,6 +140,7 @@ export class VLMSceneRoom extends Room {
         return
       }
       this.passExpiry.set(client.sessionId, ((claims as { exp?: number }).exp ?? 0) * 1000)
+      this.setLink(client.sessionId, claims)
       this.accessCache.delete(client.sessionId)
       client.send('auth_renew_ack', {})
     })
@@ -383,6 +400,7 @@ export class VLMSceneRoom extends Room {
 
     this.clientMeta.delete(client.sessionId)
     this.passExpiry.delete(client.sessionId)
+    this.linkedPass.delete(client.sessionId)
     this.accessCache.delete(client.sessionId)
     this.lastAccess.delete(client.sessionId)
   }
@@ -404,6 +422,9 @@ export class VLMSceneRoom extends Room {
   private async getAccess(client: Client): Promise<SceneAccess> {
     const passExp = this.passExpiry.get(client.sessionId)
     if (passExp !== undefined && Date.now() >= passExp) return this.lookupAccess(ANONYMOUS)
+    // A revoked pairing or headset (or an ended shared session) ends the session's access within the 10 s live cache.
+    const link = this.linkedPass.get(client.sessionId)
+    if (link && !(await (link.via === 'ar' ? deviceLive(link.id) : pairingLive(link.id)))) return this.lookupAccess(ANONYMOUS)
     const cached = this.accessCache.get(client.sessionId)
     if (cached && Date.now() - cached.at < VLMSceneRoom.ACCESS_TTL_MS) return cached.access
     const generation = this.accessGeneration

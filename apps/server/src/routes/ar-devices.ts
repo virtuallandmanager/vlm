@@ -79,9 +79,9 @@ export default async function arDeviceRoutes(app: FastifyInstance) {
     if (kind !== 'personal' && kind !== 'shared') return reply.status(400).send({ error: 'Missing or invalid field: kind (personal or shared)' })
     const actor = actorFromClaims(request.user)
     // The headset will act as this account: an unverified one can't vouch for it.
-    if (!actor.userId || !actor.verified) return reply.status(403).send({ error: 'no_access' })
+    if (!actor.userId || !actor.verified) return reply.status(403).send({ error: 'unverified' })
     const result = await approveDevicePairing(code, actor, kind)
-    if (result === 'expired') return reply.status(404).send({ error: 'not_found', result })
+    if (result === 'expired') return reply.status(404).send({ error: 'not_found' })
     return reply.send({ result })
   })
 

@@ -5,10 +5,26 @@ import { createUser, createScene, createElement, tokenFor } from './helpers/fact
 import { db } from '../src/db/connection.js'
 import { arDevices, hyperfyPairings, hyperfyWorlds } from '../src/db/schema.js'
 import { revokePairing } from '../src/hyperfy/pairing.js'
-import { revokeDevice } from '../src/ar/devices.js'
+import { endDeviceSession, revokeDevice } from '../src/ar/devices.js'
+import { sha256 } from '../src/auth/hash.js'
+import { eq } from 'drizzle-orm'
 import { startGameServer, joinScene, serverRoom } from './helpers/game-server.js'
 
 const actorsIn = (roomId: string) => serverRoom(roomId).clients.map((c: any) => c.auth)
+const screenUpdate = (id: string) => ({ action: 'update', element: 'video', elementData: { sk: id, liveSrc: 'https://x/live.m3u8' } })
+
+/** An already-joined session loses edit access once its pairing or headset is revoked (no re-join, no renew). */
+async function editsStopAfterRevoke(url: string, scene: { id: string; activePresetId: string | null }, pass: string, revoke: () => Promise<unknown>) {
+  const screen = await createElement(scene.activePresetId!)
+  const c = await joinScene(url, scene.id, pass)
+  await c.waitFor('scene_preset_update') // init
+  c.room.send('scene_preset_update', screenUpdate(screen.id))
+  await c.waitFor('scene_preset_update_ack')
+  await revoke()
+  c.room.send('scene_preset_update', screenUpdate(screen.id))
+  expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+  c.room.leave()
+}
 
 describe('scene pass in rooms', () => {
   let gs: Awaited<ReturnType<typeof startGameServer>>
@@ -124,6 +140,11 @@ describe('scene pass in rooms', () => {
       noId.room.leave()
     })
 
+    it('a joined session stops editing once its Hyperfy pairing is revoked', async () => {
+      const { owner, scene, p, pass } = await hyperfyJoin()
+      await editsStopAfterRevoke(gs.url, scene, pass(), () => revokePairing(p.id, owner.id))
+    })
+
     it('auth_renew refuses a revoked Hyperfy pass', async () => {
       const { owner, scene, p, pass } = await hyperfyJoin()
       const c = await joinScene(gs.url, scene.id, pass())
@@ -159,6 +180,17 @@ describe('scene pass in rooms', () => {
       const noId = await joinScene(gs.url, scene.id, pass(null as any))
       expect(actorsIn(noId.room.roomId).at(-1).userId).toBeNull()
       noId.room.leave()
+    })
+
+    it('a joined session stops editing once its headset is revoked', async () => {
+      const { owner, scene, d, pass } = await arJoin()
+      await editsStopAfterRevoke(gs.url, scene, pass(), () => revokeDevice(d.id, owner.id))
+    })
+
+    it('a joined session stops editing once its shared headset session ends', async () => {
+      const { scene, d, pass } = await arJoin()
+      await db.update(arDevices).set({ kind: 'shared', secretHash: sha256('s') }).where(eq(arDevices.id, d.id))
+      await editsStopAfterRevoke(gs.url, scene, pass(), () => endDeviceSession(d.id, 's'))
     })
 
     it('auth_renew refuses a revoked AR pass', async () => {

@@ -3,7 +3,7 @@ import { randomInt } from 'node:crypto'
 import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm'
 import { AR_PAIRING, HYPERFY_PAIRING, type ArDeviceKind, type ArDeviceSpace, type ArDeviceStatus, type ArDeviceSummary, type ArPairClaimResponse } from 'vlm-shared'
 import { db } from '../db/connection.js'
-import { arDevices, arSpaces, sceneCollaborators, sceneRoles, scenes, users } from '../db/schema.js'
+import { arDevices, arFloors, arMarkers, arSpaces, sceneCollaborators, sceneRoles, scenes, users } from '../db/schema.js'
 import { getSceneAccess } from '../auth/permissions.js'
 import type { Actor } from '../auth/actor.js'
 import { isUuid } from '../auth/scene-from.js'
@@ -141,13 +141,14 @@ export async function mintArPass(app: FastifyInstance, deviceId: string, secret:
     .where(and(eq(arDevices.id, device.id), eq(arDevices.status, 'claimed'), gt(arDevices.expiresAt, now)))
     .returning()
   if (!bumped?.expiresAt) return 'device_revoked'
-  const { pass, passExpiresAt } = issueArPass(app, approver.user, approver.wallet, { deviceId: device.id, sceneId, notAfter: bumped.expiresAt })
+  const { pass, passExpiresAt } = issueArPass(app, approver.user, approver.wallet, { deviceId: device.id, sceneId, notAfter: bumped.expiresAt }, now)
   return { pass, passExpiresAt, sceneId }
 }
 
 /**
  * Every space on a scene the approver can build on, for the headset's "pick a space" list. Candidates are the scenes
- * the approver owns, collaborates on or holds a role in; each is then checked like a mint would.
+ * the approver owns, collaborates on or holds a role in; each is then checked like a mint would. Each space carries
+ * its ring codes, so a headset can match the ring it sees to a space even when that ring is unpublished.
  */
 export async function listDeviceSpaces(deviceId: string, secret: string, now = new Date()): Promise<ArDeviceSpace[] | 'bad_secret' | 'device_revoked'> {
   const device = await liveDevice(deviceId, secret, now)
@@ -176,7 +177,19 @@ export async function listDeviceSpaces(deviceId: string, secret: string, now = n
   for (const sceneId of new Set(rows.map((r) => r.sceneId))) {
     if (mayBuild(await getSceneAccess(approver.actor, sceneId, now))) buildable.add(sceneId)
   }
-  return rows.filter((r) => buildable.has(r.sceneId))
+  const spaces = rows.filter((r) => buildable.has(r.sceneId))
+  const markers = spaces.length
+    ? await db
+        .select({ spaceId: arFloors.spaceId, markerId: arMarkers.id, floorId: arMarkers.floorId, code: arMarkers.code })
+        .from(arMarkers)
+        .innerJoin(arFloors, eq(arFloors.id, arMarkers.floorId))
+        .where(inArray(arFloors.spaceId, spaces.map((s) => s.spaceId)))
+        .orderBy(arFloors.sortOrder, arMarkers.createdAt)
+    : []
+  return spaces.map((s) => ({
+    ...s,
+    markers: markers.filter((m) => m.spaceId === s.spaceId).map(({ markerId, floorId, code }) => ({ markerId, floorId, code })),
+  }))
 }
 
 /**

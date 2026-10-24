@@ -49,13 +49,16 @@ export function issueArPass(
   user: { id: string; role: string },
   wallet: string | null,
   b: { deviceId: string; sceneId: string; notAfter?: Date },
+  now = new Date(),
 ): { pass: string; passExpiresAt: Date } {
   const claims: SessionClaims = { ...sceneClaims(user, wallet, { sceneId: b.sceneId, locationId: null }), via: 'ar', deviceId: b.deviceId }
-  let pass = app.jwt.sign(claims, { expiresIn: config.jwtAccessExpiry })
+  // Signed against the caller's clock (iat), so the pass and the headset's expiry are measured from the same now.
+  const stamped: SessionClaims & { iat: number } = { ...claims, iat: Math.floor(now.getTime() / 1000) }
+  let pass = app.jwt.sign(stamped, { expiresIn: config.jwtAccessExpiry })
   let exp = (app.jwt.decode(pass) as { exp: number }).exp
   if (b.notAfter && exp * 1000 > b.notAfter.getTime()) {
     // A number here is seconds.
-    pass = app.jwt.sign(claims, { expiresIn: Math.max(1, Math.floor((b.notAfter.getTime() - Date.now()) / 1000)) })
+    pass = app.jwt.sign(stamped, { expiresIn: Math.max(1, Math.floor((b.notAfter.getTime() - now.getTime()) / 1000)) })
     exp = (app.jwt.decode(pass) as { exp: number }).exp
   }
   return { pass, passExpiresAt: new Date(exp * 1000) }

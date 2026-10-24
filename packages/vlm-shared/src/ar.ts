@@ -65,7 +65,16 @@ export type ArPairClaimResponse =
   | { status: 'refused' }
 /** POST /api/ar/devices/:id/pass */
 export type ArPassResponse = { pass: string; passExpiresAt: string; sceneId: string }
-/** POST /api/ar/devices/:id/spaces: one entry of the headset's "pick a space" list. */
-export type ArDeviceSpace = { spaceId: string; spaceName: string; sceneId: string; sceneName: string }
+/**
+ * POST /api/ar/devices/:id/spaces: one entry of the headset's "pick a space" list. The ring codes let the headset
+ * match a ring it sees to its space (and mint for that space's scene), published or not.
+ */
+export type ArDeviceSpace = {
+  spaceId: string
+  spaceName: string
+  sceneId: string
+  sceneName: string
+  markers: Array<{ markerId: string; floorId: string; code: string }>
+}
 /** GET /api/ar/devices */
 export type ArDeviceSummary = { id: string; deviceName: string | null; kind: ArDeviceKind | null; status: ArDeviceStatus; lastUsedAt: string | null; expiresAt: string | null }
