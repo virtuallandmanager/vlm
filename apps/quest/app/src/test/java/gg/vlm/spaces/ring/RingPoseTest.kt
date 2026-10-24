@@ -305,6 +305,29 @@ class RingPoseTest {
   }
 
   @Test
+  fun theTiltTermAloneKeepsALonePerpendicularWallOut() {
+    // Wall A unscanned, wall B 5 cm away, seen at 60-62° with the tilt reading 10-15° low. Either the tilt gate drops B
+    // outright, or B passes it and looks under 30° from head-on, so the wall check alone would take B: the circle's own
+    // tilt (still over 30°) is what refuses it. Both ways there is no heading.
+    val onA = Vec3(1.95, 1.5, 3.0)
+    var passedTiltGate = 0
+    for (off in listOf(60.0, 61.0, 62.0)) {
+      for (low in listOf(10.0, 12.0, 15.0)) {
+        val eye = eyeAt(onA, wallA, 1.2, off)
+        val (head, d) = view(eye, onA, wallA)
+        val read = tiltReadsLow(d, low)
+        assertNull("$off° -$low°", lockedHeading(onA, listOf(walls[1]), eye, head, read))
+        val fix = wallFix(onA.sdk(), listOf(walls[1]), eye.sdk(), circleNormals(read, k, head)) ?: continue
+        passedTiltGate++
+        assertTrue("$off° -$low°: B looks head-on enough", fix.headingDeg != null && fix.viewAngleDeg <= 30.0)
+        assertTrue("$off° -$low°: the tilt is steep", circleTiltDeg(read) > 30.0)
+        assertTrue("$off° -$low°: without the tilt term B would count", lockHeading(fix, 0.0).headingDeg != null)
+      }
+    }
+    assertTrue("some case reaches the tilt term", passedTiltGate > 0)
+  }
+
+  @Test
   fun aTiltReadingLowStillTakesTheMarkersOwnWall() {
     val onA = Vec3(1.95, 1.5, 3.0)
     for (off in listOf(20.0, 28.0)) {

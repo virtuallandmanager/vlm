@@ -7,7 +7,7 @@ import gg.vlm.spaces.api.MarkerPose
 /** The scene's origin in world space and its turn about +Y. A scene point `s` lands at `position + R_y(yawDeg)·s`. */
 data class RootPose(val position: Vec3, val yawDeg: Double)
 
-private fun rotateY(deg: Double, v: Vec3) = Quat.axisAngle(0.0, 1.0, 0.0, Math.toRadians(deg)).rotate(v)
+internal fun rotateY(deg: Double, v: Vec3) = Quat.axisAngle(0.0, 1.0, 0.0, Math.toRadians(deg)).rotate(v)
 
 /**
  * Where the scene root must sit so that a marker saved at `saved` (scene coordinates) is at `markerWorld` facing

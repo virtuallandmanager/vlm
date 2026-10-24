@@ -6,4 +6,5 @@
   <item name="menu_button" type="id" />
   <item name="space_page" type="id" />
   <item name="pairing_panel" type="id" />
+  <item name="align_panel" type="id" />
 </resources>

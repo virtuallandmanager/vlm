@@ -205,3 +205,14 @@ Do these on the Quest 3 with a debug build when convenient. Each says what resul
 2. **Hand grab.** Add `Grabbable()` (or `IsdkGrabbable()`) to a test entity with a Box collider. Grab it with a pinch, then with a palm grab, and release. Does it follow the hand? Does `Unselect` with `Grab` semantic arrive once at release (and `Cancel` if tracking is lost)? Is the final `Transform` correct, also when the entity is a child of the scene root? If all yes, Tasks 7 and 8 can use ISDK for hands too.
 3. **Wrist pose.** Log `scene.getControllerPoseAtTime(true, time)` with hands only and with a controller, and `JointType.LEFT_HAND_WRIST` after `setBodyTrackingJointSet(JointSet.DEFAULT)`. Is `pose` valid and tracked, and does it follow the wrist? If yes, "⋯" can move to the left wrist.
 4. **Mesh without a grabbable.** Does a plain entity with a mesh (no `Grabbable`) produce `Select` events with hit points, or does it need a collider component?
+
+### Owner checks (alignment, plan 3 Task 5)
+
+Not yet run (no headset was connected). The align panel and its flow are built but not reachable from the menu until Task 10, so for now drive them from a debug hook or wait for Task 10. Use a test space on a local or staging server, with a floor whose ring has no saved pose.
+
+- [ ] Look at the ring from under 1.5 m: the scene appears with the ring at the middle of its north wall, facing into the scene.
+- [ ] Left stick moves the scene, right stick turns it, about the ring (the ring stays put as the scene turns); with the grip held, steps are 1 cm and 0.5°. (Without the grip they are 5 cm and 2.5°: confirm that feels right.)
+- [ ] **Save alignment** from over 1.5 m is refused with "Step closer to the ring to save"; from under it saves.
+- [ ] Reload as a visitor and look at the same ring: the scene lines up with where it was aligned.
+- [ ] A floor whose recorded height doesn't match the ring's height above the real floor shows "Floor height doesn't match <floor> (<h> m): check the floor".
+- [ ] A ring printed at 92% (or any size off by over 3%) says "This ring looks about 8% smaller than its recorded size: was it printed at 100%?"; one at 100% says nothing. Check the depth range against a tape measure from the headset to the wall.
