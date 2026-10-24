@@ -76,6 +76,27 @@ class BuilderEditorTest {
   }
 
   @Test
+  fun `a placed item is picked when the feed delivers it`() {
+    loaded()
+    val fresh = BuilderItem("in9", "el9:in9", "image", "New", tr(v(0.0, 1.6, 1.0)), tr(v(0.0, 1.6, 1.0)), null)
+    editor.pickWhenPresent("in9")
+    assertEquals(null, editor.picked)
+    editor.setItems(listOf(poster, chair, fresh))
+    assertEquals("in9", editor.picked)
+  }
+
+  @Test
+  fun `a placed item already in the feed is picked at once, and a manual pick cancels the wait`() {
+    loaded()
+    editor.pickWhenPresent("in1")
+    assertEquals("in1", editor.picked)
+    editor.pickWhenPresent("in9")
+    editor.pick("in2")
+    editor.setItems(listOf(poster, chair, BuilderItem("in9", "el9:in9", "image", "New", tr(v(0.0, 0.0, 0.0)), tr(v(0.0, 0.0, 0.0)), null)))
+    assertEquals("in2", editor.picked)
+  }
+
+  @Test
   fun `an everywhere edit relays the shared transform, without this place's offset`() {
     loaded()
     moveTo("in2", 3.5)

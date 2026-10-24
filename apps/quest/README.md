@@ -267,3 +267,15 @@ Not yet run (no headset was connected; adb showed only an offline emulator). `Pi
 - [ ] **Saving.** After a carry, Decentraland shows the item where it was put down (drafts relay while carrying, the last pose on release), and Save keeps it. Move the scene root (re-align) first and repeat: the saved pose is still where you saw it.
 - [ ] **Controller poses.** `Picking` takes each `Controller` entity's `Transform` as the controller's world pose (+Z along the ray) and its `buttonState` as holding that side's grip and thumbstick bits only. If the item jumps on grip, or a grip starts a carry on the wrong controller, switch to `AvatarBody` / `scene.getControllerPoseAtTime`.
 - [ ] **Tracking loss.** Cover or drop the carrying controller mid-carry (it stops reporting): the item lands where it last was, snapped like a normal release. This is intended; check it does not drop the item somewhere surprising.
+
+### Owner checks (placing from the library, plan 3 Task 9)
+
+Not yet run (no headset was connected). `AssetsTab`, `placeAhead`, `BuilderApi.placeEntry` and `BuilderEditor.pickWhenPresent` exist and are tested, but the HUD isn't in the menu until Task 10, which must also load `BuilderApi.library` into `AssetsState`, read the scene's `activePresetId` (`activePresetId(BuilderApi.scene(...))`), and call `placeEntry` at `placeAhead(head, headYaw, root)` followed by `pickWhenPresent(placed.instanceId)`.
+
+- [ ] **Library lists.** The Assets tab shows the scene's images (with a small preview), videos and models (no preview); sounds and uploads still in progress are left out.
+- [ ] **Place an image.** Place puts it 1 m ahead of the head at eye height, turned to face you (not mirrored, not edge-on), and it is picked (gizmo showing) as soon as the next snapshot arrives. Move it, then Save.
+- [ ] **Place a model.** Same, then move it onto a table (snap) and save.
+- [ ] **Place a video.** It appears as a screen that plays the clip (a one-video playlist); check it in Decentraland too.
+- [ ] **In a turned room.** After aligning to a ring so the scene is turned (root yaw not 0), a placed item still lands 1 m in front of you and faces you.
+- [ ] **Shared.** With the switch on Just this place, Place still adds the item to the shared scene (it shows at Decentraland and at other places); the switch applies to its later edits.
+- [ ] **Failure.** Offline, Place leaves nothing behind (no empty element in the scene's Layout).

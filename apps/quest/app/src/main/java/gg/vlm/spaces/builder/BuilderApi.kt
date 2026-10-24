@@ -122,6 +122,21 @@ class BuilderApi(private val api: ArApi, private val auth: DeviceAuth) {
   suspend fun placeImage(spaceId: String, presetId: String, name: String, src: String, t: ItemTransform): BuilderCall<PlacedItem> =
       place(spaceId, presetId, "image", name, buildJsonObject { put("textureSrc", src) }, t)
 
+  /** A library video as a screen that plays it (a one-video playlist, as `offType` 2 PLAYLIST). */
+  suspend fun placeVideo(spaceId: String, presetId: String, name: String, src: String, t: ItemTransform): BuilderCall<PlacedItem> =
+      place(
+          spaceId,
+          presetId,
+          "video",
+          name,
+          buildJsonObject {
+            put("offType", 2)
+            put("enableLiveStream", false)
+            put("playlist", JsonArray(listOf(JsonPrimitive(src))))
+          },
+          t,
+      )
+
   /** `PUT /api/ar/markers/:id/pose`: the alignment of a ring; the answer is the server's warnings. */
   suspend fun savePose(spaceId: String, markerId: String, pose: MarkerPose, heightAboveFloorM: Double): BuilderCall<List<String>> =
       call(

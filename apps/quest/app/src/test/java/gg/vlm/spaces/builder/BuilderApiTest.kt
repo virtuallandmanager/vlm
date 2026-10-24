@@ -109,6 +109,30 @@ class BuilderApiTest {
   }
 
   @Test
+  fun `placeVideo makes a one-video playlist screen`() {
+    routes["POST /api/presets/pr1/elements"] = json("""{"element":{"id":"el8"}}""", 201)
+    routes["POST /api/elements/el8/instances"] = json("""{"instance":{"id":"in8"}}""", 201)
+    val r = runBlocking { api().placeVideo("sp1", "pr1", "Clip", "https://x/c.mp4", t) }
+    assertEquals(BuilderCall.Ok(PlacedItem("el8", "in8")), r)
+    assertTrue(bodies[0], bodies[0].contains("\"type\":\"video\"") && bodies[0].contains("\"playlist\":[\"https://x/c.mp4\"]") && bodies[0].contains("\"offType\":2"))
+  }
+
+  @Test
+  fun `placeEntry sends each library kind to its place call`() {
+    routes["POST /api/presets/pr1/elements"] = json("""{"element":{"id":"el7"}}""", 201)
+    routes["POST /api/elements/el7/instances"] = json("""{"instance":{"id":"in7"}}""", 201)
+    val a = api()
+    runBlocking {
+      a.placeEntry("sp1", "pr1", LibraryEntry("1", LibraryKind.MODEL, "Chair", "https://x/c.glb", null), t)
+      a.placeEntry("sp1", "pr1", LibraryEntry("2", LibraryKind.IMAGE, "P", "https://x/p.png", null), t)
+      a.placeEntry("sp1", "pr1", LibraryEntry("3", LibraryKind.VIDEO, "V", "https://x/v.mp4", null), t)
+    }
+    assertTrue(bodies[0], bodies[0].contains("\"modelSrc\":\"https://x/c.glb\""))
+    assertTrue(bodies[2], bodies[2].contains("\"textureSrc\":\"https://x/p.png\""))
+    assertTrue(bodies[4], bodies[4].contains("\"type\":\"video\""))
+  }
+
+  @Test
   fun `putAdjustment and savePose send their bodies and read the warnings`() {
     routes["PUT /api/ar/spaces/sp1/adjustments/in1"] = json("""{"dPosition":{"x":0,"y":0,"z":0}}""")
     routes["PUT /api/ar/markers/m1/pose"] = json("""{"marker":{},"warnings":["floor_far"]}""")

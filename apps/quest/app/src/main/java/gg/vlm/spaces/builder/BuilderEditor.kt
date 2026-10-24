@@ -90,6 +90,7 @@ class BuilderEditor(
   var picked: String? = null
     private set
 
+  private val pending = PendingPick()
   private var scope = Scope.EVERYWHERE
   private var message: String? = null
   private var saving = false
@@ -164,11 +165,24 @@ class BuilderEditor(
     } else if (p != null && store.draft(p) == null && !session.dragging) {
       reselect(p)
     }
+    pickPending()
     changed()
+  }
+
+  /** Picks the just-placed item [sk] as soon as the feed shows it (at once if it already does). */
+  fun pickWhenPresent(sk: String) {
+    pending.expect(sk)
+    pickPending()
+  }
+
+  /** Waits out a drag in progress (the picked item must not change under it). */
+  private fun pickPending() {
+    if (!session.dragging) pending.resolve(items)?.let(::pick)
   }
 
   fun pick(sk: String) {
     if (sk !in bySk || session.dragging) return
+    pending.clear()
     picked = sk
     scope = store.draft(sk)?.scope ?: Scope.EVERYWHERE
     message = null
