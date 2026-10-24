@@ -153,3 +153,25 @@ export async function deleteMarker(id: string): Promise<boolean> {
   await publishSceneTouched(sceneId)
   return true
 }
+
+export type MarkerPose = { x: number; y: number; z: number; headingDeg: number; heightAboveFloorM: number }
+
+/**
+ * Saves where the ring is. Warns `floor_height_off` when the ring's floor (y minus its height above the floor)
+ * is more than 0.5 m from the floor's recorded height. Heading is stored in [0, 360).
+ */
+export async function setMarkerPose(id: string, pose: MarkerPose): Promise<{ marker: ArMarkerView; warnings: Array<'floor_height_off'> } | null> {
+  const sceneId = await markerScene(id)
+  if (!sceneId) return null
+  const headingDeg = ((pose.headingDeg % 360) + 360) % 360
+  const [row] = await db
+    .update(arMarkers)
+    .set({ poseX: pose.x, poseY: pose.y, poseZ: pose.z, headingDeg, poseRecordedAt: new Date() })
+    .where(eq(arMarkers.id, id))
+    .returning()
+  if (!row) return null
+  const [floor] = await db.select({ heightM: arFloors.heightM }).from(arFloors).where(eq(arFloors.id, row.floorId))
+  const warnings: Array<'floor_height_off'> = floor && Math.abs(pose.y - pose.heightAboveFloorM - floor.heightM) > 0.5 ? ['floor_height_off'] : []
+  await publishSceneTouched(sceneId)
+  return { marker: markerView(row), warnings }
+}

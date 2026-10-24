@@ -20,7 +20,7 @@ import {
   bigint,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
-import type { VenueRules } from 'vlm-shared'
+import type { VenueRules, Vec3 } from 'vlm-shared'
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 
@@ -963,6 +963,19 @@ export const arMarkers = pgTable('ar_markers', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   floorIdx: index('ar_markers_floor_idx').on(t.floorId),
+}))
+
+// A per-space tweak to one scene instance ("Just this place"): the AR feed applies it; the scene itself is untouched.
+export const arAdjustments = pgTable('ar_adjustments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  spaceId: uuid('space_id').notNull().references(() => arSpaces.id, { onDelete: 'cascade' }),
+  instanceId: uuid('instance_id').notNull().references(() => sceneElementInstances.id, { onDelete: 'cascade' }),
+  dPosition: jsonb('d_position').$type<Vec3>().notNull(), // metres
+  dRotation: jsonb('d_rotation').$type<Vec3>().notNull(), // degrees, per Euler component
+  scaleFactor: jsonb('scale_factor').$type<Vec3>().notNull(), // multipliers
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  spaceInstanceUnique: uniqueIndex('ar_adjustments_space_instance_unique').on(t.spaceId, t.instanceId),
 }))
 
 // A headset paired to a VLM user. The headset holds a secret (only its sha256 is stored) and shows a code; the user

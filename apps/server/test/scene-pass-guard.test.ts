@@ -377,6 +377,9 @@ describe('scene pass guard', () => {
       'GET /api/ar/markers/by-code/:code',
       'GET /api/ar/spaces/:id/feed',
       'GET /api/scenes/:sceneId/ar/spaces',
+      'PUT /api/ar/markers/:id/pose',
+      'PUT /api/ar/spaces/:id/adjustments/:instanceId',
+      'DELETE /api/ar/spaces/:id/adjustments/:instanceId',
     ].sort()
 
     /** A live AR pass for the owner's own scene, plus ids under that scene for the walk. */

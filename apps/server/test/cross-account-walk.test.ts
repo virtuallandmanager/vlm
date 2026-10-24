@@ -5,7 +5,7 @@ import {
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
   sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
-  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arDevices,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
 } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { createVenue, createBooking, addGrant } from '../src/venues/service.js'
@@ -73,6 +73,7 @@ async function fixtures() {
   const [arSpace] = await db.insert(arSpaces).values({ sceneId: scene.id, name: 'B space' }).returning()
   const [arFloor] = await db.insert(arFloors).values({ spaceId: arSpace.id, name: 'Ground floor' }).returning()
   const [arMarker] = await db.insert(arMarkers).values({ floorId: arFloor.id, ringId: 123456, code: '0000000' }).returning()
+  await db.insert(arAdjustments).values({ spaceId: arSpace.id, instanceId: instance.id, dPosition: { x: 0, y: 1, z: 0 }, dRotation: { x: 0, y: 0, z: 0 }, scaleFactor: { x: 1, y: 1, z: 1 } })
   const [arDevice] = await db.insert(arDevices).values({
     userId: b.id, secretHash: 'b-device-secret-hash', kind: 'shared', status: 'claimed', codeExpiresAt: new Date(Date.now() + H), expiresAt: new Date(Date.now() + H),
   }).returning()
@@ -129,6 +130,9 @@ const CASES: Case[] = [
   { route: 'DELETE /api/ar/floors/:id', url: (f) => `/api/ar/floors/${f.arFloor.id}` },
   { route: 'POST /api/ar/floors/:id/markers', url: (f) => `/api/ar/floors/${f.arFloor.id}/markers`, body: () => ({}) },
   { route: 'PUT /api/ar/markers/:id', url: (f) => `/api/ar/markers/${f.arMarker.id}`, body: () => ({ whereText: 'pwned' }) },
+  { route: 'PUT /api/ar/markers/:id/pose', url: (f) => `/api/ar/markers/${f.arMarker.id}/pose`, body: () => ({ x: 9, y: 9, z: 9, headingDeg: 9, heightAboveFloorM: 0 }) },
+  { route: 'PUT /api/ar/spaces/:id/adjustments/:instanceId', url: (f) => `/api/ar/spaces/${f.arSpace.id}/adjustments/${f.instance.id}`, body: () => ({ dPosition: { x: 9, y: 9, z: 9 }, dRotation: { x: 0, y: 0, z: 0 }, scaleFactor: { x: 1, y: 1, z: 1 } }) },
+  { route: 'DELETE /api/ar/spaces/:id/adjustments/:instanceId', url: (f) => `/api/ar/spaces/${f.arSpace.id}/adjustments/${f.instance.id}` },
   { route: 'DELETE /api/ar/markers/:id', url: (f) => `/api/ar/markers/${f.arMarker.id}` },
   { route: 'GET /api/ar/markers/by-code/:code', url: () => `/api/ar/markers/by-code/${ringCodeOf(123456)}` },
   { route: 'GET /api/ar/spaces/:id/feed', url: (f) => `/api/ar/spaces/${f.arSpace.id}/feed` },
@@ -246,7 +250,7 @@ const TABLES = [
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
   sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
-  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arDevices,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
 ]
 async function snapshot(f: F) {
   const all = await Promise.all(TABLES.map((t) => db.select().from(t as any)))

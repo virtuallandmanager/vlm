@@ -1,4 +1,5 @@
 import type { SerializedScene } from './hyperfy.js'
+import type { Vec3 } from './types/math.js'
 
 export type ArMarkerView = {
   id: string
@@ -78,3 +79,6 @@ export type ArDeviceSpace = {
 }
 /** GET /api/ar/devices */
 export type ArDeviceSummary = { id: string; deviceName: string | null; kind: ArDeviceKind | null; status: ArDeviceStatus; lastUsedAt: string | null; expiresAt: string | null }
+
+/** A per-space tweak to one scene instance: position offset in metres, rotation offset in degrees, scale multipliers. */
+export type Adjustment = { dPosition: Vec3; dRotation: Vec3; scaleFactor: Vec3 }
