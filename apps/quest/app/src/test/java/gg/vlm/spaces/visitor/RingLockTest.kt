@@ -134,4 +134,29 @@ class RingLockTest {
     val n = RingLock()
     assertEquals(GatherStatus.GATHERING, gatherStatus(listOf(n.step(near, null, head, 0L)), false))
   }
+
+  @Test fun `a still ring seen too steeply says stand in front, never that the wall is missing`() {
+    val l = RingLock()
+    var s = l.step(near, null, head, 0L, steep = true)
+    assertFalse(s.tooSteep) // not still yet
+    repeat(40) { s = l.step(near, null, head, it * 300L, steep = true) }
+    assertTrue(s.tooSteep)
+    assertFalse(s.wallMissing)
+    assertEquals(Gate.GATHERING, s.gate)
+    assertEquals(GatherStatus.TOO_STEEP, gatherStatus(listOf(s), false))
+    // stepping round to head-on: the heading counts again
+    repeat(VisitorTuning.AVERAGE_FRAMES) { s = l.step(near, 180.0, head, 20_000L) }
+    assertFalse(s.tooSteep)
+    assertEquals(Gate.STEADY, s.gate)
+  }
+
+  @Test fun `gather status with steep rings`() {
+    val steep = LockStep(Gate.GATHERING, false, near, null, tooSteep = true)
+    assertEquals(GatherStatus.TOO_STEEP, gatherStatus(listOf(steep), false))
+    assertEquals(GatherStatus.TOO_STEEP, gatherStatus(listOf(steep, steep), true))
+    // too far comes first; another ring still gathering isn't stuck
+    assertEquals(GatherStatus.TOO_FAR, gatherStatus(listOf(steep, step(Gate.TOO_FAR)), false))
+    assertEquals(GatherStatus.GATHERING, gatherStatus(listOf(steep, step(Gate.GATHERING)), false))
+    assertEquals(GatherStatus.GATHERING, gatherStatus(listOf(steep, step(Gate.STEADY)), false))
+  }
 }

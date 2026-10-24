@@ -17,7 +17,9 @@ import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import gg.vlm.spaces.visitor.isTooSteep
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -252,16 +254,46 @@ class RingPoseTest {
   }
 
   @Test
-  fun thePerpendicularWallAloneOutsideTheGateGivesNoHeading() {
-    // The marker's own wall A is unscanned; wall B is 5 cm away. Seen at 30° or 60°, the false normal (at twice the
-    // view angle from A's) is 30° from B: outside the 20° gate. (From about 35° to 55° it is within 20° of B, and B
-    // is taken: one wall alone can't be told from the marker's own.)
+  fun thePerpendicularWallAloneGivesNoHeading() {
+    // The marker's own wall A is unscanned; wall B is 5 cm away. At 30° or 60° the false normal (at twice the view
+    // angle from A's) is 30° from B, outside the tilt gate.
     val onA = Vec3(1.95, 1.5, 3.0)
     for (off in listOf(30.0, 60.0)) {
       val eye = eyeAt(onA, wallA, 1.2, off)
       val (head, d) = view(eye, onA, wallA)
       assertNull("$off°", wallHeading(onA.sdk(), listOf(walls[1]), eye.sdk(), circleNormals(d, k, head)))
     }
+    // At 40-50° it agrees with B, but B is then 40-50° from head-on: too steep to count.
+    for (off in listOf(40.0, 45.0, 50.0)) {
+      val eye = eyeAt(onA, wallA, 1.2, off)
+      val (head, d) = view(eye, onA, wallA)
+      val fix = wallFix(onA.sdk(), listOf(walls[1]), eye.sdk(), circleNormals(d, k, head))
+      assertTrue("$off°: $fix", fix == null || isTooSteep(fix))
+    }
+  }
+
+  @Test
+  fun theMarkersOwnWallWithinHeadOnCounts() {
+    val onA = Vec3(0.5, 1.5, 3.0)
+    for (off in listOf(20.0, 30.0)) {
+      val eye = eyeAt(onA, wallA, 1.2, off)
+      val (head, d) = view(eye, onA, wallA)
+      val fix = wallFix(onA.sdk(), walls, eye.sdk(), circleNormals(d, k, head))!!
+      assertEquals("$off°", 180.0, fix.headingDeg!!, 1e-4)
+      assertEquals("$off°", off, fix.viewAngleDeg, 0.5)
+      assertFalse("$off°", isTooSteep(fix))
+    }
+  }
+
+  @Test
+  fun anAmbiguousCornerSeenSteeplyIsTooSteep() {
+    // No heading at 45° from the corner, and the view says why: stand in front.
+    val onA = Vec3(1.95, 1.5, 3.0)
+    val eye = eyeAt(onA, wallA, 1.2, 45.0)
+    val (head, d) = view(eye, onA, wallA)
+    val fix = wallFix(onA.sdk(), walls, eye.sdk(), circleNormals(d, k, head))!!
+    assertNull(fix.headingDeg)
+    assertTrue(isTooSteep(fix))
   }
 
   @Test

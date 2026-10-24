@@ -68,9 +68,21 @@ data class WallPlane(val centre: Vector3, val normal: Vector3, val halfWidth: Fl
  * the perpendicular wall: when a wall facing another way agrees within [TILT_AMBIGUOUS_DEG] of the best, the pick
  * would be decided by measurement error, so there is no heading (the visitor is asked to look around and moves).
  * Null when no wall is close, none agrees with the tilt, or two walls agree about as well. A null [tilt] skips the
- * check and takes the nearest wall (the developer panel, which has no single frame's outline).
+ * check and takes the nearest wall (the developer panel, which has no single frame's outline). See [wallFix] for the
+ * view angle too.
  */
-fun wallHeading(marker: Vector3, walls: List<WallPlane>, viewer: Vector3, tilt: List<Vec3>?): Double? {
+fun wallHeading(marker: Vector3, walls: List<WallPlane>, viewer: Vector3, tilt: List<Vec3>?): Double? =
+    wallFix(marker, walls, viewer, tilt)?.headingDeg
+
+/**
+ * The marker's wall as [wallHeading] picks it: its [headingDeg] (null when another wall agrees with the tilt about as
+ * well), and [viewAngleDeg], the level angle between the best wall's into-room normal and the ray from the marker
+ * toward the viewer (0 head-on).
+ */
+data class WallFix(val headingDeg: Double?, val viewAngleDeg: Double)
+
+/** [wallHeading], with the view angle of the wall it picks (see [WallFix]). */
+fun wallFix(marker: Vector3, walls: List<WallPlane>, viewer: Vector3, tilt: List<Vec3>?): WallFix? {
   // Each wall that counts: its into-room normal and its score (lower is better).
   val passing = ArrayList<Pair<Vec3, Double>>()
   for (w in walls) {
@@ -89,12 +101,14 @@ fun wallHeading(marker: Vector3, walls: List<WallPlane>, viewer: Vector3, tilt: 
     passing += inward to score
   }
   val (n, bestScore) = passing.minByOrNull { it.second } ?: return null
-  if (tilt != null &&
-      passing.any { (m, score) -> angleDeg(m, n) > TILT_AMBIGUOUS_DEG && score - bestScore < TILT_AMBIGUOUS_DEG }) {
-    return null
-  }
+  val toViewer = flatUnit(Vector3(viewer.x - marker.x, 0f, viewer.z - marker.z))
+  val view = toViewer?.let { angleDeg(n, it) } ?: 0.0
+  val ambiguous =
+      tilt != null &&
+          passing.any { (m, score) -> angleDeg(m, n) > TILT_AMBIGUOUS_DEG && score - bestScore < TILT_AMBIGUOUS_DEG }
+  if (ambiguous) return WallFix(null, view)
   val deg = Math.toDegrees(atan2(n.x, n.z))
-  return if (deg <= -180.0) deg + 360.0 else deg // (-180, 180]; a -0.0 x would give -180
+  return WallFix(if (deg <= -180.0) deg + 360.0 else deg, view) // (-180, 180]; a -0.0 x would give -180
 }
 
 /**

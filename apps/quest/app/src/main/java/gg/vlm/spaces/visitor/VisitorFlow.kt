@@ -16,6 +16,7 @@ object VisitorCopy {
   const val HINT = "Look for a ring like this, at eye level near the entrance."
   const val TOO_FAR = "Step closer to the ring"
   const val HOLD_STILL = "Hold still…"
+  const val STAND_IN_FRONT = "Stand in front of the ring"
   const val NOT_SET_UP = "This space isn't set up yet"
   const val LOOK_AGAIN = "Look at the ring again"
   const val HIDE_BEHIND_WALLS = "Hide behind walls"

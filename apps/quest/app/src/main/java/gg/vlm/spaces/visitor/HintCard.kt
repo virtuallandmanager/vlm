@@ -64,7 +64,8 @@ fun hintText(
  * The hint while locking: "Hold still…" only while a ring of the space is actually being gathered. With none in view
  * (after a tracking jump, after the headset comes back on, a space opened from a link before arriving) it is the
  * standard hint; a ring too far away, or one seen but unreadable for [VisitorTuning.UNREADABLE_HINT_MS], says step
- * closer; a ring holding still with no wall heading says the wall can't be seen.
+ * closer; a ring holding still seen too far from head-on says to stand in front of it; a ring holding still with no
+ * wall heading says the wall can't be seen.
  */
 fun lockingHint(gather: GatherStatus, unreadableForMs: Long): String =
     when (gather) {
@@ -74,6 +75,7 @@ fun lockingHint(gather: GatherStatus, unreadableForMs: Long): String =
       GatherStatus.UNREADABLE ->
           if (unreadableForMs >= VisitorTuning.UNREADABLE_HINT_MS) VisitorCopy.TOO_FAR else VisitorCopy.HINT
       GatherStatus.NO_WALL -> VisitorCopy.NO_WALL
+      GatherStatus.TOO_STEEP -> VisitorCopy.STAND_IN_FRONT
     }
 
 /** The hint card (0.5 × 0.3 m, 250 × 150 dp): a drawing of a ring marker and the line [text]. */

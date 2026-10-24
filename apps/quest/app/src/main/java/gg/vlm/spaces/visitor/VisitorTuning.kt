@@ -10,6 +10,12 @@ object VisitorTuning {
   const val MAX_SPREAD_M = 0.01
   const val MAX_HEADING_SPREAD_DEG = 1.0
   /**
+   * A wall heading counts only when the visitor is within this of head-on to the ring (see `isTooSteep`). Then the
+   * tilt's false normal (at twice the view angle from the true one) is at least 55° from the perpendicular wall's, so
+   * a perpendicular wall can't be taken for an unscanned one.
+   */
+  const val MAX_VIEW_ANGLE_DEG = 35.0
+  /**
    * Tracking is taken to have jumped when the head moves more than the larger of [JUMP_DISTANCE_M] and
    * [MAX_WALK_SPEED_M_S] × the time since the last tick, or turns more than the larger of [JUMP_YAW_DEG] and
    * [MAX_TURN_DEG_S] × that time. The time counts up to [MAX_TICK_GAP_S].

@@ -14,10 +14,11 @@ import gg.vlm.spaces.ring.WallPlane
 import gg.vlm.spaces.ring.cameraToWorld
 import gg.vlm.spaces.ring.circleNormals
 import gg.vlm.spaces.ring.markerInCamera
-import gg.vlm.spaces.ring.wallHeading
+import gg.vlm.spaces.ring.wallFix
 import gg.vlm.spaces.visitor.Gate
 import gg.vlm.spaces.visitor.LockStep
 import gg.vlm.spaces.visitor.RingLock
+import gg.vlm.spaces.visitor.isTooSteep
 
 /** Draws a space's scene (the headset's `SceneRenderer`; a fake in tests). */
 interface SceneView {
@@ -137,10 +138,10 @@ class SpaceSession(
       val marker = space?.markerByRing(id)?.second ?: continue
       if (k == null) continue
       val w = cameraToWorld(markerInCamera(d, k, marker.diameterMm / 1000.0), head, k)
+      val fix = wallFix(w, walls, head.t, circleNormals(d, k, head))
+      val steep = isTooSteep(fix) // an ambiguous corner seen steeply is also told where to stand
       val step =
-          tracks
-              .getOrPut(id) { RingLock() }
-              .step(w.vec(), wallHeading(w, walls, head.t, circleNormals(d, k, head)), head.t.vec(), now)
+          tracks.getOrPut(id) { RingLock() }.step(w.vec(), fix?.headingDeg?.takeUnless { steep }, head.t.vec(), now, steep)
       steps += step
       lastSteps[id] = step
       if (step.becameSteady) {

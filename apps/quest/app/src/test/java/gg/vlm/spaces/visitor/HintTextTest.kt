@@ -40,6 +40,12 @@ class HintTextTest {
     )
   }
 
+  @Test fun `a ring seen too steeply says stand in front`() {
+    assertEquals("Stand in front of the ring", VisitorCopy.STAND_IN_FRONT)
+    assertEquals(VisitorCopy.STAND_IN_FRONT, lockingHint(GatherStatus.TOO_STEEP, 0))
+    assertEquals(VisitorCopy.STAND_IN_FRONT, hintText(locking, GatherStatus.TOO_STEEP))
+  }
+
   @Test fun `locking says hold still only while a ring is being gathered`() {
     assertEquals(VisitorCopy.HINT, lockingHint(GatherStatus.NONE_IN_VIEW, 0))
     assertEquals(VisitorCopy.HOLD_STILL, lockingHint(GatherStatus.GATHERING, 0))
