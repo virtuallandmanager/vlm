@@ -386,4 +386,43 @@ class DeviceAuthTest {
     assertTrue(store.map.isEmpty())
     assertEquals(AuthState.SignedOut, a.state.value)
   }
+
+  @Test
+  fun `a shared end is signed out before the server answers`() {
+    val a = pairedAuth("shared")
+    server.enqueue(MockResponse().setResponseCode(204).setHeadersDelay(1, java.util.concurrent.TimeUnit.SECONDS))
+    val ending = java.util.concurrent.CompletableFuture.runAsync { runBlocking { a.endSession() } }
+    val r = server.takeRequest() // /end has reached the server; its answer is a second away
+    assertEquals("/api/ar/devices/dev1/end", r.path)
+    assertFalse(ending.isDone)
+    assertEquals(AuthState.SignedOut, a.state.value)
+    assertTrue(store.map.isEmpty())
+    ending.get()
+  }
+
+  @Test
+  fun `an exception from the server call still leaves a shared headset signed out`() {
+    store.put(DeviceAuth.KEY_ID, "dev9")
+    store.put(DeviceAuth.KEY_SECRET, "s")
+    store.put(DeviceAuth.KEY_KIND, "SHARED")
+    // A file: URL isn't HTTP, so the call throws (a ClassCastException, not an IOException).
+    val a = DeviceAuth(ArApi("file:///nowhere"), store, { now })
+    assertTrue(a.state.value is AuthState.Paired)
+    assertTrue(runCatching { runBlocking { a.endSession() } }.isFailure)
+    assertEquals(AuthState.SignedOut, a.state.value)
+    assertTrue(store.map.isEmpty())
+  }
+
+  @Test
+  fun `unpair is signed out before the server answers, and sends the captured secret`() {
+    val a = pairedAuth()
+    val secret = store.get(DeviceAuth.KEY_SECRET)!!
+    server.enqueue(MockResponse().setResponseCode(204).setHeadersDelay(1, java.util.concurrent.TimeUnit.SECONDS))
+    val ending = java.util.concurrent.CompletableFuture.runAsync { runBlocking { a.unpair() } }
+    val r = server.takeRequest()
+    assertEquals("""{"secret":"$secret"}""", r.body.readUtf8())
+    assertFalse(ending.isDone)
+    assertEquals(AuthState.SignedOut, a.state.value)
+    ending.get()
+  }
 }

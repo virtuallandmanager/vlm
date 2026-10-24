@@ -215,29 +215,38 @@ class DeviceAuth(
     return BuilderCall.Unauthorized
   }
 
-  /** Shared headset: ends the session on the server and forgets the pairing. Personal: only drops the cached passes. */
+  /**
+   * Shared headset: forgets the pairing at once, then ends the session on the server (best effort, with the
+   * credentials read before forgetting). Personal: only drops the cached passes.
+   */
   override suspend fun endSession() {
     val s = _state.value as? AuthState.Paired ?: return
     if (s.kind == DeviceKind.PERSONAL) {
       mintLock.withLock { passes.clear() }
       return
     }
-    val secret = store.get(KEY_SECRET)
-    if (secret != null) api.endSession(s.deviceId, secret)
-    // Even when the server can't be reached, a shared headset must not stay signed in.
-    signOut()
+    signOutThenEnd()
   }
 
   /**
-   * **Sign out** from the menu, either kind of headset: tells the server the session is over (it ends this headset's
-   * drafts; a shared headset is unpaired there), best effort, then forgets the pairing here. A personal headset stays
-   * listed on the website until it is revoked there.
+   * **Sign out** from the menu, either kind of headset: forgets the pairing here at once, then tells the server the
+   * session is over (it ends this headset's drafts; a shared headset is unpaired there), best effort. A personal
+   * headset stays listed on the website until it is revoked there.
    */
   override suspend fun unpair() {
-    val s = _state.value as? AuthState.Paired ?: return
+    if (_state.value !is AuthState.Paired) return
+    signOutThenEnd()
+  }
+
+  /**
+   * Signs out before anything can fail or wait: a slow, failing or cancelled `/end` must never leave the headset
+   * paired for the next person. The server call then uses the credentials captured beforehand.
+   */
+  private suspend fun signOutThenEnd() {
+    val id = store.get(KEY_ID)
     val secret = store.get(KEY_SECRET)
-    if (secret != null) api.endSession(s.deviceId, secret)
     signOut()
+    if (id != null && secret != null) api.endSession(id, secret)
   }
 
   /** The spaces the approver can build on. A revoked device is signed out here like everywhere else. */
