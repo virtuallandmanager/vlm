@@ -46,6 +46,32 @@ export default function PrivacyPage() {
           dashboard control for this is coming. This removes your sessions, events and positions from every scene.
         </p>
 
+        <h2>VLM Spaces on Quest</h2>
+        <p>
+          VLM Spaces is the Meta Quest app that shows a VLM space in your room. It talks to vlm.gg, and only to vlm.gg.
+        </p>
+        <ul className="list-disc pl-5">
+          <li>
+            <strong>Every visitor sends:</strong> the code of the ring you look at, to find its space; a request for the space's contents
+            (the space feed); and anonymous visit events: when you arrive and leave, and where your head is (every few seconds), in the space's own
+            coordinates rather than your room's. Each visit uses a fresh random id that is never stored, so visits can't be linked to you
+            or to each other.
+          </li>
+          <li>
+            <strong>Builders also send:</strong> the edits they make to a space, the alignment of a ring, and the pairing of their headset
+            with a VLM account. Pairing sends a hash of a secret kept on the headset, never the secret itself.
+          </li>
+          <li>
+            <strong>Never sent:</strong> camera images and room scans. The headset's cameras are used on the headset to find rings, and
+            your room's walls and surfaces are used on the headset to hide virtual things behind real ones and to snap items to walls.
+            Neither leaves the headset.
+          </li>
+        </ul>
+        <p>
+          Visit events follow the same retention as the rest of VLM analytics, above. They carry no identity, so there is nothing to look up
+          or delete for a single visitor. A builder can revoke a paired headset on vlm.gg, which stops it from editing.
+        </p>
+
         <h2>Advertiser early access</h2>
         <p>
           When you ask for advertising early access on vlm.gg, VLM stores the email address, name, company or project, website and message you

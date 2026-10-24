@@ -20,6 +20,40 @@ android {
     versionName = "0.1.0"
   }
 
+  // Release signing: the four VLM_QUEST_* properties live in ~/.gradle/gradle.properties (see STORE.md), never in the repo.
+  // Without them the release build still assembles, unsigned, and warns.
+  val keystorePath = providers.gradleProperty("VLM_QUEST_KEYSTORE").orNull
+  val keystorePassword = providers.gradleProperty("VLM_QUEST_KEYSTORE_PASSWORD").orNull
+  val keyAlias = providers.gradleProperty("VLM_QUEST_KEY_ALIAS").orNull
+  val keyPassword = providers.gradleProperty("VLM_QUEST_KEY_PASSWORD").orNull
+  val releaseSigned =
+      keystorePath != null && keystorePassword != null && keyAlias != null && keyPassword != null
+
+  signingConfigs {
+    if (releaseSigned) {
+      create("release") {
+        storeFile = file(keystorePath!!.replaceFirst("~", System.getProperty("user.home")))
+        storePassword = keystorePassword
+        this.keyAlias = keyAlias
+        this.keyPassword = keyPassword
+      }
+    }
+  }
+
+  buildTypes {
+    release {
+      // Minify stays off: the Spatial SDK documents no keep rules.
+      isMinifyEnabled = false
+      if (releaseSigned) {
+        signingConfig = signingConfigs.getByName("release")
+      } else {
+        logger.warn(
+            "VLM Quest: VLM_QUEST_KEYSTORE* properties are not set in ~/.gradle/gradle.properties; the release build will be UNSIGNED (see apps/quest/STORE.md)."
+        )
+      }
+    }
+  }
+
   packaging { resources.excludes.add("META-INF/LICENSE") }
 
   lint {

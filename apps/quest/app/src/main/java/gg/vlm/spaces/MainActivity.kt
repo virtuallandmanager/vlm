@@ -231,7 +231,8 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
         )
     val missing = PERMISSIONS.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
     if (missing.isNotEmpty()) {
-      state.markerStatus = "Waiting for the camera and spatial data permissions"
+      state.markerStatus =
+          "${getString(R.string.permission_rationale_camera)} ${getString(R.string.permission_rationale_spatial)}"
       askingPermissions = true
       requestPermissions(missing.toTypedArray(), REQUEST_PERMISSIONS)
     } else {
