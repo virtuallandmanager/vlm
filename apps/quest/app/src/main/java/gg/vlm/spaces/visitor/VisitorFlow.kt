@@ -44,6 +44,12 @@ object VisitorCopy {
   const val NO_CAMERA = "VLM Spaces needs camera access to find rings. Allow it in Settings → Apps → VLM Spaces."
   const val NO_SPATIAL_DATA =
       "VLM Spaces needs spatial data access to line spaces up with the room. Allow it in Settings → Apps → VLM Spaces."
+  /** Camera and spatial data wording; the same text is in res/values/strings.xml (a test keeps them equal). */
+  const val PERMISSION_RATIONALE_CAMERA =
+      "VLM Spaces looks for VLM rings through the headset's cameras to line a space up with the room. Camera images stay on the headset."
+  const val PERMISSION_RATIONALE_SPATIAL =
+      "Your room's walls and surfaces are used on the headset to hide virtual things behind real ones and to snap items to walls. They aren't uploaded."
+  const val PERMISSION_RATIONALE = "$PERMISSION_RATIONALE_CAMERA $PERMISSION_RATIONALE_SPATIAL"
   const val NO_WALL = "Can't see the wall behind this ring. Look around the room so the headset can map it."
 }
 

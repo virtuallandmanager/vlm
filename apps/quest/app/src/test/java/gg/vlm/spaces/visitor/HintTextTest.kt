@@ -5,6 +5,7 @@ import gg.vlm.spaces.api.ArSpace
 import gg.vlm.spaces.space.RootPose
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HintTextTest {
@@ -74,6 +75,18 @@ class HintTextTest {
       assertEquals(VisitorCopy.NO_ROOM_SCAN, hintText(st, GatherStatus.GATHERING, 0, DeviceProblem.NO_ROOM_SCAN))
       assertEquals(VisitorCopy.NO_SPATIAL_DATA, hintText(st, GatherStatus.GATHERING, 0, DeviceProblem.NO_SPATIAL_PERMISSION))
     }
+  }
+
+  @Test fun `while the permission dialogs are up the hint says why, before any other problem`() {
+    for (st in listOf(VisitorState.Hint, VisitorState.StepCloser, VisitorState.Loading("ABC", "Cafe"), locking, VisitorState.Failed(VisitorCopy.OFFLINE))) {
+      assertEquals(VisitorCopy.PERMISSION_RATIONALE, hintText(st, GatherStatus.GATHERING, 0, DeviceProblem.ASKING_PERMISSIONS))
+    }
+  }
+
+  @Test fun `the rationale wording is the same as the string resources`() {
+    val xml = java.io.File("src/main/res/values/strings.xml").readText().replace("\\'", "'")
+    assertTrue(xml.contains(">${VisitorCopy.PERMISSION_RATIONALE_CAMERA}<"))
+    assertTrue(xml.contains(">${VisitorCopy.PERMISSION_RATIONALE_SPATIAL}<"))
   }
 
   @Test fun `no card while the scene is shown`() {

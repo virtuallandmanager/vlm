@@ -58,8 +58,8 @@ export default function PrivacyPage() {
             or to each other.
           </li>
           <li>
-            <strong>Builders also send:</strong> the edits they make to a space, the alignment of a ring, and the pairing of their headset
-            with a VLM account. Pairing sends a hash of a secret kept on the headset, never the secret itself.
+            <strong>Builders also send:</strong> the edits they make to a space, the alignment of a ring, and the pairing of their headset (including the headset model)
+            with a VLM account. The headset proves who it is with a secret kept in its encrypted storage; the server stores only a hash of it.
           </li>
           <li>
             <strong>Never sent:</strong> camera images and room scans. The headset's cameras are used on the headset to find rings, and

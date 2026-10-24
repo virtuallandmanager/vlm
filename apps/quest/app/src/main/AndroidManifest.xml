@@ -24,6 +24,7 @@
   <uses-permission android:name="horizonos.permission.HEADSET_CAMERA" />
   <application
     android:allowBackup="false"
+    android:usesCleartextTraffic="false"
     android:label="VLM Spaces"
   >
     <meta-data android:name="com.oculus.supportedDevices" android:value="quest3|quest3s" />

@@ -86,6 +86,7 @@ class VisitorController(
   private var unreadableSince: Long? = null
   /** When [tick] last had a head pose, for the tracking watch's speed limits. */
   private var lastHeadMs: Long? = null
+  private var askingPermissions = false
   private var cameraDenied = false
   private var spatialDenied = false
   private var roomScanMissing = false
@@ -227,6 +228,12 @@ class VisitorController(
 
   fun closeSpacePage() {
     ui.spacePage = null
+  }
+
+  /** Whether the system permission dialogs are up (the hint and an open space page then say why the app asks). */
+  fun setAskingPermissions(asking: Boolean) {
+    askingPermissions = asking
+    refreshUi()
   }
 
   /** Whether the camera permission has been refused (the hint then says how to allow it). */
@@ -385,6 +392,7 @@ class VisitorController(
     val now = clock()
     val device =
         when {
+          askingPermissions -> DeviceProblem.ASKING_PERMISSIONS
           cameraDenied -> DeviceProblem.NO_CAMERA_PERMISSION
           spatialDenied -> DeviceProblem.NO_SPATIAL_PERMISSION
           roomScanMissing -> DeviceProblem.NO_ROOM_SCAN

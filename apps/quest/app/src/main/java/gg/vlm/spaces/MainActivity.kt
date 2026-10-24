@@ -231,9 +231,9 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
         )
     val missing = PERMISSIONS.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
     if (missing.isNotEmpty()) {
-      state.markerStatus =
-          "${getString(R.string.permission_rationale_camera)} ${getString(R.string.permission_rationale_spatial)}"
+      state.markerStatus = "Waiting for the camera and spatial data permissions"
       askingPermissions = true
+      visitor.setAskingPermissions(true) // the hint card shows why, in release builds too
       requestPermissions(missing.toTypedArray(), REQUEST_PERMISSIONS)
     } else {
       state.markerStatus = HOLD_MARKER // onResume starts the camera
@@ -718,6 +718,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     if (requestCode != REQUEST_PERMISSIONS) return
     askingPermissions = false
+    visitor.setAskingPermissions(false)
     val sceneGranted = scenePermitted()
     visitor.setSpatialDenied(!sceneGranted)
     state.markerStatus = if (sceneGranted) HOLD_MARKER else "Spatial data permission denied: room walls are unavailable"

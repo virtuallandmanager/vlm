@@ -46,10 +46,6 @@ android {
       isMinifyEnabled = false
       if (releaseSigned) {
         signingConfig = signingConfigs.getByName("release")
-      } else {
-        logger.warn(
-            "VLM Quest: VLM_QUEST_KEYSTORE* properties are not set in ~/.gradle/gradle.properties; the release build will be UNSIGNED (see apps/quest/STORE.md)."
-        )
       }
     }
   }
@@ -72,6 +68,19 @@ android {
   kotlinOptions { jvmTarget = "17" }
   // android.util.Log and the like do nothing in unit tests (the visitor controller's tests reach its log lines).
   testOptions { unitTests.isReturnDefaultValues = true }
+}
+
+// Warn about a missing key only when a release task is going to run, not on every Gradle run.
+gradle.taskGraph.whenReady {
+  val releaseSigned = providers.gradleProperty("VLM_QUEST_KEYSTORE").isPresent &&
+      providers.gradleProperty("VLM_QUEST_KEYSTORE_PASSWORD").isPresent &&
+      providers.gradleProperty("VLM_QUEST_KEY_ALIAS").isPresent &&
+      providers.gradleProperty("VLM_QUEST_KEY_PASSWORD").isPresent
+  if (!releaseSigned && allTasks.any { it.project == project && it.name.contains("Release") }) {
+    logger.warn(
+        "VLM Quest: the VLM_QUEST_KEYSTORE* properties are not all set in ~/.gradle/gradle.properties; the release build is UNSIGNED (see apps/quest/STORE.md)."
+    )
+  }
 }
 
 dependencies {

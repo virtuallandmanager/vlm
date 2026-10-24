@@ -14,7 +14,7 @@ keytool -genkeypair -v -keystore ~/.android/vlm-quest-release.jks -alias vlm-que
 `keytool` asks for the keystore password and key password. Then add these four lines to `~/.gradle/gradle.properties` (not the repo's `gradle.properties`), with your own passwords:
 
 ```properties
-VLM_QUEST_KEYSTORE=/Users/unknower/.android/vlm-quest-release.jks
+VLM_QUEST_KEYSTORE=~/.android/vlm-quest-release.jks
 VLM_QUEST_KEYSTORE_PASSWORD=<keystore password>
 VLM_QUEST_KEY_ALIAS=vlm-quest
 VLM_QUEST_KEY_PASSWORD=<key password>
@@ -22,7 +22,7 @@ VLM_QUEST_KEY_PASSWORD=<key password>
 
 Back the `.jks` file and both passwords up somewhere safe. A Store app can't be updated if the key is lost (unless Meta's key-reset applies).
 
-Without these four properties the release build still assembles, unsigned, and Gradle prints a warning. An unsigned build can't be uploaded.
+Unless all four properties are set, the release build still assembles, unsigned, and Gradle prints a warning when a release task runs. An unsigned build can't be uploaded.
 
 ## 2. Build
 
@@ -136,7 +136,7 @@ Based on `docs/superpowers/specs/2026-10-22-ar-builder-and-visitor-modes-design.
   - Ring code, to look up the space (`GET /api/ar/markers/by-code/:code`).
   - Space contents (`GET /api/ar/spaces/:id/feed`).
   - Anonymous visit events: arrive, leave and head position in scene coordinates, at most one every 5 s (`POST /api/ar/spaces/:id/analytics`). A fresh random id per visit, never stored. Not linked to the user, no token sent. Purpose: analytics for the space's owner.
-- **Collected from builders only:** pairing (`/api/ar/pair...`, device name and a SHA-256 hash of the device secret, never the secret), edits to the scene, ring alignments, and draft previews.
+- **Collected from builders only:** pairing (`/api/ar/pair...`, the headset model as the device name, and a SHA-256 hash of the device secret; the headset proves who it is with a secret kept in its encrypted storage, sent over HTTPS to the pairing, pass and spaces calls, and the server stores only a hash of it), edits to the scene, ring alignments, and draft previews.
 - **Not collected:** camera images, room scans or room geometry, microphone, location, contacts, name, email, Meta account id, advertising id.
 - **Camera and spatial data** are processed on the headset only: rings are found from the passthrough camera, and walls and surfaces are used for occlusion and snapping.
 - **Shared with third parties:** none (the app talks only to vlm.gg).
