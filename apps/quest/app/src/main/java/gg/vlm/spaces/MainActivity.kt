@@ -176,7 +176,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     )
     scene.updateIBLEnvironment("environment.env")
     hintPanel = Entity.createPanelEntity(R.id.hint_card, Transform(Pose()))
-    menuButton = Entity.createPanelEntity(R.id.menu_button, Transform(Pose()))
+    menuButton = Entity.createPanelEntity(R.id.menu_button, Transform(Pose())).also { show(it, false) }
     menuPanel = Entity.createPanelEntity(R.id.visitor_menu, Transform(Pose())).also { show(it, false) }
     if (BuildConfig.DEBUG) {
       developerPanel = Entity.createPanelEntity(R.id.control_panel, Transform(Pose()), Grabbable()).also { show(it, false) }
@@ -245,7 +245,10 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
 
   // ── panels and menu ──────────────────────────────────────────────────
 
-  /** The hint card follows the head lazily; the "⋯" button sits 0.35 m below it; the menu stays where it opened. */
+  /**
+   * The hint card follows the head lazily; while the scene is shown (the card hidden) the "⋯" button sits 0.35 m below
+   * the card's place; the menu stays where it opened.
+   */
   private fun placePanels(head: Pose, now: Long) {
     val fwd = flat(head.q.times(Vector3(0f, 0f, 1f))) ?: Vector3(0f, 0f, 1f)
     val card = hintFollow.update(head.t.vec(), Math.toDegrees(atan2(fwd.x.toDouble(), fwd.z.toDouble())), now)
@@ -256,7 +259,10 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
       it.setComponent(Transform(Pose(p, facing)))
       show(it, state.hint != null)
     }
-    menuButton?.setComponent(Transform(Pose(Vector3(p.x, p.y - MENU_BUTTON_BELOW_M, p.z), facing)))
+    menuButton?.let {
+      it.setComponent(Transform(Pose(Vector3(p.x, p.y - MENU_BUTTON_BELOW_M, p.z), facing)))
+      show(it, state.sceneShown)
+    }
     menuPanel?.let { show(it, state.menuOpen) }
     developerPanel?.let { show(it, state.developerOpen) }
   }

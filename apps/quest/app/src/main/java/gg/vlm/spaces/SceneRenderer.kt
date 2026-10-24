@@ -87,14 +87,11 @@ class SceneRenderer(private val activity: AppSystemActivity) {
       val faded: List<Entity> = emptyList(),
   )
 
-  /** Where the fade is: [alpha] now, heading for [target] (0 or 1) since [fadeFrom] at [fadeStart]. */
-  private var alpha = 0f
-  private var target = 0f
-  private var fadeFrom = 0f
-  private var fadeStart = 0L
-  /** Images and videos are drawn while fading or shown; models and sounds only once fully shown. */
-  private var mediaOn = false
-  private var solidOn = false
+  private val fade = SceneFade(FADE_MS)
+  /** What [sync] last put on the entities. */
+  private var appliedAlpha = 1f
+  private var appliedMedia = false
+  private var appliedSolid = false
   private val sceneObjects = HashMap<Entity, SceneObject>()
 
   init {
@@ -123,40 +120,45 @@ class SceneRenderer(private val activity: AppSystemActivity) {
 
   fun count() = plan.size
 
-  /** Removes every item (the space was closed). */
-  fun clear() = apply(emptyList())
+  /** Removes every item (the space was closed); whatever is added next starts hidden. */
+  fun clear() {
+    apply(emptyList())
+    fade.clear()
+    sync()
+  }
 
   /** Fades the scene in or out over [FADE_MS] from wherever the current fade has got to. */
   fun setVisible(on: Boolean, nowMs: Long) {
-    val t = if (on) 1f else 0f
-    if (t == target) return
-    target = t
-    fadeFrom = alpha
-    fadeStart = nowMs
-    if (on) setMediaOn(true)
+    if (on) fade.show(nowMs) else fade.hide(nowMs)
+    sync()
+  }
+
+  /** Hides the scene at once, without a fade. */
+  fun hideNow() {
+    fade.hideNow()
+    sync()
   }
 
   /** Advances the fade; call every frame. */
   fun tick(nowMs: Long) {
-    if (alpha == target) return
-    val k = ((nowMs - fadeStart).toFloat() / FADE_MS).coerceIn(0f, 1f)
-    alpha = fadeFrom + (target - fadeFrom) * k
-    if (k >= 1f) alpha = target
-    shown.values.forEach { s -> s.faded.forEach { e -> sceneObjects[e]?.let { setAlpha(it, alpha) } } }
-    if (alpha == target) {
-      setSolidOn(target == 1f)
-      if (target == 0f) setMediaOn(false)
+    fade.tick(nowMs)
+    sync()
+  }
+
+  /** Puts [fade]'s state on the entities: alpha on images and videos, and who is drawn. */
+  private fun sync() {
+    if (fade.alpha != appliedAlpha) {
+      appliedAlpha = fade.alpha
+      shown.values.forEach { s -> s.faded.forEach { e -> sceneObjects[e]?.let { setAlpha(it, appliedAlpha) } } }
     }
-  }
-
-  private fun setMediaOn(on: Boolean) {
-    mediaOn = on
-    shown.values.forEach { s -> if (s.faded.isNotEmpty()) s.entities.forEach { it.setComponent(Visible(on)) } }
-  }
-
-  private fun setSolidOn(on: Boolean) {
-    solidOn = on
-    shown.values.forEach { s -> if (s.faded.isEmpty()) s.entities.forEach { it.setComponent(Visible(on)) } }
+    if (fade.mediaOn != appliedMedia) {
+      appliedMedia = fade.mediaOn
+      shown.values.forEach { s -> if (s.faded.isNotEmpty()) s.entities.forEach { it.setComponent(Visible(appliedMedia)) } }
+    }
+    if (fade.solidOn != appliedSolid) {
+      appliedSolid = fade.solidOn
+      shown.values.forEach { s -> if (s.faded.isEmpty()) s.entities.forEach { it.setComponent(Visible(appliedSolid)) } }
+    }
   }
 
   /** Sets [so]'s alpha: its materials' albedo (images multiply their texture by it) and, for a panel, its layer. */
@@ -172,7 +174,7 @@ class SceneRenderer(private val activity: AppSystemActivity) {
       activity.runOnUiThread {
         if (shown.values.none { e in it.faded }) return@runOnUiThread
         sceneObjects[e] = so
-        if (alpha < 1f) setAlpha(so, alpha)
+        if (appliedAlpha < 1f) setAlpha(so, appliedAlpha)
       }
     }
   }
@@ -202,7 +204,7 @@ class SceneRenderer(private val activity: AppSystemActivity) {
           RenderItem.Kind.AUDIO -> Shown(listOf(g))
         }
     shown[item.key] = s
-    val on = if (s.faded.isEmpty()) solidOn else mediaOn
+    val on = if (s.faded.isEmpty()) appliedSolid else appliedMedia
     s.entities.forEach { it.setComponent(Visible(on)) }
     s.faded.forEach(::watchAlpha)
   }

@@ -5,7 +5,7 @@ The Quest app (`gg.vlm.spaces`), promoted from the spike that lived in `apps/que
 What it does:
 
 - **Visitor mode.** A hint card (1 m ahead, a little below the eyes, following the head lazily) shows a drawing of a ring and says "Look for a ring like this, at eye level near the entrance." A ring seen but not readable turns it into "Step closer to the ring". A readable ring is looked up (`GET /api/ar/markers/by-code/:code`), the space's feed is long-polled (`GET /api/ar/spaces/:id/feed`), and once the ring is within 1.5 m and its averaged position and wall heading hold still, the scene fades in (400 ms) placed from the ring's saved pose, with a cyan outline flashing on the ring. Any other ring of the same space re-anchors it; a tracking jump hides it until a ring is seen again. Taking the headset off ends the visit (back to the hint card, nothing loaded). The code is in `visitor/`: `VisitorFlow` (the state machine), `VisitorController` (the glue to the headset), `HintCard`, `VisitorMenu`, `RingOutline`.
-- **Menu:** the left controller's menu button, or the small "⋯" button under the hint card. **Look at the ring again**, occlusion (**Hide behind walls** / **Live depth** / **Off**), **Spaces** (not yet) and **Builder** ("Builder mode is coming soon"). Debug builds add **Developer**: the old control panel, with the feed status, occlusion and the marker readings.
+- **Menu:** the left controller's menu button at any time, or, while the scene is shown, the small "⋯" button below where the hint card was. **Look at the ring again**, occlusion (**Hide behind walls** / **Live depth** / **Off**), **Spaces** (not yet) and **Builder** ("Builder mode is coming soon"). Debug builds add **Developer**: the old control panel, with the feed status, occlusion and the marker readings.
 - **Server:** always `https://vlm.gg` in release builds. Debug builds take a `baseUrl` intent extra and remember it.
 - **Images** are unlit, double-sided textured quads. **Videos** are video panels (ExoPlayer, muted, mp4 and HLS). **Models** load straight from their URL; only `.glb` works, anything else shows a pink box. **Sounds** aren't played yet.
 - **Hide behind real things:** a menu choice. **Walls** draws the room scan's wall faces and ceiling (MRUK `AnchorProceduralMesh`) with the hole-punch material (`AlphaMode.HOLE_PUNCH`, `HOLE_PUNCH_SHADER`; `SceneMaterial.passthrough()` showed the room but didn't hide what was behind it), so they show the real room and hide anything virtual behind them. **Live depth** turns on Spatial SDK's environment depth occlusion (`EnvironmentDepthMode.OCCLUSION`), which also hides behind furniture and people; it's the default, and looked better on the headset. The choice is remembered. **Show scanned walls** tints the same surfaces, to check the room scan against the real walls.
@@ -114,7 +114,7 @@ Not yet run (no headset was connected when visitor mode was built). Record the r
 
 Prepare a published test space with plan 1's dashboard, or with a direct API call on a local or staging server (never the shared dev database `vlm`): one floor, `RING140`, and an alignment set with a temporary admin call or by hand-entering a pose that matches the room. Tape `RING140` at eye level on a scanned wall. For a local server, start the app with `--es baseUrl http://<mac's address>:<port>` (debug build).
 
-- [ ] Opening the app shows only the hint card (and the small "⋯" button under it).
+- [ ] Opening the app shows only the hint card.
 - [ ] Far away (about 3 m), the hint changes to "Step closer to the ring". (The unreadable band is narrow, so it may read the ring instead: then "Opening …" and "Step closer to the ring" while it's beyond 1.5 m.)
 - [ ] At about 1 m, "Hold still…", then the scene fades in with the outline flashing on the ring.
 - [ ] Live depth hides the scene behind a hand and furniture.
@@ -123,7 +123,7 @@ Prepare a published test space with plan 1's dashboard, or with a direct API cal
 
 Also worth noting while there:
 
-- Whether the left controller's menu button opens the menu (Horizon OS may keep it for itself; the "⋯" button always works).
+- Whether the left controller's menu button opens the menu (Horizon OS may keep it for itself; the "⋯" button works while the scene is shown).
 - Whether images and videos visibly fade, or snap (the fade sets material alpha at runtime; if the unlit shader ignores it they snap at the end of the fade).
-- Whether opening the Quest's system menu pauses the app (it would end the visit, as taking the headset off does).
+- Whether opening the Quest's system menu pauses the app (it would end the visit, as taking the headset off does). If it does, the headset-off trigger moves from `onPause` to an XR session state or the proximity sensor.
 - A ring on a wall the room scan missed never locks ("Hold still…" stays): heading comes from the wall.

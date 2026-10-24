@@ -216,7 +216,8 @@ class VisitorFlowTest {
   @Test fun `a tracking jump hides the scene and goes back to locking`() {
     toShown()
     val fx = on(VisitorEvent.TrackingJump)
-    assertEquals(listOf(VisitorEffect.HideScene, VisitorEffect.ResetAveragers), fx)
+    // at once, not faded: the scene is at the pre-jump root
+    assertEquals(listOf(VisitorEffect.HideNow, VisitorEffect.ResetAveragers), fx)
     assertEquals(VisitorState.Locking(space()), flow.state)
     // the next steady ring shows it again
     assertTrue(on(VisitorEvent.Steady(ringA, Vec3(0.0, 1.5, 0.0), 10.0)).first() is VisitorEffect.ShowScene)

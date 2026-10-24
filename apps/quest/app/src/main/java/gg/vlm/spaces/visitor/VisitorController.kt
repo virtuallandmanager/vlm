@@ -16,7 +16,6 @@ import gg.vlm.spaces.api.ArSpace
 import gg.vlm.spaces.api.FeedStatus
 import gg.vlm.spaces.planScene
 import gg.vlm.spaces.ring.CameraIntrinsics
-import gg.vlm.spaces.ring.PoseAverager
 import gg.vlm.spaces.ring.RingDetection
 import gg.vlm.spaces.ring.WallPlane
 import gg.vlm.spaces.ring.cameraToWorld
@@ -24,7 +23,6 @@ import gg.vlm.spaces.ring.markerInCamera
 import gg.vlm.spaces.ring.wallHeading
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.atan2
-import kotlin.math.sqrt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -64,14 +62,8 @@ class VisitorController(
   private var feedSpaceId: String? = null
   private var space: ArSpace? = null
 
-  /** One ring in view: its averaged position and heading, and whether its gate was STEADY on the last frame. */
-  private class Track {
-    val positions = PoseAverager(VisitorTuning.AVERAGE_FRAMES, VisitorTuning.MIN_FRAMES)
-    val headings = HeadingAverager(VisitorTuning.AVERAGE_FRAMES)
-    var steady = false
-  }
-
-  private val tracks = HashMap<Long, Track>()
+  /** The space's rings in view. */
+  private val tracks = HashMap<Long, RingLock>()
   /** Where each ring last locked, for its outline. */
   private val lockedAt = HashMap<Long, Pair<Vec3, Double>>()
   private var lastFrameNs = 0L
@@ -88,7 +80,7 @@ class VisitorController(
     if (head != Pose()) {
       val fwd = head.q.times(Vector3(0f, 0f, 1f))
       val yaw = Math.toDegrees(atan2(fwd.x.toDouble(), fwd.z.toDouble()))
-      if (trackingWatch.onHead(Vec3(head.t.x.toDouble(), head.t.y.toDouble(), head.t.z.toDouble()), yaw)) {
+      if (trackingWatch.onHead(head.t.vec(), yaw)) {
         Log.i(TAG, "Tracking jumped: hiding the scene")
         dispatch(VisitorEvent.TrackingJump)
       }
@@ -148,27 +140,15 @@ class VisitorController(
       val marker = space?.markerByRing(id)?.second ?: continue
       if (k == null) continue
       val w = cameraToWorld(markerInCamera(d, k, marker.diameterMm / 1000.0), head, k)
-      val t = tracks.getOrPut(id) { Track() }
-      t.positions.add(Vec3(w.x.toDouble(), w.y.toDouble(), w.z.toDouble()))
-      t.headings.add(wallHeading(w, walls, head.t))
-      val mean = t.positions.mean()!!
-      val heading = t.headings.mean()
-      val dx = mean.x - head.t.x
-      val dy = mean.y - head.t.y
-      val dz = mean.z - head.t.z
-      var gate =
-          LockGate.evaluate(t.positions.count, t.positions.spread()!!, t.headings.spread() ?: 0.0, sqrt(dx * dx + dy * dy + dz * dz))
-      // Heading comes from the wall the ring is on: without one there's nothing to lock to.
-      if (gate == Gate.STEADY && heading == null) gate = Gate.GATHERING
-      if (gate == Gate.TOO_FAR) anyTooFar = true
-      val steady = gate == Gate.STEADY
-      if (steady) anySteady = true
-      // A new steady pose (the gate has just become STEADY) locks on, or re-anchors a shown scene.
-      if (steady && !t.steady) {
-        lockedAt[id] = mean to heading!!
-        dispatch(VisitorEvent.Steady(id, mean, heading))
+      val step =
+          tracks.getOrPut(id) { RingLock() }.step(w.vec(), wallHeading(w, walls, head.t), head.t.vec())
+      if (step.gate == Gate.TOO_FAR) anyTooFar = true
+      if (step.gate == Gate.STEADY) anySteady = true
+      // A new steady pose locks on, or re-anchors a shown scene.
+      if (step.becameSteady) {
+        lockedAt[id] = step.world to step.headingDeg!!
+        dispatch(VisitorEvent.Steady(id, step.world, step.headingDeg))
       }
-      t.steady = steady
     }
     tooFar = anyTooFar && !anySteady
   }
@@ -194,9 +174,24 @@ class VisitorController(
 
   // ── flow ─────────────────────────────────────────────────────────────
 
+  /** Events raised while an event's effects are being carried out (the feed reports CONNECTING from inside start). */
+  private val pending = ArrayDeque<VisitorEvent>()
+  private var dispatching = false
+
+  /** Hands [e] to the flow and carries out its effects; events raised meanwhile wait their turn. */
   private fun dispatch(e: VisitorEvent) {
-    val now = SystemClock.elapsedRealtime()
-    for (fx in flow.on(e, now)) run(fx, now)
+    pending.addLast(e)
+    if (dispatching) return
+    dispatching = true
+    try {
+      while (pending.isNotEmpty()) {
+        val next = pending.removeFirst()
+        val now = SystemClock.elapsedRealtime()
+        for (fx in flow.on(next, now)) run(fx, now)
+      }
+    } finally {
+      dispatching = false
+    }
     refreshUi()
   }
 
@@ -222,6 +217,10 @@ class VisitorController(
       is VisitorEffect.Reanchor -> renderer.setRoot(fx.root)
       VisitorEffect.HideScene -> {
         renderer.setVisible(false, now)
+        outline.clear()
+      }
+      VisitorEffect.HideNow -> {
+        renderer.hideNow()
         outline.clear()
       }
       is VisitorEffect.FlashOutline -> {
@@ -259,6 +258,8 @@ class VisitorController(
     ui.visitorState = st::class.simpleName ?: ""
     ui.itemCount = renderer.count()
   }
+
+  private fun Vector3.vec() = Vec3(x.toDouble(), y.toDouble(), z.toDouble())
 
   companion object {
     private const val TAG = "VLMSpaces"

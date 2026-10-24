@@ -67,7 +67,10 @@ sealed interface VisitorEffect {
   data object StopFeed : VisitorEffect
   data class ShowScene(val root: RootPose) : VisitorEffect
   data class Reanchor(val root: RootPose) : VisitorEffect
+  /** Fade the scene out. */
   data object HideScene : VisitorEffect
+  /** Hide the scene at once, without a fade (tracking jumped: it is in the wrong place). */
+  data object HideNow : VisitorEffect
   data class FlashOutline(val ringId: Long) : VisitorEffect
   data object ResetAveragers : VisitorEffect
   /** `null` = accept any ring (used while searching). */
@@ -105,8 +108,8 @@ class VisitorFlow {
         is VisitorEvent.Feed -> feed(event.snapshot)
         is VisitorEvent.FeedStatus -> feedStatus(event.status)
         is VisitorEvent.Steady -> steady(event)
-        VisitorEvent.TrackingJump,
-        VisitorEvent.HeadsetOff -> hide()
+        VisitorEvent.TrackingJump -> hide(VisitorEffect.HideNow)
+        VisitorEvent.HeadsetOff -> hide(VisitorEffect.HideScene)
         VisitorEvent.HeadsetOn -> emptyList()
         VisitorEvent.LookAgain -> forget(listOf(VisitorEffect.SetRegistered(null))) { VisitorState.Hint }
         is VisitorEvent.OpenSpace ->
@@ -246,11 +249,14 @@ class VisitorFlow {
     else listOf(VisitorEffect.ShowScene(root), VisitorEffect.FlashOutline(e.ringId))
   }
 
-  /** Tracking jumped or the headset came off: hide, and wait for a ring to be seen again. The feed keeps running. */
-  private fun hide(): List<VisitorEffect> {
+  /**
+   * Tracking jumped or the headset came off: hide ([how]: at once for a jump, faded otherwise), and wait for a ring to
+   * be seen again. The feed keeps running.
+   */
+  private fun hide(how: VisitorEffect): List<VisitorEffect> {
     val s = space ?: return emptyList()
     state = VisitorState.Locking(s)
-    return listOf(VisitorEffect.HideScene, VisitorEffect.ResetAveragers)
+    return listOf(how, VisitorEffect.ResetAveragers)
   }
 
   /** Drops the current space and everything pending, moving to the state [next] gives. */
