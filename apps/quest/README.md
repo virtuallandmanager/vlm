@@ -142,3 +142,66 @@ Also worth noting while there:
 - A ring on a wall the room scan missed never locks: heading comes from the wall. After 3 s of holding still the card says "Can't see the wall behind this ring…".
 - A ring 5 cm from an inside corner, seen at about 30°, places the scene square to its own wall, not turned 90°.
 - First launch from a link: the permission dialog doesn't drop the space; its page is still up after allowing.
+
+## Builder checks
+
+Research for builder mode (plan 3, Task 1). **No headset was connected, so every finding is "from docs/samples, unverified on device".** Sources: the SDK 0.14.0 jars in the Gradle cache (`javap`), Meta's Spatial SDK docs, and `meta-quest/Meta-Spatial-SDK-Samples` (commit f233e23). The on-device list at the end is for the owner.
+
+### (a) Pinch on a mesh with a hit point (unverified on device)
+
+- ISDK is registered by `VRFeature` ([supporting systems](https://developers.meta.com/horizon/documentation/spatial-sdk/spatial-sdk-isdk-supporting-systems/)), so nothing to add. Get the system with `systemManager.findSystem<IsdkSystem>()`.
+- `IsdkSystem.registerObserver((PointerEvent) -> Unit)` sees every pointer event; `registerInteractableObserver(entity, (PointerEvent) -> Unit)` returns an `IsdkSystem.InteractableObserverHandle` for one entity, and `unregisterInteractableObserver(handle)` / `unregisterObserver(fn)` remove them. The sample `AnimationsSample/.../DroneSceneController.kt` uses `registerObserver` (a per-SceneObject listener is lost when the SceneObject is recreated, e.g. on a material change).
+- `PointerEvent` (0.14.0 jar): `source: Entity` (the hand or controller entity), `type: Int` (compare with `PointerEventType.X.id`), `hitInfo: HitInfo`, `scrollInfo: Vector2`, `semanticType: Int` (compare with `SemanticType.Select.id` / `SemanticType.Grab.id`), `pointerType: Int`, `eventId: Int`.
+- `PointerEventType`: `Hover, Unhover, Select, Unselect, Move, Cancel`. `SemanticType`: `Unknown, None, Select, Grab, Scroll`.
+- `HitInfo`: `entity: Entity`, `sceneObjectHandle: Long`, `nodeId: Int`, `meshElementId: Int`, `distance: Float`, `point: Vector3`, `normal: Vector3`, `textureCoordinate: Vector2`. So a pinch (or trigger) on a mesh gives the world hit point and normal.
+- Which hand: `isdkSystem.getHandForPointerEvent(event): Hand` (`Hand.LEFT` / `RIGHT`); `getInteractionEventSourceBehavior(event)` says ray vs poke vs collider (`FAR_FIELD_HOVER_SIGNAL_ACTUATE`, `COLLIDER_HOVER_CONTACT_ACTUATE`, ...).
+- The target needs a collider or mesh the ISDK can hit. Docs: use Spatial SDK colliders (Box/RoundedBox/Quad/Plane map to `IsdkBoxCollider`, Sphere to `IsdkSphereCollider`; these allow ray and touch interaction; Mesh allows ray only) ([grabbable doc](https://developers.meta.com/horizon/documentation/spatial-sdk/spatial-sdk-isdk-grabbable/)). Whether a plain toolkit `Hittable` mesh (no `Grabbable`) produces ISDK `Select` events with a hit point is not stated in the docs. Unverified.
+- Legacy path, still in the jar: `InputListener` on a `SceneObject` (`onClick(SceneObject, HitInfo, Entity)`, `onClickDown`, `onHoverStart/Stop`, `onDragMove`, `onPointerEvent(SceneObject, HitInfo, type, sourceOfInput: Entity, scrollInfo: Vector2, semanticType)`), and `Hittable(MeshCollision)`. Docs mark the old `GrabbableSystem` deprecated in favour of `IsdkSystem`.
+
+### (b) Hand grab carrying an entity, and release (unverified on device)
+
+- The simple route: add toolkit `Grabbable(enabled, type: GrabbableType (FACE | PIVOT_Y), isGrabbed, minHeight, maxHeight)` plus a collider or mesh. Docs: `IsdkToolkitBridgeSystem` turns that into ISDK grabbing, so hands and controllers can both grab it (hands by pinch or palm, ray or touch). The app's Developer panel already uses `Grabbable()` this way.
+- Finer control: use `IsdkGrabbable(enabled = true, grabState: IsdkGrabState, movementType: IsdkGrabMovementType (Direct | Billboard | AxialBillboard | None), responsiveness: Float, billboardOrientation: Vector3)` in place of `Grabbable`. Optional `IsdkGrabConstraints(lockFlags, scaleMinMax, verticalMinMax, depthMinMax, lateralMinMax, maxGrabbers)` and `IsdkGrabFilter(handContactPinch, handDistancePinch, handContactPalm, handDistancePalm)` choose which hand gestures can grab.
+- Observing grab and release: `IsdkGrabbable.grabState` is `IsdkGrabState.NotGrabbed | Grabbed` (read it by `entity.getComponent<IsdkGrabbable>()`), and the grab arrives as pointer events with `semanticType == SemanticType.Grab.id`: `PointerEventType.Select` at grab start, `Unselect` at release. Sample `Object3DSampleIsdk` counts Selects/Unselects per entity because two hands can hold one object (release is the last `Unselect`). Toolkit `Grabbable.isGrabbed` is a plain boolean attribute and only reflects the old system.
+- Position on release: read the entity's `Transform` in the `Unselect` handler. Unverified on device: that the transform is final by then, and how `Cancel` arises (treat it like release).
+- Not stated in the docs: whether an `IsdkGrabbable` entity under a parent (the scene root from `SpaceSession`) keeps parent-relative placement. Builder tasks must convert world to scene-local on release.
+
+### (c) Wrist and palm pose (unverified on device)
+
+- `AvatarBody(root, head, leftHand, rightHand, isPlayerControlled)` (toolkit component) holds entities for head and hands; their `Transform` is the controller or hand pose. Entity transform is in the app's reference space.
+- `Scene.getControllerPoseAtTime(isLeft: Boolean, time: Long): ControllerPose` (`pose: Pose`, `flags: Int`; check `ControllerPose.ValidBits` / `TrackedBits` before using it). Whether it returns the hand wrist when the user has no controller is not documented.
+- `Scene.setBodyTrackingJointSet(JointSet.DEFAULT | FULL_BODY)` and `Scene.updateBodyTrackingBuffersAtTime(List<ControllerPose>, List<SkeletonJoint>, time)` fill joints; `JointType` has `LEFT_HAND_WRIST`, `LEFT_HAND_PALM`, `LEFT_HAND_WRIST_TWIST` (and right, and every finger joint). `SkeletonJoint(jointIndex, parentJointIndex, pose)`. No sample in the samples repo reads wrist or palm joints, so the exact use is a guess.
+- The head pose is `Scene.getViewerPose()`.
+- Manifest: the app already declares `oculus.software.handtracking` (not required), `com.oculus.permission.HAND_TRACKING` and `handtracking.version V2.0`.
+
+### Controller input (from the jar, unverified on device)
+
+- `Controller` component (one per hand, `ControllerType.CONTROLLER | HAND | EYES`): `buttonState`, `changedButtons`, `isActive`, `laserEnabled`, `directTouchEnabled`, `isDown(bits)`, `isPressed(bits)`, `isReleased(bits)`.
+- `ButtonBits`: `ButtonA/B/X/Y`, `ButtonTriggerL/R`, `ButtonSqueezeL/R`, `ButtonThumbL*/R*`, `ButtonMenu`, `ButtonSystem`, plus click, touch and mask sets. `ControllerButton` is the enum form.
+
+### Notifications by place (Step 2)
+
+Building notifications is out of this plan; this is the finding for the owner.
+
+- Horizon OS supports **event-based user notifications** that the app's own server triggers: create the notification in the Meta Horizon Developer Dashboard, submit for review, then POST to the Graph API at `https://graph.oculus.com` with the request ID and recipient IDs. Social-category notifications need a user token; other categories use app credentials. Mobile notifications reach the **Meta Horizon mobile app** as push notifications and in its feed; on the headset they appear in the notification feed only, not as a push. [Event-based user notifications](https://developers.meta.com/horizon/documentation/spatial-sdk/ps-user-notifications-event/), [create](https://developers.meta.com/vr/documentation/native/ps-user-notifications-create), [push register](https://developers.meta.com/horizon/reference/platform/v77/function_o_v_r_requests_push_notification_8h_ovr_push_notification_register/).
+- Single-send audiences are users who own the app or follow an organization profile.
+- **No proximity, Wi-Fi, Bluetooth or location trigger** is documented. The trigger is always an event in our own code. A "you are near a space" notice would have to be our server deciding from something the app reports, and the app has to be running to report it.
+- No rate limits were found on the page. Not verified.
+
+### Rulings (Step 3)
+
+| Finding | Ruling |
+| --- | --- |
+| (a) Pinch/trigger select with a hit point | Documented and in the 0.14.0 jar. Tasks 7 and 8 read `PointerEvent.hitInfo.point` from `IsdkSystem.registerObserver`. Unverified on device. |
+| (b) Hand grab and release | Documented route exists (`Grabbable` via bridge, `IsdkGrabbable`, `Grab` semantic Select/Unselect). Not clearly usable: the docs never say how release and parent-relative placement behave for hands, and no sample uses it for placement. **Baseline applies:** controllers use the toolkit `Grabbable` plus ray hits; hands use the system pointer pinch (`SemanticType.Select`) only. Re-open if the owner's on-device checks below pass. |
+| (c) Wrist/palm pose | Joints exist (`JointType.LEFT_HAND_WRIST`, `LEFT_HAND_PALM`) but no sample or doc shows reading them. **Keep plan 2's "⋯" button where it is**; do not move it to the left wrist until the owner check passes. |
+| Notifications | Only developer-triggered event notifications to the headset feed and Horizon mobile app. No place triggers. Out of scope. |
+
+### Builder input checks (owner, on device)
+
+Do these on the Quest 3 with a debug build when convenient. Each says what result changes the ruling.
+
+1. **Pinch on a mesh.** With hands, pinch an image or model in a placed space. Does a `registerObserver` callback log `Select` with `semanticType == Select` and a `hitInfo.point` on the surface? Same with the controller trigger. If yes, (a) is confirmed.
+2. **Hand grab.** Add `Grabbable()` (or `IsdkGrabbable()`) to a test entity with a Box collider. Grab it with a pinch, then with a palm grab, and release. Does it follow the hand? Does `Unselect` with `Grab` semantic arrive once at release (and `Cancel` if tracking is lost)? Is the final `Transform` correct, also when the entity is a child of the scene root? If all yes, Tasks 7 and 8 can use ISDK for hands too.
+3. **Wrist pose.** Log `scene.getControllerPoseAtTime(true, time)` with hands only and with a controller, and `JointType.LEFT_HAND_WRIST` after `setBodyTrackingJointSet(JointSet.DEFAULT)`. Is `pose` valid and tracked, and does it follow the wrist? If yes, "⋯" can move to the left wrist.
+4. **Mesh without a grabbable.** Does a plain entity with a mesh (no `Grabbable`) produce `Select` events with hit points, or does it need a collider component?
