@@ -16,13 +16,13 @@ export function tenureLabel(l: Pick<AnalyticsLocation, 'since' | 'until'>): stri
 
 export function LocationList({ locations, note }: { locations: AnalyticsLocation[]; note?: string }) {
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-7xl">
       <PageHeader crumbs={['Tools', 'Analytics']} title="Analytics" count={countLabel(locations.length)} subtitle="See who visits your scenes and when." />
       {note && (
         <p className="mb-4 rounded-lg border border-gray-800 bg-gray-900 px-4 py-3 text-sm text-gray-300" role="status">{note}</p>
       )}
       {locations.length === 0 ? (
-        <div className="rounded-lg bg-gray-900 p-6 text-sm text-gray-400">
+        <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 text-sm text-gray-400">
           No analytics yet. Analytics start as soon as a scene with <code className="rounded bg-gray-800 px-1 py-0.5 text-gray-200">vlm-dcl</code> gets
           visitors; set the scene up in-world from the VLM HUD to see them here.
         </div>
@@ -34,7 +34,7 @@ export function LocationList({ locations, note }: { locations: AnalyticsLocation
               <li key={l.id} className="min-w-0">
                 <Link
                   href={dashboardHref(l.id)}
-                  className="block h-full rounded-lg bg-gray-900 p-4 ring-1 ring-transparent transition hover:ring-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  className="block h-full rounded-lg border border-gray-800 bg-gray-900 p-4 transition-colors hover:border-gray-700 focus-visible:border-blue-400 focus-visible:outline-none"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <h2 className="min-w-0 truncate font-semibold text-white">{l.title || l.locationKey}</h2>

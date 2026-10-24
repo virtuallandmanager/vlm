@@ -34,7 +34,7 @@ export default function AdminAdvertisersPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="mx-auto max-w-7xl">
       <PageHeader
         crumbs={['System', { label: 'Admin', href: '/admin' }, 'Advertisers']}
         title="Advertisers"

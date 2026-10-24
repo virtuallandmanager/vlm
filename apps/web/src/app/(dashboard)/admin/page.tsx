@@ -135,7 +135,7 @@ export default function AdminPage() {
   const currentOrgsPage = Math.floor(orgsOffset / PAGE_SIZE) + 1
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6">
       <PageHeader
         crumbs={['System', 'Admin']}
         title="Admin Dashboard"

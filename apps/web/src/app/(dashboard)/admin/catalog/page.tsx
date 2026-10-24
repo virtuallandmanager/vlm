@@ -38,7 +38,7 @@ export default function CatalogPacksPage() {
   const models = packs?.reduce((n, p) => n + (p.enabled ? p.modelCount : 0), 0) ?? 0
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       <PageHeader
         crumbs={['System', { label: 'Admin', href: '/admin' }, 'Catalog packs']}
         title="Catalog packs"

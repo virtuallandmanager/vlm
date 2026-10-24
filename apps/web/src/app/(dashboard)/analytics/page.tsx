@@ -45,9 +45,9 @@ function AnalyticsContent() {
 
   if (failed) {
     return (
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-7xl">
         <PageHeader crumbs={['Tools', 'Analytics']} title="Analytics" />
-        <p className="rounded-lg bg-gray-900 p-4 text-sm text-gray-400" role="alert">
+        <p className="rounded-lg border border-gray-800 bg-gray-900 p-4 text-sm text-gray-400" role="alert">
           Couldn&apos;t load your scenes —{' '}
           <button type="button" onClick={load} className="text-blue-400 hover:text-blue-300 hover:underline">Retry</button>
         </p>

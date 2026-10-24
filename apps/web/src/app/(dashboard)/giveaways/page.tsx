@@ -260,7 +260,7 @@ function GiveawayDetail({ id, onDeleted }: { id: string; onDeleted: () => void }
 
       {/* ── Edit Form ───────────────────────────────────────────────────────── */}
       <form onSubmit={handleUpdate} className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Settings</h2>
+        <h2 className="text-lg font-semibold">Settings</h2>
         <div className="flex gap-2">
           <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
             placeholder="Name"
@@ -278,7 +278,7 @@ function GiveawayDetail({ id, onDeleted }: { id: string; onDeleted: () => void }
       {/* ── Items Section ───────────────────────────────────────────────────── */}
       <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Items</h2>
+          <h2 className="text-lg font-semibold">Items</h2>
           <button onClick={() => setShowAddItem(!showAddItem)}
             className="text-sm text-blue-400 hover:text-blue-300">
             + Add Item
@@ -340,7 +340,7 @@ function GiveawayDetail({ id, onDeleted }: { id: string; onDeleted: () => void }
 
       {/* ── Claims Section ──────────────────────────────────────────────────── */}
       <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Claims ({claims.length})</h2>
+        <h2 className="text-lg font-semibold">Claims ({claims.length})</h2>
 
         {claimsLoading ? (
           <Skeleton rows={2} className="h-12" />
@@ -384,7 +384,7 @@ function GiveawayDetail({ id, onDeleted }: { id: string; onDeleted: () => void }
 
       {/* ── Delete Giveaway ─────────────────────────────────────────────────── */}
       <div className="rounded-lg border border-red-900/50 bg-gray-900 p-4">
-        <h2 className="text-sm font-semibold text-red-400 uppercase tracking-wider mb-2">Danger Zone</h2>
+        <h2 className="text-lg font-semibold text-red-400 mb-2">Danger Zone</h2>
         {!confirmDelete ? (
           <button onClick={() => setConfirmDelete(true)}
             className="rounded-md bg-red-900/30 px-4 py-2 text-sm text-red-400 hover:bg-red-900/50">

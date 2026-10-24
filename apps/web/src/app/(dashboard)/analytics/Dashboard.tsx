@@ -25,9 +25,9 @@ type Req<T> = { status: 'loading' | 'error' | 'ready'; data?: T }
 
 export function NoAccess() {
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-7xl">
       <PageHeader crumbs={['Tools', 'Analytics']} title="Analytics" />
-      <div className="rounded-lg bg-gray-900 p-6 text-sm text-gray-300">
+      <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 text-sm text-gray-300">
         <p>You don&apos;t have access to this scene&apos;s analytics.</p>
         <Link href="/analytics/" className="mt-3 inline-block text-blue-400 hover:text-blue-300 hover:underline">See the scenes you can view</Link>
       </div>
@@ -183,7 +183,7 @@ export function Dashboard({ location, showAllLink, onWalletVisibility }: {
   const sumState: SectionState = summary.status === 'ready' ? (s && s.sessions > 0 ? 'ready' : 'empty') : summary.status
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
+    <div className="mx-auto max-w-7xl space-y-4">
       {/* 1. Header */}
       <PageHeader
         crumbs={['Tools', showAllLink ? { label: 'Analytics', href: '/analytics/' } : 'Analytics', title]}
@@ -230,7 +230,7 @@ export function Dashboard({ location, showAllLink, onWalletVisibility }: {
 
       {/* 2. Summary cards */}
       {summary.status === 'error' ? (
-        <div className="rounded-lg bg-gray-900 p-4 text-sm text-gray-400" role="alert">
+        <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 text-sm text-gray-400" role="alert">
           Couldn&apos;t load the summary —{' '}
           <button type="button" onClick={retrySummary} className="text-blue-400 hover:text-blue-300 hover:underline">Retry</button>
         </div>

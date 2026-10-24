@@ -41,7 +41,7 @@ export default function AdminAdsPage() {
   if (user?.role !== 'admin') return <p className="text-gray-400">Admin access required.</p>
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="mx-auto max-w-7xl">
       <PageHeader
         crumbs={['System', { label: 'Admin', href: '/admin' }, 'Ads']}
         title="Ads"
@@ -222,7 +222,7 @@ function Creatives({ ad, onChange }: { ad: AdminAd; onChange: (ad: AdminAd) => v
 
   return (
     <section className="space-y-3">
-      <h3 className="text-sm font-semibold text-gray-300">Creatives</h3>
+      <h3 className="text-sm font-medium text-gray-300">Creatives</h3>
       <p className="text-xs text-gray-500">An ad only shows in a space with its exact shape. Add one creative per shape you want to cover.</p>
       {ad.creatives.length > 0 && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -292,7 +292,7 @@ function Placements({ ad, spaces, onChange }: { ad: AdminAd; spaces: AdminAdSpac
 
   return (
     <section className="space-y-3">
-      <h3 className="text-sm font-semibold text-gray-300">Placements</h3>
+      <h3 className="text-sm font-medium text-gray-300">Placements</h3>
       {spaces.length === 0 ? (
         <p className="text-sm text-gray-500">No ad spaces exist yet. Add an Ad space in a scene, or switch a video screen to Ads.</p>
       ) : (
@@ -338,7 +338,7 @@ function Report({ adId }: { adId: string }) {
 
   return (
     <section className="space-y-3">
-      <h3 className="text-sm font-semibold text-gray-300">Report</h3>
+      <h3 className="text-sm font-medium text-gray-300">Report</h3>
       <p className="text-xs text-gray-500">
         Paid numbers count verified wallets, once per day per level. Unverified players and guests are shown separately and are not paid.
       </p>
