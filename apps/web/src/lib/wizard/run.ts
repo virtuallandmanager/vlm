@@ -208,7 +208,7 @@ export async function runWizard(plan: RunPlan, mem: RunMemory, deps: RunDeps, on
   try {
     on({ phase: 'packing', models: null })
     if (!mem.sceneId) {
-      const { sceneId } = await api.bootstrapWizardScene({ name: plan.name, plot: plan.plot, spawn: plan.spawn, items: plan.items })
+      const { sceneId } = await api.bootstrapWizardScene({ name: plan.name, plot: plan.plot, spawn: plan.spawn, items: plan.items, dcl: !!plan.dcl })
       mem.sceneId = sceneId
     }
     const sceneId = mem.sceneId

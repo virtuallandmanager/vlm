@@ -5,7 +5,6 @@ import { plotParcels } from 'vlm-shared'
 import { useApi, type DclDeployment, type WizardOptions } from '@/lib/api'
 import { getBrowserWallet } from '@/lib/auth'
 import { API_URL } from '@/lib/config'
-import { setupSteps } from '@/lib/hyperfy'
 import { connectExtras, jumpInUrl, progressLines, runWizard, type Phase, type RunMemory, type RunPlan, type RunUpdate } from '@/lib/wizard/run'
 import { effectivePlot, type WizardAction, type WizardState } from '@/lib/wizard/state'
 import { PrimaryButton } from '@/components/ui'
@@ -25,6 +24,16 @@ const MODE_COPY = {
   },
 } as const
 
+/** The Hyperfy app's setup, in Virvi's name (the deploy page's older copy says VLM). The file is still vlm.hyp. */
+function hyperfySetupSteps(feedUrl: string): string[] {
+  return [
+    'Download the Virvi app and drag vlm.hyp into your Hyperfy world.',
+    "Open the app's settings and paste your world key into its world key field.",
+    `Leave the feed URL as ${feedUrl} unless Virvi support tells you otherwise.`,
+    'Your scene appears within a few seconds and follows your edits.',
+  ]
+}
+
 interface View {
   status: 'idle' | 'running' | 'failed' | 'done'
   phase: Phase
@@ -40,12 +49,13 @@ interface View {
 
 const idle: View = { status: 'idle', phase: 'packing', models: null, wallet: null, deployment: null, error: null, partial: null, hyperfyError: null, arError: null }
 
-export function DeployStep({ state, dispatch, options, memory, onStarted }: {
+export function DeployStep({ state, dispatch, options, memory, onRunning }: {
   state: WizardState
   dispatch: Dispatch<WizardAction>
   options: WizardOptions | null
   memory: RunMemory
-  onStarted: () => void
+  /** The page keeps the earlier steps closed while a run is going and once the scene exists. */
+  onRunning: (running: boolean) => void
 }) {
   const api = useApi()
   const [view, setView] = useState<View>(idle)
@@ -97,7 +107,7 @@ export function DeployStep({ state, dispatch, options, memory, onStarted }: {
 
   const start = async () => {
     const plan = makePlan()
-    onStarted()
+    onRunning(true)
     setView((v) => ({ ...v, status: 'running', error: null, phase: 'packing' }))
     try {
       await runWizard(plan, memory, {
@@ -118,6 +128,8 @@ export function DeployStep({ state, dispatch, options, memory, onStarted }: {
         error: e.partial ? null : e.message ?? 'Something went wrong. Try again in a moment.',
         partial: e.partial ? e.message ?? null : v.partial,
       }))
+    } finally {
+      onRunning(false)
     }
   }
 
@@ -143,18 +155,21 @@ export function DeployStep({ state, dispatch, options, memory, onStarted }: {
   const lines = progressLines(shownPhase, view.models, view.status === 'failed')
   const live = done && (!dcl || view.deployment?.status === 'deployed')
   const started = view.status !== 'idle'
+  // Until the scene exists its name can change; the deploy mode can change again after a failure.
+  const nameEditable = !running && !memory.sceneId
+  const modeEditable = view.status === 'idle' || view.status === 'failed'
 
   return (
     <div className="space-y-4 text-sm">
-      {!started && (
-        <>
+      {nameEditable && (
           <label className="block space-y-1">
             <span className="text-gray-300">Scene name</span>
             <input value={state.name} onChange={(e) => dispatch({ type: 'setName', name: e.target.value })} maxLength={120}
               className="w-full rounded-md border border-gray-800 bg-gray-950 px-3 py-2 text-white outline-none focus:border-blue-400" />
           </label>
+      )}
 
-          {dcl && (
+      {modeEditable && dcl && (
             <fieldset className="space-y-2">
               <legend className="mb-1 text-gray-300">How should Virvi deploy to {dcl.world}?</legend>
               {(virviOk ? (['virvi', 'sign'] as const) : (['sign'] as const)).map((mode) => (
@@ -173,15 +188,13 @@ export function DeployStep({ state, dispatch, options, memory, onStarted }: {
                 <p className="text-yellow-200">Your World&apos;s current scene covers {oldParcels} parcels, so Virvi needs permission on those to replace it.</p>
               )}
             </fieldset>
-          )}
+      )}
 
-          {atLimit && (
+      {atLimit && (
             <p className="rounded-md border border-yellow-700/60 bg-yellow-950/30 px-3 py-2 text-yellow-100">
               Your plan allows {options!.scenes.limit} scenes and you have {options!.scenes.used}.{' '}
               <Link href="/settings" className="text-blue-300 hover:text-blue-200">Upgrade</Link> or remove a scene to make this one.
             </p>
-          )}
-        </>
       )}
 
       {view.partial && (
@@ -256,9 +269,9 @@ export function DeployStep({ state, dispatch, options, memory, onStarted }: {
               <button type="button" onClick={() => copy((memory.hyperfy as { key: string }).key)} className="rounded bg-gray-800 px-3 py-1.5 text-blue-400 hover:bg-gray-700">{copied ? 'Copied' : 'Copy'}</button>
             </div>
             <p className="text-yellow-400">You won&apos;t see this key again.</p>
-            <a href={`${API_URL}/api/hyperfy/app.hyp`} className="inline-block rounded bg-blue-600 px-3 py-1.5 font-medium text-white hover:bg-blue-700">Download VLM app (.hyp)</a>
+            <a href={`${API_URL}/api/hyperfy/app.hyp`} className="inline-block rounded bg-blue-600 px-3 py-1.5 font-medium text-white hover:bg-blue-700">Download the Virvi app (.hyp)</a>
             <ol className="list-decimal space-y-1 pl-5 text-gray-300">
-              {setupSteps(API_URL).map((s) => <li key={s}>{s}</li>)}
+              {hyperfySetupSteps(API_URL).map((s) => <li key={s}>{s}</li>)}
             </ol>
           </div>
         ) : memory.hyperfy?.kind === 'hosted' ? (

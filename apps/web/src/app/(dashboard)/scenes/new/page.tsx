@@ -56,9 +56,11 @@ export default function NewScenePage() {
   const [contractBlocked, setContractBlocked] = useState(false)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [moveSpawn, setMoveSpawn] = useState(false)
-  // Once "Create and deploy" has run, the earlier steps stay closed: Try again reuses what was made.
-  const [locked, setLocked] = useState(false)
+  // While a run is going, and once it has made the scene, the earlier steps stay closed: Try again reuses
+  // what was made. A run that failed before the scene existed leaves them open to fix what was refused.
+  const [running, setRunning] = useState(false)
   const memory = useRef<RunMemory>(emptyMemory())
+  const locked = running || !!memory.current.sceneId
 
   const loadNames = useCallback(() => {
     setNames({ status: 'loading' })
@@ -94,7 +96,7 @@ export default function NewScenePage() {
     size: <SizeStep state={state} dispatch={dispatch} />,
     assets: <AssetsStep state={state} dispatch={dispatch} catalog={catalog} />,
     arrange: <ArrangeStep state={state} dispatch={dispatch} selectedKey={selectedKey} setSelectedKey={setSelectedKey} moveSpawn={moveSpawn} setMoveSpawn={setMoveSpawn} />,
-    deploy: <DeployStep state={state} dispatch={dispatch} options={options} memory={memory.current} onStarted={() => setLocked(true)} />,
+    deploy: <DeployStep state={state} dispatch={dispatch} options={options} memory={memory.current} onRunning={setRunning} />,
   }
 
   return (

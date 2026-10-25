@@ -3,7 +3,8 @@
  *
  * GET  /api/wizard/catalog — curated themes and category chips, resolved against the live catalog
  * GET  /api/wizard/options — what this account can pick (Virvi-signed deploys, Hyperfy, scene allowance)
- * POST /api/wizard/scenes  — create the whole scene (preset, models, placements, library links) in one call
+ * POST /api/wizard/scenes  — create the whole scene (preset, models, placements, library links) in one call;
+ *                            `dcl: false` (Hyperfy/AR only) skips Decentraland's triangle and entity budget
  */
 
 import type { FastifyInstance } from 'fastify'
@@ -61,6 +62,8 @@ interface BootstrapBody {
   plot?: unknown
   items?: unknown
   spawn?: unknown
+  /** True when the scene goes to a Decentraland World; false (Hyperfy/AR only) drops the per-parcel budget. */
+  dcl?: unknown
 }
 
 export default async function wizardRoutes(app: FastifyInstance) {
@@ -125,6 +128,9 @@ export default async function wizardRoutes(app: FastifyInstance) {
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     if (!name || name.length > 120) return reply.status(400).send({ error: 'name is required (up to 120 characters)' })
     if (!validPlot(body.plot)) return reply.status(400).send({ error: 'invalid_plot' })
+    if (body.dcl !== undefined && typeof body.dcl !== 'boolean') return reply.status(400).send({ error: 'dcl must be true or false' })
+    // Hyperfy and AR have no hard edges: only a Decentraland destination brings the per-parcel budget
+    const dclLimits = body.dcl !== false
     const plot: Plot = body.plot
     const size = plotSizeM(plot)
     const budget = dclBudget(plotParcels(plot).length)
@@ -133,7 +139,7 @@ export default async function wizardRoutes(app: FastifyInstance) {
     const spawn = body.spawn as { x?: unknown; z?: unknown } | undefined
     if (!spawn || !inPlot(spawn.x, spawn.z)) return reply.status(400).send({ error: 'spawn must be inside the plot' })
     if (!Array.isArray(body.items)) return reply.status(400).send({ error: 'items must be a list' })
-    if (body.items.length > budget.entities) {
+    if (dclLimits && body.items.length > budget.entities) {
       return reply.status(400).send({ error: 'too_many_items', message: `This plot fits at most ${budget.entities} items`, limit: budget.entities })
     }
     const items = body.items as Array<{ assetId?: unknown; x?: unknown; z?: unknown; rotationY?: unknown }>
@@ -158,7 +164,7 @@ export default async function wizardRoutes(app: FastifyInstance) {
     const byId = new Map(assets.map((a) => [a.id, a]))
 
     const triangles = items.reduce((sum, i) => sum + byId.get(i.assetId as string)!.triangleCount!, 0)
-    if (triangles > budget.triangles) {
+    if (dclLimits && triangles > budget.triangles) {
       return reply.status(422).send({
         error: 'over_budget',
         message: `This plot fits ${budget.triangles.toLocaleString('en-US')} triangles; the chosen items make ${triangles.toLocaleString('en-US')}`,

@@ -115,15 +115,29 @@ describe('wizard routes', () => {
     const a = await seedAsset('Tree', { triangleCount: 1 })
     const plot1 = { width: 1, depth: 1, base: { x: 0, y: 0 } }
     const items = Array.from({ length: 181 }, () => ({ assetId: a.id, x: 1, z: 1, rotationY: 0 }))
-    expect((await book(u, { name: 'S', plot: plot1, spawn: { x: 1, z: 1 }, items })).statusCode).toBe(400)
-    expect((await book(u, { name: 'S', plot: plot1, spawn: { x: 1, z: 1 }, items: items.slice(0, 180) })).statusCode).toBe(201)
+    expect((await book(u, { name: 'S', plot: plot1, spawn: { x: 1, z: 1 }, items, dcl: true })).statusCode).toBe(400)
+    expect((await book(u, { name: 'S', plot: plot1, spawn: { x: 1, z: 1 }, items: items.slice(0, 180), dcl: true })).statusCode).toBe(201)
+  })
+
+  it('Hyperfy/AR only (dcl: false) skips the Decentraland triangle and entity budget', async () => {
+    const u = await createUser()
+    const big = await seedAsset('Big', { triangleCount: 6000 })
+    const plot1 = { width: 1, depth: 1, base: { x: 0, y: 0 } }
+    const items = (n: number) => Array.from({ length: n }, () => ({ assetId: big.id, x: 1, z: 1, rotationY: 0 }))
+    const res = await book(u, { name: 'Hyperfy', plot: plot1, spawn: { x: 1, z: 1 }, items: items(3), dcl: false })
+    expect(res.statusCode).toBe(201)
+    expect(await counts()).toMatchObject({ scenes: 1, instances: 3 })
+    expect((await book(u, { name: 'Many', plot: plot1, spawn: { x: 1, z: 1 }, items: items(181), dcl: false })).statusCode).toBe(201)
+    // Everything else is still checked
+    expect((await book(u, { name: 'Out', plot: plot1, spawn: { x: 1, z: 1 }, items: [{ assetId: big.id, x: 17, z: 1, rotationY: 0 }], dcl: false })).statusCode).toBe(400)
+    expect((await book(u, { name: 'Bad', plot: plot1, spawn: { x: 1, z: 1 }, items: [], dcl: 'no' })).statusCode).toBe(400)
   })
 
   it('422 over_budget when the summed triangles exceed the plot budget, and creates nothing', async () => {
     const u = await createUser()
     const big = await seedAsset('Big', { triangleCount: 6000 })
     const plot1 = { width: 1, depth: 1, base: { x: 0, y: 0 } }
-    const body = (n: number) => ({ name: 'S', plot: plot1, spawn: { x: 1, z: 1 }, items: Array.from({ length: n }, () => ({ assetId: big.id, x: 1, z: 1, rotationY: 0 })) })
+    const body = (n: number) => ({ name: 'S', plot: plot1, spawn: { x: 1, z: 1 }, dcl: true, items: Array.from({ length: n }, () => ({ assetId: big.id, x: 1, z: 1, rotationY: 0 })) })
     const res = await book(u, body(2))
     expect(res.statusCode).toBe(422)
     expect(res.json()).toMatchObject({ error: 'over_budget', triangles: 12000, limit: 10000 })

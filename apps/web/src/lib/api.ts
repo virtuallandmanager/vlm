@@ -37,6 +37,8 @@ export interface WizardSceneBody {
   plot: Plot
   spawn: { x: number; z: number }
   items: Array<{ assetId: string; x: number; z: number; rotationY: number }>
+  /** True with a Decentraland destination; false (Hyperfy/AR only) skips the per-parcel budget. */
+  dcl: boolean
 }
 
 /** A World as the server describes it; `footprint` is the parcels of its live scene(s), null when it has none. */

@@ -217,6 +217,14 @@ describe('runWizard, mode sign', () => {
 })
 
 describe('runWizard, other destinations', () => {
+  it('tells the bootstrap whether Decentraland limits apply', async () => {
+    const bodies: any[] = []
+    const { api } = fakeApi({ bootstrapWizardScene: async (b: any) => { bodies.push(b); return { sceneId: 's' } } })
+    await runWizard(plan({ dcl: null, ar: { name: 'A' } }), emptyMemory(), deps(api).deps, () => {})
+    await runWizard(plan(), emptyMemory(), deps(api).deps, () => {})
+    expect(bodies.map((b) => b.dcl)).toEqual([false, true])
+  })
+
   it('Hyperfy and AR only: no wallet, no deploy', async () => {
     const { api, calls } = fakeApi()
     const mem = emptyMemory()
