@@ -18,7 +18,8 @@ class Piece:
     checker: dict  # ran, pass, failures, warnings, report
 
 
-def collect(design: Path, kind: str, hashes: dict) -> tuple[list[Piece], dict | None, str | None]:
+def collect(design: Path, kind: str, hashes: dict, run_checker: bool = True
+            ) -> tuple[list[Piece], dict | None, str | None]:
     """The pieces under out/, the slot proposal in out/proposal.json, and an error when the layout is wrong.
 
     A GLB anywhere but out/<category>/ beside a piece.json is an error: the design is not reported ready with
@@ -46,7 +47,7 @@ def collect(design: Path, kind: str, hashes: dict) -> tuple[list[Piece], dict | 
         problems.append(f'GLBs outside out/<category>/ with a piece.json: {names}')
     if problems:
         return [], proposal, '; '.join(problems)
-    for p in pieces:
+    for p in pieces if run_checker else []:
         p.checker = check(p, kind)
     return pieces, proposal, None
 
