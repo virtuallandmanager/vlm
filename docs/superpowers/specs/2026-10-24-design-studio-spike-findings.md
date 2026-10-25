@@ -22,11 +22,11 @@ Plans 2–6 cite this document for the renderer, the machine size, the per-promp
 - **Where:**
   - Locally: all four briefs, with brief 01 twice. The Mac is arm64, so the amd64 image ran under emulation, and local times are slow.
   - On Fly `performance-4x` and `performance-8x` machines in `iad`: briefs 01 and 03 on both agents, plus all three preview probes.
-- **Totals:** 20 agent runs and 10 preview probes. The model spend for the recorded runs was about $7.60.
+- **Totals:** 18 recorded agent runs (10 local, 8 on Fly) and 10 preview probes. A first Fly pass of Codex failed on a harness path bug and was rerun; it is not counted. The model spend for the recorded runs was about $7.60.
 
 ## Agent results
 
-**Every agent run reached checker-passing GLBs: 20 of 20.**
+**Every recorded agent run reached checker-passing GLBs: 18 of 18.**
 - No run had a FAIL.
 - One run had warnings: Codex's jacket on the 4x machine, with 2 WARNs.
 - Brief 02 changed the existing cap, as asked.
@@ -39,9 +39,9 @@ Plans 2–6 cite this document for the renderer, the machine size, the per-promp
 | 03 jacket build (3 runs each) | $0.68–0.96, mean $0.84 | 3.5–10 min | $0.13–0.23, mean $0.18 | 1–3.3 min |
 | 04 wave emote | $0.55 | 3.2 min | $0.15 | 1.9 min |
 
-- **Codex costs a quarter to a fifth of what Claude Code costs**, and it finishes faster.
+- **On builds, Codex costs a quarter to a fifth of what Claude Code costs**, and it finishes faster. On the one tweak they were close ($0.11 vs $0.13).
   - Codex works in one long turn: its `turns` is 1 per prompt.
-  - Claude Code took 10–30 tool turns.
+  - Claude Code took 7–30 tool turns.
   - The turn counts aren't comparable between the agents.
 - **Claude's wall time varied from 2 to 19 minutes for the same brief.**
   - Model time was only about 2 minutes in each of those runs.
@@ -59,13 +59,14 @@ Plans 2–6 cite this document for the renderer, the machine size, the per-promp
 |---|---|---|---|
 | Big build (first version of a piece) | $3–6 | $0.40–0.96 | $0.13–0.23 |
 | Tweak | $0.50–1.50 | $0.13 (one sample) | $0.11 (one sample) |
-| Finished piece: 1 build + 5–9 tweaks | $10–20 | about $1.50 typical, $4 worst | about $0.75 typical, $2 worst |
+| Finished piece: 1 build + 5–9 tweaks | $10–20 | $1.50–2.15 typical, $5.50 worst | $0.80–1.25 typical, $4.75 worst |
 
+- **Sample sizes:** 7 builds per agent (4 hats, 3 jackets), 1 emote each, and 1 tweak each. All briefs were simple and all passed first time, so real costs will spread wider.
 - **Typical and worst cases:**
-  - The typical case assumes tweaks around $0.15.
-  - The worst case assumes $0.30 per tweak, because each tweak re-reads a longer conversation. Brief 02 read 270k cached tokens for a recolour.
+  - Typical: the agent's mean build ($0.78 Claude, $0.17 Codex) plus 5–9 tweaks at about its measured tweak cost ($0.15 Claude, $0.12 Codex).
+  - Worst: the most expensive build seen plus 9 tweaks at the top of the planning range, $0.50. Each tweak re-reads a longer conversation: brief 02 read 270k cached tokens for a recolour.
 - **The tweak sample is thin.** It's one trivial recolour. "Fix the sleeve clipping when waving" will cost more. Plan for tweaks of **$0.10–0.50**.
-- **Ceiling:** the most expensive run seen was $0.96. A per-prompt ceiling of **$3** is about three times that.
+- **Ceiling:** the most expensive prompt seen was $0.96. A per-prompt ceiling of **$3** is about three times that, which leaves room for the uncosted look step (Surprise 1) and harder briefs.
 - **Machine time adds cents.** A prompt is 1–19 minutes on a `performance-4x` at $0.17 an hour, so $0.003–0.05. The preview render adds about $0.006.
 
 ## Preview
@@ -106,19 +107,21 @@ Plans 2–6 cite this document for the renderer, the machine size, the per-promp
 **Owner to confirm against the current plan prices in Stripe.**
 
 The measured costs are about one fifth of the spec's estimates, so the spec's allowances and prices have room:
-- **Creator, 15 prompts a day, all spent on big Claude builds:** about $14 a day, the worst case. The spec feared $30. A realistic day of one build and a dozen tweaks is $2–5.
-- **Free, 3 prompts a day:** up to about $3 a day, worst case, with no revenue. Recommendation: keep 3, with a hidden daily cost ceiling of **$1.50**. Only a Free user who maxes out their builds every day hits it.
-- **Hidden daily cost ceilings**, about the worst-case day at the allowance:
-  - Creator **$15**
-  - Pro **$40**
-  - Studio **$100**
+- **Creator, 15 prompts a day, all spent on big Claude builds:** about $14 a day at the most expensive build seen. The spec feared $30. A realistic day of one build and a dozen tweaks is $2–5.
+- **Free, 3 prompts a day:** up to about $3 a day with no revenue. Keep 3.
+- **Hidden daily cost ceilings:** the allowance × the most expensive prompt seen ($0.96) × 2, rounded. They catch runaway sessions; they should not stop a heavy but normal day, and the samples are small.
+  - Free **$6**
+  - Creator **$30**
+  - Pro **$75**
+  - Studio **$200**
   - Per prompt **$3**: it stops and asks.
-- **Top-up of 10 prompts for $5:** covers a typical mix ($1.50–3). It only loses money if all 10 are big Claude builds. Keep it.
-- **Finalize prices ($29 per piece, $39 per emote, $19 per extra set piece, half after the first):** the model cost behind a finished piece is about $1.50–4. The spec's prices leave a wide margin. They also leave room to cover Free-tier sessions that never finalize, and the refunded agent-mistake revisions. The costs would also support lower prices, if the owner wants them for conversion. This is a business call, not a cost constraint.
+  - Revisit them once real usage exists.
+- **Top-up of 10 prompts for $5:** covers a typical mix of mostly tweaks ($1.50–3). It loses money if most of the 10 are big Claude builds (up to $9.60). Keep it, and watch it.
+- **Finalize prices ($29 per piece, $39 per emote, $19 per extra set piece, half after the first):** the model cost behind a finished piece is about $0.80–2.15 typical and $5.50 at worst. The spec's prices leave a wide margin. They also leave room to cover Free-tier sessions that never finalize, and the refunded agent-mistake revisions. The costs would also support lower prices, if the owner wants them for conversion. This is a business call, not a cost constraint.
 
 ## Surprises that change the spec or later plans
 
-1. **Passing the checker doesn't mean it looks right.** All 20 runs passed the checker. Yet the brief 01 cap rendered with the default hair poking through it on the female shape. The spec's goal is a preview good enough that people pay. So Plan 2 should add a look step before a revision is shown: the agent views the preview frames, and fixes clipping, or asks whether the hat should hide the hair. That step is a few cents of tokens. The shaping skill should also ask about hair for hats.
+1. **Passing the checker doesn't mean it looks right.** All 18 recorded runs passed the checker. Yet the brief 01 cap rendered with the default hair poking through it on the female shape. The spec's goal is a preview good enough that people pay. So Plan 2 should add a look step before a revision is shown: the agent views the preview frames, and fixes clipping, or asks whether the hat should hide the hair. That step is a few cents of tokens. The shaping skill should also ask about hair for hats.
 2. **Both CLIs report the whole conversation's usage when resumed.** Claude reports it in `modelUsage` and `total_cost_usd`. Codex reports it in `turn.completed`. So per-prompt cost tracking (Plan 3) must subtract the previous prompt's running total. The harness's `score()` shows how.
 3. **Claude's top-level `usage` field under-counts.** In one run it missed calls that `modelUsage` and the reported cost include. Use `modelUsage`.
 4. **CLI quirks the worker must handle:**
