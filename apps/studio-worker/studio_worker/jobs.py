@@ -4,9 +4,9 @@ STUDIO_IDLE_EXIT_SEC, then exit so the machine stops. See CONTRACT.md for the AP
 A prompt job runs the agent, checks and renders what changed, uploads it, saves the workspace, and only then posts
 its result. A render job renders a view of the workspace's current pieces and saves nothing.
 """
+import copy
 import mimetypes
 import os
-import shutil
 import sys
 import tempfile
 import time
@@ -20,13 +20,12 @@ from .agent import Usage, run_agent
 from .api import Api, ApiError
 from .config import AGENT_USER, DESIGN, skills_sha
 from .instructions import closing
-from .pieces import Piece, collect, glbs_by_shape, new_hashes
-from .workspace import load_state, pack, prompt_with_context, save_state, unpack
+from .pieces import Piece, collect, glbs_by_shape, glbs_outside, new_hashes
+from .workspace import load_state, pack, prompt_with_context, save_state, state_dir, unpack
 
 IDLE_EXIT_SEC = 600
 POLL_SEC = 2.0
 DEFAULT_LIMITS = {'timeoutSec': 1500, 'maxTurns': 80, 'costCeilingUsd': 3.0}
-LAST_PROPOSAL = Path('.studio/last-proposal.json')
 
 
 def run_job(job: dict, client: Api, design: Path, render_fn: Callable = renderer.render,
@@ -51,18 +50,20 @@ def run_job(job: dict, client: Api, design: Path, render_fn: Callable = renderer
 
 def _prompt_job(job, client, design, render_fn, command, as_user, result):
     job_id, agent, kind = job['jobId'], job['agent'], job.get('kind', 'wearable')
-    state = load_state(design)
+    state_path = state_dir(design)
+    state = load_state(state_path)
+    saved = copy.deepcopy(state)
     proposal_file = design / 'out' / 'proposal.json'
-    if proposal_file.exists():  # an earlier prompt's proposal has been answered; don't read it as this one's
-        (design / LAST_PROPOSAL).parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(proposal_file, design / LAST_PROPOSAL)
+    if os.path.lexists(proposal_file):  # an earlier prompt's proposal has been answered; don't read it as this one's
+        os.unlink(proposal_file)
     totals = state.totals.get(agent)
     before = Usage(**totals) if totals else None
     prompt = prompt_with_context(state, agent, job['prompt']) + closing(kind, job.get('selectedSlots'))
+    limits = {**DEFAULT_LIMITS, **{k: v for k, v in (job.get('limits') or {}).items() if v is not None}}
 
     _phase(client, job_id, 'building')
-    run = run_agent(agent, job['model'], prompt, state.sessions.get(agent), before,
-                    {**DEFAULT_LIMITS, **(job.get('limits') or {})},
+    started = time.time()
+    run = run_agent(agent, job['model'], prompt, state.sessions.get(agent), before, limits,
                     lambda text: _send(client, job_id, {'type': 'progress', 'text': text}),
                     command=command, as_user=as_user, cwd=design)
     usage = run.usage
@@ -71,41 +72,50 @@ def _prompt_job(job, client, design, render_fn, command, as_user, result):
         'output': usage.output})
 
     _phase(client, job_id, 'checking')
-    pieces, proposal, error = collect(design, kind, state.hashes) if run.outcome == 'ok' else ([], None, None)
-    changed = [p for p in pieces if p.changed]
-    renders, render_errors = {}, []
-    if changed and not proposal:
-        _phase(client, job_id, 'rendering')
-        for p in changed:
-            view = {'bodyShape': 'male', 'outfit': 'default', 'emote': None,
-                    'mode': 'emote' if kind == 'emote' else 'spin'}
-            count, problem = _render_and_upload(client, job_id, design, p, view, render_fn)
-            renders[p.category] = count
-            if problem:
-                render_errors.append(f'{p.category}: {problem}')
-        for p in changed:
-            _upload_piece(client, job_id, p)
+    with tempfile.TemporaryDirectory(prefix='studio-stage-') as stage:
+        pieces, proposal, error = collect(design, kind, state.hashes, stage=Path(stage)) \
+            if run.outcome == 'ok' else ([], None, None)
+        changed = [p for p in pieces if p.changed]
+        if run.outcome == 'ok' and not error and not changed and not proposal:
+            elsewhere = glbs_outside(design, started)
+            if elsewhere:
+                error = 'GLBs exported outside out/<category>/: ' + ', '.join(
+                    g.relative_to(design).as_posix() for g in elsewhere)
+        renders, render_errors, uploaded = {}, [], set()
+        if changed and not proposal and not error:
+            _phase(client, job_id, 'rendering')
+            for p in changed:
+                view = {'bodyShape': 'male', 'outfit': 'default', 'emote': None,
+                        'mode': 'emote' if kind == 'emote' else 'spin'}
+                count, problem = _render_and_upload(client, job_id, p, view, render_fn)
+                if problem:  # not uploaded and not recorded: the next prompt sees it as changed and tries again
+                    render_errors.append(f'{p.category}: {problem}')
+                    continue
+                _upload_piece(client, job_id, p)
+                renders[p.category] = count
+                uploaded.add(p.category)
 
-    _phase(client, job_id, 'saving')
-    state.messages += [{'role': 'user', 'agent': agent, 'text': job['prompt']}]
-    if run.reply:
-        state.messages += [{'role': 'agent', 'agent': agent, 'text': run.reply}]
-    if run.session:
-        state.sessions[agent] = run.session
-    if run.session_total:
-        state.totals[agent] = asdict(run.session_total)
-    state.last_agent = agent
-    if not error:
-        state.hashes.update(new_hashes(pieces))
-    save_state(design, state)
-    try:
-        client.put_workspace(pack(design))
-    except ApiError as e:  # nothing may claim this revision is saved
-        result.update(outcome='error', error=f'workspace save failed: {e}')
-        return
+        _phase(client, job_id, 'saving')
+        state.messages += [{'role': 'user', 'agent': agent, 'text': job['prompt']}]
+        if run.reply:
+            state.messages += [{'role': 'agent', 'agent': agent, 'text': run.reply}]
+        if run.session:
+            state.sessions[agent] = run.session
+        if run.session_total:
+            state.totals[agent] = asdict(run.session_total)
+        state.last_agent = agent
+        # only what reached VLM counts as the design's current pieces
+        state.hashes.update({c: h for c, h in new_hashes(pieces).items() if c in uploaded})
+        save_state(state_path, state)
+        try:
+            client.put_workspace(pack(design, state_path))
+        except ApiError as e:  # nothing may claim this revision is saved, here or in the next prompt
+            save_state(state_path, saved)
+            result.update(outcome='error', error=f'workspace save failed: {e}')
+            return
 
-    result['proposal'] = proposal
-    result['pieces'] = [_piece_result(p, renders.get(p.category), kind) for p in pieces]
+        result['proposal'] = proposal
+        result['pieces'] = [_piece_result(p, renders.get(p.category), p.category in uploaded) for p in pieces]
     if run.outcome != 'ok':
         result.update(outcome=run.outcome, error=run.error)
     elif error:
@@ -115,29 +125,30 @@ def _prompt_job(job, client, design, render_fn, command, as_user, result):
     elif render_errors:
         result.update(outcome='error', error='render failed: ' + '; '.join(render_errors))
     else:
-        result['outcome'] = 'ok' if changed else 'no_change'
+        result['outcome'] = 'ok' if uploaded else 'no_change'
 
 
 def _render_job(job, client, design, render_fn, result):
     spec, kind = job['render'], job.get('kind', 'wearable')
-    pieces, _, error = collect(design, kind, {}, run_checker=False)
-    if error:
-        result['error'] = error
-        return
-    wanted = {p.category: p for p in pieces}
-    missing = [c for c in spec['categories'] if c not in wanted]
-    if missing:
-        result['error'] = f'no piece for {", ".join(missing)}'
-        return
-    view = {'bodyShape': spec.get('bodyShape') or 'male', 'outfit': spec.get('outfit') or 'default',
-            'emote': spec.get('emote'), 'mode': 'emote' if kind == 'emote' else 'spin'}
-    _phase(client, job['jobId'], 'rendering')
-    problems = []
-    for category in spec['categories']:
-        count, problem = _render_and_upload(client, job['jobId'], design, wanted[category], view, render_fn)
-        result['pieces'].append({'category': category, 'renders': {view_key(view): count}})
-        if problem:
-            problems.append(f'{category}: {problem}')
+    with tempfile.TemporaryDirectory(prefix='studio-stage-') as stage:
+        pieces, _, error = collect(design, kind, {}, run_checker=False, stage=Path(stage))
+        if error:
+            result['error'] = error
+            return
+        wanted = {p.category: p for p in pieces}
+        missing = [c for c in spec['categories'] if c not in wanted]
+        if missing:
+            result['error'] = f'no piece for {", ".join(missing)}'
+            return
+        view = {'bodyShape': spec.get('bodyShape') or 'male', 'outfit': spec.get('outfit') or 'default',
+                'emote': spec.get('emote'), 'mode': 'emote' if kind == 'emote' else 'spin'}
+        _phase(client, job['jobId'], 'rendering')
+        problems = []
+        for category in spec['categories']:
+            count, problem = _render_and_upload(client, job['jobId'], wanted[category], view, render_fn)
+            result['pieces'].append({'category': category, 'renders': count})
+            if problem:
+                problems.append(f'{category}: {problem}')
     result.update(outcome='error' if problems else 'ok', error='; '.join(problems) or None)
 
 
@@ -145,7 +156,7 @@ def view_key(view: dict) -> str:
     return '-'.join([view['mode'], view['bodyShape'], view['outfit']] + ([view['emote']] if view.get('emote') else []))
 
 
-def _render_and_upload(client, job_id, design, piece: Piece, view, render_fn) -> tuple[dict, str | None]:
+def _render_and_upload(client, job_id, piece: Piece, view, render_fn) -> tuple[dict, str | None]:
     """Renders one piece's view and uploads its frames: ({view key: frames}, error)."""
     key = view_key(view)
     with tempfile.TemporaryDirectory() as tmp:
@@ -166,12 +177,12 @@ def _upload_piece(client, job_id, piece: Piece) -> None:
     client.put_file(job_id, f'checks/{piece.category}.txt', piece.checker.get('report', '').encode(), 'text/plain')
 
 
-def _piece_result(p: Piece, renders: dict | None, kind: str) -> dict:
+def _piece_result(p: Piece, renders: dict | None, uploaded: bool) -> dict:
     files = [f'pieces/{p.category}/{f.name}' for f in p.glbs] + [f'pieces/{p.category}/piece.json',
                                                                  f'checks/{p.category}.txt']
     return {'category': p.category, 'changed': p.changed, 'changeKind': p.meta.get('changeKind'), 'meta': p.meta,
             'checker': {k: p.checker.get(k) for k in ('pass', 'failures', 'warnings')},
-            'files': files if p.changed else [], 'renders': renders or {}}
+            'files': files if uploaded else [], 'renders': renders or {}}
 
 
 def _phase(client, job_id, phase):
@@ -194,7 +205,7 @@ def main(env: Mapping[str, str] | None = None, design: Path | None = None, poll_
     idle_exit = float(env.get('STUDIO_IDLE_EXIT_SEC', IDLE_EXIT_SEC))
     data = client.get_workspace()
     if data:
-        unpack(data, design)
+        unpack(data, design, state_dir(design))
     design.mkdir(parents=True, exist_ok=True)
     print(f'studio worker: design {client.design}, workspace {"restored" if data else "new"}', file=sys.stderr)
     idle_since = time.monotonic()

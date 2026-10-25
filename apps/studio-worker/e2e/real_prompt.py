@@ -25,6 +25,7 @@ import fake_api  # noqa: E402
 from studio_worker import jobs  # noqa: E402
 from studio_worker.config import DESIGN  # noqa: E402
 from studio_worker.render import is_blank  # noqa: E402
+from studio_worker.workspace import state_dir  # noqa: E402
 
 MODELS = {'claude': 'claude-opus-5-5', 'codex': 'gpt-6.1-sol'}
 BRIEFS = ['A rounded cyberpunk cap with a glowing neon visor strip across the front. Make it for both body shapes.',
@@ -75,7 +76,7 @@ def main() -> int:
             for k in frames[::9]:
                 (out / Path(k).name).write_bytes(api.files[k])
             (out / 'result.json').write_text(json.dumps(r, indent=2))
-        state = json.loads((DESIGN / '.studio/state.json').read_text())
+        state = json.loads((state_dir(DESIGN) / 'state.json').read_text())
         expect([m['role'] for m in state['messages']] == ['user', 'agent', 'user', 'agent'], 'the conversation continues')
         if agents[0] != agents[1]:
             homes = DESIGN / ('.codex-home' if agents[1] == 'codex' else '.claude-home')

@@ -1,7 +1,8 @@
 <!doctype html>
 <!-- A stand-in for wearable-preview that speaks just its message protocol: `ready`, `load` after the first render
      and after each `update`, and `controller_response` to each `controller_request`. Every request is POSTed to
-     /log so a test can see it. ?stub=hang never sends ready; ?stub=noload never changes the triangle count. -->
+     /log so a test can see it. ?stub=hang never sends ready; ?stub=noload never changes the triangle count;
+     ?stub=fewer lowers it, as a hat hiding the hair does. -->
 <html><body style="margin:0"><canvas id="c" width="512" height="512"></canvas><script>
 const stub = new URLSearchParams(location.search).get('stub')
 const c = document.getElementById('c').getContext('2d')
@@ -18,7 +19,8 @@ const post = (type, payload) => window.parent.postMessage({ type, payload }, '*'
 window.addEventListener('message', (e) => {
   const d = e.data || {}
   if (d.type === 'update') {
-    if (stub !== 'noload') triangles += 1500
+    if (stub === 'fewer') triangles -= 800
+    else if (stub !== 'noload') triangles += 1500
     setTimeout(() => post('load', { renderer: 'babylon' }), 100)
   } else if (d.type === 'controller_request') {
     const { id, namespace, method, params } = d.payload

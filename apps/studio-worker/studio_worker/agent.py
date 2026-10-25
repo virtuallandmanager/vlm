@@ -6,6 +6,7 @@ at the end of a turn, so time alone caps it).
 """
 import json
 import os
+import queue
 import re
 import signal
 import subprocess
@@ -20,6 +21,8 @@ from .config import AGENT_USER, DESIGN
 PRICES = Path(__file__).parent / 'prices.json'
 CLAUDE_PRICE_ROW = 'claude-opus-5-5'  # prices Claude's running cost while it streams
 KILL_GRACE_SEC = 5
+PROGRESS_DRAIN_SEC = 1  # after the agent ends, how long its last progress lines may hold up the job
+DEFAULT_TIMEOUT_SEC, DEFAULT_MAX_TURNS, DEFAULT_CEILING_USD = 1500, 80, 3.0
 # Never handed to an agent: the other agent's key, the worker's token, and anything else that looks like a secret
 SECRET = re.compile(r'(_API_KEY|_TOKEN|_SECRET)$')
 
@@ -107,12 +110,15 @@ def command_for(agent: str, model: str, prompt: str, session: str | None, max_tu
 class _Stream:
     """Reads the CLI's JSONL as it arrives: progress lines, the session, the reply and Claude's running cost."""
 
-    def __init__(self, agent: str, on_progress: Callable[[str], None]):
-        self.agent, self.on_progress = agent, on_progress
+    def __init__(self, agent: str, on_progress: Callable[[str], None], secrets: list[str] = ()):
+        self.agent, self.secrets = agent, [x for x in secrets if len(x) >= 8]
+        self.progress: queue.Queue = queue.Queue()
+        self.on_progress = lambda text: self.progress.put(self.redact(text))
         self.events: list[dict] = []
         self.session = self.reply = None
         self.result: dict | None = None
         self._claude_usage: dict[str, dict] = {}  # message id -> usage; a message streams once per content block
+        self._lock = threading.Lock()  # the reader thread adds usage while the main thread prices it
 
     def feed(self, line: str) -> None:
         try:
@@ -122,7 +128,10 @@ class _Stream:
         if not isinstance(e, dict):
             return
         self.events.append(e)
-        (self._claude if self.agent == 'claude' else self._codex)(e)
+        try:
+            (self._claude if self.agent == 'claude' else self._codex)(e)
+        except (AttributeError, TypeError, KeyError):  # an event of an unexpected shape is skipped, not fatal
+            pass
 
     def _claude(self, e: dict) -> None:
         self.session = e.get('session_id') or self.session
@@ -133,9 +142,12 @@ class _Stream:
             return
         msg = e.get('message') or {}
         if msg.get('usage'):
-            self._claude_usage[msg.get('id') or str(len(self._claude_usage))] = msg['usage']
+            with self._lock:
+                self._claude_usage[msg.get('id') or str(len(self._claude_usage))] = msg['usage']
         for block in msg.get('content') or []:
-            if block.get('type') == 'text' and block.get('text', '').strip():
+            if not isinstance(block, dict):
+                continue
+            if block.get('type') == 'text' and (block.get('text') or '').strip():
                 self.reply = block['text']
                 self.on_progress(block['text'])
             elif block.get('type') == 'tool_use':
@@ -149,16 +161,22 @@ class _Stream:
         if e.get('type') != 'item.completed':
             return
         item = e.get('item') or {}
-        if item.get('type') == 'agent_message' and item.get('text', '').strip():
+        if item.get('type') == 'agent_message' and (item.get('text') or '').strip():
             self.reply = item['text']
             self.on_progress(item['text'])
         elif item.get('type') == 'command_execution':
             cmd = re.sub(r"^/bin/(ba)?sh -lc '(.*)'$", r'\2', item.get('command', ''), flags=re.S)
             self.on_progress('Running: ' + cmd[:80])
 
+    def redact(self, text: str) -> str:
+        for secret in self.secrets:
+            text = text.replace(secret, '[redacted]')
+        return text
+
     def streamed_usage(self) -> Usage:
         """Claude's usage so far, summed over its assistant messages."""
-        us = self._claude_usage.values()
+        with self._lock:
+            us = list(self._claude_usage.values())
         total = lambda k: sum(u.get(k, 0) for u in us)
         return Usage(input=total('input_tokens'), cached_input=total('cache_read_input_tokens'),
                      cache_write=total('cache_creation_input_tokens'), output=total('output_tokens'), turns=len(us))
@@ -168,18 +186,22 @@ def run_agent(agent: str, model: str, prompt: str, session: str | None, before: 
               on_progress: Callable[[str], None], command: list[str] | None = None,
               as_user: str | None = AGENT_USER, cwd: Path | None = None) -> AgentRun:
     cwd = Path(cwd or DESIGN)
-    timeout, ceiling = limits.get('timeoutSec', 1500), limits.get('costCeilingUsd', 3.0)
+    timeout = limits.get('timeoutSec') or DEFAULT_TIMEOUT_SEC
+    ceiling = limits.get('costCeilingUsd') or DEFAULT_CEILING_USD
     table = prices()
     env = agent_env(agent, os.environ, cwd)
     for home in ('.claude-home', '.codex-home'):
         (cwd / home).mkdir(exist_ok=True)
         if as_user and os.geteuid() == 0:
             subprocess.run(['chown', '-R', as_user, str(cwd / home)], check=False)
-    cmd = command or command_for(agent, model, prompt, session, limits.get('maxTurns', 80))
+    cmd = command or command_for(agent, model, prompt, session, limits.get('maxTurns') or DEFAULT_MAX_TURNS)
     if as_user:
         cmd = ['runuser', '-u', as_user, '--'] + cmd
 
-    stream, stderr = _Stream(agent, on_progress), []
+    secrets = [v for k, v in os.environ.items() if SECRET.search(k) and v]
+    stream, stderr = _Stream(agent, on_progress, secrets), []
+    sender = threading.Thread(target=_deliver, args=(stream.progress, on_progress), daemon=True)
+    sender.start()
     start = time.monotonic()
     proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, start_new_session=True)
@@ -188,18 +210,23 @@ def run_agent(agent: str, model: str, prompt: str, session: str | None, before: 
     for t in readers:
         t.start()
     stopped = None
-    while proc.poll() is None:
-        if time.monotonic() - start > timeout:
-            stopped = 'timeout'
-        elif agent == 'claude' and (cost_usd(stream.streamed_usage(), table, CLAUDE_PRICE_ROW) or 0) > ceiling:
-            stopped = 'ceiling'
-        if stopped:
-            _kill_group(proc)
-            break
-        time.sleep(0.1)
-    _kill_group(proc)  # also ends anything the agent left running in the background, such as a Blender
-    for t in readers:
-        t.join(timeout=KILL_GRACE_SEC)
+    try:
+        while proc.poll() is None:
+            if time.monotonic() - start > timeout:
+                stopped = 'timeout'
+            elif agent == 'claude' and (cost_usd(stream.streamed_usage(), table, CLAUDE_PRICE_ROW) or 0) > ceiling:
+                stopped = 'ceiling'
+            if stopped:
+                break
+            time.sleep(0.1)
+    finally:
+        _kill_group(proc)  # also ends anything the agent left running in the background, such as a Blender
+        if as_user and os.geteuid() == 0:  # and anything it started in a session of its own
+            subprocess.run(['pkill', '-KILL', '-u', as_user], check=False)
+        for t in readers:
+            t.join(timeout=KILL_GRACE_SEC)
+        stream.progress.put(None)
+        sender.join(timeout=PROGRESS_DRAIN_SEC)
     wall = round(time.monotonic() - start, 1)
 
     total = _session_total(agent, stream, table, model)
@@ -213,11 +240,22 @@ def run_agent(agent: str, model: str, prompt: str, session: str | None, before: 
     outcome = stopped or ('error' if failed or total is None else 'ok')
     error = None
     if outcome == 'error':
-        error = (''.join(stderr) or (stream.result or {}).get('result') or 'the agent reported no usage')[-2000:]
+        error = stream.redact((''.join(stderr) or (stream.result or {}).get('result') or
+                               'the agent reported no usage')[-2000:])
     elif stopped:
         error = f'stopped at the {"time limit" if stopped == "timeout" else "cost ceiling"}'
-    return AgentRun(outcome=outcome, reply=stream.reply or '', session=stream.session or session, usage=usage,
-                    session_total=total, cost_usd=usage.cost_usd if usage else None, wall_sec=wall, error=error)
+    return AgentRun(outcome=outcome, reply=stream.redact(stream.reply or ''), session=stream.session or session,
+                    usage=usage, session_total=total, cost_usd=usage.cost_usd if usage else None, wall_sec=wall,
+                    error=error)
+
+
+def _deliver(progress: queue.Queue, on_progress: Callable[[str], None]) -> None:
+    """Sends progress from its own thread, so a slow or failing API never holds up reading the agent's output."""
+    while (text := progress.get()) is not None:
+        try:
+            on_progress(text)
+        except Exception:
+            pass
 
 
 def _session_total(agent: str, stream: _Stream, table: dict, model: str) -> Usage | None:

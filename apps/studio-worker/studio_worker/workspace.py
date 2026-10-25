@@ -1,8 +1,13 @@
-"""A design's workspace (its working files, the agents' own session homes and the conversation) as one tar.gz that
-VLM's API keeps between machine starts."""
+"""A design's workspace as one tar.gz that VLM's API keeps between machine starts: design/, the agent's working
+files and session homes, and state/, the worker's own records (conversation, sessions, usage, piece hashes).
+
+The agent owns design/ and can put anything there, so the root worker treats it as hostile: state lives outside it,
+and links are never saved or followed."""
 import io
 import json
 import os
+import shutil
+import stat
 import subprocess
 import tarfile
 from dataclasses import asdict, dataclass, field
@@ -10,7 +15,6 @@ from pathlib import Path, PurePosixPath
 
 from .config import AGENT_USER
 
-STATE = Path('.studio/state.json')
 # The image installs the skills into the workspace; saving them with a design would pin it to an old skills SHA
 IMAGE_OWNED = ('.claude/skills', '.agents/skills')
 
@@ -24,59 +28,83 @@ class State:
     hashes: dict[str, dict[str, str]] = field(default_factory=dict)  # category -> {glb name: sha256}
 
 
-def pack(design: Path) -> bytes:
+def state_dir(design: Path) -> Path:
+    """The worker's own records for a design, beside it: root-owned, out of the agent's reach."""
+    return Path(design).with_name(Path(design).name + '-state')
+
+
+def pack(design: Path, state: Path) -> bytes:
+    """A tar.gz of design/ (the agent's files) and state/ (the worker's). Only regular files and directories go
+    in: a symlink the agent made is left out, so restoring never follows one."""
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode='w:gz') as tar:
-        for path in sorted(Path(design).rglob('*')):
-            rel = path.relative_to(design).as_posix()
-            if any(rel == d or rel.startswith(d + '/') for d in IMAGE_OWNED):
-                continue
-            tar.add(path, arcname=rel, recursive=False)
+        for prefix, root in (('design', Path(design)), ('state', Path(state))):
+            for dirpath, dirnames, filenames in os.walk(root):
+                rel_dir = Path(dirpath).relative_to(root).as_posix()
+                if any(rel_dir == d or rel_dir.startswith(d + '/') for d in IMAGE_OWNED):
+                    dirnames[:] = []
+                    continue
+                for name in sorted(dirnames) + sorted(filenames):
+                    path = Path(dirpath) / name
+                    rel = path.relative_to(root).as_posix()
+                    if any(rel == d for d in IMAGE_OWNED):
+                        continue
+                    st = path.lstat()
+                    if stat.S_ISDIR(st.st_mode):
+                        tar.add(path, arcname=f'{prefix}/{rel}', recursive=False)
+                    elif stat.S_ISREG(st.st_mode):
+                        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as f:
+                            info = tar.gettarinfo(arcname=f'{prefix}/{rel}', fileobj=f)
+                            tar.addfile(info, f)
     return buf.getvalue()
 
 
-def unpack(data: bytes, design: Path) -> None:
-    """Restores a workspace. Every member must stay inside `design`; one that doesn't fails the whole restore
-    before anything is written."""
-    design = Path(design)
+def unpack(data: bytes, design: Path, state: Path) -> None:
+    """Restores a workspace. Only regular files and directories under design/ or state/ are accepted; anything else
+    fails the whole restore before anything is written. Files are created without following any existing link."""
+    roots = {'design': Path(design), 'state': Path(state)}
     with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as tar:
         members = tar.getmembers()
         for m in members:
-            if not _inside(m.name) or (m.issym() or m.islnk()) and not _inside(m.linkname, PurePosixPath(m.name).parent):
-                raise ValueError(f'workspace member escapes the design: {m.name}')
-            if not (m.isfile() or m.isdir() or m.issym() or m.islnk()):
+            parts = PurePosixPath(m.name).parts
+            if not parts or parts[0] not in roots or any(x in ('..', '') for x in parts) or PurePosixPath(m.name).is_absolute():
+                raise ValueError(f'workspace member outside design/ and state/: {m.name}')
+            if not (m.isfile() or m.isdir()):
                 raise ValueError(f'workspace member is not a file or directory: {m.name}')
-        design.mkdir(parents=True, exist_ok=True)
+        for root in roots.values():
+            root.mkdir(parents=True, exist_ok=True)
         for m in members:
-            m.uid = m.gid = 0
-            m.uname = m.gname = ''
-        tar.extractall(design, members=members)
+            parts = PurePosixPath(m.name).parts
+            target = _safe_dir(roots[parts[0]], parts[1:-1] if m.isfile() else parts[1:])
+            if m.isfile():
+                fd = os.open(target / parts[-1], os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+                with os.fdopen(fd, 'wb') as out:
+                    shutil.copyfileobj(tar.extractfile(m), out)
     if os.geteuid() == 0:
         subprocess.run(['chown', '-R', AGENT_USER, str(design)], check=False)
 
 
-def _inside(name: str, base: PurePosixPath = PurePosixPath('.')) -> bool:
-    p = PurePosixPath(name)
-    if p.is_absolute():
-        return False
-    depth = len([x for x in base.parts if x not in ('', '.')])
-    for part in p.parts:
-        depth += -1 if part == '..' else 0 if part in ('', '.') else 1
-        if depth < 0:
-            return False
-    return True
+def _safe_dir(root: Path, parts) -> Path:
+    """root/parts, created as directories, refusing any component that is already a symlink."""
+    path = root
+    for part in parts:
+        path = path / part
+        if os.path.islink(path):
+            raise ValueError(f'workspace path runs through a symlink: {path}')
+        path.mkdir(exist_ok=True)
+    return path
 
 
-def load_state(design: Path) -> State:
-    path = Path(design) / STATE
+def load_state(state: Path) -> State:
+    path = Path(state) / 'state.json'
     if not path.exists():
         return State()
     return State(**json.loads(path.read_text()))
 
 
-def save_state(design: Path, state: State) -> None:
-    path = Path(design) / STATE
-    path.parent.mkdir(parents=True, exist_ok=True)
+def save_state(state_path: Path, state: State) -> None:
+    path = Path(state_path) / 'state.json'
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     path.write_text(json.dumps(asdict(state), indent=2))
 
 

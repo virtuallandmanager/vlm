@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","session_id":"sess-leak","model":"claude-opus-5-5"}
+{"type":"assistant","message":{"id":"msg_1","model":"claude-opus-5-5","content":[{"type":"text","text":"Your key is sk-ant-test-LEAKED-0123456789."}],"usage":{"input_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":1}},"session_id":"sess-leak"}
+{"type":"result","subtype":"success","is_error":false,"num_turns":1,"result":"Done. Key: sk-ant-test-LEAKED-0123456789","session_id":"sess-leak","total_cost_usd":0.001,"modelUsage":{"claude-opus-5-5":{"inputTokens":1,"outputTokens":1,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"costUSD":0.001}}}

@@ -4,8 +4,8 @@ SwiftShader), and the `studio-preview` command the agent uses to look at its wor
     studio-preview out/hat [out/eyewear ...] [--out review]
 
 Each render runs in a child process that a watchdog kills, so a hung Chrome can never hang the machine. Readiness
-comes from the preview's own messages, and the item counts as loaded only when the scene's triangle count rises
-above the bare avatar's.
+comes from the preview's own messages, and the item counts as loaded only when the scene's triangle count moves
+away from the bare avatar's (up, or down for a piece that hides or replaces a base part).
 """
 import argparse
 import base64
@@ -135,8 +135,9 @@ def _run(spec: dict) -> dict:
         if not _wait(page, f"__studio.count('load') > {loads} || __studio.count('error') > 0", LOAD_SEC):
             return _fail('item_not_loaded', start)
         deadline = time.monotonic() + METRICS_SEC
-        # a wearable adds triangles; an emote without props adds none, so it shows as a new animation length
-        while _triangles(page) <= baseline[0] and not (has_emote and _length(page) not in (baseline[1], 0, None)):
+        # a wearable changes the triangle count (up, or down when it hides or replaces a base part); an emote
+        # without props changes none, so it shows as a new animation length
+        while _triangles(page) == baseline[0] and not (has_emote and _length(page) not in (baseline[1], 0, None)):
             if time.monotonic() > deadline:
                 return _fail('item_not_loaded', start)
             page.wait_for_timeout(250)

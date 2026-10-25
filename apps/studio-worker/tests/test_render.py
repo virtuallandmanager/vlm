@@ -61,6 +61,13 @@ def test_item_not_loaded_is_reported(tmp_path, stub):
     assert not list(tmp_path.glob('*.webp'))  # no frames of a bare avatar
 
 
+def test_piece_that_lowers_the_triangles_counts_as_loaded(tmp_path, stub):
+    stub('fewer')  # a hat that hides the hair, or a jacket replacing the base top
+    r = render.render([{**HAT, 'meta': {'name': 'Neon Cap', 'hides': ['hair']}}], SPIN, tmp_path, frames=4,
+                      watchdog_sec=60)
+    assert r['ok'] is True, r
+
+
 def test_spin_sends_36_rotations(tmp_path, stub):
     calls = stub()
     r = render.render([HAT], SPIN, tmp_path, watchdog_sec=60)

@@ -38,10 +38,17 @@ The worker retries a call 3 times on a 5xx or connection error. It retries the r
 
 ### Workspace
 
-A gzip tar of the design directory: the agent's working files, `out/`, the agents' session homes (`.claude-home/`,
-`.codex-home/`), and `.studio/state.json` (the conversation, sessions, running usage and piece hashes). It leaves out
-the skills, which come from the image. Members must stay inside the directory; the worker rejects any that don't.
-VLM stores it as an opaque blob, privately.
+A gzip tar with two top-level folders:
+
+- `design/`: the agent's working files, `out/`, and the agents' session homes (`.claude-home/`, `.codex-home/`). The
+  agent owns this folder and can write anything in it.
+- `state/`: the worker's own records, `state.json` (the conversation, sessions, running usage and the hashes of the
+  pieces VLM has). It lives outside the agent's reach, so an agent can't change what it's charged or what counts as
+  changed.
+
+Only regular files and folders are stored: a symlink the agent made is left out, and the worker refuses a workspace
+holding links, absolute paths or `..`. The skills come from the image, never from a workspace. VLM stores the
+workspace as an opaque blob, privately.
 
 ### Files
 
@@ -137,11 +144,14 @@ effort: one that fails to send is dropped.
 | `no_change` | the agent finished without changing any piece's GLBs |
 | `ceiling` | Claude was stopped at the cost ceiling |
 | `timeout` | the agent was stopped at the time limit |
-| `error` | anything else; `error` says what. Includes a wrong output layout, a failed render, and a workspace that couldn't be saved. |
+| `error` | anything else; `error` says what. Includes a wrong output layout (GLBs outside `out/<category>/`, a piece file that is a link), a failed render, and a workspace that couldn't be saved. |
 
 - **Pieces are keyed by category.** A design holds at most one piece per category, and an emote design has the one
-  category `emote`. `pieces` lists every piece in the design. Only changed pieces have `files` and `renders`; an
-  unchanged one has empty lists, and its earlier files stand.
+  category `emote`. `pieces` lists every piece in the design (none on `ceiling`, `timeout`, a wrong layout or a failed save).
+- **A piece's `files` and `renders` are set only when this job uploaded it.** An unchanged piece has empty lists, and
+  the files VLM already has for it stand. A changed piece is uploaded only once it has rendered and no proposal is
+  pending; until then it stays "changed", so a later prompt uploads it. Files are never uploaded by a job whose
+  result is not `ok`, apart from a render failure on another piece of the same job.
 - `changeKind`, from the agent: `"new"`, `"fix"` (a fix to a published piece) or `"design"` (a design change).
 - `checker.pass` false means the skills checker found a FAIL. The piece is still reported.
 - `costUsd` and `tokens` are this prompt's share only, even when the agent resumed a session. They are null for a

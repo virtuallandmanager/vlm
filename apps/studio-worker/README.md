@@ -8,7 +8,7 @@ only ever gets render frames.
 - `CONTRACT.md`: how the worker and VLM's API talk. The source of truth for both sides.
 - `studio_worker/`: the worker (`python3 -m studio_worker`) and `studio-preview`, the command the agent looks at its
   work with.
-- `allowlist.txt`, `tinyproxy.conf`, `entrypoint.sh`: all outbound traffic goes through a proxy that allows only
+- `allowlist.txt`, `tinyproxy.conf`, `entrypoint.sh` (nftables): all outbound traffic goes through a proxy that allows only
   the agents' APIs, VLM's API and the preview's hosts. The entrypoint fails closed without `NET_ADMIN`.
 - `spike/`: the measurement spike behind `docs/superpowers/specs/2026-10-24-design-studio-spike-findings.md`. Kept as
   the record; nothing imports it.

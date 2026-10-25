@@ -20,10 +20,11 @@ fly machine run "$image" -a "$app" --name "$name" --region iad --vm-size perform
   "${files[@]}" -- bash -c 'if bash /opt/e2e/network_checks.sh && python3 /opt/e2e/real_prompt.py --agent codex \
     --out /tmp/out; then echo E2E-PASSED; else echo E2E-FAILED; fi'
 
-# Follow the logs until the run says how it ended
+# Follow the logs until the run says how it ended, or the machine's command exits without saying (a failed
+# entrypoint)
 fly logs -a "$app" --machine "$(fly machine list -a "$app" --json | python3 -c "
 import json, sys; print(next(m['id'] for m in json.load(sys.stdin) if m['name'] == '$name'))")" \
-  | tee /dev/stderr | grep -m1 -oE 'E2E-(PASSED|FAILED)' > "/tmp/$name.status" || true
+  | tee /dev/stderr | grep -m1 -oE 'E2E-(PASSED|FAILED)|Main child exited' > "/tmp/$name.status" || true
 status=$(cat "/tmp/$name.status" 2>/dev/null)
 cleanup
 trap - EXIT

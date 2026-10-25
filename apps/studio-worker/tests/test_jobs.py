@@ -9,7 +9,7 @@ import fake_api
 from conftest import FIXTURES
 from studio_worker import jobs
 from studio_worker.api import Api
-from studio_worker.workspace import pack
+from studio_worker.workspace import State, pack, save_state
 
 FAKES = Path(__file__).parent / 'fakes'
 TOKEN = 'tok-3b1f-secret'
@@ -127,7 +127,8 @@ def test_workspace_restored_on_start(api, tmp_path):
     src = tmp_path / 'src'
     (src / 'out/hat').mkdir(parents=True)
     (src / 'out/hat/piece.json').write_text('{}')
-    api.workspace = pack(src)
+    save_state(tmp_path / 'src-state', State())
+    api.workspace = pack(src, tmp_path / 'src-state')
     env = {'VLM_API_URL': api.url, 'STUDIO_WORKER_TOKEN': TOKEN, 'STUDIO_DESIGN_ID': 'design-1',
            'STUDIO_IDLE_EXIT_SEC': '0'}
     assert jobs.main(env, design=tmp_path / 'design', poll_sec=0.1) == 0
@@ -144,3 +145,47 @@ def test_token_never_logged(api, tmp_path, capsys, skills):
     out = capsys.readouterr()
     assert api.results and 'job-1' in out.err
     assert TOKEN not in out.out + out.err
+
+
+def failing_render(calls, fail_first=1):
+    ok = fake_render(calls)
+
+    def render(pieces, view, out, **kw):
+        if len(calls) < fail_first:
+            calls.append((pieces, view))
+            return {'ok': False, 'frames': [], 'error': 'item_not_loaded', 'bootSec': 1.0}
+        return ok(pieces, view, out, **kw)
+    return render
+
+
+def test_failed_save_keeps_the_piece_changed(api, tmp_path, skills):
+    api.fail[('PUT', '/workspace')] = 500
+    assert run(api, tmp_path, prompt_job(), 'claude_builds_hat.jsonl')['outcome'] == 'error'
+    del api.fail[('PUT', '/workspace')]
+    result = run(api, tmp_path, prompt_job(jobId='job-2', prompt='try again'), 'claude_stream.jsonl')
+    assert result['outcome'] == 'ok' and result['pieces'][0]['changed'] is True
+    assert 'job-2/pieces/hat/neon_cap_male.glb' in api.files
+
+
+def test_failed_render_is_rendered_again(api, tmp_path, skills):
+    calls = []
+    first = jobs.run_job(prompt_job(), client(api), tmp_path, render_fn=failing_render(calls),
+                         command=fake_command('claude_builds_hat.jsonl'), as_user=None)
+    assert first['outcome'] == 'error' and 'item_not_loaded' in first['error']
+    second = jobs.run_job(prompt_job(jobId='job-2', prompt='again'), client(api), tmp_path,
+                          render_fn=failing_render(calls), command=fake_command('claude_stream.jsonl'), as_user=None)
+    assert second['outcome'] == 'ok' and second['pieces'][0]['renders'] == {'spin-male-default': 36}
+
+
+def test_proposal_with_built_pieces_keeps_them_for_later(api, tmp_path, skills):
+    renders = []
+    result = run(api, tmp_path, prompt_job(selectedSlots=None), 'claude_proposes_and_builds.jsonl', renders)
+    assert result['outcome'] == 'needs_input'
+    assert all(p['files'] == [] for p in result['pieces']) and not [f for f in api.files if '/pieces/' in f]
+    later = run(api, tmp_path, prompt_job(jobId='job-2', prompt='just the hat'), 'claude_stream.jsonl', renders)
+    assert later['outcome'] == 'ok' and 'job-2/pieces/hat/piece.json' in api.files
+
+
+def test_glbs_exported_outside_out_are_an_error(api, tmp_path):
+    result = run(api, tmp_path, prompt_job(), 'claude_exports_elsewhere.jsonl')
+    assert result['outcome'] == 'error' and 'exports/neon_cap_male.glb' in result['error']

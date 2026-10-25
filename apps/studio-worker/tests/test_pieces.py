@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import shutil
 
 from conftest import FIXTURES
@@ -70,7 +71,7 @@ def test_emote_checker_runs(tmp_path, skills):
     lay_out(tmp_path, 'emote', [FIXTURES / 'wave.glb'], {**HAT, 'category': 'emote', 'loop': False})
     pieces, _, error = collect(tmp_path, 'emote', {})
     assert error is None and pieces[0].checker['pass'] is True
-    assert glbs_by_shape(pieces[0]) == {'unisex': tmp_path / 'out/emote/wave.glb'}
+    assert list(glbs_by_shape(pieces[0])) == ['unisex'] and glbs_by_shape(pieces[0])['unisex'].name == 'wave.glb'
 
 
 def test_closing_names_the_slots_and_forbids_renders():
@@ -78,3 +79,38 @@ def test_closing_names_the_slots_and_forbids_renders():
     for words in ('hat', 'eyewear', 'studio-preview', 'never render', '/opt/assets', 'piece.json'):
         assert words in text
     assert 'proposal.json' in closing('wearable', None)
+
+
+def test_pieces_are_read_into_the_stage(tmp_path, skills):
+    cap(tmp_path / 'design')
+    pieces, _, error = collect(tmp_path / 'design', 'wearable', {}, stage=tmp_path / 'stage')
+    assert error is None
+    assert all(g.is_relative_to(tmp_path / 'stage') for g in pieces[0].glbs)  # root reads the agent's files once
+
+
+def test_symlinked_glb_is_an_error(tmp_path):
+    secret = tmp_path / 'environ'
+    secret.write_text('STUDIO_WORKER_TOKEN=tok')
+    d = tmp_path / 'design/out/hat'
+    d.mkdir(parents=True)
+    (d / 'piece.json').write_text(json.dumps(HAT))
+    os.symlink(secret, d / 'hat_male.glb')
+    pieces, _, error = collect(tmp_path / 'design', 'wearable', {}, stage=tmp_path / 'stage')
+    assert pieces == [] and 'out/hat/hat_male.glb' in error and 'not a regular file' in error
+    assert not list((tmp_path / 'stage').rglob('*.glb')) if (tmp_path / 'stage').exists() else True
+
+
+def test_symlinked_piece_folder_is_an_error(tmp_path):
+    real = tmp_path / 'elsewhere'
+    lay_out(real, 'hat', sorted((FIXTURES / 'cap').glob('*.glb')), HAT)
+    (tmp_path / 'design/out').mkdir(parents=True)
+    os.symlink(real / 'out/hat', tmp_path / 'design/out/hat')
+    pieces, _, error = collect(tmp_path / 'design', 'wearable', {})
+    assert pieces == [] and 'out/hat' in error
+
+
+def test_uppercase_glb_outside_pieces_is_an_error(tmp_path):
+    (tmp_path / 'out').mkdir()
+    shutil.copy(FIXTURES / 'cap/neon_cap_male.glb', tmp_path / 'out/CAP.GLB')
+    pieces, _, error = collect(tmp_path, 'wearable', {})
+    assert pieces == [] and 'out/CAP.GLB' in error

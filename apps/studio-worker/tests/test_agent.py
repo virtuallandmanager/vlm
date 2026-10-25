@@ -88,3 +88,51 @@ def test_resumed_prompt_is_charged_its_share(tmp_path):
     assert (r.usage.input, r.usage.cached_input, r.usage.cache_write, r.usage.output) == (10, 600, 400, 30)
     assert r.cost_usd == pytest.approx(0.0075)
     assert r.session_total.cost_usd == pytest.approx(0.0125)
+
+
+def test_null_ceiling_uses_the_default(tmp_path):
+    r = run(tmp_path, 'claude', 'claude_stream.jsonl', limits={'timeoutSec': None, 'maxTurns': None,
+                                                              'costCeilingUsd': None})
+    assert r.outcome == 'ok'
+
+
+def test_odd_events_do_not_stop_the_stream(tmp_path):
+    progress = []
+    r = run(tmp_path, 'codex', 'codex_odd_events.jsonl', progress=progress)
+    assert r.outcome == 'ok' and r.reply == 'Still here.' and progress == ['Still here.']
+
+
+def test_slow_progress_never_blocks_the_agent(tmp_path):
+    class Slow(list):
+        def append(self, text):
+            time.sleep(2)
+            super().append(text)
+    start = time.monotonic()
+    r = run(tmp_path, 'claude', 'claude_stream.jsonl', progress=Slow())
+    assert r.outcome == 'ok' and time.monotonic() - start < 3  # progress waits; the agent and the result don't
+
+
+def test_group_killed_when_the_runner_fails(tmp_path, monkeypatch):
+    def broken(*a, **k):
+        if (tmp_path / 'child.pid').exists():  # once the agent has started its child
+            raise RuntimeError('pricing broke')
+        return 0.0
+    monkeypatch.setattr(agent, 'cost_usd', broken)
+    with pytest.raises(RuntimeError):
+        run(tmp_path, 'claude', 'hang_with_child.jsonl')
+    pid = int((tmp_path / 'child.pid').read_text())
+    for _ in range(20):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.1)
+    pytest.fail(f'child {pid} still running')
+
+
+def test_key_values_never_leave_in_text(tmp_path, monkeypatch):
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'sk-ant-test-LEAKED-0123456789')
+    progress = []
+    r = run(tmp_path, 'claude', 'claude_leaks_key.jsonl', progress=progress)
+    assert 'LEAKED' not in r.reply and not any('LEAKED' in p for p in progress)
+    assert '[redacted]' in r.reply

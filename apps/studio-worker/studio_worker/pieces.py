@@ -2,11 +2,16 @@
 checker on each piece."""
 import hashlib
 import json
+import os
+import stat
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import config
+
+CHECKER_TIMEOUT_SEC = 300
 
 
 @dataclass
@@ -18,30 +23,61 @@ class Piece:
     checker: dict  # ran, pass, failures, warnings, report
 
 
-def collect(design: Path, kind: str, hashes: dict, run_checker: bool = True
+def collect(design: Path, kind: str, hashes: dict, run_checker: bool = True, stage: Path | None = None
             ) -> tuple[list[Piece], dict | None, str | None]:
     """The pieces under out/, the slot proposal in out/proposal.json, and an error when the layout is wrong.
 
-    A GLB anywhere but out/<category>/ beside a piece.json is an error: the design is not reported ready with
-    pieces missing."""
-    out = Path(design) / 'out'
-    proposal = _read_json(out / 'proposal.json')
-    pieces, problems = [], []
-    for d in sorted(p for p in out.iterdir() if p.is_dir()) if out.is_dir() else []:
-        meta, glbs = _read_json(d / 'piece.json'), sorted(d.glob('*.glb'))
-        if meta is None:
+    The agent owns the design folder, so its files are read once, refusing anything but a regular file (a symlink
+    could point at the worker's environment), into `stage`, a fresh root-owned folder by default. Pieces point at
+    those copies. A GLB anywhere but out/<category>/ beside a piece.json is an error: the design is not reported
+    ready with pieces missing."""
+    design = Path(design)
+    out = design / 'out'
+    stage = Path(stage or tempfile.mkdtemp(prefix='studio-stage-'))
+    if os.path.islink(out) or out.exists() and not out.is_dir():
+        return [], None, 'out/ is not a folder'
+    proposal, problems = None, []
+    try:
+        proposal = json.loads(_read(out / 'proposal.json')) if os.path.lexists(out / 'proposal.json') else None
+    except (UnsafeFile, json.JSONDecodeError) as e:
+        problems.append(f'out/proposal.json: {e}')
+    pieces = []
+    for d in sorted(out.iterdir()) if out.is_dir() else []:
+        rel = d.relative_to(design).as_posix()
+        if os.path.islink(d):
+            problems.append(f'{rel} is a symlink, not a folder')
+            continue
+        if not d.is_dir() or not os.path.lexists(d / 'piece.json'):
             continue  # its GLBs are reported as strays below
-        if not glbs:
-            problems.append(f'out/{d.name}/ has a piece.json but no GLB')
-        elif kind == 'emote' and d.name != 'emote':
-            problems.append(f'an emote goes in out/emote/, not out/{d.name}/')
-        elif meta.get('category', d.name) != d.name:
-            problems.append(f"out/{d.name}/piece.json says category {meta.get('category')!r}")
-        else:
-            pieces.append(Piece(category=d.name, glbs=glbs, meta=meta, changed=_shas(glbs) != set((hashes.get(d.name) or {}).values()),
-                                checker={'ran': False}))
-    placed = {g for p in pieces for g in p.glbs}
-    strays = [g for g in sorted(out.rglob('*.glb')) if g not in placed] if out.is_dir() else []
+        try:
+            meta = json.loads(_read(d / 'piece.json'))
+            glbs = [g for g in sorted(d.iterdir()) if g.suffix.lower() == '.glb']
+            if not glbs:
+                problems.append(f'{rel}/ has a piece.json but no GLB')
+                continue
+            if kind == 'emote' and d.name != 'emote':
+                problems.append(f'an emote goes in out/emote/, not {rel}/')
+                continue
+            if not isinstance(meta, dict) or meta.get('category', d.name) != d.name:
+                problems.append(f'{rel}/piece.json says category {meta.get("category") if isinstance(meta, dict) else meta!r}')
+                continue
+            staged = stage / d.name
+            staged.mkdir(parents=True, exist_ok=True)
+            copies = []
+            for g in glbs:
+                copies.append(staged / g.name)
+                copies[-1].write_bytes(_read(g))
+            (staged / 'piece.json').write_text(json.dumps(meta))
+        except UnsafeFile as e:
+            problems.append(str(e))
+            continue
+        except json.JSONDecodeError as e:
+            problems.append(f'{rel}/piece.json is not JSON: {e}')
+            continue
+        pieces.append(Piece(category=d.name, glbs=copies, meta=meta,
+                            changed=_shas(copies) != set((hashes.get(d.name) or {}).values()), checker={'ran': False}))
+    placed = {(p.category, g.name) for p in pieces for g in p.glbs}
+    strays = [g for g in _glbs_under(out) if (g.parent.name, g.name) not in placed or g.parent.parent != out]
     if strays:
         names = ', '.join(g.relative_to(design).as_posix() for g in strays)
         problems.append(f'GLBs outside out/<category>/ with a piece.json: {names}')
@@ -50,6 +86,44 @@ def collect(design: Path, kind: str, hashes: dict, run_checker: bool = True
     for p in pieces if run_checker else []:
         p.checker = check(p, kind)
     return pieces, proposal, None
+
+
+class UnsafeFile(Exception):
+    pass
+
+
+def _read(path: Path) -> bytes:
+    """A regular file's bytes, never through a symlink and never a hard link to something else."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        raise UnsafeFile(f'{_rel(path)} is not a regular file') from None
+    with os.fdopen(fd, 'rb') as f:
+        st = os.fstat(f.fileno())
+        if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+            raise UnsafeFile(f'{_rel(path)} is not a regular file')
+        return f.read()
+
+
+def _rel(path: Path) -> str:
+    parts = Path(path).parts
+    return '/'.join(parts[parts.index('out'):]) if 'out' in parts else str(path)
+
+
+def _glbs_under(root: Path) -> list[Path]:
+    """Every *.glb (any case) under root, without following symlinked folders."""
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not os.path.islink(os.path.join(dirpath, d))]
+        found += [Path(dirpath) / f for f in filenames if f.lower().endswith('.glb')]
+    return sorted(found)
+
+
+def glbs_outside(design: Path, since: float) -> list[Path]:
+    """GLBs written since `since` anywhere in the design but out/: an export to the wrong place."""
+    design = Path(design)
+    return [g for g in _glbs_under(design)
+            if 'out' != g.relative_to(design).parts[0] and g.lstat().st_mtime >= since]
 
 
 def check(piece: Piece, kind: str) -> dict:
@@ -62,7 +136,7 @@ def check(piece: Piece, kind: str) -> dict:
                '--category', piece.category]
         hides = piece.meta.get('hides') or []
         cmd += ['--hides', ','.join(hides) if isinstance(hides, list) else str(hides)] if hides else []
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=CHECKER_TIMEOUT_SEC)
     levels = [l.split()[0] for l in p.stdout.splitlines() if l.startswith('  ') and l.split()]
     return {'ran': True, 'pass': p.returncode == 0, 'warnings': levels.count('WARN'), 'failures': levels.count('FAIL'),
             'report': p.stdout + p.stderr}

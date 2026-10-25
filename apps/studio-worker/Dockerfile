@@ -13,7 +13,7 @@ ARG SKILLS_SHA=3430ce2ef5b7f9d388fcb7c923f50e0dcb505420
 ENV DEBIAN_FRONTEND=noninteractive PIP_BREAK_SYSTEM_PACKAGES=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl git gnupg xz-utils python3 python3-pip tinyproxy iptables \
+      ca-certificates curl git gnupg xz-utils python3 python3-pip tinyproxy nftables \
       libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libxkbcommon0 libsm6 libice6 libx11-6 libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -39,7 +39,8 @@ ARG CODEX_VERSION=0.164.0
 RUN npm install -g @anthropic-ai/claude-code@$CLAUDE_CODE_VERSION @openai/codex@$CODEX_VERSION && npm cache clean --force
 
 # The agents run as an ordinary user (Claude Code refuses to skip its permission prompts as root); the worker is root
-RUN useradd -m -u 1000 agent && mkdir -p /work/design && chown -R agent /work
+# Only the design folder is the agent's: the worker's state for it (/work/design-state) is root's alone
+RUN useradd -m -u 1000 agent && mkdir -p /work/design && chown agent /work/design
 
 # Skills, pinned, installed for both agents into the design workspace. The repo is root-owned and read by `agent`.
 RUN git clone "$SKILLS_REPO" /opt/skills && git -C /opt/skills checkout --quiet "$SKILLS_SHA" \

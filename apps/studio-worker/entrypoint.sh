@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The worker image's entrypoint. Locks outbound traffic to the allowlisting proxy, then runs the given command, or
-# the worker. Fails closed: if the firewall can't be set (no NET_ADMIN), nothing runs.
+# the worker. Fails closed: if the firewall can't be set (no NET_ADMIN), nothing runs. IPv4 and IPv6 alike.
 set -euo pipefail
 
 filter=/etc/tinyproxy/filter
@@ -13,13 +13,18 @@ mkdir -p /var/log/tinyproxy /run/tinyproxy
 chown tinyproxy:tinyproxy /var/log/tinyproxy /run/tinyproxy
 tinyproxy -c /opt/tinyproxy.conf
 
-for ipt in iptables ip6tables; do
-  $ipt -F OUTPUT
-  $ipt -A OUTPUT -o lo -j ACCEPT
-  $ipt -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-  $ipt -A OUTPUT -m owner --uid-owner tinyproxy -j ACCEPT
-  $ipt -A OUTPUT -j REJECT
-done
+# nftables, not iptables: Fly's kernel has no xt_owner, but nftables matches the socket's user natively
+nft -f - <<'NFT'
+table inet studio {
+  chain output {
+    type filter hook output priority 0; policy drop;
+    oif "lo" accept
+    ct state established,related accept
+    meta skuid "tinyproxy" accept
+    reject
+  }
+}
+NFT
 
 for _ in $(seq 50); do
   (exec 3<>/dev/tcp/127.0.0.1/8888) 2>/dev/null && break

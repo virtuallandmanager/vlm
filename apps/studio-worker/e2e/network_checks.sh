@@ -21,6 +21,20 @@ if (cd /work/design && runuser -u agent -- env HTTPS_PROXY="$HTTPS_PROXY" studio
 else
   bad "studio-preview failed"
 fi
+runuser -u agent -- sh -c 'echo x > /work/design-state-probe' 2>/dev/null \
+  && bad "agent can write beside the design" || pass "agent can't write outside /work/design"
+mkdir -p /work/design-state && chmod 700 /work/design-state
+runuser -u agent -- ls /work/design-state >/dev/null 2>&1 && bad "agent can read the worker's state" \
+  || pass "agent can't read the worker's state"
+runuser -u agent -- sh -c 'setsid sleep 300 >/dev/null 2>&1 < /dev/null &'
+python3 - <<'PY' && pass "an agent's own-session process is ended with it" || bad "an agent process outlived the run"
+import subprocess, sys
+from studio_worker.agent import run_agent
+run_agent('codex', 'm', 'p', None, None, {'timeoutSec': 5}, lambda t: None,
+          command=['sh', '-c', 'setsid sleep 300 & echo {}'], as_user='agent', cwd=__import__('pathlib').Path('/work/design'))
+left = subprocess.run(['pgrep', '-u', 'agent'], capture_output=True, text=True).stdout.split()
+sys.exit(1 if left else 0)
+PY
 echo "--- hosts the proxy let through:"
 grep -oE 'CONNECT [^ :]+' /var/log/tinyproxy/tinyproxy.log | sort | uniq -c | sort -rn
 echo "--- hosts the proxy denied:"
