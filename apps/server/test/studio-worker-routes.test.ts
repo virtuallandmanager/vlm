@@ -128,6 +128,22 @@ describe('studio worker routes', () => {
     expect((await put('pieces/hat/cap_male.glb')).statusCode).toBe(409)
   })
 
+  it('file uploads keep their bytes whatever their content type', async () => {
+    const { design, token } = await setup()
+    const job = await queueJob(design)
+    await take(job.id)
+    const files = [
+      ['pieces/hat/piece.json', 'application/json', '{"name": "Neon Cap"}'],
+      ['checks/hat.txt', 'text/plain; charset=utf-8', 'PASS everything\n'],
+    ]
+    for (const [path, type, text] of files) {
+      const res = await app.inject({ method: 'PUT', url: `${W}/jobs/${job.id}/files/${path}`, headers: { ...auth(token), 'content-type': type }, payload: text })
+      expect(res.statusCode, `${path}: ${res.body}`).toBe(204)
+      const got = await store.get(`designs/${design.id}/jobs/${job.id}/${path}`)
+      expect(got?.body.toString()).toBe(text)
+    }
+  })
+
   it('an ok prompt result makes revisions, renders and a reply', async () => {
     const { owner, design, token } = await setup()
     await db.update(studioDesigns).set({ status: 'building' }).where(eq(studioDesigns.id, design.id))

@@ -81,6 +81,22 @@ describe('studio worker machines', () => {
     expect((await row(d.id)).machineId).toBe('m1')
   })
 
+  it('external machines (a worker started by hand) are never created or started', async () => {
+    const fly = fakeFly()
+    const d = await createDesign(await createUser(), { machineId: 'local', workerTokenHash: 'h' })
+    ;(config as any).studioMachines = 'external'
+    try {
+      await ensureWorker(d.id, { fly })
+      await ensureWorker((await createDesign(await createUser())).id, { fly })
+      await destroyWorker(d.id, { fly })
+    } finally {
+      ;(config as any).studioMachines = 'fly'
+    }
+    expect(fly.calls.create).toHaveLength(0)
+    expect(fly.calls.del).toHaveLength(0)
+    expect((await row(d.id)).workerTokenHash).toBe('h')
+  })
+
   it('destroyWorker deletes the machine and forgets the token', async () => {
     const fly = fakeFly()
     const d = await createDesign(await createUser())

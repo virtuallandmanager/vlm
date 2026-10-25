@@ -52,6 +52,7 @@ function plain(err: unknown, secret?: string): string {
 
 /** Makes sure the design has a machine that is running or about to run, so its queued job gets taken. */
 export async function ensureWorker(designId: string, deps: Partial<MachineDeps> = {}): Promise<void> {
+  if (config.studioMachines === 'external') return // the worker is run by hand
   const d = { ...machineDeps(), ...deps }
   const app = config.studioFlyApp
   const [design] = await db.select().from(studioDesigns).where(eq(studioDesigns.id, designId))
@@ -123,6 +124,7 @@ export async function ensureWorker(designId: string, deps: Partial<MachineDeps> 
 
 /** Deletes the design's machine and forgets its token; a later job creates a new one. */
 export async function destroyWorker(designId: string, deps: Partial<MachineDeps> = {}): Promise<void> {
+  if (config.studioMachines === 'external') return
   const d = { ...machineDeps(), ...deps }
   const [design] = await db.select().from(studioDesigns).where(eq(studioDesigns.id, designId))
   if (!design?.machineId) return

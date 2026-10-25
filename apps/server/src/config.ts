@@ -156,6 +156,8 @@ export const config = {
   studioWorkerImage: env('STUDIO_WORKER_IMAGE'), // registry.fly.io/vlm-studio-worker:<git-sha>
   studioS3Uri: env('STUDIO_S3_URI'), // private bucket, s3://<key>:<secret>@<account>.r2.cloudflarestorage.com/<bucket>, or file://<dir>
   studioFlyApp: env('STUDIO_FLY_APP') || 'vlm-studio-worker',
+  // `external`: VLM never creates or starts worker machines; a worker is run by hand (local development)
+  studioMachines: (env('STUDIO_MACHINES') === 'external' ? 'external' : 'fly') as 'fly' | 'external',
   studioClaudeModel: env('STUDIO_CLAUDE_MODEL') || 'claude-opus-5-5',
   studioCodexModel: env('STUDIO_CODEX_MODEL') || 'gpt-6.1-sol',
   studioEnabled: mode === 'cloud' && !!env('STUDIO_WORKER_IMAGE') && !!env('STUDIO_S3_URI'),
