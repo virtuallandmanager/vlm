@@ -174,6 +174,11 @@ async function nothingToDeploy(dest: Destination, a: Assembled): Promise<Deploye
   return new DeployerError(409, 'nothing_to_deploy', detail ?? NOTHING_NEW)
 }
 
+/** The bundle of a deployment that had nothing new to send; the sweep never counts it as a failure. */
+function noopBundle(packed: { assembled: Assembled; baseEntityId: string | null }) {
+  return { added: [], refused: packed.assembled.refused, baseEntityId: packed.baseEntityId, noop: true }
+}
+
 /** Default spawn: the plot's centre along x, on the ground, 1 m in from the base edge. */
 function defaultSpawn(parcels: string[]) {
   const xs = parcels.map((p) => parseParcel(p)?.x ?? 0)
@@ -357,7 +362,7 @@ async function runVirviDeploy(
       const err = await nothingToDeploy(dest, packed.assembled)
       await db
         .update(sceneDeployments)
-        .set({ status: 'failed', errorMessage: err.message, assetBundle: { added: [], refused: packed.assembled.refused, baseEntityId: packed.baseEntityId } })
+        .set({ status: 'failed', errorMessage: err.message, assetBundle: noopBundle(packed) })
         .where(eq(sceneDeployments.id, deploymentId))
       return
     }
@@ -390,7 +395,18 @@ export async function prepareSignedDeploy(
   await assertDeployable(dest)
   const started = Date.now()
   const packed = await assembleFor(dest, started, opts.fetch)
-  if (!packed.assembled.changed) throw await nothingToDeploy(dest, packed.assembled)
+  if (!packed.assembled.changed) {
+    const err = await nothingToDeploy(dest, packed.assembled)
+    // Record what was refused so the sweep keeps the destination held on it (mode A's row does the same).
+    if (packed.assembled.refused.length) {
+      await db.insert(sceneDeployments).values({
+        sceneId: dest.sceneId, platform: 'decentraland', deploymentType: 'world', destinationId: dest.id,
+        target: { world: dest.worldName, parcels: dest.parcels }, status: 'failed', deployedBy: by,
+        errorMessage: err.message, assetBundle: noopBundle(packed),
+      })
+    }
+    throw err
+  }
   const { a, timestamp } = await retimestamp(packed.assembled, started)
   const bundle: SignedBundle = {
     entityId: a.entityId,

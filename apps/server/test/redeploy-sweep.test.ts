@@ -7,7 +7,7 @@ import { db } from '../src/db/connection.js'
 import { assetLibraryItems, dclWorldDestinations, sceneDeployments, sceneElements } from '../src/db/schema.js'
 import { setWorldsClient, WorldsError, type LiveEntity } from '../src/services/dcl/worlds-client.js'
 import { BATCH_WINDOW_MS, RETRY_BACKOFF_MS, startDclRedeploySweep, sweepRedeploys } from '../src/services/dcl/redeploy-sweep.js'
-import { DEPLOY_WINDOW_MS, startVirviDeploy, whenSettled } from '../src/services/dcl/world-deployer.js'
+import { DEPLOY_WINDOW_MS, prepareSignedDeploy, startVirviDeploy, whenSettled } from '../src/services/dcl/world-deployer.js'
 import { DCL_RUNTIME_VERSION } from '../src/services/dcl/runtime.js'
 import { dclHash } from '../src/services/dcl/entity.js'
 import { resetDb } from './helpers/db.js'
@@ -276,6 +276,27 @@ describe('cross-task: what the sweep must never do', () => {
     expect((await destRow(dest.id)).statusDetail).toMatch(/24,000 triangles/)
   })
 
+  it('a sign destination held on a refused model stays held on the next sweeps', async () => {
+    const { preset, dest, user } = await setup({ mode: 'sign', models: [] })
+    await addModel(preset.id, 'evil', 1, 'https://evil.example/x.glb')
+    await expect(prepareSignedDeploy(dest.id, user.id, { fetch: fetcher })).rejects.toMatchObject({ code: 'nothing_to_deploy' })
+    expect((await destRow(dest.id)).statusDetail).toMatch(/evil/)
+    await sweepAndSettle(at(0))
+    await sweepAndSettle(at(61))
+    const d = await destRow(dest.id)
+    expect(d.status).toBe('needs_review')
+    expect(d.statusDetail).toMatch(/evil/)
+  })
+
+  it('over the triangle budget does not hide a World changed outside Virvi', async () => {
+    const { dest } = await setup({ models: ['big'] })
+    await db.insert(assetLibraryItems).values({ name: 'big', storageKey: 'k1', cdnUrl: `${CDN}/m/big.glb`, triangleCount: 25_000 })
+    await db.update(dclWorldDestinations).set({ status: 'needs_review', statusDetail: 'Your World changed outside Virvi' }).where(eq(dclWorldDestinations.id, dest.id))
+    await sweepAndSettle(at(0))
+    await sweepAndSettle(at(61))
+    expect(await destRow(dest.id)).toMatchObject({ status: 'needs_review', statusDetail: 'Your World changed outside Virvi' })
+  })
+
   it('a sign destination over the triangle budget shows over_budget too', async () => {
     const { dest } = await setup({ mode: 'sign', models: ['big'] })
     await db.insert(assetLibraryItems).values({ name: 'big', storageKey: 'k1', cdnUrl: `${CDN}/m/big.glb`, triangleCount: 25_000 })
@@ -317,6 +338,21 @@ describe('failed deploys', () => {
     expect(d.statusDetail).toMatch(/^Virvi couldn't update your World 3 times in a row \(.*boom.*\)\. Check it on the deploy page and press Redeploy now\.$/)
     await sweepAndSettle(at(5000))
     expect(await deps()).toHaveLength(3)
+  })
+  it('Redeploy now with nothing new neither counts toward the cap nor delays the next redeploy', async () => {
+    const { preset, dest } = await deployedOnce()
+    await db.update(sceneDeployments).set({ createdAt: at(61) }).where(eq(sceneDeployments.status, 'deployed'))
+    for (let i = 0; i < 3; i++) {
+      const dep = await startVirviDeploy(dest.id, null, { fetch: fetcher })
+      await whenSettled(dep.id)
+      expect((await depRow(dep.id)).status).toBe('failed')
+    }
+    await stampFailures(at(100))
+    await addModel(preset.id, 'b')
+    await sweepAndSettle(at(110))
+    await sweepAndSettle(at(171))
+    expect(fake.deployed).toHaveLength(2)
+    expect((await destRow(dest.id)).status).toBe('ok')
   })
 })
 

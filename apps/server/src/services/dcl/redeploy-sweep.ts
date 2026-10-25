@@ -10,7 +10,7 @@
  * Only a destination that has been deployed (or adopted) is redeployed here: a first deploy is always
  * started by the owner, after the wizard showed them what it replaces.
  */
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '../../db/connection.js'
 import { dclWorldDestinations, sceneDeployments } from '../../db/schema.js'
 import { modelsInScene, pendingModels, type Assembled } from './assemble.js'
@@ -84,7 +84,9 @@ export async function sweepRedeploys(now: Date = new Date(), opts: DeployOptions
 
       const problem = sceneLimitProblem(dest, await modelsInScene(dest.sceneId))
       if (problem) {
-        if (dest.statusDetail !== problem || dest.status !== 'over_budget') await setStatus(dest.id, 'over_budget', problem)
+        // Another needs_review (changed outside Virvi, failures) keeps its own message.
+        const mayShow = ['ok', 'unreachable', 'over_budget'].includes(dest.status)
+        if (mayShow && (dest.statusDetail !== problem || dest.status !== 'over_budget')) await setStatus(dest.id, 'over_budget', problem)
         continue
       }
       if (dest.mode !== 'virvi' || !dest.grantedAt || !['ok', 'unreachable', 'over_budget'].includes(dest.status)) continue
@@ -99,7 +101,8 @@ export async function sweepRedeploys(now: Date = new Date(), opts: DeployOptions
       const recent = await db
         .select({ status: sceneDeployments.status, errorMessage: sceneDeployments.errorMessage, createdAt: sceneDeployments.createdAt })
         .from(sceneDeployments)
-        .where(eq(sceneDeployments.destinationId, dest.id))
+        // A deploy that had nothing new to send (a Redeploy now with no changes) isn't a failure.
+        .where(and(eq(sceneDeployments.destinationId, dest.id), sql`coalesce(${sceneDeployments.assetBundle}->>'noop', '') <> 'true'`))
         .orderBy(desc(sceneDeployments.createdAt))
         .limit(MAX_FAILED_IN_A_ROW)
       if (recent.length === MAX_FAILED_IN_A_ROW && recent.every((r) => r.status === 'failed')) {
