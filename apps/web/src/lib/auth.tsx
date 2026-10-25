@@ -24,7 +24,7 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null)
 
-interface Eip1193Provider {
+export interface Eip1193Provider {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
 }
 

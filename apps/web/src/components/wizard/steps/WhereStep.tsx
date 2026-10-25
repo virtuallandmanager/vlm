@@ -1,0 +1,230 @@
+'use client'
+import { useEffect, useState, type Dispatch } from 'react'
+import Link from 'next/link'
+import { useApi, type DclWorld, type WizardOptions } from '@/lib/api'
+import { getBrowserWallet, signWalletChallenge } from '@/lib/auth'
+import { wizardErrorMessage } from '@/lib/wizard/run'
+import { normalizeWorldName, shortAddress } from '@/lib/wizard/helpers'
+import type { WizardAction, WizardState } from '@/lib/wizard/state'
+import { Badge } from '@/components/ui'
+
+export type NamesState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; wallets: Array<{ address: string; names: DclWorld[] }> }
+
+export const CONTRACT_WALLET_MESSAGE =
+  "Contract wallets (like Safe) can't sign Decentraland World deploys yet. Connect an ordinary wallet that owns the name."
+
+const inputClass = 'w-full rounded-md border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400'
+
+export function WhereStep({ state, dispatch, names, reloadNames, options, replaceOk, setReplaceOk, contractBlocked, setContractBlocked }: {
+  state: WizardState
+  dispatch: Dispatch<WizardAction>
+  names: NamesState
+  reloadNames: () => void
+  options: WizardOptions | null
+  replaceOk: boolean
+  setReplaceOk: (v: boolean) => void
+  contractBlocked: boolean
+  setContractBlocked: (v: boolean) => void
+}) {
+  const api = useApi()
+  const [linking, setLinking] = useState(false)
+  const [linkError, setLinkError] = useState('')
+  const [typed, setTyped] = useState('')
+  const [typedBusy, setTypedBusy] = useState(false)
+  const [typedError, setTypedError] = useState('')
+  const [checking, setChecking] = useState<string | null>(null)
+  const [slots, setSlots] = useState<{ used: number; limit: number | null; hostingAvailable: boolean } | null>(null)
+  const { dcl, hyperfy, ar } = state.destinations
+  const wallets = names.status === 'ready' ? names.wallets : []
+
+  const hyperfyAllowed = !!options?.hyperfy.allowed
+  useEffect(() => {
+    if (!hyperfy || !hyperfyAllowed || slots) return
+    api.getHyperfySlots().then(setSlots).catch(() => setSlots({ used: 0, limit: 0, hostingAvailable: false }))
+  }, [hyperfy, hyperfyAllowed])
+  const canHost = !!slots?.hostingAvailable && (slots.limit === null || slots.used < slots.limit)
+
+  const connect = async () => {
+    setLinking(true)
+    setLinkError('')
+    try {
+      await api.linkWallet(await signWalletChallenge())
+      reloadNames()
+    } catch (err) {
+      setLinkError(wizardErrorMessage(err))
+    }
+    setLinking(false)
+  }
+
+  const pick = async (world: DclWorld, wallet: string) => {
+    setReplaceOk(false)
+    setContractBlocked(false)
+    setChecking(world.world)
+    const provider = getBrowserWallet()
+    let contract = false
+    if (provider && wallet) {
+      try {
+        contract = await (await import('@/lib/dcl-sign')).isContractWallet(provider, wallet)
+      } catch {
+        // The check is a courtesy; Decentraland's own answer comes at deploy.
+      }
+    }
+    setChecking(null)
+    if (contract) {
+      setContractBlocked(true)
+      dispatch({ type: 'setDcl', dcl: null })
+      return
+    }
+    dispatch({ type: 'setDcl', dcl: { world: world.world, wallet, hasScene: world.hasScene, footprint: world.footprint, storage: world.storage ?? undefined } })
+  }
+
+  const checkTyped = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const world = normalizeWorldName(typed)
+    if (!world) return
+    setTypedBusy(true)
+    setTypedError('')
+    try {
+      const found = await api.getDclWorld(world)
+      if (!found.owner) {
+        setTypedError(`${world} isn't owned by a wallet linked to your account. Connect the wallet that owns it, then try again.`)
+      } else {
+        // The lookup doesn't say which linked wallet owns it; with one wallet it's that one.
+        await pick(found, wallets.length === 1 ? wallets[0].address : '')
+        setTyped('')
+      }
+    } catch (err) {
+      setTypedError(wizardErrorMessage(err))
+    }
+    setTypedBusy(false)
+  }
+
+  const listed = wallets.flatMap((w) => w.names.map((n) => ({ ...n, wallet: w.address })))
+  const typedPick = dcl && !listed.some((n) => n.world === dcl.world) ? dcl : null
+
+  return (
+    <div className="space-y-5">
+      <section className="space-y-3">
+        <h3 className="text-sm font-medium text-gray-200">Your Decentraland World</h3>
+        {names.status === 'loading' && <p className="text-sm text-gray-500">Looking up your names…</p>}
+        {names.status === 'error' && (
+          <div className="space-y-2">
+            <p className="text-sm text-red-300" role="alert">{names.message}</p>
+            <button type="button" onClick={reloadNames} className="text-sm text-blue-400 hover:text-blue-300">Try again</button>
+          </div>
+        )}
+        {names.status === 'ready' && wallets.length === 0 && (
+          <div className="space-y-2 rounded-md border border-gray-800 bg-gray-950 p-3">
+            <p className="text-sm text-gray-300">Connect the wallet that owns your Decentraland NAME. You sign a message to prove it&apos;s yours; nothing is sent on-chain.</p>
+            <button type="button" onClick={connect} disabled={linking}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+              {linking ? 'Check your wallet…' : 'Connect your wallet'}
+            </button>
+            {linkError && <p className="text-sm text-red-300" role="alert">{linkError}</p>}
+          </div>
+        )}
+        {names.status === 'ready' && wallets.length > 0 && listed.length === 0 && (
+          <p className="text-sm text-gray-400">Your linked wallets don&apos;t own a Decentraland NAME yet. Use an ENS name or another World below, or skip Decentraland and pick Hyperfy or Virvi AR.</p>
+        )}
+        {listed.length > 0 && (
+          <ul className="space-y-2" role="radiogroup" aria-label="Your Worlds">
+            {listed.map((n) => {
+              const chosen = dcl?.world === n.world
+              return (
+                <li key={n.world}>
+                  <button type="button" role="radio" aria-checked={chosen} onClick={() => (chosen ? dispatch({ type: 'setDcl', dcl: null }) : pick(n, n.wallet))}
+                    className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left text-sm ${chosen ? 'border-blue-400 bg-blue-400/10' : 'border-gray-800 bg-gray-950 hover:border-gray-700'}`}>
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium text-white">{n.world}</span>
+                      <span className="block font-mono text-xs text-gray-500">{shortAddress(n.wallet)}</span>
+                    </span>
+                    {checking === n.world ? <span className="text-xs text-gray-500">Checking…</span> : n.hasScene && <Badge tone="warning">has a scene</Badge>}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        {typedPick && (
+          <p className="rounded-md border border-blue-400 bg-blue-400/10 px-3 py-2.5 text-sm text-white">
+            {typedPick.world} {typedPick.hasScene && <Badge tone="warning" className="ml-2">has a scene</Badge>}
+            <button type="button" onClick={() => dispatch({ type: 'setDcl', dcl: null })} className="ml-3 text-xs text-gray-400 hover:text-white">Remove</button>
+          </p>
+        )}
+        {names.status === 'ready' && wallets.length > 0 && (
+          <details className="text-sm" open={!!typedError}>
+            <summary className="cursor-pointer text-gray-400 hover:text-gray-200">Use an ENS name or another World</summary>
+            <form onSubmit={checkTyped} className="mt-2 flex gap-2">
+              <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="name.dcl.eth or name.eth" aria-label="World name" className={inputClass} />
+              <button type="submit" disabled={typedBusy || !typed.trim()} className="shrink-0 rounded-md bg-gray-800 px-3 py-2 text-sm hover:bg-gray-700 disabled:opacity-50">
+                {typedBusy ? 'Checking…' : 'Use it'}
+              </button>
+            </form>
+            {typedError && <p className="mt-2 text-sm text-red-300" role="alert">{typedError}</p>}
+          </details>
+        )}
+        {contractBlocked && <p className="rounded-md border border-yellow-700/60 bg-yellow-950/30 px-3 py-2 text-sm text-yellow-200" role="alert">{CONTRACT_WALLET_MESSAGE}</p>}
+        {dcl?.hasScene && (
+          <div className="space-y-2 rounded-md border border-yellow-700/60 bg-yellow-950/30 px-3 py-2.5 text-sm text-yellow-100">
+            <p>Your World already has a scene on {dcl.footprint?.parcels.length ?? 1} {(dcl.footprint?.parcels.length ?? 1) === 1 ? 'parcel' : 'parcels'}. Deploying will replace it.</p>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={replaceOk} onChange={(e) => setReplaceOk(e.target.checked)} />
+              Replace the scene that&apos;s there now
+            </label>
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3 border-t border-gray-800 pt-4">
+        <h3 className="text-sm font-medium text-gray-200">Also put it in</h3>
+        <div className="space-y-2">
+          <label className={`flex items-center gap-2 text-sm ${hyperfyAllowed ? 'text-gray-200' : 'text-gray-500'}`}>
+            <input type="checkbox" disabled={!hyperfyAllowed} checked={!!hyperfy}
+              onChange={(e) => dispatch({ type: 'setHyperfy', hyperfy: e.target.checked ? { kind: 'self', name: '' } : null })} />
+            A Hyperfy world
+            {!hyperfyAllowed && options && (
+              <Link href="/settings" className="ml-1 text-blue-400 hover:text-blue-300">Upgrade to Creator</Link>
+            )}
+          </label>
+          {hyperfy && (
+            <div className="ml-6 space-y-2">
+              <div className="flex flex-wrap gap-3 text-sm text-gray-300">
+                <label className="flex items-center gap-1.5">
+                  <input type="radio" name="hyperfy-kind" checked={hyperfy.kind === 'self'} onChange={() => dispatch({ type: 'setHyperfy', hyperfy: { ...hyperfy, kind: 'self' } })} />
+                  One I run myself
+                </label>
+                <label className={`flex items-center gap-1.5 ${canHost ? '' : 'text-gray-500'}`}>
+                  <input type="radio" name="hyperfy-kind" disabled={!canHost} checked={hyperfy.kind === 'hosted'} onChange={() => dispatch({ type: 'setHyperfy', hyperfy: { ...hyperfy, kind: 'hosted' } })} />
+                  Hosted by Virvi
+                </label>
+              </div>
+              {slots && !canHost && (
+                <p className="text-xs text-gray-500">
+                  {slots.hostingAvailable ? "You've used all your hosted worlds." : "Hosted worlds aren't available right now."}
+                </p>
+              )}
+              <input value={hyperfy.name} onChange={(e) => dispatch({ type: 'setHyperfy', hyperfy: { ...hyperfy, name: e.target.value } })}
+                placeholder="Name for the Hyperfy world" aria-label="Hyperfy world name" maxLength={100} className={inputClass} />
+            </div>
+          )}
+        </div>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm text-gray-200">
+            <input type="checkbox" checked={!!ar} onChange={(e) => dispatch({ type: 'setAr', ar: e.target.checked ? { name: '' } : null })} />
+            Virvi AR
+          </label>
+          {ar && (
+            <div className="ml-6 space-y-1">
+              <input value={ar.name} onChange={(e) => dispatch({ type: 'setAr', ar: { name: e.target.value } })}
+                placeholder="Name for the AR space" aria-label="AR space name" maxLength={100} className={inputClass} />
+              <p className="text-xs text-gray-500">Printing and aligning its rings happens later, in the scene&apos;s AR tab.</p>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  )
+}

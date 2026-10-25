@@ -1,0 +1,21 @@
+{
+  "display": {
+    "title": "Virvi scene",
+    "description": "Built and deployed by Virvi"
+  },
+  "scene": {
+    "parcels": ["0,0"],
+    "base": "0,0"
+  },
+  "main": "bin/index.js",
+  "ecs7": true,
+  "runtimeVersion": "7",
+  "virvi": {
+    "apiUrl": "https://placeholder.invalid",
+    "wssUrl": "wss://placeholder.invalid"
+  },
+  "creator": "",
+  "contact": { "name": "", "email": "" },
+  "tags": [],
+  "spawnPoints": []
+}

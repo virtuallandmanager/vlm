@@ -44,6 +44,8 @@ import adminAdsRoutes from './routes/admin-ads.js'
 import advertiserLeadRoutes from './routes/advertiser-leads.js'
 import venueRoutes from './routes/venues.js'
 import ingestRoutes from './routes/ingest.js'
+import wizardRoutes from './routes/wizard.js'
+import dclDestinationRoutes from './routes/dcl-destinations.js'
 import studioWorkerRoutes from './routes/studio-worker.js'
 import studioRoutes from './routes/studio.js'
 import { db } from './db/connection.js'
@@ -205,6 +207,8 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(advertiserLeadRoutes)
   await app.register(venueRoutes)
   await app.register(ingestRoutes)
+  await app.register(wizardRoutes)
+  await app.register(dclDestinationRoutes)
   await app.register(studioWorkerRoutes)
   await app.register(studioRoutes)
 

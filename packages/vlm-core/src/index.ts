@@ -9,3 +9,4 @@ export { dashboardUrlFor, dashboardOriginFor, analyticsUrlFor, handoffUrlFor } f
 export * from './transform/math.js'
 export * from './transform/session.js'
 export * from './media-status.js'
+export { placedMessage, type PublishDestination } from './placed-message.js'

@@ -1,15 +1,16 @@
 'use client'
-import { deployErrorMessage, listedDeployments } from '@/lib/deploy'
-import { useApi } from '@/lib/api'
+import { destinationHistory } from '@/lib/deploy'
+import { useApi, type DclDeployment, type DclDestination } from '@/lib/api'
 import { API_URL } from '@/lib/config'
 import { destroyWorldPrompt, hyperfyErrorMessage, lastSeenLabel, noSlotsLine, removeWorldPrompt, setupSteps, shortDate, slotLine, worldStatusLabel } from '@/lib/hyperfy'
 import type { HyperfyWorldSummary } from 'vlm-shared'
 import { useAuth } from '@/lib/auth'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { useEffect, useState, Suspense } from 'react'
-import { Badge, ConfirmAction, PageHeader, PlatformBadge, PrimaryButton, Skeleton, StatusDot } from '@/components/ui'
-import { PlusIcon } from '@/components/icons'
+import { useEffect, useRef, useState, Suspense } from 'react'
+import { ConfirmAction, PageHeader, Skeleton } from '@/components/ui'
+import { AdoptWorldCard, WorldDestinationCard } from '@/components/dcl/WorldDestinationCard'
+import { wizardErrorMessage } from '@/lib/wizard/run'
 
 export default function DeployPage() {
   return (
@@ -17,36 +18,6 @@ export default function DeployPage() {
       <DeployContent />
     </Suspense>
   )
-}
-
-// -- Helpers ------------------------------------------------------------------
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-blue-500',
-  building: 'bg-yellow-500 animate-pulse',
-  deploying: 'bg-yellow-500 animate-pulse',
-  deployed: 'bg-green-500',
-  failed: 'bg-red-500',
-}
-
-const statusLabels: Record<string, string> = {
-  pending: 'Pending',
-  building: 'Building',
-  deploying: 'Deploying',
-  deployed: 'Deployed',
-  failed: 'Failed',
-}
-
-function StatusBadge({ status }: { status: string }) {
-  return <StatusDot dot={statusColors[status] || 'bg-gray-500'} label={statusLabels[status] || status} />
-}
-
-function formatDateTime(iso: string | null) {
-  if (!iso) return '--'
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
 }
 
 // -- Your Hyperfy worlds (self-run and VLM-hosted) -----------------------------
@@ -407,6 +378,15 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
 
 // -- Main Content -------------------------------------------------------------
 
+interface WorldsState {
+  destinations: DclDestination[]
+  /** Worlds set up in-world for this scene that have no destination yet. */
+  adoptable: string[]
+  history: DclDeployment[]
+  /** Destinations adopted on this visit: their card offers the permission. */
+  offerGrant: Set<string>
+}
+
 function DeployContent() {
   const { token } = useAuth()
   const api = useApi()
@@ -417,31 +397,6 @@ function DeployContent() {
   const [scenes, setScenes] = useState<any[]>([])
   const [selectedSceneId, setSelectedSceneId] = useState<string>(searchParams.get('scene') || '')
   const [loadingScenes, setLoadingScenes] = useState(true)
-
-  // Deployments
-  const [deployments, setDeployments] = useState<any[]>([])
-  const [loadingDeployments, setLoadingDeployments] = useState(false)
-
-  // New deployment form
-  const [showNewDeploy, setShowNewDeploy] = useState(false)
-  const [newDeployType, setNewDeployType] = useState<'parcel' | 'world'>('parcel')
-  const [newParcels, setNewParcels] = useState('')
-  const [newContentServer, setNewContentServer] = useState('')
-  const [deploying, setDeploying] = useState(false)
-  const [deployError, setDeployError] = useState('')
-
-  // Wallets
-  const [wallets, setWallets] = useState<any[]>([])
-  const [loadingWallets, setLoadingWallets] = useState(true)
-  const [showAddWallet, setShowAddWallet] = useState(false)
-  const [walletAddress, setWalletAddress] = useState('')
-  const [walletLabel, setWalletLabel] = useState('')
-  const [addingWallet, setAddingWallet] = useState(false)
-  const [walletError, setWalletError] = useState('')
-
-  // Action states
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
 
   // Load scenes
   useEffect(() => {
@@ -456,119 +411,55 @@ function DeployContent() {
         }
       }
     }).catch(() => setLoadingScenes(false))
-
-    api.getDeployWallets().then((data) => {
-      setWallets(data.wallets)
-      setLoadingWallets(false)
-    }).catch(() => setLoadingWallets(false))
   }, [token])
 
-  // Load deployments when scene changes
+  // Decentraland Worlds
+  const [worlds, setWorlds] = useState<WorldsState | null>(null)
+  const [worldsError, setWorldsError] = useState<string | null>(null)
+  const [virviDeploys, setVirviDeploys] = useState(false)
+
   useEffect(() => {
-    if (!token || !selectedSceneId) {
-      setDeployments([])
-      return
-    }
-    setLoadingDeployments(true)
-    api.getDeployments(selectedSceneId).then((data) => {
-      setDeployments(listedDeployments(data.deployments))
-      setLoadingDeployments(false)
-    }).catch(() => {
-      setDeployments([])
-      setLoadingDeployments(false)
-    })
+    if (!token) return
+    api.getWizardOptions().then((o) => setVirviDeploys(o.dcl.virviDeploys)).catch(() => setVirviDeploys(false))
+  }, [token])
+
+  const loadHistory = (sceneId: string) =>
+    api.getDeployments(sceneId).then((d) => d.deployments as DclDeployment[]).catch(() => [] as DclDeployment[])
+
+  // Load the scene's Worlds when the scene changes
+  useEffect(() => {
+    setWorlds(null)
+    setWorldsError(null)
+    if (!token || !selectedSceneId) return
+    let stale = false
+    Promise.all([api.getSceneDclDestinations(selectedSceneId), loadHistory(selectedSceneId)])
+      .then(([{ destinations, adoptable }, history]) => {
+        if (!stale) setWorlds({ destinations, adoptable: adoptable.map((a) => a.world), history, offerGrant: new Set() })
+      })
+      .catch((err) => { if (!stale) setWorldsError(wizardErrorMessage(err)) })
+    return () => { stale = true }
   }, [token, selectedSceneId])
+
+  const currentScene = useRef(selectedSceneId)
+  currentScene.current = selectedSceneId
+  const refreshHistory = async () => {
+    const sceneId = selectedSceneId
+    const history = await loadHistory(sceneId)
+    setWorlds((w) => (w && currentScene.current === sceneId ? { ...w, history } : w))
+  }
+
+  const adopted = (dest: DclDestination) =>
+    setWorlds((w) => w && {
+      ...w,
+      destinations: [...w.destinations, dest],
+      adoptable: w.adoptable.filter((x) => x !== dest.worldName),
+      offerGrant: new Set([...w.offerGrant, dest.id]),
+    })
 
   const handleSceneChange = (sceneId: string) => {
     setSelectedSceneId(sceneId)
     const url = sceneId ? `/deploy?scene=${sceneId}` : '/deploy'
     router.replace(url)
-  }
-
-  // -- Deploy Actions ---------------------------------------------------------
-
-  const handleCreateDeployment = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedSceneId) return
-    setDeploying(true)
-    setDeployError('')
-
-    try {
-      const target: Record<string, unknown> = {}
-      if (newParcels.trim()) target.parcels = newParcels.trim()
-      if (newContentServer.trim()) target.contentServer = newContentServer.trim()
-
-      const { deployment } = await api.createDeployment({
-        sceneId: selectedSceneId,
-        platform: 'decentraland',
-        deploymentType: newDeployType,
-        target,
-      })
-      setDeployments((prev) => [deployment, ...prev])
-      setShowNewDeploy(false)
-      resetNewDeployForm()
-    } catch (err: any) {
-      setDeployError(err.message || 'Deployment failed')
-    }
-    setDeploying(false)
-  }
-
-  const resetNewDeployForm = () => {
-    setNewDeployType('parcel')
-    setNewParcels('')
-    setNewContentServer('')
-    setDeployError('')
-  }
-
-  const handleCancel = async (id: string) => {
-    setActionLoading(id)
-    try {
-      const { deployment } = await api.cancelDeployment(id)
-      setDeployments((prev) => prev.map((d) => (d.id === id ? deployment : d)))
-    } catch { /* ignore */ }
-    setActionLoading(null)
-  }
-
-  const handleRedeploy = async (id: string) => {
-    setActionLoading(id)
-    setActionError(null)
-    try {
-      const { deployment } = await api.redeployDeployment(id)
-      setDeployments((prev) => [deployment, ...prev])
-    } catch (err) {
-      setActionError(deployErrorMessage(err))
-    }
-    setActionLoading(null)
-  }
-
-  // -- Wallet Actions ---------------------------------------------------------
-
-  const handleAddWallet = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!walletAddress.trim()) return
-    setAddingWallet(true)
-    setWalletError('')
-    try {
-      const { wallet } = await api.createDeployWallet({
-        platform: 'decentraland',
-        walletAddress: walletAddress.trim(),
-        label: walletLabel.trim() || undefined,
-      })
-      setWallets((prev) => [...prev, wallet])
-      setWalletAddress('')
-      setWalletLabel('')
-      setShowAddWallet(false)
-    } catch (err: any) {
-      setWalletError(err.message || 'Failed to add wallet')
-    }
-    setAddingWallet(false)
-  }
-
-  const handleDeleteWallet = async (id: string) => {
-    try {
-      await api.deleteDeployWallet(id)
-      setWallets((prev) => prev.filter((w) => w.id !== id))
-    } catch { /* ignore */ }
   }
 
   // -- Render -----------------------------------------------------------------
@@ -581,9 +472,6 @@ function DeployContent() {
         crumbs={['Tools', 'Deploy']}
         title="Deploy"
         subtitle="Publish your scenes to their worlds."
-        actions={selectedSceneId && (
-          <PrimaryButton onClick={() => { setShowNewDeploy(!showNewDeploy); resetNewDeployForm() }}><PlusIcon size={16} /> New Deployment</PrimaryButton>
-        )}
       />
 
       {/* Scene Selector */}
@@ -601,101 +489,44 @@ function DeployContent() {
         </select>
       </div>
 
-      {actionError && (
-        <p className="rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300" role="alert">{actionError}</p>
-      )}
-
       {!selectedSceneId && (
         <div className="text-center py-12">
-          <p className="text-gray-500 mb-2">Select a scene to view and manage deployments.</p>
-          <p className="text-sm text-gray-600">You can deploy scenes to Decentraland, or host a Hyperfy world.</p>
+          <p className="text-gray-500 mb-2">Select a scene to see where it&apos;s deployed.</p>
+          <p className="text-sm text-gray-600">Scenes go live in a Decentraland World, or in a Hyperfy world.</p>
         </div>
       )}
 
-      {/* New Deployment Form */}
-      {showNewDeploy && selectedSceneId && (
-        <form onSubmit={handleCreateDeployment} className="space-y-4 rounded-lg border border-gray-800 bg-gray-900 p-5">
-          <h2 className="text-lg font-semibold">New Deployment</h2>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Deployment Type</label>
-              <select
-                value={newDeployType}
-                onChange={(e) => setNewDeployType(e.target.value as 'parcel' | 'world')}
-                className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
-              >
-                <option value="parcel">Parcel</option>
-                <option value="world">World</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Parcels</label>
-                <input
-                  type="text"
-                  value={newParcels}
-                  onChange={(e) => setNewParcels(e.target.value)}
-                  placeholder="e.g. 0,0 0,1 1,0 1,1"
-                  className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Content Server URL</label>
-                <input
-                  type="text"
-                  value={newContentServer}
-                  onChange={(e) => setNewContentServer(e.target.value)}
-                  placeholder="https://peer.decentraland.org/content"
-                  className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
-                />
-              </div>
-          </div>
-
-          {deployError && <p className="text-sm text-red-400">{deployError}</p>}
-
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={deploying}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
-            >
-              {deploying ? 'Deploying...' : 'Start Deployment'}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setShowNewDeploy(false); resetNewDeployForm() }}
-              className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Deployments List */}
       {selectedSceneId && (
-        <div>
-          <h2 className="text-lg font-semibold mb-3">Deployments</h2>
-          {loadingDeployments ? (
-            <Skeleton rows={2} className="h-12" />
-          ) : deployments.length === 0 ? (
-            <div className="text-center py-8 rounded-lg border border-gray-800 bg-gray-900">
-              <p className="text-gray-500 mb-2">No deployments for this scene yet.</p>
-              <p className="text-sm text-gray-600">Click &quot;+ New Deployment&quot; to get started.</p>
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">Decentraland Worlds</h2>
+            <p className="text-sm text-gray-500">Virvi deploys from what&apos;s live in your World, so you never need the scene&apos;s files.</p>
+          </div>
+          {worldsError ? (
+            <p className="rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300" role="alert">{worldsError}</p>
+          ) : !worlds ? (
+            <Skeleton rows={1} className="h-32" />
+          ) : worlds.destinations.length === 0 && worlds.adoptable.length === 0 ? (
+            <div className="rounded-lg border border-gray-800 bg-gray-900 py-6 text-center text-sm text-gray-500">
+              <p>This scene isn&apos;t deployed to a Decentraland World.</p>
+              <p className="mt-1">
+                <Link href="/scenes/new" className="text-blue-400 hover:text-blue-300">Make a new scene</Link> to deploy one, or set this scene up in your own Creator Hub scene with vlm-dcl.
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
-              {deployments.map((dep) => (
-                <DeploymentCard
-                  key={dep.id}
-                  deployment={dep}
-                  actionLoading={actionLoading === dep.id}
-                  onCancel={() => handleCancel(dep.id)}
-                  onRedeploy={() => handleRedeploy(dep.id)}
+              {worlds.destinations.map((d) => (
+                <WorldDestinationCard
+                  key={d.id}
+                  destination={d}
+                  history={destinationHistory(worlds.history, d.id)}
+                  virviDeploys={virviDeploys}
+                  offerGrant={worlds.offerGrant.has(d.id)}
+                  onChanged={refreshHistory}
                 />
+              ))}
+              {worlds.adoptable.map((world) => (
+                <AdoptWorldCard key={world} world={world} sceneId={selectedSceneId} onAdopted={adopted} />
               ))}
             </div>
           )}
@@ -704,196 +535,6 @@ function DeployContent() {
 
       {selectedSceneId && <HyperfyWorlds sceneId={selectedSceneId} />}
 
-      {/* Deploy Wallets */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">Deploy Wallets</h2>
-          <button
-            onClick={() => setShowAddWallet(!showAddWallet)}
-            className="rounded-md bg-gray-800 px-3 py-1.5 text-xs font-medium hover:bg-gray-700"
-          >
-            + Add Wallet
-          </button>
-        </div>
-
-        {showAddWallet && (
-          <form onSubmit={handleAddWallet} className="mb-4 space-y-3 rounded-lg border border-gray-800 bg-gray-900 p-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Wallet Address</label>
-                <input
-                  type="text"
-                  value={walletAddress}
-                  onChange={(e) => setWalletAddress(e.target.value)}
-                  placeholder="0x..."
-                  autoFocus
-                  className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Label (optional)</label>
-                <input
-                  type="text"
-                  value={walletLabel}
-                  onChange={(e) => setWalletLabel(e.target.value)}
-                  placeholder="My deploy wallet"
-                  className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
-                />
-              </div>
-            </div>
-            {walletError && <p className="text-sm text-red-400">{walletError}</p>}
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={addingWallet}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
-              >
-                {addingWallet ? 'Adding...' : 'Add Wallet'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowAddWallet(false); setWalletError('') }}
-                className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
-
-        {loadingWallets ? (
-          <Skeleton rows={2} className="h-12" />
-        ) : wallets.length === 0 ? (
-          <div className="text-center py-6 rounded-lg border border-gray-800 bg-gray-900">
-            <p className="text-gray-500 text-sm">No deploy wallets configured.</p>
-            <p className="text-xs text-gray-600 mt-1">Add a wallet to deploy to Decentraland.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {wallets.map((wallet) => (
-              <div key={wallet.id} className="flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900 px-4 py-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-xs font-medium text-gray-400 capitalize">{wallet.platform}</span>
-                  <code className="text-sm text-gray-300 font-mono truncate">{wallet.walletAddress}</code>
-                  {wallet.label && <span className="text-xs text-gray-500">({wallet.label})</span>}
-                  {wallet.hasPrivateKey && (
-                    <Badge tone="success">Key stored</Badge>
-                  )}
-                </div>
-                <button
-                  onClick={() => handleDeleteWallet(wallet.id)}
-                  className="rounded bg-red-600/20 px-2 py-1 text-xs text-red-400 hover:bg-red-600/30 shrink-0 ml-2"
-                >
-                  Delete
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// -- Deployment Card ----------------------------------------------------------
-
-function DeploymentCard({
-  deployment,
-  actionLoading,
-  onCancel,
-  onRedeploy,
-}: {
-  deployment: any
-  actionLoading: boolean
-  onCancel: () => void
-  onRedeploy: () => void
-}) {
-  const target = (deployment.target || {}) as Record<string, any>
-  const canCancel = deployment.status === 'pending' || deployment.status === 'building'
-
-  return (
-    <div className="rounded-lg border border-gray-800 bg-gray-900 p-5 space-y-3">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <PlatformBadge platform={deployment.platform} />
-          <span className="text-sm text-gray-400 capitalize">{deployment.deploymentType}</span>
-        </div>
-        <StatusBadge status={deployment.status} />
-      </div>
-
-      {/* Info Grid */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 text-sm">
-        {target.parcels && (
-          <div>
-            <span className="text-xs text-gray-500">Parcels</span>
-            <p className="text-gray-300 font-mono text-xs">{typeof target.parcels === 'string' ? target.parcels : JSON.stringify(target.parcels)}</p>
-          </div>
-        )}
-        {target.contentServer && (
-          <div>
-            <span className="text-xs text-gray-500">Content Server</span>
-            <p className="text-gray-300 font-mono text-xs truncate">{target.contentServer}</p>
-          </div>
-        )}
-        {target.instanceUrl && (
-          <div>
-            <span className="text-xs text-gray-500">Instance URL</span>
-            <a href={target.instanceUrl} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 font-mono text-xs truncate block hover:underline">
-              {target.instanceUrl}
-            </a>
-          </div>
-        )}
-        {target.region && (
-          <div>
-            <span className="text-xs text-gray-500">Region</span>
-            <p className="text-gray-300 text-xs">{target.region}</p>
-          </div>
-        )}
-        {deployment.catalystEntityId && (
-          <div>
-            <span className="text-xs text-gray-500">Catalyst Entity</span>
-            <p className="text-gray-300 font-mono text-xs truncate">{deployment.catalystEntityId}</p>
-          </div>
-        )}
-        <div>
-          <span className="text-xs text-gray-500">Created</span>
-          <p className="text-gray-300 text-xs">{formatDateTime(deployment.createdAt)}</p>
-        </div>
-        {deployment.deployedAt && (
-          <div>
-            <span className="text-xs text-gray-500">Deployed</span>
-            <p className="text-gray-300 text-xs">{formatDateTime(deployment.deployedAt)}</p>
-          </div>
-        )}
-      </div>
-
-      {/* Error */}
-      {deployment.errorMessage && (
-        <div className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2">
-          <p className="text-sm text-red-400">{deployment.errorMessage}</p>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex flex-wrap gap-2 pt-1">
-        {canCancel && (
-          <button
-            onClick={onCancel}
-            disabled={actionLoading}
-            className="rounded-md bg-yellow-600/20 px-3 py-1.5 text-xs text-yellow-400 hover:bg-yellow-600/30 disabled:opacity-50"
-          >
-            {actionLoading ? 'Cancelling...' : 'Cancel'}
-          </button>
-        )}
-        <button
-          onClick={onRedeploy}
-          disabled={actionLoading}
-          className="rounded-md bg-blue-600/20 px-3 py-1.5 text-xs text-blue-400 hover:bg-blue-600/30 disabled:opacity-50"
-        >
-          {actionLoading ? 'Redeploying...' : 'Redeploy'}
-        </button>
-      </div>
     </div>
   )
 }

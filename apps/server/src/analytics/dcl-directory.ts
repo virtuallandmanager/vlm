@@ -25,6 +25,8 @@ export interface DclDirectory {
   getWorldDeployers(name: string): Promise<string[]>
   /** Lowercased hostnames of the DAO catalyst list. Throws DirectoryUnavailableError when it can't be fetched. */
   getCatalystHosts(): Promise<string[]>
+  /** The wallet's DCL NAMEs as World names (`<name>.dcl.eth`, lowercased). */
+  getOwnedNames(address: string): Promise<string[]>
 }
 
 export class DirectoryUnavailableError extends Error {}
@@ -51,6 +53,7 @@ const CACHE_MAX = 10_000
 const ACTIVE_TTL_MS = 30_000
 const CATALYSTS_TTL_MS = 60 * 60_000
 const CATALYSTS_RETRY_MS = 60_000
+const OWNED_NAMES_MAX_PAGES = 10
 
 /** Small TTL cache (insertion-ordered, bounded) for upstream answers. Errors are never cached. */
 export class TtlCache<V> {
@@ -98,6 +101,7 @@ export class HttpDclDirectory implements DclDirectory {
   private worldScenes = new TtlCache<{ sceneUrns: string[]; title?: string } | null>(ACTIVE_TTL_MS)
   private catalysts = new TtlCache<string[]>(CATALYSTS_TTL_MS)
   private catalystsFailedAt = -Infinity
+  private ownedNames = new TtlCache<string[]>()
 
   constructor(private catalyst = config.catalystUrl, private worlds = config.worldsUrl) {}
 
@@ -165,6 +169,27 @@ export class HttpDclDirectory implements DclDirectory {
       this.catalystsFailedAt = Date.now()
       throw err
     }
+  }
+
+  /**
+   * `GET /lambdas/users/{address}/names` -> `{ elements: [{ name, contractAddress, tokenId, price }], totalAmount, pageNum, pageSize }`
+   * (name has no `.dcl.eth` suffix); paged, so follow pageNum until totalAmount is covered.
+   */
+  async getOwnedNames(address: string): Promise<string[]> {
+    const a = address.toLowerCase()
+    return this.ownedNames.getOrLoad(a, async () => {
+      const names: string[] = []
+      for (let page = 1; page <= OWNED_NAMES_MAX_PAGES; page++) {
+        const body = (await getJson(`${this.catalyst}/lambdas/users/${encodeURIComponent(a)}/names?pageNum=${page}`)) as {
+          elements?: Array<{ name?: unknown }>
+          totalAmount?: number
+        } | null
+        const els = body?.elements ?? []
+        for (const e of els) if (typeof e?.name === 'string' && e.name) names.push(`${e.name.toLowerCase()}.dcl.eth`)
+        if (!els.length || names.length >= (body?.totalAmount ?? 0)) break
+      }
+      return [...new Set(names)]
+    })
   }
 
   async getParcelRights(parcel: string): Promise<ParcelRights | null> {

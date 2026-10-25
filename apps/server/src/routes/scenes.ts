@@ -96,6 +96,25 @@ interface UpdateInstanceBody {
   properties?: unknown
 }
 
+/** The 403 body when `userId` is at their plan's scene limit; null when they may create another (always null in self-hosted mode). */
+export async function sceneLimitError(userId: string) {
+  if (config.allFeaturesUnlocked) return null
+  const sub = await getSubscription(userId)
+  const limit = sub.limits.scenes
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(scenes)
+    .where(eq(scenes.ownerId, userId))
+  if (count < limit) return null
+  return {
+    error: 'scene_limit_reached' as const,
+    message: `Your ${sub.tier} plan allows up to ${limit} scenes. Please upgrade to create more.`,
+    currentUsage: count,
+    limit,
+    tier: sub.tier as string,
+  }
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export default async function sceneRoutes(app: FastifyInstance) {
@@ -171,25 +190,8 @@ export default async function sceneRoutes(app: FastifyInstance) {
     }
 
     // Enforce scene limit based on subscription tier (skip in self-hosted mode)
-    if (!config.allFeaturesUnlocked) {
-      const sub = await getSubscription(request.user.id)
-      const limit = sub.limits.scenes
-
-      const [{ count }] = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(scenes)
-        .where(eq(scenes.ownerId, request.user.id))
-
-      if (count >= limit) {
-        return reply.status(403).send({
-          error: 'scene_limit_reached',
-          message: `Your ${sub.tier} plan allows up to ${limit} scenes. Please upgrade to create more.`,
-          currentUsage: count,
-          limit,
-          tier: sub.tier,
-        })
-      }
-    }
+    const limitError = await sceneLimitError(request.user.id)
+    if (limitError) return reply.status(403).send(limitError)
 
     const [scene] = await db
       .insert(scenes)
