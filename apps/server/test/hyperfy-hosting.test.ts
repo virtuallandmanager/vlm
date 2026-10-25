@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { db } from '../src/db/connection.js'
-import { sceneDeployments } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { hyperfyHosting } from '../src/services/hyperfy/infrastructure.js'
 import { resetDb } from './helpers/db.js'
@@ -119,31 +118,11 @@ describe('Hyperfy hosting availability', () => {
     }
   })
 
-  it('POST /api/deploy no longer provisions Hyperfy worlds, and records nothing', async () => {
-    configure(HOSTING)
-    const res = await call('POST', '/api/deploy', { sceneId, platform: 'hyperfy', deploymentType: 'instance', target: { name: 'w' } })
-    expect(res.statusCode).toBe(400)
-    expect(res.json().error).toBe('hyperfy_use_worlds')
-    expect(await db.select().from(sceneDeployments)).toHaveLength(0)
-  })
-
   it('the old /api/deploy/hyperfy routes are gone', async () => {
     const res = await call('POST', '/api/deploy/hyperfy/provision', { sceneId, name: 'w' })
     expect(res.statusCode).toBe(404)
     const routes = ((app as any).registeredRoutes as Array<{ url: string }>).map((r) => r.url)
     expect(routes.filter((u) => u.startsWith('/api/deploy/hyperfy'))).toEqual([])
-  })
-
-  it('an old Hyperfy deployment is not redeployed, and nothing is created', async () => {
-    configure(HOSTING)
-    const [dep] = await db.insert(sceneDeployments).values({
-      sceneId, platform: 'hyperfy', deploymentType: 'instance', status: 'failed', deployedBy: owner.id,
-      target: { name: 'w', slug: 'w', instanceUrl: 'http://localhost:4000', provider: 'local', adminCode: 'secret' },
-    }).returning()
-    const res = await call('POST', `/api/deploy/${dep.id}/redeploy`)
-    expect(res.statusCode).toBe(400)
-    expect(res.json().error).toBe('hyperfy_use_worlds')
-    expect(await db.select().from(sceneDeployments)).toHaveLength(1)
   })
 
   it('GET /api/deploy/platforms says whether Hyperfy can be deployed', async () => {

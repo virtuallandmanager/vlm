@@ -678,6 +678,7 @@ export const deploymentStatusEnum = pgEnum('deployment_status', [
   'deploying',
   'deployed',
   'failed',
+  'awaiting_signature',
 ])
 
 export const sceneDeployments = pgTable('scene_deployments', {
@@ -694,6 +695,7 @@ export const sceneDeployments = pgTable('scene_deployments', {
   errorMessage: text('error_message'),
   catalystEntityId: text('catalyst_entity_id'), // DCL catalyst entity hash
   infrastructureId: text('infrastructure_id'), // Hyperfy: Docker container ID, Fly machine ID
+  destinationId: uuid('destination_id').references(() => dclWorldDestinations.id, { onDelete: 'set null' }),
   deployedAt: timestamp('deployed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
@@ -707,23 +709,49 @@ export const sceneDeploymentsRelations = relations(sceneDeployments, ({ one }) =
     fields: [sceneDeployments.deployedBy],
     references: [users.id],
   }),
+  destination: one(dclWorldDestinations, {
+    fields: [sceneDeployments.destinationId],
+    references: [dclWorldDestinations.id],
+  }),
 }))
 
-export const deploymentWallets = pgTable('deployment_wallets', {
+export const dclDestinationModeEnum = pgEnum('dcl_destination_mode', ['virvi', 'sign'])
+export const dclDestinationStatusEnum = pgEnum('dcl_destination_status', ['ok', 'needs_review', 'over_budget', 'unreachable'])
+
+/** A Decentraland World a scene deploys to. Virvi never holds the owner's key. */
+export const dclWorldDestinations = pgTable('dcl_world_destinations', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
+  sceneId: uuid('scene_id')
+    .notNull()
+    .references(() => scenes.id, { onDelete: 'cascade' }),
+  ownerUserId: uuid('owner_user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
-  platform: text('platform').notNull(), // 'decentraland'
-  walletAddress: text('wallet_address').notNull(),
-  encryptedPrivateKey: text('encrypted_private_key'), // AES-256-GCM encrypted
-  label: text('label'),
+  ownerWallet: text('owner_wallet').notNull(), // lowercased
+  worldName: text('world_name').notNull().unique(), // lowercased
+  base: text('base').notNull(), // "x,y"
+  parcels: text('parcels').array().notNull(),
+  mode: dclDestinationModeEnum('mode').notNull(),
+  grantedAt: timestamp('granted_at', { withTimezone: true }), // null until mode A permission is confirmed
+  status: dclDestinationStatusEnum('status').notNull().default('ok'),
+  statusDetail: text('status_detail'),
+  lastEntityId: text('last_entity_id'),
+  deployedFiles: text('deployed_files').array().notNull().default(sql`'{}'::text[]`), // lowercased paths
+  pendingSince: timestamp('pending_since', { withTimezone: true }),
+  adopted: boolean('adopted').notNull().default(false), // true = the owner's own scene code, never touched
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  sceneIdx: index('dcl_world_destinations_scene_idx').on(t.sceneId),
+}))
 
-export const deploymentWalletsRelations = relations(deploymentWallets, ({ one }) => ({
-  user: one(users, {
-    fields: [deploymentWallets.userId],
+export const dclWorldDestinationsRelations = relations(dclWorldDestinations, ({ one }) => ({
+  scene: one(scenes, {
+    fields: [dclWorldDestinations.sceneId],
+    references: [scenes.id],
+  }),
+  owner: one(users, {
+    fields: [dclWorldDestinations.ownerUserId],
     references: [users.id],
   }),
 }))
@@ -1159,7 +1187,7 @@ export const accessGrants = pgTable(
 )
 
 export const sceneRoleEnum = pgEnum('scene_role', ['cohost', 'editor', 'viewer'])
-export const setupEndReasonEnum = pgEnum('setup_end_reason', ['redeployed', 'deleted'])
+export const setupEndReasonEnum = pgEnum('setup_end_reason', ['redeployed', 'deleted', 'replaced'])
 
 /** Permanent per-scene roles, addressed to a wallet (attached to a user once that wallet signs in). The host is scenes.ownerId, never a row here. */
 export const sceneRoles = pgTable(

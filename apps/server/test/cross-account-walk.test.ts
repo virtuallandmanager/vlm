@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { ringCodeOf } from 'vlm-shared'
 import { db } from '../src/db/connection.js'
 import {
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
-  sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
+  sceneDeployments, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
   uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
 } from '../src/db/schema.js'
@@ -13,12 +13,6 @@ import { resetDb } from './helpers/db.js'
 import { testApp, createUser, createScene, createElement, createInstance, tokenFor, randomWallet, type TestUser } from './helpers/factories.js'
 import { createAnalyticsScene } from './helpers/analytics.js'
 import { createSetup } from './helpers/setups.js'
-
-// A refused route must never reach the catalyst.
-vi.mock('../src/services/dcl/deployer.js', async () => {
-  const actual = await vi.importActual<typeof import('../src/services/dcl/deployer.js')>('../src/services/dcl/deployer.js')
-  return { ...actual, executeDCLDeploy: vi.fn(async () => {}) }
-})
 
 const H = 3600_000
 const AD_ID = '00000000-0000-4000-8000-000000000001'
@@ -35,7 +29,6 @@ async function fixtures() {
   await db.insert(sceneCollaborators).values({ sceneId: scene.id, userId: collaborator.id, role: 'editor' })
   const roleWallet = randomWallet()
   await db.insert(sceneRoles).values({ sceneId: scene.id, walletAddress: roleWallet, role: 'editor', grantedByUserId: b.id })
-  const [wallet] = await db.insert(deploymentWallets).values({ userId: b.id, platform: 'decentraland', walletAddress: '0xb', encryptedPrivateKey: 'not-decryptable' }).returning()
   const [dcl] = await db.insert(sceneDeployments).values({ sceneId: scene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET, deployedBy: b.id }).returning()
   const [hyperfy] = await db.insert(sceneDeployments).values({
     sceneId: scene.id, platform: 'hyperfy', deploymentType: 'instance', status: 'deployed',
@@ -82,7 +75,7 @@ async function fixtures() {
   const aScene = (await createScene(a, 'A scene')).scene
   const [aEvent] = await db.insert(events).values({ ownerId: a.id, name: 'A event' }).returning()
   return {
-    a, b, collaborator, scene, preset, element, instance, roleWallet, wallet, dcl, hyperfy, stream, event, giveaway, item,
+    a, b, collaborator, scene, preset, element, instance, roleWallet, dcl, hyperfy, stream, event, giveaway, item,
     asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, world, pairing, arSpace, arFloor, arMarker, arDevice, aScene, aEvent,
   }
 }
@@ -145,13 +138,9 @@ const CASES: Case[] = [
   { route: 'POST /api/ar/devices/:id/spaces', url: (f) => `/api/ar/devices/${f.arDevice.id}/spaces`, body: () => ({ secret: 'guess' }) },
   { route: 'DELETE /api/ar/devices/:id', url: (f) => `/api/ar/devices/${f.arDevice.id}` },
   // deploy
-  { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.scene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET }) },
-  { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.aScene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET, walletId: f.wallet.id }) },
   { route: 'GET /api/deploy/:id', url: (f) => `/api/deploy/${f.dcl.id}` },
   { route: 'GET /api/deploy/scene/:sceneId', url: (f) => `/api/deploy/scene/${f.scene.id}` },
   { route: 'POST /api/deploy/:id/cancel', url: (f) => `/api/deploy/${f.dcl.id}/cancel` },
-  { route: 'POST /api/deploy/:id/redeploy', url: (f) => `/api/deploy/${f.dcl.id}/redeploy` },
-  { route: 'DELETE /api/deploy/wallets/:id', url: (f) => `/api/deploy/wallets/${f.wallet.id}` },
   // events and command center
   { route: 'GET /api/events/:eventId', url: (f) => `/api/events/${f.event.id}` },
   { route: 'PUT /api/events/:eventId', url: (f) => `/api/events/${f.event.id}`, body: () => ({ name: 'pwned' }) },
@@ -252,7 +241,7 @@ const NOT_CROSS_ACCOUNT: Record<string, string> = {
 // Every table holding B's fixtures; a refused request must leave all of them as they were.
 const TABLES = [
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
-  sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
+  sceneDeployments, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
   uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
 ]
