@@ -22,6 +22,8 @@ export interface Preview3DProps {
   spawn: { x: number; z: number }
   selectedKey: string | null
   editable: boolean
+  /** Whether the arrival point can be dragged while editable (default true). */
+  spawnEditable?: boolean
   onMove: (key: string, x: number, z: number) => void
   onRotate: (key: string) => void
   onSelect: (key: string | null) => void
@@ -96,7 +98,7 @@ class Fallback extends Component<{ fallback: ReactNode; children: ReactNode }, {
   }
 }
 
-function Scene({ plot, items, spawn, selectedKey, editable, onMove, onSelect, onMoveSpawn }: Preview3DProps) {
+function Scene({ plot, items, spawn, selectedKey, editable, spawnEditable = true, onMove, onSelect, onMoveSpawn }: Preview3DProps) {
   const p = plot ?? GUIDE_PLOT
   const size = plotSizeM(p)
   return (
@@ -120,7 +122,7 @@ function Scene({ plot, items, spawn, selectedKey, editable, onMove, onSelect, on
           onMove={onMove}
         />
       ))}
-      <SpawnMarker spawn={spawn} editable={editable} onMove={onMoveSpawn} />
+      <SpawnMarker spawn={spawn} editable={editable && spawnEditable} onMove={onMoveSpawn} />
       <OrbitControls makeDefault maxPolarAngle={Math.PI / 2 - 0.05} minDistance={2} maxDistance={Math.max(size.x, size.z) * 4 + 40} />
       <Frame size={size} />
     </Canvas>
@@ -314,7 +316,7 @@ function SpawnMarker({ spawn, editable, onMove }: { spawn: { x: number; z: numbe
 }
 
 /** Without WebGL: the plot from above, north up, with each item's footprint. Drag and select still work. */
-function PlanView({ plot, items, spawn, selectedKey, editable, onMove, onSelect, onMoveSpawn }: Preview3DProps) {
+function PlanView({ plot, items, spawn, selectedKey, editable, spawnEditable = true, onMove, onSelect, onMoveSpawn }: Preview3DProps) {
   const p = plot ?? GUIDE_PLOT
   const size = plotSizeM(p)
   const svg = useRef<SVGSVGElement>(null)
@@ -384,8 +386,8 @@ function PlanView({ plot, items, spawn, selectedKey, editable, onMove, onSelect,
         cy={size.z - spawn.z}
         r={0.7}
         fill={COLORS.spawn}
-        className={editable ? 'cursor-grab' : undefined}
-        onPointerDown={(e) => start(e, spawn, onMoveSpawn)}
+        className={editable && spawnEditable ? 'cursor-grab' : undefined}
+        onPointerDown={(e) => spawnEditable && start(e, spawn, onMoveSpawn)}
       >
         <title>Spawn point</title>
       </circle>
