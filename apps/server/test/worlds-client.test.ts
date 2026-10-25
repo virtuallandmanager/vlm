@@ -38,6 +38,15 @@ describe('HttpWorldsClient', () => {
     expect(await client.getWorldEntities('none.dcl.eth')).toEqual([])
   })
 
+  it('getWorldEntities throws when a listed entity cannot be resolved', async () => {
+    for (const contents of [() => json({}, 404), () => json({ pointers: ['0,0'] })]) {
+      stubFetch((url) =>
+        url.endsWith('/about') ? json({ configurations: { scenesUrn: ['urn:decentraland:entity:bafyid?=&baseUrl=x'] } }) : contents(),
+      )
+      await expect(client.getWorldEntities('foo.dcl.eth')).rejects.toBeInstanceOf(WorldsError)
+    }
+  })
+
   it('deploy posts multipart with entityId, auth chain and every file', async () => {
     const fetchFn = stubFetch(() => json({ creationTimestamp: 1 }))
     await client.deploy({ entityId: 'eid', authChain: chain, files: new Map([['eid', new Uint8Array([1])], ['h1', new Uint8Array([2, 3])]]) })

@@ -90,7 +90,8 @@ export class HttpWorldsClient implements WorldsClient {
     const out: LiveEntity[] = []
     for (const id of ids) {
       const e = await this.getJson<{ pointers?: string[]; content?: ContentRef[]; metadata?: SceneMetadata }>(`/contents/${encodeURIComponent(id)}`)
-      if (!e?.metadata) continue
+      // /about says this entity is live; failing to resolve it must not make the World look empty.
+      if (!e?.metadata) throw new WorldsError(404, '', `Worlds server: live entity ${id} of ${world} could not be resolved`)
       out.push({ id, pointers: e.pointers ?? [], content: e.content ?? [], metadata: e.metadata })
     }
     return out
