@@ -39,9 +39,10 @@ def render(pieces: list[dict], view: dict, out: Path, frames: int = 36, size: in
     """pieces: [{'category', 'glbs': {'male'|'female'|'unisex': Path}, 'meta'}];
     view: {'bodyShape': 'male'|'female', 'outfit', 'emote', 'mode': 'spin'|'emote'|'look'}.
     Returns {'ok', 'frames': [Path], 'error': None|'timeout'|'item_not_loaded'|'blank'|str, 'bootSec'}."""
-    out = Path(out)
+    out = Path(out).absolute()  # the child process runs in another directory
     out.mkdir(parents=True, exist_ok=True)
-    spec = {'pieces': [{**p, 'glbs': {k: str(v) for k, v in p['glbs'].items()}} for p in pieces], 'view': view,
+    spec = {'pieces': [{**p, 'glbs': {k: str(Path(v).absolute()) for k, v in p['glbs'].items()}} for p in pieces],
+            'view': view,
             'out': str(out), 'frames': frames, 'size': size, 'url': config.PREVIEW_URL,
             'proxy': os.environ.get('HTTPS_PROXY')}
     with tempfile.TemporaryDirectory() as tmp:

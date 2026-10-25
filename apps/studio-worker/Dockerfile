@@ -54,6 +54,6 @@ COPY studio_worker /opt/studio_worker
 ENV PYTHONPATH=/opt
 RUN printf '#!/bin/sh\nexec python3 -m studio_worker.render "$@"\n' > /usr/local/bin/studio-preview \
     && chmod 755 /usr/local/bin/studio-preview
-COPY smoke.sh entrypoint.sh /opt/
+COPY smoke.sh entrypoint.sh tinyproxy.conf allowlist.txt /opt/
 WORKDIR /work/design
 ENTRYPOINT ["/opt/entrypoint.sh"]

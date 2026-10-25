@@ -3,6 +3,7 @@ import shutil
 import threading
 import time
 from functools import partial
+from pathlib import Path
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -80,3 +81,17 @@ def test_emote_frames_step_through_length(tmp_path, stub):
     goes = [c['params'][0] for c in calls if c['method'] == 'goTo']
     assert goes == pytest.approx([i * 0.3 for i in range(10)])
     assert len(r['frames']) == 10
+
+
+def test_studio_preview_takes_relative_paths(tmp_path, stub, monkeypatch):
+    stub()
+    hat = tmp_path / 'out/hat'
+    hat.mkdir(parents=True)
+    for g in (FIXTURES / 'cap').glob('*.glb'):
+        shutil.copy(g, hat / g.name)
+    (hat / 'piece.json').write_text('{"name": "Neon Cap", "category": "hat"}')
+    monkeypatch.chdir(tmp_path)
+    paths = render.look([Path('out/hat')], Path('review'))
+    assert sorted(p.name for p in paths) == sorted(f'{s}-{v}.png' for s in ('male', 'female')
+                                                   for v in ('front', 'right', 'back', 'left'))
+    assert all((tmp_path / p).exists() for p in paths)
