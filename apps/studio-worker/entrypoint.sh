@@ -35,5 +35,22 @@ done
 
 export HTTPS_PROXY=http://127.0.0.1:8888 HTTP_PROXY=http://127.0.0.1:8888 NO_PROXY=localhost,127.0.0.1
 export https_proxy=$HTTPS_PROXY http_proxy=$HTTP_PROXY no_proxy=$NO_PROXY
+
+# The key proxy holds the API keys, as its own user; the agents talk to it on loopback with a placeholder key.
+# It gets only the variables it needs, through the environment (never argv, which every user can read).
+(
+  for v in $(compgen -e); do
+    case $v in ANTHROPIC_API_KEY|OPENAI_API_KEY|HTTPS_PROXY|PATH|PYTHONPATH) ;; *) unset "$v" ;; esac
+  done
+  exec runuser -u keyproxy -- python3 -m studio_worker.keyproxy
+) &
+for port in 8890 8891; do
+  for _ in $(seq 50); do
+    (exec 3<>/dev/tcp/127.0.0.1/$port) 2>/dev/null && break
+    sleep 0.1
+  done
+done
+# Nothing after this point holds a key
+unset ANTHROPIC_API_KEY OPENAI_API_KEY
 if [ $# -gt 0 ]; then exec "$@"; fi
 exec python3 -m studio_worker

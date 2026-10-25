@@ -5,5 +5,7 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 docker build -q --platform linux/amd64 -t vlm-studio-worker:dev "$here" >/dev/null
-docker run -i --rm --platform linux/amd64 --cap-add NET_ADMIN -v "$here/tests/fixtures:/fixtures:ro" \
+# The keys file (gitignored) defaults to this checkout's; STUDIO_ENV_FILE points at another one
+env_file=${STUDIO_ENV_FILE:-$here/.env}
+docker run -i --rm --platform linux/amd64 --cap-add NET_ADMIN --env-file "$env_file" -v "$here/tests/fixtures:/fixtures:ro" \
   --entrypoint /opt/entrypoint.sh vlm-studio-worker:dev bash -s < "$here/e2e/network_checks.sh"

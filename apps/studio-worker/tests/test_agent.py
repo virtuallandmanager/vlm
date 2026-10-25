@@ -22,19 +22,29 @@ def run(tmp_path, agent_name, fixture, limits=LIMITS, before=None, progress=None
                      command=fake(fixture), as_user=None, cwd=tmp_path)
 
 
-def test_agent_env_has_only_its_key():
-    base = {'ANTHROPIC_API_KEY': 'sk-ant', 'OPENAI_API_KEY': 'sk-oai', 'STUDIO_WORKER_TOKEN': 'tok',
+def test_agent_env_holds_no_real_key(tmp_path):
+    base = {'ANTHROPIC_API_KEY': 'sk-ant-real', 'OPENAI_API_KEY': 'sk-oai-real', 'STUDIO_WORKER_TOKEN': 'tok',
             'HTTPS_PROXY': 'http://127.0.0.1:8888', 'PATH': '/usr/bin'}
     claude = agent_env('claude', base)
-    assert claude['ANTHROPIC_API_KEY'] == 'sk-ant'
-    assert 'OPENAI_API_KEY' not in claude and 'STUDIO_WORKER_TOKEN' not in claude
+    codex = agent_env('codex', base)
+    for env in (claude, codex):
+        assert not any('sk-ant' in v or 'sk-oai' in v for v in env.values())
+        assert 'STUDIO_WORKER_TOKEN' not in env and 'OPENAI_API_KEY' not in env
+    assert claude['ANTHROPIC_BASE_URL'] == 'http://127.0.0.1:8890'
+    assert claude['ANTHROPIC_API_KEY'] == 'studio-proxy'
     assert claude['CLAUDE_CONFIG_DIR'] == str(agent.DESIGN / '.claude-home')
     assert claude['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] == '1'
-    codex = agent_env('codex', base)
-    assert codex['CODEX_API_KEY'] == 'sk-oai'
-    assert not {'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'STUDIO_WORKER_TOKEN'} & set(codex)
+    assert codex['CODEX_API_KEY'] == 'studio-proxy' and 'ANTHROPIC_API_KEY' not in codex
     assert codex['CODEX_HOME'] == str(agent.DESIGN / '.codex-home')
     assert claude['HTTPS_PROXY'] == codex['HTTPS_PROXY'] == 'http://127.0.0.1:8888'
+
+
+def test_codex_is_pointed_at_the_key_proxy(tmp_path):
+    run(tmp_path, 'codex', 'codex_stream.jsonl')
+    toml = (tmp_path / '.codex-home' / 'config.toml').read_text()
+    assert 'model_provider = "studio"' in toml
+    assert 'base_url = "http://127.0.0.1:8891/v1"' in toml
+    assert 'env_key = "CODEX_API_KEY"' in toml and 'wire_api = "responses"' in toml
 
 
 def test_progress_streams_from_claude(tmp_path):

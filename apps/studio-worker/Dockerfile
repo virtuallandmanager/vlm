@@ -41,6 +41,8 @@ RUN npm install -g @anthropic-ai/claude-code@$CLAUDE_CODE_VERSION @openai/codex@
 # The agents run as an ordinary user (Claude Code refuses to skip its permission prompts as root); the worker is root
 # Only the design folder is the agent's: the worker's state for it (/work/design-state) is root's alone
 RUN useradd -m -u 1000 agent && mkdir -p /work/design && chown agent /work/design
+# The key proxy's own user: it alone holds the API keys (studio_worker/keyproxy.py)
+RUN useradd -r -M -s /usr/sbin/nologin keyproxy
 
 # Skills, pinned, installed for both agents into the design workspace. The repo is root-owned and read by `agent`.
 RUN git clone "$SKILLS_REPO" /opt/skills && git -C /opt/skills checkout --quiet "$SKILLS_SHA" \

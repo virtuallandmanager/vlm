@@ -1,6 +1,6 @@
 """Runs one prompt through Claude Code or Codex, streaming its progress, and charges it its share of the session.
 
-Each agent runs as the unprivileged `agent` user in its own process group, with only its own key: the group is
+Each agent runs as the unprivileged `agent` user in its own process group, holding no real key (keyproxy.py adds it): the group is
 killed at the prompt's timeout, or once Claude's running cost passes the prompt's ceiling (Codex reports usage only
 at the end of a turn, so time alone caps it).
 """
@@ -89,13 +89,26 @@ def prices() -> dict:
     return json.loads(PRICES.read_text())['models']
 
 
+# The agents hold a placeholder key; keyproxy.py adds the real one on loopback
+KEY_PLACEHOLDER = 'studio-proxy'
+ANTHROPIC_BASE_URL = 'http://127.0.0.1:8890'
+CODEX_CONFIG = """model_provider = "studio"
+
+[model_providers.studio]
+name = "studio"
+base_url = "http://127.0.0.1:8891/v1"
+env_key = "CODEX_API_KEY"
+wire_api = "responses"
+"""
+
+
 def agent_env(agent: str, base: Mapping[str, str], design: Path = DESIGN) -> dict[str, str]:
     env = {k: v for k, v in base.items() if not SECRET.search(k)}
     if agent == 'claude':
-        env.update(ANTHROPIC_API_KEY=base.get('ANTHROPIC_API_KEY', ''), CLAUDE_CONFIG_DIR=str(design / '.claude-home'),
-                   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1')
-    else:  # codex exec reads its key from CODEX_API_KEY
-        env.update(CODEX_API_KEY=base.get('OPENAI_API_KEY', ''), CODEX_HOME=str(design / '.codex-home'))
+        env.update(ANTHROPIC_API_KEY=KEY_PLACEHOLDER, ANTHROPIC_BASE_URL=ANTHROPIC_BASE_URL,
+                   CLAUDE_CONFIG_DIR=str(design / '.claude-home'), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1')
+    else:  # codex exec reads its key from CODEX_API_KEY, and its provider from CODEX_HOME/config.toml
+        env.update(CODEX_API_KEY=KEY_PLACEHOLDER, CODEX_HOME=str(design / '.codex-home'))
     return env
 
 
@@ -192,6 +205,8 @@ def run_agent(agent: str, model: str, prompt: str, session: str | None, before: 
     env = agent_env(agent, os.environ, cwd)
     for home in ('.claude-home', '.codex-home'):
         (cwd / home).mkdir(exist_ok=True)
+        if home == '.codex-home':  # rewritten every run: the agent can edit its own home
+            (cwd / home / 'config.toml').write_text(CODEX_CONFIG)
         if as_user and os.geteuid() == 0:
             subprocess.run(['chown', '-R', as_user, str(cwd / home)], check=False)
     cmd = command or command_for(agent, model, prompt, session, limits.get('maxTurns') or DEFAULT_MAX_TURNS)

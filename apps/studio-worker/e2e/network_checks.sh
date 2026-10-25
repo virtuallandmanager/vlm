@@ -11,6 +11,20 @@ code=$(runuser -u agent -- curl -sS --max-time 15 -o /dev/null -w '%{http_code}'
 [ "$code" = 401 ] && pass "agent reaches api.anthropic.com (HTTP $code without a key)" || bad "api.anthropic.com gave '$code'"
 curl -fsS --max-time 15 --noproxy '*' -o /dev/null https://example.com 2>/dev/null \
   && bad "root reached example.com around the proxy" || pass "root can't go around the proxy"
+kp=$(pgrep -u keyproxy -f studio_worker.keyproxy | head -1)
+[ -n "$kp" ] && pass "the key proxy runs as its own user" || bad "the key proxy isn't running"
+runuser -u agent -- cat "/proc/$kp/environ" >/dev/null 2>&1 \
+  && bad "agent can read the key proxy's environment" || pass "agent can't read the key proxy's environment"
+n=$(runuser -u agent -- env | grep -c 'sk-' || true)
+[ "$n" = 0 ] && pass "agent's environment holds no key" || bad "agent's environment holds $n key-like values"
+n=$(env | grep -cE '^(ANTHROPIC|OPENAI)_API_KEY=' || true)
+[ "$n" = 0 ] && pass "the worker's environment holds no key" || bad "the worker's environment holds $n keys"
+code=$(runuser -u agent -- curl -sS --max-time 15 -o /dev/null -w '%{http_code}' -H 'x-api-key: studio-proxy' \
+  -H 'anthropic-version: 2023-06-01' http://127.0.0.1:8890/v1/models || true)
+[ "$code" = 200 ] && pass "agent reaches Anthropic through the key proxy (HTTP 200)" || bad "Anthropic through the key proxy gave '$code'"
+code=$(runuser -u agent -- curl -sS --max-time 15 -o /dev/null -w '%{http_code}' -H 'authorization: Bearer studio-proxy' \
+  http://127.0.0.1:8891/v1/models || true)
+[ "$code" = 200 ] && pass "agent reaches OpenAI through the key proxy (HTTP 200)" || bad "OpenAI through the key proxy gave '$code'"
 getent hosts example.com >/dev/null 2>&1 && runuser -u agent -- getent hosts example.com >/dev/null 2>&1 \
   && echo "INFO agent can resolve DNS names (no data leaves but the query)" || pass "agent can't resolve DNS"
 
