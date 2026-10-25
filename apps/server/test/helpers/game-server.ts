@@ -3,6 +3,7 @@ import { Client } from 'colyseus.js'
 import { initBus } from '../../src/realtime/bus.js'
 import { VLMSceneRoom } from '../../src/ws/VLMSceneRoom.js'
 import { VLMCommandCenterRoom } from '../../src/ws/VLMCommandCenterRoom.js'
+import { VLMStudioRoom } from '../../src/ws/VLMStudioRoom.js'
 
 const _require = createRequire(import.meta.url)
 const { Server, LocalPresence, matchMaker } = _require('colyseus') as any
@@ -14,6 +15,7 @@ export async function startGameServer() {
   const server = new Server({ transport: new WebSocketTransport(), presence })
   server.define('vlm_scene', VLMSceneRoom).filterBy(['sceneId'])
   server.define('vlm_command_center', VLMCommandCenterRoom).filterBy(['eventId'])
+  server.define('vlm_studio', VLMStudioRoom).filterBy(['designId'])
   const port = 20000 + Math.floor(Math.random() * 20000)
   await server.listen(port)
   return { url: `ws://localhost:${port}`, stop: () => server.gracefullyShutdown(false) as Promise<void> }
@@ -41,6 +43,20 @@ export async function joinScene(url: string, sceneId: string, token?: string) {
   }
 
   return { room, inbox, waitFor, expectNone }
+}
+
+/** Joins a design's studio room and collects its `studio_event` messages in order. */
+export async function joinStudio(url: string, designId: string, token?: string) {
+  const room = await new Client(url).joinOrCreate('vlm_studio', { designId, sessionToken: token })
+  const events: any[] = []
+  room.onMessage('studio_event', (message: any) => events.push(message))
+  async function waitForCount(n: number, ms = 3000) {
+    const start = Date.now()
+    while (events.length < n && Date.now() - start < ms) await new Promise((r) => setTimeout(r, 20))
+    if (events.length < n) throw new Error(`timed out waiting for ${n} studio events; got ${JSON.stringify(events)}`)
+    return events
+  }
+  return { room, events, waitForCount }
 }
 
 /** The server-side room instance (same process, local driver). */

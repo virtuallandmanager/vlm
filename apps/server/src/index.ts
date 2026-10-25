@@ -6,6 +6,7 @@ import { config, assertProductionSecrets, roomsDistributed } from './config.js'
 import { startHookCrons } from './integrations/platform-hooks.js'
 import { VLMSceneRoom } from './ws/VLMSceneRoom.js'
 import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
+import { VLMStudioRoom } from './ws/VLMStudioRoom.js'
 import { runMigrations } from './db/migrate.js'
 import { buildApp } from './app.js'
 import { startLifecycleSweep } from './venues/lifecycle.js'
@@ -67,6 +68,7 @@ async function main() {
   // Register rooms
   gameServer.define('vlm_scene', VLMSceneRoom).filterBy(['sceneId'])
   gameServer.define('vlm_command_center', VLMCommandCenterRoom).filterBy(['eventId'])
+  gameServer.define('vlm_studio', VLMStudioRoom).filterBy(['designId'])
 
   console.log(`[vlm-server] Colyseus WebSocket attached`)
 
