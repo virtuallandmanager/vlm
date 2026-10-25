@@ -5,8 +5,8 @@ import { eq } from 'drizzle-orm'
 import { config } from '../src/config.js'
 import { db } from '../src/db/connection.js'
 import { assetLibraryItems, dclWorldDestinations, sceneDeployments, sceneElements } from '../src/db/schema.js'
-import { setWorldsClient, type LiveEntity } from '../src/services/dcl/worlds-client.js'
-import { BATCH_WINDOW_MS, startDclRedeploySweep, sweepRedeploys } from '../src/services/dcl/redeploy-sweep.js'
+import { setWorldsClient, WorldsError, type LiveEntity } from '../src/services/dcl/worlds-client.js'
+import { BATCH_WINDOW_MS, RETRY_BACKOFF_MS, startDclRedeploySweep, sweepRedeploys } from '../src/services/dcl/redeploy-sweep.js'
 import { DEPLOY_WINDOW_MS, startVirviDeploy, whenSettled } from '../src/services/dcl/world-deployer.js'
 import { resetDb } from './helpers/db.js'
 import { createElement, createScene, createUser, testApp, tokenFor } from './helpers/factories.js'
@@ -218,6 +218,42 @@ describe('sweepRedeploys', () => {
     await sweepAndSettle(at(61))
     expect(fake.deployed).toHaveLength(0)
     expect(await deps()).toHaveLength(1)
+  })
+})
+
+describe('failed deploys', () => {
+  /** Failure rows are stamped with the real clock; move them onto the test's clock. */
+  const stampFailures = async (when: Date) => {
+    await db.update(sceneDeployments).set({ createdAt: when }).where(eq(sceneDeployments.status, 'failed'))
+  }
+
+  it('is not retried within 5 minutes, then is; three in a row stop it with needs_review', async () => {
+    const { dest } = await setup()
+    fake.deploy = async () => { throw new WorldsError(500, 'boom') }
+    await sweepAndSettle(at(0))
+    await sweepAndSettle(at(61))
+    expect(await deps()).toHaveLength(1)
+    expect((await deps())[0].status).toBe('failed')
+    await stampFailures(at(61))
+
+    await sweepAndSettle(at(61 + 299))
+    expect(await deps()).toHaveLength(1)
+    expect(RETRY_BACKOFF_MS).toBe(300_000)
+
+    await sweepAndSettle(at(61 + 301))
+    expect(await deps()).toHaveLength(2)
+    await stampFailures(at(362))
+    await sweepAndSettle(at(362 + 301))
+    expect(await deps()).toHaveLength(3)
+    await stampFailures(at(663))
+
+    await sweepAndSettle(at(663 + 301))
+    expect(await deps()).toHaveLength(3)
+    const d = await destRow(dest.id)
+    expect(d.status).toBe('needs_review')
+    expect(d.statusDetail).toMatch(/^Virvi couldn't update your World 3 times in a row \(.*boom.*\)\. Check it on the deploy page and press Redeploy now\.$/)
+    await sweepAndSettle(at(5000))
+    expect(await deps()).toHaveLength(3)
   })
 })
 

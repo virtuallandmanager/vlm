@@ -5,7 +5,7 @@
  * passed (so a burst of additions makes one deploy) Virvi redeploys. Mode B (`sign`): only `pendingSince`
  * is kept, which the HUD and dashboard show as "ready to publish".
  */
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { dclBudget } from 'vlm-shared'
 import { db } from '../../db/connection.js'
 import { dclWorldDestinations, sceneDeployments } from '../../db/schema.js'
@@ -20,6 +20,10 @@ export { pendingModels }
 
 /** How long a model waits after it is first seen, so a burst of additions makes one deployment. */
 export const BATCH_WINDOW_MS = 60_000
+/** After a failed deploy, wait this long (from the failed row's createdAt) before trying again. */
+export const RETRY_BACKOFF_MS = 5 * 60_000
+/** This many failed deploys in a row stop the automatic redeploys until someone looks. */
+export const MAX_FAILED_IN_A_ROW = 3
 
 async function setStatus(id: string, status: Destination['status'], statusDetail: string | null) {
   await db.update(dclWorldDestinations).set({ status, statusDetail, updatedAt: new Date() }).where(eq(dclWorldDestinations.id, id))
@@ -78,6 +82,18 @@ export async function sweepRedeploys(now: Date = new Date(), opts: DeployOptions
         columns: { id: true },
       })
       if (busy) continue
+
+      const recent = await db
+        .select({ status: sceneDeployments.status, errorMessage: sceneDeployments.errorMessage, createdAt: sceneDeployments.createdAt })
+        .from(sceneDeployments)
+        .where(eq(sceneDeployments.destinationId, dest.id))
+        .orderBy(desc(sceneDeployments.createdAt))
+        .limit(MAX_FAILED_IN_A_ROW)
+      if (recent.length === MAX_FAILED_IN_A_ROW && recent.every((r) => r.status === 'failed')) {
+        await setStatus(dest.id, 'needs_review', `Virvi couldn't update your World ${MAX_FAILED_IN_A_ROW} times in a row (${recent[0].errorMessage ?? 'no reason given'}). Check it on the deploy page and press Redeploy now.`)
+        continue
+      }
+      if (recent[0]?.status === 'failed' && now.getTime() - recent[0].createdAt.getTime() < RETRY_BACKOFF_MS) continue
 
       const problem = triangleProblem(dest, await modelsInScene(dest.sceneId))
       if (problem) {
