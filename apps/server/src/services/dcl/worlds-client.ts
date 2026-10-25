@@ -32,7 +32,7 @@ export class WorldsError extends Error {
 }
 
 export interface SignedRequest {
-  method: 'PUT' | 'POST'
+  method: 'PUT' | 'POST' | 'DELETE'
   path: string
   metadata: string
   timestamp: number
