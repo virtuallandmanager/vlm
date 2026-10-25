@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","session_id":"sess-claude-3","model":"claude-opus-5-5"}
+{"spawn_sleep": 60, "pidfile": "child.pid"}
+{"sleep": 60}
