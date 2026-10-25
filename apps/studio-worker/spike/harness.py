@@ -8,6 +8,8 @@ Writes <out>/result.json: outcome, wall time, turns, tokens, dollars, and the sk
 import argparse
 import json
 import os
+import re
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -114,7 +116,7 @@ def run(agent: str, brief_path: Path, out: Path, command: list[str] | None = Non
         if (WORK / d).exists() and not (out / d).exists():
             (out / d).symlink_to(WORK / d)
     cmd = command or agent_command(agent, words + CLOSING, session, model)
-    env = dict(os.environ)
+    env = dict(os.environ, **_agent_home(agent, out))
     if agent == 'codex':  # codex exec reads its key from CODEX_API_KEY, not OPENAI_API_KEY
         env.setdefault('CODEX_API_KEY', env.get('OPENAI_API_KEY', ''))
 
@@ -162,6 +164,25 @@ def run(agent: str, brief_path: Path, out: Path, command: list[str] | None = Non
     result['checker'] = run_checker(meta, out)
     result['outcome'] = 'ok' if result['glbs'] else 'no_output'
     return _write(out, result)
+
+
+def _agent_home(agent: str, out: Path) -> dict:
+    """The agent's own state (its sessions) lives in the run directory, so a resumed run, copied from it, has them.
+
+    Claude Code files sessions under projects/<working directory>; a resumed run works in a new directory, so the
+    copied sessions are filed under that one too."""
+    if agent == 'codex':
+        home = out / '.codex-home'
+        home.mkdir(exist_ok=True)
+        return {'CODEX_HOME': str(home)}
+    home = out / '.claude-home'
+    projects = home / 'projects'
+    here = projects / re.sub(r'[^A-Za-z0-9]', '-', os.path.realpath(out))
+    here.mkdir(parents=True, exist_ok=True)
+    for f in projects.glob('*/*.jsonl'):
+        if f.parent != here and not (here / f.name).exists():
+            shutil.copy2(f, here / f.name)
+    return {'CLAUDE_CONFIG_DIR': str(home)}
 
 
 def _write(out: Path, result: dict) -> dict:

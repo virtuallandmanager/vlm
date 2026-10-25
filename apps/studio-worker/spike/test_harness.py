@@ -48,6 +48,29 @@ def test_codex_gets_its_key_and_no_stdin(tmp_path, monkeypatch):
     assert result['turns'] == 1
 
 
+def test_resume_finds_the_earlier_session(tmp_path):
+    # Like Claude Code: sessions live under $CLAUDE_CONFIG_DIR/projects/<cwd with non-alphanumerics as ->/
+    fake = tmp_path / 'fake_claude.sh'
+    fake.write_text('#!/bin/sh\nd="$CLAUDE_CONFIG_DIR/projects/$(pwd | sed \'s/[^A-Za-z0-9]/-/g\')"\n'
+                    'if [ "$1" = resume ]; then [ -f "$d/s1.jsonl" ] || exit 1; else mkdir -p "$d" && touch "$d/s1.jsonl"; fi\n'
+                    'cat ' + str(FIX / 'claude_result.json') + '\n')
+    fake.chmod(0o755)
+    first = harness.run(agent='claude', brief_path=_brief(tmp_path), out=tmp_path / 'a', command=[str(fake)])
+    assert first['outcome'] == 'no_output'
+    again = harness.run(agent='claude', brief_path=_brief(tmp_path), out=tmp_path / 'b', command=[str(fake), 'resume'],
+                        resume=tmp_path / 'a')
+    assert again['outcome'] == 'no_output', again['error']
+
+
+def test_codex_home_is_kept_in_the_run(tmp_path):
+    fake = tmp_path / 'fake_codex.sh'
+    fake.write_text('#!/bin/sh\n[ "$CODEX_HOME" = "$(pwd)/.codex-home" ] && [ -d "$CODEX_HOME" ] && echo \'{"type":"turn.completed",'
+                    '"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}\'\n')
+    fake.chmod(0o755)
+    result = harness.run(agent='codex', brief_path=_brief(tmp_path), out=tmp_path / 'out', command=[str(fake)])
+    assert result['turns'] == 1
+
+
 def test_model_is_pinned_on_the_command():
     assert harness.agent_command('codex', 'p', None, 'gpt-6.1-sol')[-3:] == ['-m', 'gpt-6.1-sol', 'p']
     assert harness.agent_command('claude', 'p', None, 'claude-opus-5-5')[-2:] == ['--model', 'claude-opus-5-5']
