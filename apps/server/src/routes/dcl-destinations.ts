@@ -515,6 +515,7 @@ export default async function dclDestinationRoutes(app: FastifyInstance) {
       return reply.send({
         destination: {
           id: dest.id, world: dest.worldName, mode: dest.mode, status: dest.status,
+          granted: dest.mode === 'virvi' && !!dest.grantedAt,
           pending: (await pendingModels(dest)).length,
           publishUrl: `${config.webAppUrl}/publish/?d=${dest.id}`,
         },

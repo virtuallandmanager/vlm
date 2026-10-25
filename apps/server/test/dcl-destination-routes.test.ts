@@ -639,7 +639,7 @@ describe('World destination routes', () => {
       const res = await app.inject({ method: 'GET', url: `/api/scenes/${scene.id}/dcl/publish-status`, headers: pass(scene.id) })
       expect(res.statusCode).toBe(200)
       expect(res.json()).toEqual({
-        destination: { id: dest.id, world: WORLD, mode: 'sign', status: 'ok', pending: 1, publishUrl: `${cfg.webAppUrl}/publish/?d=${dest.id}` },
+        destination: { id: dest.id, world: WORLD, mode: 'sign', status: 'ok', granted: false, pending: 1, publishUrl: `${cfg.webAppUrl}/publish/?d=${dest.id}` },
       })
 
       const foreign = await app.inject({ method: 'GET', url: `/api/scenes/${scene.id}/dcl/publish-status`, headers: pass(other.id) })

@@ -1,4 +1,4 @@
-import { VLM, resolveApiUrl, analyticsUrlFor, handoffUrlFor, dashboardOriginFor, hudStatus, applyLibraryChange } from 'vlm-core'
+import { VLM, resolveApiUrl, analyticsUrlFor, handoffUrlFor, dashboardOriginFor, hudStatus, applyLibraryChange, placedMessage } from 'vlm-core'
 import { VLMHttpClient } from 'vlm-client'
 import type { SetupStatus, SceneLibraryItem } from 'vlm-client'
 import type { VLMConnectionState } from 'vlm-core'
@@ -374,14 +374,10 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         }
         // What happens next depends on the scene's World destination; a failed lookup reads as "none"
         const destination = await vlm.httpClient.getDclPublishStatus(sceneId).then((r) => r.destination, () => null)
-        publishUrl = destination?.mode === 'sign' ? destination.publishUrl : null
-        if (destination?.mode === 'virvi') {
-          renderer?.setEditMessage(`Placed ${asset.name} — Virvi is adding it to your World; it appears in a minute or two`)
-        } else if (destination?.mode === 'sign') {
-          renderer?.setEditMessage(`Placed ${asset.name} — publish it on vlm.gg to see it`, false, { label: 'Publish', action: 'open_publish' })
-        } else {
-          renderer?.setEditMessage(`Placed ${asset.name} — let Virvi deploy it from vlm.gg/deploy, or run npx vlm-dcl sync and redeploy`)
-        }
+        const next = placedMessage(asset.name, destination)
+        publishUrl = next.publish && destination ? destination.publishUrl : null
+        if (publishUrl) renderer?.setEditMessage(next.text, false, { label: 'Publish', action: 'open_publish' })
+        else renderer?.setEditMessage(next.text)
       }
 
       setSceneActionHandler(async (action: string, data?: any) => {
