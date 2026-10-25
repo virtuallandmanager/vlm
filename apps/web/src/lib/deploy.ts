@@ -1,15 +1,70 @@
-// Plain-language messages for deploy page failures (the API answers with codes such as hyperfy_hosting_unavailable).
-const MESSAGES: Record<string, string> = {
-  hyperfy_hosting_unavailable: "Hyperfy hosting isn't set up yet, so worlds can't be deployed or redeployed.",
-  'Deployment not found': 'That deployment no longer exists. Refresh the page.',
+// Plain-language copy for the deploy page's World destinations and the publish page.
+import type { DclDeployment, DclDestination } from './api'
+import { wizardErrorMessage } from './wizard/run'
+import { shortAddress } from './wizard/helpers'
+
+/** "3 models are waiting to go live", or that nothing is. */
+export function pendingLine(count: number): string {
+  if (count === 0) return 'Every model in the scene is live.'
+  return count === 1 ? '1 model is waiting to go live' : `${count} models are waiting to go live`
 }
 
-export function deployErrorMessage(err: unknown): string {
-  const code = err instanceof Error ? err.message : ''
-  return MESSAGES[code] ?? 'Something went wrong. Try again in a moment.'
+export function modeLabel(dest: Pick<DclDestination, 'mode' | 'grantedAt'>): string {
+  if (dest.mode === 'virvi') return dest.grantedAt ? 'Virvi deploys for you' : "Virvi deploys for you, once you've signed the permission"
+  return 'You sign each deploy'
 }
 
-/** Deployments to list. Hosted Hyperfy worlds have their own section now, so old Hyperfy deployment records are left out. */
-export function listedDeployments<T extends { platform: string }>(deployments: T[]): T[] {
-  return deployments.filter((d) => d.platform !== 'hyperfy')
+const STATUS: Record<string, { label: string; tone: 'success' | 'warning' | 'danger'; line: string }> = {
+  ok: { label: 'Up to date', tone: 'success', line: '' },
+  needs_review: {
+    label: 'Needs a look',
+    tone: 'warning',
+    line: "Your World changed outside Virvi, so Virvi stopped instead of guessing. Check the World in Decentraland. If what's there is what you want, use the live version and Virvi builds on it from now on.",
+  },
+  over_budget: { label: 'Over the limit', tone: 'warning', line: "The scene is past Decentraland's limits for this plot, so it can't deploy until something is removed." },
+  unreachable: { label: "Can't reach Decentraland", tone: 'danger', line: "Virvi couldn't read your World from Decentraland. It tries again on its own." },
+}
+
+/** The destination's status as a label and a sentence; the server's `statusDetail` when it says more. */
+export function statusView(dest: Pick<DclDestination, 'status' | 'statusDetail'>): { label: string; tone: 'success' | 'warning' | 'danger'; line: string } {
+  const s = STATUS[dest.status] ?? { label: dest.status, tone: 'warning' as const, line: '' }
+  const detail = dest.statusDetail?.trim()
+  // Short reasons ("Your World changed outside Virvi") only repeat the label; full sentences say more.
+  if (!detail || !/[.!?]$/.test(detail)) return s
+  return { ...s, line: detail }
+}
+
+const DEPLOY_STATUS: Record<string, string> = {
+  pending: 'Waiting',
+  building: 'Packing',
+  deploying: 'Uploading',
+  deployed: 'Live',
+  failed: 'Failed',
+  awaiting_signature: 'Waiting for your signature',
+}
+
+export const deploymentStatusLabel = (status: string) => DEPLOY_STATUS[status] ?? status
+
+/** A deploy history entry's one-line summary: what it added. */
+export function deploymentSummary(d: DclDeployment): string {
+  const added = (d.assetBundle as { added?: unknown } | null)?.added
+  const n = Array.isArray(added) ? added.length : null
+  if (n === null) return ''
+  return n === 0 ? 'No new models' : `${n} new ${n === 1 ? 'model' : 'models'}`
+}
+
+/** The deploy page's World deployments, newest first. */
+export function destinationHistory<T extends { id: string; destinationId?: string | null }>(deployments: T[], destinationId: string): T[] {
+  return deployments.filter((d) => d.destinationId === destinationId)
+}
+
+/** A failure while signing for a World: the wrong wallet names the owner's; everything else as in the wizard. */
+export function signErrorMessage(err: unknown, dest: Pick<DclDestination, 'ownerWallet' | 'worldName'>): string {
+  if ((err as Error | null)?.name === 'WrongWalletError') return `Sign with ${shortAddress(dest.ownerWallet)}, the wallet that owns ${dest.worldName}.`
+  return wizardErrorMessage(err)
+}
+
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '--'
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }

@@ -1,14 +1,16 @@
 'use client'
-import { deployErrorMessage, listedDeployments } from '@/lib/deploy'
-import { useApi } from '@/lib/api'
+import { destinationHistory } from '@/lib/deploy'
+import { useApi, type DclDeployment, type DclDestination } from '@/lib/api'
 import { API_URL } from '@/lib/config'
 import { destroyWorldPrompt, hyperfyErrorMessage, lastSeenLabel, noSlotsLine, removeWorldPrompt, setupSteps, shortDate, slotLine, worldStatusLabel } from '@/lib/hyperfy'
 import type { HyperfyWorldSummary } from 'vlm-shared'
 import { useAuth } from '@/lib/auth'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { useEffect, useState, Suspense } from 'react'
-import { Badge, ConfirmAction, PageHeader, PlatformBadge, Skeleton, StatusDot } from '@/components/ui'
+import { useEffect, useRef, useState, Suspense } from 'react'
+import { ConfirmAction, PageHeader, Skeleton } from '@/components/ui'
+import { AdoptWorldCard, WorldDestinationCard } from '@/components/dcl/WorldDestinationCard'
+import { wizardErrorMessage } from '@/lib/wizard/run'
 
 export default function DeployPage() {
   return (
@@ -16,36 +18,6 @@ export default function DeployPage() {
       <DeployContent />
     </Suspense>
   )
-}
-
-// -- Helpers ------------------------------------------------------------------
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-blue-500',
-  building: 'bg-yellow-500 animate-pulse',
-  deploying: 'bg-yellow-500 animate-pulse',
-  deployed: 'bg-green-500',
-  failed: 'bg-red-500',
-}
-
-const statusLabels: Record<string, string> = {
-  pending: 'Pending',
-  building: 'Building',
-  deploying: 'Deploying',
-  deployed: 'Deployed',
-  failed: 'Failed',
-}
-
-function StatusBadge({ status }: { status: string }) {
-  return <StatusDot dot={statusColors[status] || 'bg-gray-500'} label={statusLabels[status] || status} />
-}
-
-function formatDateTime(iso: string | null) {
-  if (!iso) return '--'
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
 }
 
 // -- Your Hyperfy worlds (self-run and VLM-hosted) -----------------------------
@@ -406,6 +378,15 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
 
 // -- Main Content -------------------------------------------------------------
 
+interface WorldsState {
+  destinations: DclDestination[]
+  /** Worlds set up in-world for this scene that have no destination yet. */
+  adoptable: string[]
+  history: DclDeployment[]
+  /** Destinations adopted on this visit: their card offers the permission. */
+  offerGrant: Set<string>
+}
+
 function DeployContent() {
   const { token } = useAuth()
   const api = useApi()
@@ -416,14 +397,6 @@ function DeployContent() {
   const [scenes, setScenes] = useState<any[]>([])
   const [selectedSceneId, setSelectedSceneId] = useState<string>(searchParams.get('scene') || '')
   const [loadingScenes, setLoadingScenes] = useState(true)
-
-  // Deployments
-  const [deployments, setDeployments] = useState<any[]>([])
-  const [loadingDeployments, setLoadingDeployments] = useState(false)
-
-  // Action states
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
 
   // Load scenes
   useEffect(() => {
@@ -440,37 +413,53 @@ function DeployContent() {
     }).catch(() => setLoadingScenes(false))
   }, [token])
 
-  // Load deployments when scene changes
+  // Decentraland Worlds
+  const [worlds, setWorlds] = useState<WorldsState | null>(null)
+  const [worldsError, setWorldsError] = useState<string | null>(null)
+  const [virviDeploys, setVirviDeploys] = useState(false)
+
   useEffect(() => {
-    if (!token || !selectedSceneId) {
-      setDeployments([])
-      return
-    }
-    setLoadingDeployments(true)
-    api.getDeployments(selectedSceneId).then((data) => {
-      setDeployments(listedDeployments(data.deployments))
-      setLoadingDeployments(false)
-    }).catch(() => {
-      setDeployments([])
-      setLoadingDeployments(false)
-    })
+    if (!token) return
+    api.getWizardOptions().then((o) => setVirviDeploys(o.dcl.virviDeploys)).catch(() => setVirviDeploys(false))
+  }, [token])
+
+  const loadHistory = (sceneId: string) =>
+    api.getDeployments(sceneId).then((d) => d.deployments as DclDeployment[]).catch(() => [] as DclDeployment[])
+
+  // Load the scene's Worlds when the scene changes
+  useEffect(() => {
+    setWorlds(null)
+    setWorldsError(null)
+    if (!token || !selectedSceneId) return
+    let stale = false
+    Promise.all([api.getSceneDclDestinations(selectedSceneId), loadHistory(selectedSceneId)])
+      .then(([{ destinations, adoptable }, history]) => {
+        if (!stale) setWorlds({ destinations, adoptable: adoptable.map((a) => a.world), history, offerGrant: new Set() })
+      })
+      .catch((err) => { if (!stale) setWorldsError(wizardErrorMessage(err)) })
+    return () => { stale = true }
   }, [token, selectedSceneId])
+
+  const currentScene = useRef(selectedSceneId)
+  currentScene.current = selectedSceneId
+  const refreshHistory = async () => {
+    const sceneId = selectedSceneId
+    const history = await loadHistory(sceneId)
+    setWorlds((w) => (w && currentScene.current === sceneId ? { ...w, history } : w))
+  }
+
+  const adopted = (dest: DclDestination) =>
+    setWorlds((w) => w && {
+      ...w,
+      destinations: [...w.destinations, dest],
+      adoptable: w.adoptable.filter((x) => x !== dest.worldName),
+      offerGrant: new Set([...w.offerGrant, dest.id]),
+    })
 
   const handleSceneChange = (sceneId: string) => {
     setSelectedSceneId(sceneId)
     const url = sceneId ? `/deploy?scene=${sceneId}` : '/deploy'
     router.replace(url)
-  }
-
-  // -- Deploy Actions ---------------------------------------------------------
-
-  const handleCancel = async (id: string) => {
-    setActionLoading(id)
-    try {
-      const { deployment } = await api.cancelDeployment(id)
-      setDeployments((prev) => prev.map((d) => (d.id === id ? deployment : d)))
-    } catch { /* ignore */ }
-    setActionLoading(null)
   }
 
   // -- Render -----------------------------------------------------------------
@@ -500,36 +489,44 @@ function DeployContent() {
         </select>
       </div>
 
-      {actionError && (
-        <p className="rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300" role="alert">{actionError}</p>
-      )}
-
       {!selectedSceneId && (
         <div className="text-center py-12">
-          <p className="text-gray-500 mb-2">Select a scene to view and manage deployments.</p>
-          <p className="text-sm text-gray-600">You can deploy scenes to Decentraland, or host a Hyperfy world.</p>
+          <p className="text-gray-500 mb-2">Select a scene to see where it&apos;s deployed.</p>
+          <p className="text-sm text-gray-600">Scenes go live in a Decentraland World, or in a Hyperfy world.</p>
         </div>
       )}
 
-      {/* Deployments List */}
       {selectedSceneId && (
-        <div>
-          <h2 className="text-lg font-semibold mb-3">Deployments</h2>
-          {loadingDeployments ? (
-            <Skeleton rows={2} className="h-12" />
-          ) : deployments.length === 0 ? (
-            <div className="text-center py-8 rounded-lg border border-gray-800 bg-gray-900">
-              <p className="text-gray-500 mb-2">No deployments for this scene yet.</p>
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">Decentraland Worlds</h2>
+            <p className="text-sm text-gray-500">Virvi deploys from what&apos;s live in your World, so you never need the scene&apos;s files.</p>
+          </div>
+          {worldsError ? (
+            <p className="rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300" role="alert">{worldsError}</p>
+          ) : !worlds ? (
+            <Skeleton rows={1} className="h-32" />
+          ) : worlds.destinations.length === 0 && worlds.adoptable.length === 0 ? (
+            <div className="rounded-lg border border-gray-800 bg-gray-900 py-6 text-center text-sm text-gray-500">
+              <p>This scene isn&apos;t deployed to a Decentraland World.</p>
+              <p className="mt-1">
+                <Link href="/scenes/new" className="text-blue-400 hover:text-blue-300">Make a new scene</Link> to deploy one, or set this scene up in your own Creator Hub scene with vlm-dcl.
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
-              {deployments.map((dep) => (
-                <DeploymentCard
-                  key={dep.id}
-                  deployment={dep}
-                  actionLoading={actionLoading === dep.id}
-                  onCancel={() => handleCancel(dep.id)}
+              {worlds.destinations.map((d) => (
+                <WorldDestinationCard
+                  key={d.id}
+                  destination={d}
+                  history={destinationHistory(worlds.history, d.id)}
+                  virviDeploys={virviDeploys}
+                  offerGrant={worlds.offerGrant.has(d.id)}
+                  onChanged={refreshHistory}
                 />
+              ))}
+              {worlds.adoptable.map((world) => (
+                <AdoptWorldCard key={world} world={world} sceneId={selectedSceneId} onAdopted={adopted} />
               ))}
             </div>
           )}
@@ -538,100 +535,6 @@ function DeployContent() {
 
       {selectedSceneId && <HyperfyWorlds sceneId={selectedSceneId} />}
 
-    </div>
-  )
-}
-
-// -- Deployment Card ----------------------------------------------------------
-
-function DeploymentCard({
-  deployment,
-  actionLoading,
-  onCancel,
-}: {
-  deployment: any
-  actionLoading: boolean
-  onCancel: () => void
-}) {
-  const target = (deployment.target || {}) as Record<string, any>
-  const canCancel = deployment.status === 'pending' || deployment.status === 'building'
-
-  return (
-    <div className="rounded-lg border border-gray-800 bg-gray-900 p-5 space-y-3">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <PlatformBadge platform={deployment.platform} />
-          <span className="text-sm text-gray-400 capitalize">{deployment.deploymentType}</span>
-        </div>
-        <StatusBadge status={deployment.status} />
-      </div>
-
-      {/* Info Grid */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 text-sm">
-        {target.parcels && (
-          <div>
-            <span className="text-xs text-gray-500">Parcels</span>
-            <p className="text-gray-300 font-mono text-xs">{typeof target.parcels === 'string' ? target.parcels : JSON.stringify(target.parcels)}</p>
-          </div>
-        )}
-        {target.contentServer && (
-          <div>
-            <span className="text-xs text-gray-500">Content Server</span>
-            <p className="text-gray-300 font-mono text-xs truncate">{target.contentServer}</p>
-          </div>
-        )}
-        {target.instanceUrl && (
-          <div>
-            <span className="text-xs text-gray-500">Instance URL</span>
-            <a href={target.instanceUrl} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 font-mono text-xs truncate block hover:underline">
-              {target.instanceUrl}
-            </a>
-          </div>
-        )}
-        {target.region && (
-          <div>
-            <span className="text-xs text-gray-500">Region</span>
-            <p className="text-gray-300 text-xs">{target.region}</p>
-          </div>
-        )}
-        {deployment.catalystEntityId && (
-          <div>
-            <span className="text-xs text-gray-500">Catalyst Entity</span>
-            <p className="text-gray-300 font-mono text-xs truncate">{deployment.catalystEntityId}</p>
-          </div>
-        )}
-        <div>
-          <span className="text-xs text-gray-500">Created</span>
-          <p className="text-gray-300 text-xs">{formatDateTime(deployment.createdAt)}</p>
-        </div>
-        {deployment.deployedAt && (
-          <div>
-            <span className="text-xs text-gray-500">Deployed</span>
-            <p className="text-gray-300 text-xs">{formatDateTime(deployment.deployedAt)}</p>
-          </div>
-        )}
-      </div>
-
-      {/* Error */}
-      {deployment.errorMessage && (
-        <div className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2">
-          <p className="text-sm text-red-400">{deployment.errorMessage}</p>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex flex-wrap gap-2 pt-1">
-        {canCancel && (
-          <button
-            onClick={onCancel}
-            disabled={actionLoading}
-            className="rounded-md bg-yellow-600/20 px-3 py-1.5 text-xs text-yellow-400 hover:bg-yellow-600/30 disabled:opacity-50"
-          >
-            {actionLoading ? 'Cancelling...' : 'Cancel'}
-          </button>
-        )}
-      </div>
     </div>
   )
 }

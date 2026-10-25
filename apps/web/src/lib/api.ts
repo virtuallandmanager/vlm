@@ -392,6 +392,9 @@ export function useApi() {
     /** Pass `plot` (and `spawn`) to build a new scene there, or omit both to adopt the live scene. 409 `world_in_use` carries `sceneId`. */
     createDclDestination: (data: { sceneId: string; world: string; mode: DclDestinationMode; plot?: Plot; spawn?: { x: number; z: number } }) =>
       apiFetch<{ destination: DclDestination; replaces?: { parcels: string[] } }>('/api/dcl/destinations', { method: 'POST', body: JSON.stringify(data) }),
+    /** The scene's World destinations, and Worlds set up in-world for it (Creator Hub `vlm-dcl` scenes) it can adopt. */
+    getSceneDclDestinations: (sceneId: string) =>
+      apiFetch<{ destinations: DclDestination[]; adoptable: Array<{ world: string }> }>(`/api/scenes/${sceneId}/dcl/destinations`),
     getDclDestination: (id: string) =>
       apiFetch<{ destination: DclDestination; pending: DclPendingModel[]; refused: Array<{ name: string; reason: string }>; lastDeployment: DclDeployment | null }>(`/api/dcl/destinations/${id}`),
     patchDclDestination: (id: string, data: { mode: DclDestinationMode }) =>

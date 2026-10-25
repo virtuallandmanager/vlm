@@ -8,10 +8,7 @@ import { API_URL } from '@/lib/config'
 import { connectExtras, jumpInUrl, progressLines, runWizard, type Phase, type RunMemory, type RunPlan, type RunUpdate } from '@/lib/wizard/run'
 import { effectivePlot, type WizardAction, type WizardState } from '@/lib/wizard/state'
 import { PrimaryButton } from '@/components/ui'
-import { CheckIcon } from '@/components/icons'
-
-/** Upload and Decentraland's check are one request; after this long uploading, say it's being checked. */
-const CHECKING_AFTER_MS = 5_000
+import { ProgressLines, useShownPhase } from '../ProgressLines'
 
 const MODE_COPY = {
   virvi: {
@@ -59,8 +56,6 @@ export function DeployStep({ state, dispatch, options, memory, onRunning }: {
 }) {
   const api = useApi()
   const [view, setView] = useState<View>(idle)
-  const [uploadingAt, setUploadingAt] = useState<number | null>(null)
-  const [, setTick] = useState(0)
   const [copied, setCopied] = useState(false)
   const alive = useRef(true)
   const { dcl, hyperfy, ar } = state.destinations
@@ -77,12 +72,6 @@ export function DeployStep({ state, dispatch, options, memory, onRunning }: {
   useEffect(() => {
     if (!state.name) dispatch({ type: 'setName', name: 'My scene' })
   }, [])
-  useEffect(() => {
-    if (view.phase !== 'uploading') return setUploadingAt(null)
-    setUploadingAt(Date.now())
-    const timer = setInterval(() => setTick((t) => t + 1), 1000)
-    return () => clearInterval(timer)
-  }, [view.phase])
 
   const atLimit = !memory.sceneId && !!options && options.scenes.limit !== null && options.scenes.used >= options.scenes.limit
   const running = view.status === 'running'
@@ -151,7 +140,7 @@ export function DeployStep({ state, dispatch, options, memory, onRunning }: {
     }
   }
 
-  const shownPhase: Phase = view.phase === 'uploading' && uploadingAt !== null && Date.now() - uploadingAt > CHECKING_AFTER_MS ? 'checking' : view.phase
+  const shownPhase = useShownPhase(view.phase)
   const lines = progressLines(shownPhase, view.models, view.status === 'failed')
   const live = done && (!dcl || view.deployment?.status === 'deployed')
   const started = view.status !== 'idle'
@@ -205,21 +194,7 @@ export function DeployStep({ state, dispatch, options, memory, onRunning }: {
         </div>
       )}
 
-      {started && dcl && (
-        <ol className="space-y-1.5" aria-label="Deploy progress">
-          {lines.map((l) => (
-            <li key={l.label} className={`flex items-center gap-2 ${l.state === 'todo' ? 'text-gray-600' : l.state === 'failed' ? 'text-red-300' : l.state === 'active' ? 'text-white' : 'text-gray-400'}`}>
-              <span className="flex h-4 w-4 items-center justify-center">
-                {l.state === 'done' ? <CheckIcon size={14} className="text-green-400" />
-                  : l.state === 'active' ? <span className="h-2 w-2 animate-pulse rounded-full bg-blue-400" />
-                  : l.state === 'failed' ? <span className="h-2 w-2 rounded-full bg-red-400" />
-                  : <span className="h-1.5 w-1.5 rounded-full bg-gray-700" />}
-              </span>
-              {l.label}
-            </li>
-          ))}
-        </ol>
-      )}
+      {started && dcl && <ProgressLines lines={lines} />}
       {started && !dcl && running && <p className="text-gray-300">Creating your scene…</p>}
 
       {view.wallet && (

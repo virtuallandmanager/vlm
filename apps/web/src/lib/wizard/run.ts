@@ -6,7 +6,7 @@ import type { Eip1193Provider } from '../auth'
 import type { AuthChain, SignSession } from '../dcl-sign'
 import { hyperfyErrorMessage } from '../hyperfy'
 import type {
-  DclDeployment, DclDestination, DclDestinationMode, DclGrantRequests, DclSignedSubmission, WizardSceneBody,
+  DclDeployment, DclDestination, DclDestinationMode, DclGrantRequests, DclRevokeRequests, DclSignedSubmission, WizardSceneBody,
 } from '../api'
 
 type ApiError = Error & { status?: number; code?: number; body?: { error?: string; message?: string } }
@@ -34,6 +34,7 @@ const CODE_MESSAGES: Record<string, string> = {
   not_granted: "Virvi doesn't have deploy permission on this World yet. Try again to sign it.",
   needs_review: "Your World changed outside Virvi. Open the scene's Deploy page to look at it before deploying.",
   no_live_scene: 'Your World has no scene to add models to.',
+  not_connected: "That World's scene isn't set up for this Virvi scene any more. Set it up again in-world, then reload this page.",
   not_awaiting_signature: 'This deploy is no longer waiting for a signature. Try again.',
   stale: 'Your World changed since this deploy was prepared. Try again.',
   unmeasured_asset: "One of the items can't be measured yet, so it can't be placed. Remove it and try again.",
@@ -229,54 +230,11 @@ export async function runWizard(plan: RunPlan, mem: RunMemory, deps: RunDeps, on
       const signer = await session()
       on({ wallet: null })
 
-      const inProgress = async () => {
-        const { lastDeployment } = await api.getDclDestination(destId)
-        if (!lastDeployment) throw new RunError('A deploy is already running for this World. Try again in a minute.')
-        return lastDeployment
-      }
-
       if (plan.dcl.mode === 'virvi') {
-        if (!mem.destination.grantedAt) {
-          for (let attempt = 0; ; attempt++) {
-            const grant = await api.getDclGrant(destId)
-            const chains = grant.requests.map((r) => signer.sign(r.payload))
-            try {
-              mem.destination = (await api.submitDclGrant(destId, { chains, timestamp: grant.requests[0].timestamp })).destination
-              break
-            } catch (err) {
-              if (errorCode(err) === 'expired' && attempt < MAX_EXPIRED_RETRIES) continue
-              throw err
-            }
-          }
-        }
-        try {
-          deploymentId = (await api.deployDclDestination(destId)).deployment.id
-        } catch (err) {
-          if (errorCode(err) !== 'deploy_in_progress') throw err
-          deploymentId = (await inProgress()).id
-        }
+        if (!mem.destination.grantedAt) mem.destination = await grantVirvi(destId, signer, api)
+        deploymentId = await deployVirvi(destId, api)
       } else {
-        for (let attempt = 0; ; attempt++) {
-          on({ phase: 'packing' })
-          let prep: Awaited<ReturnType<RunApi['deployDclDestination']>>
-          try {
-            prep = await api.deployDclDestination(destId)
-          } catch (err) {
-            if (errorCode(err) !== 'deploy_in_progress') throw err
-            deploymentId = (await inProgress()).id
-            break
-          }
-          deploymentId = prep.deployment.id
-          if (!prep.payload) break
-          on({ phase: 'uploading', models: deploymentModels(prep.deployment) })
-          try {
-            settled = (await api.submitDeploySignature(prep.deployment.id, signer.sign(prep.payload))).deployment
-            break
-          } catch (err) {
-            if (errorCode(err) === 'expired' && attempt < MAX_EXPIRED_RETRIES) continue
-            throw err
-          }
-        }
+        ;({ deploymentId, settled } = await publishSigned(destId, signer, api, on))
       }
       mem.deploymentId = deploymentId
     }
@@ -287,21 +245,119 @@ export async function runWizard(plan: RunPlan, mem: RunMemory, deps: RunDeps, on
       on({ phase: 'live' })
       return
     }
-    for (let d = settled; ; ) {
-      if (d) {
-        on({ deployment: d, phase: deploymentPhase(d), models: deploymentModels(d) })
-        if (d.status === 'deployed') return
-        if (d.status === 'failed') {
-          throw new RunError(d.errorMessage ? String(d.errorMessage) : "Decentraland didn't take the deploy. Try again.")
-        }
-      }
-      if (deps.cancelled?.()) return
-      if (d) await deps.sleep(POLL_MS)
-      d = (await api.getDeployment(deploymentId)).deployment as DclDeployment
-    }
+    await watchDeployment(deploymentId, settled, deps, on)
   } catch (err) {
     on({ wallet: null })
     fail(err)
+  }
+}
+
+// ── Signing and deploying, shared by the wizard, the deploy page and the publish page ─────
+
+type GrantApi = Pick<RunApi, 'getDclGrant' | 'submitDclGrant'>
+type DeployApi = Pick<RunApi, 'deployDclDestination' | 'submitDeploySignature' | 'getDclDestination'>
+export interface RevokeApi {
+  getDclRevoke(id: string): Promise<DclRevokeRequests>
+  submitDclRevoke(id: string, data: DclSignedSubmission): Promise<{ destination: DclDestination }>
+}
+
+/**
+ * Fetches the requests, signs every payload in order and submits them with requests[0].timestamp.
+ * Expired (past the server's 50 s) fetches fresh requests and signs again with the same session.
+ */
+async function signAndSubmit<R extends { requests: Array<{ payload: string; timestamp: number }> }>(
+  fetch: () => Promise<R>,
+  submit: (data: DclSignedSubmission) => Promise<{ destination: DclDestination }>,
+  signer: SignSession,
+): Promise<DclDestination> {
+  for (let attempt = 0; ; attempt++) {
+    const { requests } = await fetch()
+    const chains = requests.map((r) => signer.sign(r.payload))
+    try {
+      return (await submit({ chains, timestamp: requests[0].timestamp })).destination
+    } catch (err) {
+      if (errorCode(err) === 'expired' && attempt < MAX_EXPIRED_RETRIES) continue
+      throw err
+    }
+  }
+}
+
+/** "Let Virvi deploy for me": the owner's signed permission for Virvi's deploy wallet. Start `signer` before calling. */
+export function grantVirvi(destinationId: string, signer: SignSession, api: GrantApi): Promise<DclDestination> {
+  return signAndSubmit(() => api.getDclGrant(destinationId), (data) => api.submitDclGrant(destinationId, data), signer)
+}
+
+/** "Switch to signing each deploy": the owner's signed removal of Virvi's permission. */
+export function revokeVirvi(destinationId: string, signer: SignSession, api: RevokeApi): Promise<DclDestination> {
+  return signAndSubmit(() => api.getDclRevoke(destinationId), (data) => api.submitDclRevoke(destinationId, data), signer)
+}
+
+/** The deploy already running for the destination (after deploy_in_progress). */
+async function runningDeploy(destinationId: string, api: Pick<RunApi, 'getDclDestination'>): Promise<DclDeployment> {
+  const { lastDeployment } = await api.getDclDestination(destinationId)
+  if (!lastDeployment) throw new RunError('A deploy is already running for this World. Try again in a minute.')
+  return lastDeployment
+}
+
+/** Mode virvi: starts a deploy (Virvi signs) and returns its id; a deploy already running is followed instead. */
+export async function deployVirvi(destinationId: string, api: Pick<RunApi, 'deployDclDestination' | 'getDclDestination'>): Promise<string> {
+  try {
+    return (await api.deployDclDestination(destinationId)).deployment.id
+  } catch (err) {
+    if (errorCode(err) !== 'deploy_in_progress') throw err
+    return (await runningDeploy(destinationId, api)).id
+  }
+}
+
+/**
+ * Mode sign: prepare, sign the payload with `signer`, submit; prepares again when the signature arrived too late.
+ * `settled` is the deployment the submit answered with (null when following a deploy already running).
+ */
+export async function publishSigned(
+  destinationId: string,
+  signer: SignSession,
+  api: DeployApi,
+  on: (u: RunUpdate) => void = () => {},
+): Promise<{ deploymentId: string; settled: DclDeployment | null }> {
+  for (let attempt = 0; ; attempt++) {
+    on({ phase: 'packing' })
+    let prep: Awaited<ReturnType<RunApi['deployDclDestination']>>
+    try {
+      prep = await api.deployDclDestination(destinationId)
+    } catch (err) {
+      if (errorCode(err) !== 'deploy_in_progress') throw err
+      return { deploymentId: (await runningDeploy(destinationId, api)).id, settled: null }
+    }
+    if (!prep.payload) return { deploymentId: prep.deployment.id, settled: null }
+    on({ phase: 'uploading', models: deploymentModels(prep.deployment) })
+    try {
+      const settled = (await api.submitDeploySignature(prep.deployment.id, signer.sign(prep.payload))).deployment
+      return { deploymentId: prep.deployment.id, settled }
+    } catch (err) {
+      if (errorCode(err) === 'expired' && attempt < MAX_EXPIRED_RETRIES) continue
+      throw err
+    }
+  }
+}
+
+/** Polls the deployment, reporting its phase, until it is live; throws RunError when Decentraland refused it. */
+export async function watchDeployment(
+  deploymentId: string,
+  settled: DclDeployment | null,
+  deps: { api: Pick<RunApi, 'getDeployment'>; sleep: (ms: number) => Promise<void>; cancelled?: () => boolean },
+  on: (u: RunUpdate) => void,
+): Promise<void> {
+  for (let d = settled; ; ) {
+    if (d) {
+      on({ deployment: d, phase: deploymentPhase(d), models: deploymentModels(d) })
+      if (d.status === 'deployed') return
+      if (d.status === 'failed') {
+        throw new RunError(d.errorMessage ? String(d.errorMessage) : "Decentraland didn't take the deploy. Try again.")
+      }
+    }
+    if (deps.cancelled?.()) return
+    if (d) await deps.sleep(POLL_MS)
+    d = (await deps.api.getDeployment(deploymentId)).deployment as DclDeployment
   }
 }
 

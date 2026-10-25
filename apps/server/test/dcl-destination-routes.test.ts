@@ -486,6 +486,42 @@ describe('World destination routes', () => {
     expect((await req('POST', `/api/dcl/destinations/${dest.id}/rebase`, {})).json().error).toBe('no_live_scene')
   })
 
+  describe('GET /api/scenes/:sceneId/dcl/destinations', () => {
+    it("lists the scene's destinations and the set-up Worlds it could adopt", async () => {
+      const { scene } = await createScene(user)
+      const empty = await req('GET', `/api/scenes/${scene.id}/dcl/destinations`)
+      expect(empty.statusCode).toBe(200)
+      expect(empty.json()).toEqual({ destinations: [], adoptable: [] })
+
+      // A Creator Hub scene set up for this Virvi scene, one set up for another scene, and an ended setup
+      const { scene: other } = await createScene(user, 'Other')
+      const hub = await createAnalyticsScene({ kind: 'world', locationKey: 'world:hub.dcl.eth', realm: 'hub.dcl.eth', worldName: 'hub.dcl.eth' })
+      await createSetup(hub.id, scene.id)
+      const elsewhere = await createAnalyticsScene({ kind: 'world', locationKey: 'world:else.dcl.eth', realm: 'else.dcl.eth', worldName: 'else.dcl.eth' })
+      await createSetup(elsewhere.id, other.id)
+      const ended = await createAnalyticsScene({ kind: 'world', locationKey: 'world:old.dcl.eth', realm: 'old.dcl.eth', worldName: 'old.dcl.eth' })
+      await createSetup(ended.id, scene.id, { endedAt: new Date() })
+      const parcel = await createAnalyticsScene({ kind: 'parcels' })
+      await createSetup(parcel.id, scene.id)
+
+      const dest = await insertDest(scene.id)
+      const cafe = await createAnalyticsScene({ kind: 'world', locationKey: `world:${WORLD}`, realm: WORLD, worldName: WORLD })
+      await createSetup(cafe.id, scene.id)
+
+      const res = await req('GET', `/api/scenes/${scene.id}/dcl/destinations`)
+      expect(res.statusCode).toBe(200)
+      expect(res.json().destinations.map((d: { id: string }) => d.id)).toEqual([dest.id])
+      expect(res.json().adoptable).toEqual([{ world: 'hub.dcl.eth' }])
+    })
+
+    it("is 404 for a scene the caller can't edit", async () => {
+      const { scene } = await createScene(user)
+      const stranger = await createUser()
+      expect((await req('GET', `/api/scenes/${scene.id}/dcl/destinations`, undefined, stranger)).statusCode).toBe(404)
+      expect((await req('GET', '/api/scenes/not-a-uuid/dcl/destinations')).statusCode).toBe(404)
+    })
+  })
+
   describe('GET /api/scenes/:sceneId/dcl/publish-status', () => {
     it("works with the scene's own pass and is refused for another scene's", async () => {
       const { scene, preset } = await createScene(user)

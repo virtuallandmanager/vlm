@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { WrongWalletError, type SignSession } from '../dcl-sign'
 import {
-  emptyMemory, GRANT_PARTIAL_MESSAGE, jumpInUrl, progressLines, runWizard, wizardErrorMessage,
-  type RunApi, type RunDeps, type RunPlan, type RunUpdate,
+  deployVirvi, emptyMemory, grantVirvi, GRANT_PARTIAL_MESSAGE, jumpInUrl, progressLines, publishSigned, revokeVirvi, runWizard,
+  watchDeployment, wizardErrorMessage, type RevokeApi, type RunApi, type RunDeps, type RunPlan, type RunUpdate,
 } from './run'
 
 const apiError = (status: number, body: Record<string, unknown>) =>
@@ -282,5 +282,88 @@ describe('progress and Jump in', () => {
 
   it('opens the World in the web explorer', () => {
     expect(jumpInUrl('cafe.dcl.eth')).toBe('https://decentraland.org/play/?realm=cafe.dcl.eth')
+  })
+})
+
+describe('signing helpers (deploy and publish pages)', () => {
+  const signer = () => {
+    const signed: string[] = []
+    return { signed, s: { address: '0xabc', sign: (p: string) => { signed.push(p); return [{ type: 'SIGNER', payload: p, signature: '' }] as any } } as SignSession }
+  }
+
+  it('grantVirvi signs every request in order and submits requests[0].timestamp', async () => {
+    let body: any
+    const { api, calls } = fakeApi({ submitDclGrant: async (_id: string, b: any) => { body = b; return { destination: dest({ grantedAt: 'x' }) } } })
+    const { s, signed } = signer()
+    const out = await grantVirvi('dest-1', s, api)
+    expect(out.grantedAt).toBe('x')
+    expect(calls).toEqual(['getDclGrant', 'submitDclGrant'])
+    expect(signed).toEqual(['payload-grant', 'payload-scope', 'payload-rollback'])
+    expect(body).toMatchObject({ timestamp: 1000, chains: [expect.any(Array), expect.any(Array), expect.any(Array)] })
+  })
+
+  it('revokeVirvi fetches, signs and submits, re-fetching once on expired', async () => {
+    const calls: string[] = []
+    let tries = 0
+    const api: RevokeApi = {
+      getDclRevoke: async () => { calls.push('get'); return { requests: [{ method: 'DELETE', path: '/p', metadata: '{}', timestamp: 7 + tries, payload: `revoke-${tries}` }] } },
+      submitDclRevoke: async (_id, b) => {
+        calls.push(`post:${b.timestamp}`)
+        if (tries++ === 0) throw apiError(400, { error: 'expired' })
+        return { destination: dest({ mode: 'sign' }) }
+      },
+    }
+    const { s, signed } = signer()
+    expect((await revokeVirvi('dest-1', s, api)).mode).toBe('sign')
+    expect(calls).toEqual(['get', 'post:7', 'get', 'post:8'])
+    expect(signed).toEqual(['revoke-0', 'revoke-1'])
+  })
+
+  it('revokeVirvi gives up after repeated expiry', async () => {
+    const api: RevokeApi = {
+      getDclRevoke: async () => ({ requests: [{ method: 'DELETE', path: '/p', metadata: '{}', timestamp: 1, payload: 'x' }] }),
+      submitDclRevoke: async () => { throw apiError(400, { error: 'expired' }) },
+    }
+    await expect(revokeVirvi('dest-1', signer().s, api)).rejects.toMatchObject({ body: { error: 'expired' } })
+  })
+
+  it('publishSigned prepares, signs and submits; prepares once more on expired', async () => {
+    let n = 0
+    const { api, calls } = fakeApi({
+      deployDclDestination: async () => ({ deployment: { id: `dep-${++n}`, sceneId: 's', status: 'awaiting_signature', assetBundle: { added: [1, 2, 3] } }, payload: `entity-${n}` }),
+      submitDeploySignature: async (id: string) => {
+        if (id === 'dep-1') throw apiError(409, { error: 'expired' })
+        return { deployment: { id, sceneId: 's', status: 'deploying' } }
+      },
+    })
+    const { s, signed } = signer()
+    const { updates, on } = collect()
+    const out = await publishSigned('dest-1', s, api, on)
+    expect(out).toMatchObject({ deploymentId: 'dep-2', settled: { status: 'deploying' } })
+    expect(calls).toEqual(['deployDclDestination', 'submitDeploySignature', 'deployDclDestination', 'submitDeploySignature'])
+    expect(signed).toEqual(['entity-1', 'entity-2'])
+    expect(updates).toContainEqual({ phase: 'uploading', models: 3 })
+  })
+
+  it('publishSigned follows a deploy already running', async () => {
+    const { api } = fakeApi({ deployDclDestination: async () => { throw apiError(409, { error: 'deploy_in_progress' }) } })
+    expect(await publishSigned('dest-1', signer().s, api)).toEqual({ deploymentId: 'dep-busy', settled: null })
+  })
+
+  it('deployVirvi starts a deploy, or follows the running one', async () => {
+    expect(await deployVirvi('dest-1', fakeApi().api)).toBe('dep-1')
+    const busy = fakeApi({ deployDclDestination: async () => { throw apiError(409, { error: 'deploy_in_progress' }) } })
+    expect(await deployVirvi('dest-1', busy.api)).toBe('dep-busy')
+  })
+
+  it('watchDeployment polls to live, and throws the refusal on failed', async () => {
+    const { api } = fakeApi()
+    const { updates, on } = collect()
+    await watchDeployment('dep-1', null, { api, sleep: async () => {} }, on)
+    expect(updates.at(-1)).toMatchObject({ phase: 'live', models: 3 })
+
+    const failed = fakeApi({ getDeployment: async (id: string) => ({ deployment: { id, status: 'failed', errorMessage: 'Decentraland rejected the deploy: too big' } }) })
+    await expect(watchDeployment('dep-1', null, { api: failed.api, sleep: async () => {} }, () => {}))
+      .rejects.toMatchObject({ name: 'RunError', message: 'Decentraland rejected the deploy: too big' })
   })
 })

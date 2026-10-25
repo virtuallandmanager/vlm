@@ -13,6 +13,7 @@
  * POST   /api/dcl/destinations/:id/deploy        — deploy now (mode A: Virvi signs; mode B: returns what to sign)
  * POST   /api/deploy/:id/signature               — mode B: the owner's signature for a prepared deploy
  * POST   /api/dcl/destinations/:id/rebase        — "Use the live version": accept the World's current scene
+ * GET    /api/scenes/:sceneId/dcl/destinations — the deploy page: the scene's destinations, and set-up Worlds it can adopt
  * GET    /api/scenes/:sceneId/dcl/publish-status — for the in-world HUD (scene pass)
  *
  * Open to every plan (no feature gate). "Owner" is the World's owner as the Worlds server reports it right
@@ -46,10 +47,10 @@
  */
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { plotParcels, validPlot, type Plot } from 'vlm-shared'
 import { db } from '../db/connection.js'
-import { analyticsScenes, dclWorldDestinations, sceneDeployments } from '../db/schema.js'
+import { analyticsScenes, dclWorldDestinations, locationSetups, sceneDeployments } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess, hasScope, isFullAccess } from '../auth/permissions.js'
@@ -450,6 +451,29 @@ export default async function dclDestinationRoutes(app: FastifyInstance) {
       .set({ lastEntityId: live.id, deployedFiles: live.content.map((c) => c.file.toLowerCase()), status: 'ok', statusDetail: null, updatedAt: new Date() })
       .where(eq(dclWorldDestinations.id, dest.id))
     return reply.send({ destination: await reload(dest.id) })
+  }))
+
+  // `adoptable`: Worlds whose active location setup is this scene (a Creator Hub `vlm-dcl` scene) and that no
+  // destination uses yet. Adopting one is POST /api/dcl/destinations without a plot.
+  app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId/dcl/destinations', async (request, reply) => handle(reply, async () => {
+    const { sceneId } = request.params
+    if (!isUuid(sceneId) || !hasScope(await getSceneAccess(actorFromClaims(request.user), sceneId), 'scene.edit')) {
+      throw new RouteError(404, 'not_found')
+    }
+    const destinations = await db.query.dclWorldDestinations.findMany({
+      where: eq(dclWorldDestinations.sceneId, sceneId),
+      orderBy: [dclWorldDestinations.createdAt],
+    })
+    const setUp = await db
+      .select({ world: analyticsScenes.worldName })
+      .from(locationSetups)
+      .innerJoin(analyticsScenes, eq(analyticsScenes.id, locationSetups.analyticsSceneId))
+      .where(and(eq(locationSetups.vlmSceneId, sceneId), isNull(locationSetups.endedAt), eq(analyticsScenes.kind, 'world')))
+    const worlds = unique(setUp.map((r) => r.world?.toLowerCase()).filter((w): w is string => !!w))
+    const taken = worlds.length
+      ? new Set((await db.query.dclWorldDestinations.findMany({ where: inArray(dclWorldDestinations.worldName, worlds), columns: { worldName: true } })).map((d) => d.worldName))
+      : new Set<string>()
+    return reply.send({ destinations, adoptable: worlds.filter((w) => !taken.has(w)).map((world) => ({ world })) })
   }))
 
   app.get<{ Params: { sceneId: string } }>(
