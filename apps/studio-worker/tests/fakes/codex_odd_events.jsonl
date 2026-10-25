@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"thread-odd"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":null}}
+{"type":"item.completed","item":"not an object"}
+{"type":"assistant","message":{"content":["a bare string"]}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Still here."}}
+{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":100}}

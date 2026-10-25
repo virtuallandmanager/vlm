@@ -1,6 +1,6 @@
-# Design Studio worker (spike): headless Blender 4.4, Chrome for Decentraland's wearable-preview,
-# the Claude Code and Codex CLIs, and dcl-avatar-skills at a pinned commit.
-# Build: docker build --platform linux/amd64 -t vlm-studio-worker:spike apps/studio-worker
+# Design Studio worker: headless Blender 4.4, Chrome for Decentraland's wearable-preview, the Claude Code and Codex
+# CLIs at the versions the spike measured, dcl-avatar-skills at a pinned commit, and the studio_worker package.
+# Build: docker build --platform linux/amd64 -t vlm-studio-worker:dev apps/studio-worker
 FROM debian:bookworm-slim
 
 ARG BLENDER_VERSION=4.4.3
@@ -13,7 +13,7 @@ ARG SKILLS_SHA=3430ce2ef5b7f9d388fcb7c923f50e0dcb505420
 ENV DEBIAN_FRONTEND=noninteractive PIP_BREAK_SYSTEM_PACKAGES=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl git gnupg xz-utils python3 python3-pip \
+      ca-certificates curl git gnupg xz-utils python3 python3-pip tinyproxy nftables \
       libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libxkbcommon0 libsm6 libice6 libx11-6 libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -30,19 +30,31 @@ RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor
     && apt-get install -y --no-install-recommends google-chrome-stable nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Python tools: numpy for the checkers, Playwright for the preview, Pillow to read its frames, pytest for the spike
-RUN pip3 install --no-cache-dir numpy pillow playwright pytest && playwright install-deps chromium
+# Python tools: numpy for the checkers, Playwright for the preview, Pillow for its frames
+RUN pip3 install --no-cache-dir numpy pillow playwright && playwright install-deps chromium
 
-# Agent CLIs
-RUN npm install -g @anthropic-ai/claude-code @openai/codex && npm cache clean --force
+# Agent CLIs, pinned: their output formats and usage reporting are what agent.py parses
+ARG CLAUDE_CODE_VERSION=2.1.310
+ARG CODEX_VERSION=0.164.0
+RUN npm install -g @anthropic-ai/claude-code@$CLAUDE_CODE_VERSION @openai/codex@$CODEX_VERSION && npm cache clean --force
 
-# Skills, pinned, installed for both agents into the run directory
+# The agents run as an ordinary user (Claude Code refuses to skip its permission prompts as root); the worker is root
+# Only the design folder is the agent's: the worker's state for it (/work/design-state) is root's alone
+RUN useradd -m -u 1000 agent && mkdir -p /work/design && chown agent /work/design
+
+# Skills, pinned, installed for both agents into the design workspace. The repo is root-owned and read by `agent`.
 RUN git clone "$SKILLS_REPO" /opt/skills && git -C /opt/skills checkout --quiet "$SKILLS_SHA" \
-    && mkdir -p /work && bash /opt/skills/install.sh claude codex --project /work
+    && git config --system --add safe.directory /opt/skills \
+    && bash /opt/skills/install.sh claude codex --project /work/design
 
-# Claude Code refuses to skip its permission prompts as root, so the agents run as an ordinary user
-RUN useradd -m -u 1000 agent && chown -R agent /work
+# The official base avatars (the registry is Fly's private per-app one)
+COPY assets/*.blend /opt/assets/
+RUN chmod -R a+rX /opt/assets
 
-COPY smoke.sh /opt/smoke.sh
-USER agent
-WORKDIR /work
+COPY studio_worker /opt/studio_worker
+ENV PYTHONPATH=/opt
+RUN printf '#!/bin/sh\nexec python3 -m studio_worker.render "$@"\n' > /usr/local/bin/studio-preview \
+    && chmod 755 /usr/local/bin/studio-preview
+COPY smoke.sh entrypoint.sh tinyproxy.conf allowlist.txt /opt/
+WORKDIR /work/design
+ENTRYPOINT ["/opt/entrypoint.sh"]
