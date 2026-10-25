@@ -188,6 +188,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@dcl/crypto':
+        specifier: 3.7.0
+        version: 3.7.0
       colyseus.js:
         specifier: ^0.15.26
         version: 0.15.28
@@ -702,9 +705,6 @@ packages:
     resolution: {integrity: sha512-HUwaPBuXjf3xSGIcnwm52NIZchaPg0rDe/bsjlYdo4ZpjuTlTeQ8m7fjTT3V14/pRTa55T404eHGZURU5jJDog==}
     engines: {node: '>=22.0.0'}
 
-  '@dcl/crypto@3.4.5':
-    resolution: {integrity: sha512-uneyjOAOx7pi5kabZsLmPm9kSLkCk4Cok8FUsvT+6k8RquqkjKqocvkGVOMaoWsfU6S3mkLOyaeqEKmOy4ErxA==}
-
   '@dcl/crypto@3.7.0':
     resolution: {integrity: sha512-8HSFLxnIHDeA8I/6yGAUwbCin2TX2oPn2uBLj5UmR0NFAyN5wYJCqbeolaJaIdmqN9RFjdb9ixKOY4uKF5Q2XA==}
     engines: {node: '>=22.0.0'}
@@ -797,9 +797,6 @@ packages:
 
   '@dcl/schemas@8.2.3-20230801124703.commit-ade94fc':
     resolution: {integrity: sha512-GP8veICDcxZaxcCbsr8oT0tgOtv3OPN+LJMo3DsNPx1ABe2UhrjJGk5qETfZX5qyTtcKLNMhEMZ3SP11PbU2qg==}
-
-  '@dcl/schemas@9.15.0':
-    resolution: {integrity: sha512-nip5rsOcJplNfBWeImwezuHLprM0gLW03kEeqGIvT9J6HnEBTtvIwkk9+NSt7hzFKEvWGI+C23vyNWbG3nU+SQ==}
 
   '@dcl/sdk-commands@7.31.0':
     resolution: {integrity: sha512-IZVToT6Rp5U8rOuqXWdYwG8H7Qv8MDyyCVgxPkKVOH8xBtcv1fA/e/Y5BlXf9zB2SUw03gLffFKwxVnm4aAv9A==}
@@ -7093,12 +7090,6 @@ snapshots:
       '@dcl/core-commons': 0.10.1
       '@dcl/crypto': 3.7.0
 
-  '@dcl/crypto@3.4.5':
-    dependencies:
-      '@dcl/schemas': 9.15.0
-      eth-connect: 6.2.4
-      ethereum-cryptography: 1.2.0
-
   '@dcl/crypto@3.7.0':
     dependencies:
       '@dcl/schemas': 25.3.0
@@ -7252,12 +7243,6 @@ snapshots:
       ajv-errors: 3.0.0(ajv@8.18.0)
       ajv-keywords: 5.1.0(ajv@8.18.0)
 
-  '@dcl/schemas@9.15.0':
-    dependencies:
-      ajv: 8.18.0
-      ajv-errors: 3.0.0(ajv@8.18.0)
-      ajv-keywords: 5.1.0(ajv@8.18.0)
-
   '@dcl/sdk-commands@7.31.0(@well-known-components/interfaces@1.5.2)':
     dependencies:
       '@dcl/crypto': 3.7.0
@@ -7298,7 +7283,7 @@ snapshots:
 
   '@dcl/sdk-commands@7.7.9(@well-known-components/interfaces@1.5.2)':
     dependencies:
-      '@dcl/crypto': 3.4.5
+      '@dcl/crypto': 3.7.0
       '@dcl/ecs': 7.7.9
       '@dcl/hashing': 1.1.3
       '@dcl/inspector': 7.7.9

@@ -8,8 +8,7 @@ import { useAuth } from '@/lib/auth'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
-import { Badge, ConfirmAction, PageHeader, PlatformBadge, PrimaryButton, Skeleton, StatusDot } from '@/components/ui'
-import { PlusIcon } from '@/components/icons'
+import { Badge, ConfirmAction, PageHeader, PlatformBadge, Skeleton, StatusDot } from '@/components/ui'
 
 export default function DeployPage() {
   return (
@@ -422,23 +421,6 @@ function DeployContent() {
   const [deployments, setDeployments] = useState<any[]>([])
   const [loadingDeployments, setLoadingDeployments] = useState(false)
 
-  // New deployment form
-  const [showNewDeploy, setShowNewDeploy] = useState(false)
-  const [newDeployType, setNewDeployType] = useState<'parcel' | 'world'>('parcel')
-  const [newParcels, setNewParcels] = useState('')
-  const [newContentServer, setNewContentServer] = useState('')
-  const [deploying, setDeploying] = useState(false)
-  const [deployError, setDeployError] = useState('')
-
-  // Wallets
-  const [wallets, setWallets] = useState<any[]>([])
-  const [loadingWallets, setLoadingWallets] = useState(true)
-  const [showAddWallet, setShowAddWallet] = useState(false)
-  const [walletAddress, setWalletAddress] = useState('')
-  const [walletLabel, setWalletLabel] = useState('')
-  const [addingWallet, setAddingWallet] = useState(false)
-  const [walletError, setWalletError] = useState('')
-
   // Action states
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -456,11 +438,6 @@ function DeployContent() {
         }
       }
     }).catch(() => setLoadingScenes(false))
-
-    api.getDeployWallets().then((data) => {
-      setWallets(data.wallets)
-      setLoadingWallets(false)
-    }).catch(() => setLoadingWallets(false))
   }, [token])
 
   // Load deployments when scene changes
@@ -487,39 +464,6 @@ function DeployContent() {
 
   // -- Deploy Actions ---------------------------------------------------------
 
-  const handleCreateDeployment = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedSceneId) return
-    setDeploying(true)
-    setDeployError('')
-
-    try {
-      const target: Record<string, unknown> = {}
-      if (newParcels.trim()) target.parcels = newParcels.trim()
-      if (newContentServer.trim()) target.contentServer = newContentServer.trim()
-
-      const { deployment } = await api.createDeployment({
-        sceneId: selectedSceneId,
-        platform: 'decentraland',
-        deploymentType: newDeployType,
-        target,
-      })
-      setDeployments((prev) => [deployment, ...prev])
-      setShowNewDeploy(false)
-      resetNewDeployForm()
-    } catch (err: any) {
-      setDeployError(err.message || 'Deployment failed')
-    }
-    setDeploying(false)
-  }
-
-  const resetNewDeployForm = () => {
-    setNewDeployType('parcel')
-    setNewParcels('')
-    setNewContentServer('')
-    setDeployError('')
-  }
-
   const handleCancel = async (id: string) => {
     setActionLoading(id)
     try {
@@ -527,48 +471,6 @@ function DeployContent() {
       setDeployments((prev) => prev.map((d) => (d.id === id ? deployment : d)))
     } catch { /* ignore */ }
     setActionLoading(null)
-  }
-
-  const handleRedeploy = async (id: string) => {
-    setActionLoading(id)
-    setActionError(null)
-    try {
-      const { deployment } = await api.redeployDeployment(id)
-      setDeployments((prev) => [deployment, ...prev])
-    } catch (err) {
-      setActionError(deployErrorMessage(err))
-    }
-    setActionLoading(null)
-  }
-
-  // -- Wallet Actions ---------------------------------------------------------
-
-  const handleAddWallet = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!walletAddress.trim()) return
-    setAddingWallet(true)
-    setWalletError('')
-    try {
-      const { wallet } = await api.createDeployWallet({
-        platform: 'decentraland',
-        walletAddress: walletAddress.trim(),
-        label: walletLabel.trim() || undefined,
-      })
-      setWallets((prev) => [...prev, wallet])
-      setWalletAddress('')
-      setWalletLabel('')
-      setShowAddWallet(false)
-    } catch (err: any) {
-      setWalletError(err.message || 'Failed to add wallet')
-    }
-    setAddingWallet(false)
-  }
-
-  const handleDeleteWallet = async (id: string) => {
-    try {
-      await api.deleteDeployWallet(id)
-      setWallets((prev) => prev.filter((w) => w.id !== id))
-    } catch { /* ignore */ }
   }
 
   // -- Render -----------------------------------------------------------------
@@ -581,9 +483,6 @@ function DeployContent() {
         crumbs={['Tools', 'Deploy']}
         title="Deploy"
         subtitle="Publish your scenes to their worlds."
-        actions={selectedSceneId && (
-          <PrimaryButton onClick={() => { setShowNewDeploy(!showNewDeploy); resetNewDeployForm() }}><PlusIcon size={16} /> New Deployment</PrimaryButton>
-        )}
       />
 
       {/* Scene Selector */}
@@ -612,69 +511,6 @@ function DeployContent() {
         </div>
       )}
 
-      {/* New Deployment Form */}
-      {showNewDeploy && selectedSceneId && (
-        <form onSubmit={handleCreateDeployment} className="space-y-4 rounded-lg border border-gray-800 bg-gray-900 p-5">
-          <h2 className="text-lg font-semibold">New Deployment</h2>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">Deployment Type</label>
-              <select
-                value={newDeployType}
-                onChange={(e) => setNewDeployType(e.target.value as 'parcel' | 'world')}
-                className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
-              >
-                <option value="parcel">Parcel</option>
-                <option value="world">World</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Parcels</label>
-                <input
-                  type="text"
-                  value={newParcels}
-                  onChange={(e) => setNewParcels(e.target.value)}
-                  placeholder="e.g. 0,0 0,1 1,0 1,1"
-                  className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Content Server URL</label>
-                <input
-                  type="text"
-                  value={newContentServer}
-                  onChange={(e) => setNewContentServer(e.target.value)}
-                  placeholder="https://peer.decentraland.org/content"
-                  className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
-                />
-              </div>
-          </div>
-
-          {deployError && <p className="text-sm text-red-400">{deployError}</p>}
-
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={deploying}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
-            >
-              {deploying ? 'Deploying...' : 'Start Deployment'}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setShowNewDeploy(false); resetNewDeployForm() }}
-              className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-
       {/* Deployments List */}
       {selectedSceneId && (
         <div>
@@ -684,7 +520,6 @@ function DeployContent() {
           ) : deployments.length === 0 ? (
             <div className="text-center py-8 rounded-lg border border-gray-800 bg-gray-900">
               <p className="text-gray-500 mb-2">No deployments for this scene yet.</p>
-              <p className="text-sm text-gray-600">Click &quot;+ New Deployment&quot; to get started.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -694,7 +529,6 @@ function DeployContent() {
                   deployment={dep}
                   actionLoading={actionLoading === dep.id}
                   onCancel={() => handleCancel(dep.id)}
-                  onRedeploy={() => handleRedeploy(dep.id)}
                 />
               ))}
             </div>
@@ -704,93 +538,6 @@ function DeployContent() {
 
       {selectedSceneId && <HyperfyWorlds sceneId={selectedSceneId} />}
 
-      {/* Deploy Wallets */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold">Deploy Wallets</h2>
-          <button
-            onClick={() => setShowAddWallet(!showAddWallet)}
-            className="rounded-md bg-gray-800 px-3 py-1.5 text-xs font-medium hover:bg-gray-700"
-          >
-            + Add Wallet
-          </button>
-        </div>
-
-        {showAddWallet && (
-          <form onSubmit={handleAddWallet} className="mb-4 space-y-3 rounded-lg border border-gray-800 bg-gray-900 p-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Wallet Address</label>
-                <input
-                  type="text"
-                  value={walletAddress}
-                  onChange={(e) => setWalletAddress(e.target.value)}
-                  placeholder="0x..."
-                  autoFocus
-                  className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Label (optional)</label>
-                <input
-                  type="text"
-                  value={walletLabel}
-                  onChange={(e) => setWalletLabel(e.target.value)}
-                  placeholder="My deploy wallet"
-                  className="w-full rounded-md bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400 border border-gray-800"
-                />
-              </div>
-            </div>
-            {walletError && <p className="text-sm text-red-400">{walletError}</p>}
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={addingWallet}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
-              >
-                {addingWallet ? 'Adding...' : 'Add Wallet'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowAddWallet(false); setWalletError('') }}
-                className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
-
-        {loadingWallets ? (
-          <Skeleton rows={2} className="h-12" />
-        ) : wallets.length === 0 ? (
-          <div className="text-center py-6 rounded-lg border border-gray-800 bg-gray-900">
-            <p className="text-gray-500 text-sm">No deploy wallets configured.</p>
-            <p className="text-xs text-gray-600 mt-1">Add a wallet to deploy to Decentraland.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {wallets.map((wallet) => (
-              <div key={wallet.id} className="flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900 px-4 py-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-xs font-medium text-gray-400 capitalize">{wallet.platform}</span>
-                  <code className="text-sm text-gray-300 font-mono truncate">{wallet.walletAddress}</code>
-                  {wallet.label && <span className="text-xs text-gray-500">({wallet.label})</span>}
-                  {wallet.hasPrivateKey && (
-                    <Badge tone="success">Key stored</Badge>
-                  )}
-                </div>
-                <button
-                  onClick={() => handleDeleteWallet(wallet.id)}
-                  className="rounded bg-red-600/20 px-2 py-1 text-xs text-red-400 hover:bg-red-600/30 shrink-0 ml-2"
-                >
-                  Delete
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   )
 }
@@ -801,12 +548,10 @@ function DeploymentCard({
   deployment,
   actionLoading,
   onCancel,
-  onRedeploy,
 }: {
   deployment: any
   actionLoading: boolean
   onCancel: () => void
-  onRedeploy: () => void
 }) {
   const target = (deployment.target || {}) as Record<string, any>
   const canCancel = deployment.status === 'pending' || deployment.status === 'building'
@@ -886,13 +631,6 @@ function DeploymentCard({
             {actionLoading ? 'Cancelling...' : 'Cancel'}
           </button>
         )}
-        <button
-          onClick={onRedeploy}
-          disabled={actionLoading}
-          className="rounded-md bg-blue-600/20 px-3 py-1.5 text-xs text-blue-400 hover:bg-blue-600/30 disabled:opacity-50"
-        >
-          {actionLoading ? 'Redeploying...' : 'Redeploy'}
-        </button>
       </div>
     </div>
   )

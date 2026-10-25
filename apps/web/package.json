@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@dcl/crypto": "3.7.0",
     "colyseus.js": "^0.15.26",
     "next": "^15.1.0",
     "react": "^19.0.0",
