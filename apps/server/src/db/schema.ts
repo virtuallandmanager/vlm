@@ -739,6 +739,7 @@ export const dclWorldDestinations = pgTable('dcl_world_destinations', {
   deployedFiles: text('deployed_files').array().notNull().default(sql`'{}'::text[]`), // lowercased paths
   pendingSince: timestamp('pending_since', { withTimezone: true }),
   adopted: boolean('adopted').notNull().default(false), // true = the owner's own scene code, never touched
+  spawn: jsonb('spawn').$type<{ x: number; y: number; z: number }>(), // metres, plot-relative; null = plot centre
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
