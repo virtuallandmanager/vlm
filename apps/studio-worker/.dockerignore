@@ -1,5 +1,8 @@
-# Never send keys, the base avatar files or run output to a builder; the spike code goes to machines separately
+# Never send keys or run output to a builder; the spike, tests and e2e scripts aren't part of the image
 .env
-assets/
 runs/
 spike/
+tests/
+e2e/
+**/__pycache__/
+.pytest_cache/
