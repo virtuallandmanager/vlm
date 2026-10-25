@@ -8,10 +8,13 @@
 import { Authenticator, type AuthChain } from '@dcl/crypto'
 import { createUnsafeIdentity } from '@dcl/crypto/dist/crypto.js'
 import { createPayload } from '@dcl/crypto-middleware'
-import { hashV1 } from '@dcl/hashing'
+// @dcl/hashing is CommonJS that Node's ESM loader can't read named exports from: import the default.
+import hashing from '@dcl/hashing'
 import { DeploymentBuilder } from 'dcl-catalyst-client'
 import { Wallet } from 'ethers'
 import { config } from '../../config.js'
+
+const { hashV1 } = hashing
 
 export type { AuthChain }
 
