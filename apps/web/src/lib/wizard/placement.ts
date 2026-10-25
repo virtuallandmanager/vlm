@@ -35,7 +35,7 @@ export function clampToPlot(plot: Plot, item: PlacedItem): PlacedItem {
   return { ...item, ...clampXZ(plot, item.asset, item.rotationY, item.x, item.z) }
 }
 
-/** Theme positions arrive as metres relative to the plot; keep them inside the chosen plot. */
+/** Theme positions are fractions (0-1) of the plot; convert to metres and keep them inside the chosen plot. */
 export function layoutTheme(
   items: Array<{ asset: WizardAsset; x: number; z: number; rotationY: number }>,
   plot: Plot,

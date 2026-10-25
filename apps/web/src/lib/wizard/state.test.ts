@@ -24,6 +24,26 @@ describe('applyTheme', () => {
   })
 })
 
+describe('applyTheme without Decentraland limits', () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({ asset: asset('a', 1500), x: 0.1 + i * 0.07, z: 0.5, rotationY: 0 }))
+  it('keeps every item for a Hyperfy-only user', () => {
+    const h = wizardReducer(initialState, { type: 'setHyperfy', hyperfy: { kind: 'self', name: 'w' } })
+    const s = wizardReducer(h, { type: 'applyTheme', themeId: 't', items: many })
+    expect(s.items).toHaveLength(12)
+    expect(s.lastDropped).toBe(0)
+  })
+  it('keeps every item when dcl is set but no plot yet', () => {
+    const d = wizardReducer(initialState, { type: 'setDcl', dcl })
+    expect(wizardReducer(d, { type: 'applyTheme', themeId: 't', items: many }).items).toHaveLength(12)
+  })
+  it('setPlot does not drop items without a dcl destination', () => {
+    let s = wizardReducer(initialState, { type: 'setHyperfy', hyperfy: { kind: 'self', name: 'w' } })
+    s = wizardReducer(s, { type: 'applyTheme', themeId: 't', items: many })
+    s = wizardReducer(s, { type: 'setPlot', plot: { width: 1, depth: 1, base: { x: 0, y: 0 } } })
+    expect(s.items).toHaveLength(12)
+  })
+})
+
 describe('addAsset', () => {
   it('places a free item near the centre', () => {
     const s = wizardReducer(withPlot(), { type: 'addAsset', asset: asset('a') })

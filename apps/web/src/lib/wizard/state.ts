@@ -79,6 +79,11 @@ function clampSpawn(plot: Plot, s: { x: number; z: number }) {
   return { x: Math.min(size.x, Math.max(0, s.x)), z: Math.min(size.z, Math.max(0, s.z)) }
 }
 
+/** Decentraland limits apply only with a dcl destination and a chosen plot; otherwise every item stays. */
+function fitIfLimited(state: WizardState, items: PlacedItem[], plot: Plot | null) {
+  return state.destinations.dcl && plot ? fitToBudget(items, plot) : { items, dropped: 0 }
+}
+
 export function wizardReducer(state: WizardState, action: WizardAction): WizardState {
   switch (action.type) {
     case 'setDcl':
@@ -90,7 +95,7 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
     case 'setPlot': {
       const plot = action.plot
       const clamped = state.items.map((i) => clampToPlot(plot, i))
-      const fit = fitToBudget(clamped, plot)
+      const fit = fitIfLimited(state, clamped, plot)
       const old = effectivePlot(state)
       const wasDefault = state.spawn.x === defaultSpawn(old).x && state.spawn.z === defaultSpawn(old).z
       return {
@@ -104,7 +109,7 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
     }
     case 'applyTheme': {
       const plot = effectivePlot(state)
-      const fit = fitToBudget(layoutTheme(action.items, plot), plot)
+      const fit = fitIfLimited(state, layoutTheme(action.items, plot), state.plot)
       return { ...state, themeId: action.themeId, items: fit.items, lastDropped: fit.dropped, seq: state.seq + fit.items.length, notice: null }
     }
     case 'addAsset': {
