@@ -118,6 +118,10 @@ export const config = {
     || (mode === 'cloud' ? 's3' : 'local'),
   cdnUrl: env('CDN_URL') || null,
 
+  // Decentraland wallet Virvi deploys Worlds scenes with ("Let Virvi deploy for me"). Env only:
+  // never logged, never returned.
+  virviDclDeployKey: env('VIRVI_DCL_DEPLOY_KEY') || null,
+
   // Supabase (single mode default external storage)
   supabaseUrl: env('SUPABASE_URL'),
   supabaseAnonKey: env('SUPABASE_ANON_KEY'),
