@@ -135,3 +135,14 @@ def _brief(tmp_path):
     p = tmp_path / 'brief.md'
     p.write_text('kind: wearable\ncategory: hat\n\nA test hat.\n')
     return p
+
+
+def test_relative_out_dir_still_finds_the_agent_home(tmp_path, monkeypatch):
+    # The agent runs inside out/, so a relative CODEX_HOME would point nowhere
+    monkeypatch.chdir(tmp_path)
+    fake = tmp_path / 'fake_codex.sh'
+    fake.write_text('#!/bin/sh\n[ -d "$CODEX_HOME" ] && echo \'{"type":"turn.completed",'
+                    '"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}\'\n')
+    fake.chmod(0o755)
+    result = harness.run(agent='codex', brief_path=_brief(tmp_path), out=Path('runs/codex-01'), command=[str(fake)])
+    assert result['turns'] == 1

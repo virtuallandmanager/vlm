@@ -1,0 +1,37 @@
+{
+  "agent": "claude",
+  "model": "claude-opus-5-5",
+  "brief": "01-hat-build.md",
+  "skillsSha": null,
+  "outcome": "ok",
+  "wallSec": 118.3,
+  "turns": 12,
+  "tokens": {
+    "input": 22,
+    "cachedInput": 331976,
+    "cacheWrite": 22666,
+    "output": 11166
+  },
+  "costUsd": 0.40313319999999997,
+  "checker": {
+    "ran": true,
+    "pass": true,
+    "warnings": 0,
+    "failures": 0,
+    "report": "NeonCap_BaseFemale.glb\n  PASS  triangles (hat)                          1042                           <= 1500\n  PASS  materials (excl. AvatarSkin_MAT)         2                              <= 2\n  PASS  textures (excl. AvatarSkin_MAT)          0                              <= 2\n  PASS  no _mouth/_eyebrows/_eyes names          ok                             \n  PASS  model file size                          0.06 MB                        <= 2 MB (server)\n  PASS  no animations                            0                              \n  PASS  no cameras                               0                              \n  PASS  no lights                                0                              \n  PASS  no shape keys                            0                              \n  PASS  scene root                               ['Armature']                   ['Armature']\n  PASS  every mesh skinned                       yes                            \n  PASS  joints are Avatar_* or *springbone*      yes                            \n  PASS  no _end/_neutral leaf bones              none                           \n  PASS  full Avatar skeleton present             62/62                          \n  PASS  <= 4 influences (no JOINTS_1)            0                              \n  PASS  unweighted vertices                      0                              0\n  INFO  finger bones weighted                    0                              \n  PASS  bounding box w x h x d                   0.34 x 0.24 x 0.43 m           <= 2.42 x 2.42 x 1.4\n  INFO  spring chains                            0                              \nNeonCap_BaseMale.glb\n  PASS  triangles (hat)                          1042                           <= 1500\n  PASS  materials (excl. AvatarSkin_MAT)         2                              <= 2\n  PASS  textures (excl. AvatarSkin_MAT)          0                              <= 2\n  PASS  no _mouth/_eyebrows/_eyes names          ok                             \n  PASS  model file size                          0.06 MB                        <= 2 MB (server)\n  PASS  no animations                            0                              \n  PASS  no cameras                               0                              \n  PASS  no lights                                0                              \n  PASS  no shape keys                            0                              \n  PASS  scene root                               ['Armature']                   ['Armature']\n  PASS  every mesh skinned                       yes                            \n  PASS  joints are Avatar_* or *springbone*      yes                            \n  PASS  no _end/_neutral leaf bones              none                           \n  PASS  full Avatar skeleton present             62/62                          \n  PASS  <= 4 influences (no JOINTS_1)            0                              \n  PASS  unweighted vertices                      0                              0\n  INFO  finger bones weighted                    0                              \n  PASS  bounding box w x h x d                   0.35 x 0.24 x 0.42 m           <= 2.42 x 2.42 x 1.4\n  INFO  spring chains                            0                              \nNO FAILS\n"
+  },
+  "glbs": [
+    "out/NeonCap_BaseFemale.glb",
+    "out/NeonCap_BaseMale.glb"
+  ],
+  "session": "f4eb3176-56ab-4f10-b75d-a09f2ea065d5",
+  "sessionTotal": {
+    "input": 22,
+    "cached_input": 331976,
+    "cache_write": 22666,
+    "output": 11166,
+    "turns": 12,
+    "costUsd": 0.40313319999999997
+  },
+  "error": null
+}

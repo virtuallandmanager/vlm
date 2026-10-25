@@ -1,0 +1,37 @@
+{
+  "agent": "codex",
+  "model": "gpt-6.1-sol",
+  "brief": "03-set-jacket-build.md",
+  "skillsSha": null,
+  "outcome": "ok",
+  "wallSec": 55.8,
+  "turns": 1,
+  "tokens": {
+    "input": 24,
+    "cachedInput": 170975,
+    "cacheWrite": 34204,
+    "output": 4253
+  },
+  "costUsd": 0.1281,
+  "checker": {
+    "ran": true,
+    "pass": true,
+    "warnings": 0,
+    "failures": 0,
+    "report": "courier_jacket_shape_A.glb\n  PASS  triangles (upper_body)                   1432                           <= 1500\n  PASS  materials (excl. AvatarSkin_MAT)         2                              <= 2\n  PASS  textures (excl. AvatarSkin_MAT)          0                              <= 2\n  PASS  no _mouth/_eyebrows/_eyes names          ok                             \n  PASS  model file size                          0.08 MB                        <= 2 MB (server)\n  PASS  no animations                            0                              \n  PASS  no cameras                               0                              \n  PASS  no lights                                0                              \n  PASS  no shape keys                            0                              \n  PASS  scene root                               ['Armature']                   ['Armature']\n  PASS  every mesh skinned                       yes                            \n  PASS  joints are Avatar_* or *springbone*      yes                            \n  PASS  no _end/_neutral leaf bones              none                           \n  PASS  full Avatar skeleton present             62/62                          \n  PASS  <= 4 influences (no JOINTS_1)            0                              \n  PASS  unweighted vertices                      0                              0\n  INFO  finger bones weighted                    0                              \n  PASS  bounding box w x h x d                   1.37 x 0.57 x 0.38 m           <= 2.42 x 2.42 x 1.4\n  INFO  spring chains                            0                              \ncourier_jacket_shape_B.glb\n  PASS  triangles (upper_body)                   1432                           <= 1500\n  PASS  materials (excl. AvatarSkin_MAT)         2                              <= 2\n  PASS  textures (excl. AvatarSkin_MAT)          0                              <= 2\n  PASS  no _mouth/_eyebrows/_eyes names          ok                             \n  PASS  model file size                          0.08 MB                        <= 2 MB (server)\n  PASS  no animations                            0                              \n  PASS  no cameras                               0                              \n  PASS  no lights                                0                              \n  PASS  no shape keys                            0                              \n  PASS  scene root                               ['Armature']                   ['Armature']\n  PASS  every mesh skinned                       yes                            \n  PASS  joints are Avatar_* or *springbone*      yes                            \n  PASS  no _end/_neutral leaf bones              none                           \n  PASS  full Avatar skeleton present             62/62                          \n  PASS  <= 4 influences (no JOINTS_1)            0                              \n  PASS  unweighted vertices                      0                              0\n  INFO  finger bones weighted                    0                              \n  PASS  bounding box w x h x d                   1.37 x 0.57 x 0.37 m           <= 2.42 x 2.42 x 1.4\n  INFO  spring chains                            0                              \nNO FAILS\n"
+  },
+  "glbs": [
+    "out/courier_jacket_shape_A.glb",
+    "out/courier_jacket_shape_B.glb"
+  ],
+  "session": "01a17162-3bd0-7b41-ae35-362cfc381604",
+  "sessionTotal": {
+    "input": 24,
+    "cached_input": 170975,
+    "cache_write": 34204,
+    "output": 4253,
+    "turns": 1,
+    "costUsd": 0.1281
+  },
+  "error": null
+}

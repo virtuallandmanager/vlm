@@ -1,0 +1,7 @@
+# Measurement spike only (docs/superpowers/plans/2026-10-24-design-studio-1-spike.md, Task 5). No services: nothing is
+# exposed; machines are started by hand with `fly machine run` and destroyed afterwards.
+app = "vlm-studio-spike"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"

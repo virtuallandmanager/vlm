@@ -110,7 +110,7 @@ def run_checker(meta: dict, out: Path) -> dict:
 
 def run(agent: str, brief_path: Path, out: Path, command: list[str] | None = None, timeout: int = TIMEOUT_SEC,
         resume: Path | None = None, prices: dict | None = None, model: str | None = None) -> dict:
-    out = Path(out)
+    out = Path(out).absolute()  # the agent runs inside out/, so every path handed to it must be absolute
     meta, words = read_brief(brief_path)
     before = _session_total(resume)
     if resume:  # continue the same conversation and working files

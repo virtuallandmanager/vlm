@@ -1,0 +1,37 @@
+{
+  "agent": "claude",
+  "model": "claude-opus-5-5",
+  "brief": "01-hat-build.md",
+  "skillsSha": null,
+  "outcome": "ok",
+  "wallSec": 1135.6,
+  "turns": 18,
+  "tokens": {
+    "input": 26,
+    "cachedInput": 320336,
+    "cacheWrite": 115524,
+    "output": 12428
+  },
+  "costUsd": 0.8903511999999999,
+  "checker": {
+    "ran": true,
+    "pass": true,
+    "warnings": 0,
+    "failures": 0,
+    "report": "cyber_neon_cap_female.glb\n  PASS  triangles (hat)                          924                            <= 1500\n  PASS  materials (excl. AvatarSkin_MAT)         2                              <= 2\n  PASS  textures (excl. AvatarSkin_MAT)          0                              <= 2\n  PASS  no _mouth/_eyebrows/_eyes names          ok                             \n  PASS  model file size                          0.07 MB                        <= 2 MB (server)\n  PASS  no animations                            0                              \n  PASS  no cameras                               0                              \n  PASS  no lights                                0                              \n  PASS  no shape keys                            0                              \n  PASS  scene root                               ['Armature']                   ['Armature']\n  PASS  every mesh skinned                       yes                            \n  PASS  joints are Avatar_* or *springbone*      yes                            \n  PASS  no _end/_neutral leaf bones              none                           \n  PASS  full Avatar skeleton present             62/62                          \n  PASS  <= 4 influences (no JOINTS_1)            0                              \n  PASS  unweighted vertices                      0                              0\n  INFO  finger bones weighted                    0                              \n  PASS  bounding box w x h x d                   0.31 x 0.17 x 0.41 m           <= 2.42 x 2.42 x 1.4\n  INFO  spring chains                            0                              \ncyber_neon_cap_male.glb\n  PASS  triangles (hat)                          924                            <= 1500\n  PASS  materials (excl. AvatarSkin_MAT)         2                              <= 2\n  PASS  textures (excl. AvatarSkin_MAT)          0                              <= 2\n  PASS  no _mouth/_eyebrows/_eyes names          ok                             \n  PASS  model file size                          0.07 MB                        <= 2 MB (server)\n  PASS  no animations                            0                              \n  PASS  no cameras                               0                              \n  PASS  no lights                                0                              \n  PASS  no shape keys                            0                              \n  PASS  scene root                               ['Armature']                   ['Armature']\n  PASS  every mesh skinned                       yes                            \n  PASS  joints are Avatar_* or *springbone*      yes                            \n  PASS  no _end/_neutral leaf bones              none                           \n  PASS  full Avatar skeleton present             62/62                          \n  PASS  <= 4 influences (no JOINTS_1)            0                              \n  PASS  unweighted vertices                      0                              0\n  INFO  finger bones weighted                    0                              \n  PASS  bounding box w x h x d                   0.31 x 0.18 x 0.41 m           <= 2.42 x 2.42 x 1.4\n  INFO  spring chains                            0                              \nNO FAILS\n"
+  },
+  "glbs": [
+    "out/cyber_neon_cap_female.glb",
+    "out/cyber_neon_cap_male.glb"
+  ],
+  "session": "3bf4c842-5840-418f-b5dd-4fcdd867e814",
+  "sessionTotal": {
+    "input": 26,
+    "cached_input": 320336,
+    "cache_write": 115524,
+    "output": 12428,
+    "turns": 18,
+    "costUsd": 0.8903511999999999
+  },
+  "error": null
+}
