@@ -131,6 +131,27 @@ describe('wizard routes', () => {
     expect((await book(u, body(1))).statusCode).toBe(201)
   })
 
+  it('400 unmeasured_asset when an item has no triangle count, creating nothing', async () => {
+    const u = await createUser()
+    const a = await seedAsset('Tree'); const n = await seedAsset('Unmeasured', { triangleCount: null })
+    const res = await book(u, { name: 'S', plot: plot2, spawn: { x: 1, z: 1 }, items: [{ assetId: a.id, x: 1, z: 1, rotationY: 0 }, { assetId: n.id, x: 2, z: 2, rotationY: 0 }] })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toBe('unmeasured_asset')
+    expect(await counts()).toEqual({ scenes: 0, presets: 0, elements: 0, instances: 0, links: 0 })
+  })
+
+  it('catalog leaves out assets with no triangle count or no model URL', async () => {
+    const u = await createUser()
+    const gal = THEMES.find((t) => t.id === 'gallery')!
+    const [i0, i1, i2] = gal.items.filter((i, n, all) => all.findIndex((j) => j.sourceRef === i.sourceRef) === n)
+    const ok = await seedAsset(i0.sourceRef, { packId: i0.pack })
+    await seedAsset(i1.sourceRef, { packId: i1.pack, triangleCount: null })
+    await seedAsset(i2.sourceRef, { packId: i2.pack, cdnUrl: null })
+    const body = (await app.inject({ method: 'GET', url: '/api/wizard/catalog', headers: as(u) })).json()
+    const ids = new Set(body.themes.flatMap((t: any) => t.items.map((i: any) => i.asset.id)))
+    expect([...ids]).toEqual([ok.id])
+  })
+
   it('403 scene_limit_reached at the plan limit, creating nothing more', async () => {
     config.allFeaturesUnlocked = false
     const u = await createUser()

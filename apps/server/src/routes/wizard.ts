@@ -79,7 +79,9 @@ export default async function wizardRoutes(app: FastifyInstance) {
           browsableAsset(),
         ),
       )
-    const byRef = new Map(rows.map((a) => [refKey({ pack: a.packId!, sourceRef: a.sourceRef! }), toWizardAsset(a)]))
+    // Assets the wizard can't use (unmeasured or without a model URL) are left out like unresolved refs
+    const usable = rows.filter((a) => a.triangleCount !== null && a.cdnUrl)
+    const byRef = new Map(usable.map((a) => [refKey({ pack: a.packId!, sourceRef: a.sourceRef! }), toWizardAsset(a)]))
     return reply.send({
       themes: THEMES.map((t) => ({
         id: t.id,
@@ -151,9 +153,11 @@ export default async function wizardRoutes(app: FastifyInstance) {
     if (assets.length !== assetIds.length || assets.some((a) => !a.cdnUrl)) {
       return reply.status(400).send({ error: 'Every item must be a public catalog model' })
     }
+    // An unmeasured asset would under-count the budget, so it can't be placed
+    if (assets.some((a) => a.triangleCount === null)) return reply.status(400).send({ error: 'unmeasured_asset' })
     const byId = new Map(assets.map((a) => [a.id, a]))
 
-    const triangles = items.reduce((sum, i) => sum + (byId.get(i.assetId as string)!.triangleCount ?? 0), 0)
+    const triangles = items.reduce((sum, i) => sum + byId.get(i.assetId as string)!.triangleCount!, 0)
     if (triangles > budget.triangles) {
       return reply.status(422).send({
         error: 'over_budget',
