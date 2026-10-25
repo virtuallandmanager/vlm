@@ -97,6 +97,25 @@ if [ "$SKIP_PRESYNC" = 0 ]; then
   DATABASE_URL="$DB_URL" node scripts/pre-push-upgrade.mjs
 fi
 
+# The next boot pushes again over a schema push itself created. Postgres 18 names NOT NULL
+# constraints, which drizzle-kit 0.30 tried to drop (failing on primary keys); composite primary
+# keys whose columns aren't alphabetical were dropped and re-added on every push.
+echo "== pushing head schema again (next boot: must succeed and drop no constraint)"
+set +e
+DATABASE_URL="$DB_URL" with_timeout "$PUSH_TIMEOUT" npx drizzle-kit push --verbose < /dev/null > "$WORK/again.log" 2>&1
+code=$?
+set -e
+if [ "$code" -ne 0 ]; then
+  tail -n 15 "$WORK/again.log"
+  echo "FAIL: second head push exited $code"
+  exit 1
+fi
+if grep -q 'DROP CONSTRAINT' "$WORK/again.log"; then
+  grep 'DROP CONSTRAINT' "$WORK/again.log" | head -5
+  echo "FAIL: second head push drops constraints on an up-to-date schema"
+  exit 1
+fi
+
 echo "== verifying the head tables exist"
 run_sql "$DB_URL" "SELECT location_key FROM analytics_scenes LIMIT 0; SELECT visitor_hash, last_seen_at FROM analytics_sessions LIMIT 0" ||
   { echo "FAIL: head analytics tables missing after push"; exit 1; }
