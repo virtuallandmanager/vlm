@@ -43,12 +43,15 @@ def parse_claude_result(obj: dict) -> Usage:
 
 
 def parse_codex_events(lines: list[str]) -> Usage | None:
-    """Sums the usage on every turn.completed event; None when there is none (the run failed before any turn ended)."""
+    """Sums the usage on every turn.completed event; None when there is none (the run failed before any turn ended).
+
+    Codex's input_tokens includes its cached and cache-write tokens, and output_tokens its reasoning tokens."""
     turns = [e for e in (_json(l) for l in lines) if e and e.get('type') == 'turn.completed' and e.get('usage')]
     if not turns:
         return None
     total = lambda k: sum(t['usage'].get(k, 0) for t in turns)
-    return Usage(input=total('input_tokens'), cached_input=total('cached_input_tokens'), cache_write=0,
+    cached, written = total('cached_input_tokens'), total('cache_write_input_tokens')
+    return Usage(input=total('input_tokens') - cached - written, cached_input=cached, cache_write=written,
                  output=total('output_tokens'), turns=len(turns))
 
 
@@ -68,12 +71,13 @@ def read_brief(path: Path) -> tuple[dict, str]:
     return {k.strip(): v.strip() for k, v in meta.items()}, body.strip()
 
 
-def agent_command(agent: str, prompt: str, session: str | None) -> list[str]:
+def agent_command(agent: str, prompt: str, session: str | None, model: str | None = None) -> list[str]:
     if agent == 'claude':
         cmd = ['claude', '-p', prompt, '--output-format', 'json', '--max-turns', str(MAX_TURNS),
                '--dangerously-skip-permissions']  # only inside the throwaway container
-        return cmd + (['--resume', session] if session else [])
+        return cmd + (['--resume', session] if session else []) + (['--model', model] if model else [])
     base = ['codex', 'exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox']
+    base += ['-m', model] if model else []
     return base + (['resume', session, prompt] if session else [prompt])
 
 
@@ -109,14 +113,18 @@ def run(agent: str, brief_path: Path, out: Path, command: list[str] | None = Non
     for d in ('.claude', '.agents'):  # the skills installed into /work, visible from the run directory
         if (WORK / d).exists() and not (out / d).exists():
             (out / d).symlink_to(WORK / d)
-    cmd = command or agent_command(agent, words + CLOSING, session)
+    cmd = command or agent_command(agent, words + CLOSING, session, model)
+    env = dict(os.environ)
+    if agent == 'codex':  # codex exec reads its key from CODEX_API_KEY, not OPENAI_API_KEY
+        env.setdefault('CODEX_API_KEY', env.get('OPENAI_API_KEY', ''))
 
     start = time.monotonic()
     result = {'agent': agent, 'model': model, 'brief': Path(brief_path).name, 'skillsSha': _skills_sha(),
               'outcome': 'error', 'wallSec': None, 'turns': None, 'tokens': None, 'costUsd': None,
               'checker': {'ran': False}, 'glbs': [], 'session': session, 'error': None}
     try:
-        p = subprocess.run(cmd, cwd=out, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, cwd=out, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                           timeout=timeout)
         stdout = p.stdout
     except subprocess.TimeoutExpired as e:
         result.update(outcome='timeout', wallSec=round(time.monotonic() - start, 1))

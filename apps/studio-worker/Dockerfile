@@ -40,5 +40,9 @@ RUN npm install -g @anthropic-ai/claude-code @openai/codex && npm cache clean --
 RUN git clone "$SKILLS_REPO" /opt/skills && git -C /opt/skills checkout --quiet "$SKILLS_SHA" \
     && mkdir -p /work && bash /opt/skills/install.sh claude codex --project /work
 
+# Claude Code refuses to skip its permission prompts as root, so the agents run as an ordinary user
+RUN useradd -m -u 1000 agent && chown -R agent /work
+
 COPY smoke.sh /opt/smoke.sh
+USER agent
 WORKDIR /work
