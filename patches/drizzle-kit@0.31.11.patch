@@ -1,0 +1,66 @@
+diff --git a/api.js b/api.js
+index f4ecb91959f62fc938416a0585458c0a710af161..2525810c54f0dbc9a7b2bb9e0b555c3a6221ce97 100644
+--- a/api.js
++++ b/api.js
+@@ -23330,7 +23330,7 @@ WHERE
+               const cprimaryKey = tableConstraints.filter((mapRow) => mapRow.constraint_type === "PRIMARY KEY");
+               if (cprimaryKey.length > 1) {
+                 const tableCompositePkName = await db.query(
+-                  `SELECT conname AS primary_key
++                  `SELECT conname AS primary_key, array_to_json(array(SELECT a.attname FROM unnest(conkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = conrelid AND a.attnum = k.attnum ORDER BY k.ord)) AS key_columns
+             FROM   pg_constraint join pg_class on (pg_class.oid = conrelid)
+             WHERE  contype = 'p' 
+             AND    connamespace = $1::regnamespace  
+@@ -23339,7 +23339,7 @@ WHERE
+                 );
+                 primaryKeys[tableCompositePkName[0].primary_key] = {
+                   name: tableCompositePkName[0].primary_key,
+-                  columns: cprimaryKey.map((c5) => c5.column_name)
++                  columns: ((k) => typeof k === "string" ? JSON.parse(k) : k)(tableCompositePkName[0].key_columns) ?? cprimaryKey.map((c5) => c5.column_name)
+                 };
+               }
+               let columnTypeMapped = columnType;
+diff --git a/api.mjs b/api.mjs
+index a940272dfb05accf57a472c46c52652ec9ad0080..b4e3c04babee07d552b2f8f62f20a897c3c7f290 100644
+--- a/api.mjs
++++ b/api.mjs
+@@ -23346,7 +23346,7 @@ WHERE
+               const cprimaryKey = tableConstraints.filter((mapRow) => mapRow.constraint_type === "PRIMARY KEY");
+               if (cprimaryKey.length > 1) {
+                 const tableCompositePkName = await db.query(
+-                  `SELECT conname AS primary_key
++                  `SELECT conname AS primary_key, array_to_json(array(SELECT a.attname FROM unnest(conkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = conrelid AND a.attnum = k.attnum ORDER BY k.ord)) AS key_columns
+             FROM   pg_constraint join pg_class on (pg_class.oid = conrelid)
+             WHERE  contype = 'p' 
+             AND    connamespace = $1::regnamespace  
+@@ -23355,7 +23355,7 @@ WHERE
+                 );
+                 primaryKeys[tableCompositePkName[0].primary_key] = {
+                   name: tableCompositePkName[0].primary_key,
+-                  columns: cprimaryKey.map((c5) => c5.column_name)
++                  columns: ((k) => typeof k === "string" ? JSON.parse(k) : k)(tableCompositePkName[0].key_columns) ?? cprimaryKey.map((c5) => c5.column_name)
+                 };
+               }
+               let columnTypeMapped = columnType;
+diff --git a/bin.cjs b/bin.cjs
+index c28f3e4732f0d911237dc1eb1bc466cefaa1b976..745fd2c9e4b6a33945960d906dd93d12736f9abf 100755
+--- a/bin.cjs
++++ b/bin.cjs
+@@ -17888,7 +17888,7 @@ WHERE
+               const cprimaryKey = tableConstraints.filter((mapRow) => mapRow.constraint_type === "PRIMARY KEY");
+               if (cprimaryKey.length > 1) {
+                 const tableCompositePkName = await db.query(
+-                  `SELECT conname AS primary_key
++                  `SELECT conname AS primary_key, array_to_json(array(SELECT a.attname FROM unnest(conkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = conrelid AND a.attnum = k.attnum ORDER BY k.ord)) AS key_columns
+             FROM   pg_constraint join pg_class on (pg_class.oid = conrelid)
+             WHERE  contype = 'p' 
+             AND    connamespace = $1::regnamespace  
+@@ -17897,7 +17897,7 @@ WHERE
+                 );
+                 primaryKeys[tableCompositePkName[0].primary_key] = {
+                   name: tableCompositePkName[0].primary_key,
+-                  columns: cprimaryKey.map((c3) => c3.column_name)
++                  columns: ((k) => typeof k === "string" ? JSON.parse(k) : k)(tableCompositePkName[0].key_columns) ?? cprimaryKey.map((c3) => c3.column_name)
+                 };
+               }
+               let columnTypeMapped = columnType;

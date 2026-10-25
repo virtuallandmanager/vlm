@@ -12,6 +12,7 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # Copy workspace config and package manifests first (layer cache)
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json tsconfig.base.json ./
+COPY patches ./patches
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY apps/streaming/package.json apps/streaming/
