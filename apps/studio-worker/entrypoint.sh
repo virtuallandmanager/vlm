@@ -19,6 +19,8 @@ table inet studio {
   chain output {
     type filter hook output priority 0; policy drop;
     oif "lo" accept
+    # IPv6 neighbor discovery: kernel packets with no user, without which no IPv6 traffic (Fly's DNS included) flows
+    icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit } accept
     ct state established,related accept
     meta skuid "tinyproxy" accept
     reject

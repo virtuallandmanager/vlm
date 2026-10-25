@@ -32,8 +32,15 @@ import subprocess, sys
 from studio_worker.agent import run_agent
 run_agent('codex', 'm', 'p', None, None, {'timeoutSec': 5}, lambda t: None,
           command=['sh', '-c', 'setsid sleep 300 & echo {}'], as_user='agent', cwd=__import__('pathlib').Path('/work/design'))
-left = subprocess.run(['pgrep', '-u', 'agent'], capture_output=True, text=True).stdout.split()
-sys.exit(1 if left else 0)
+import time
+for _ in range(30):  # killed processes take a moment to be reaped
+    left = subprocess.run(['pgrep', '-u', 'agent'], capture_output=True, text=True).stdout.split()
+    if not left:
+        sys.exit(0)
+    time.sleep(0.1)
+print('left running as agent:', subprocess.run(['ps', '-o', 'pid,stat,cmd', '-u', 'agent'], capture_output=True,
+      text=True).stdout)
+sys.exit(1)
 PY
 echo "--- hosts the proxy let through:"
 grep -oE 'CONNECT [^ :]+' /var/log/tinyproxy/tinyproxy.log | sort | uniq -c | sort -rn
