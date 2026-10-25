@@ -26,6 +26,16 @@ try {
   END $$`
   // Key-value scene state was removed; drizzle push alone is unreliable at dropping it
   await sql`DROP TABLE IF EXISTS scene_state`
+  // Per-user deploy wallets were replaced by World destinations. Push would ask whether
+  // dcl_world_destinations was renamed from it; move it out of push's schema instead, keeping its rows.
+  await sql`DO $$ BEGIN
+    IF to_regclass('public.deployment_wallets') IS NOT NULL THEN
+      CREATE SCHEMA IF NOT EXISTS retired;
+      IF to_regclass('retired.deployment_wallets') IS NULL THEN
+        ALTER TABLE public.deployment_wallets SET SCHEMA retired;
+      END IF;
+    END IF;
+  END $$`
   // Add streaming_servers.playback_id ahead of push (plain nullable column; push then has nothing to ask)
   await sql`ALTER TABLE IF EXISTS streaming_servers ADD COLUMN IF NOT EXISTS playback_id text`
   // Streams provisioned before playback ids exposed the stream key in their public URL: give them an id and move the URL off the key
@@ -39,7 +49,7 @@ try {
     }
     if (legacy.length) console.log(`[vlm-server] pre-push upgrade: backfilled playback_id on ${legacy.length} stream(s)`)
   }
-  console.log('[vlm-server] pre-push upgrade: legacy analytics tables cleared, scene_state dropped, playback_id ensured')
+  console.log('[vlm-server] pre-push upgrade: legacy analytics tables cleared, scene_state dropped, deployment_wallets retired, playback_id ensured')
 } finally {
   await sql.end()
 }
