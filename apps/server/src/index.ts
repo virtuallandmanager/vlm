@@ -9,6 +9,7 @@ import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
 import { runMigrations } from './db/migrate.js'
 import { buildApp } from './app.js'
 import { startLifecycleSweep } from './venues/lifecycle.js'
+import { startDclRedeploySweep } from './services/dcl/redeploy-sweep.js'
 import { startHostedWorldSweep, SWEEP_INTERVAL_MS } from './hyperfy/sweep.js'
 import { hyperfyHosting } from './services/hyperfy/infrastructure.js'
 import { startAnalyticsJobs } from './analytics/jobs.js'
@@ -75,6 +76,10 @@ async function main() {
   console.log(`[vlm-server] Platform hook crons started`)
   startLifecycleSweep(config.lifecycleSweepMs)
   console.log(`[vlm-server] Venue lifecycle sweep every ${config.lifecycleSweepMs}ms`)
+  if (config.dclRedeploySweepMs > 0) {
+    startDclRedeploySweep(config.dclRedeploySweepMs)
+    console.log(`[vlm-server] Decentraland redeploy sweep every ${config.dclRedeploySweepMs}ms`)
+  }
   if (hyperfyHosting().available) {
     startHostedWorldSweep(SWEEP_INTERVAL_MS)
     console.log(`[vlm-server] Hosted Hyperfy world sweep every ${SWEEP_INTERVAL_MS}ms`)

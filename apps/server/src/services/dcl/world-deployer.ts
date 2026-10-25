@@ -9,7 +9,7 @@
  * Every deploy starts from what is live: a fresh destination gets the generic runtime, anything else
  * builds on the live entity at its base. If the live entity is not the one Virvi last deployed, it stops.
  */
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray, lt, sql } from 'drizzle-orm'
 import { DCL_MAX_FILE_BYTES, DCL_PARCEL_M, parseParcel } from 'vlm-shared'
 import { db } from '../../db/connection.js'
 import { dclWorldDestinations, sceneDeployments, scenes } from '../../db/schema.js'
@@ -242,10 +242,20 @@ export async function startVirviDeploy(destinationId: string, by: string | null,
   if (!signer) throw new DeployerError(503, 'virvi_deploys_unavailable', 'Virvi deploys are not available right now')
   if (dest.mode !== 'virvi' || !dest.grantedAt) throw new DeployerError(409, 'not_granted', 'Virvi has no deploy permission on this World')
 
-  const [dep] = await db.insert(sceneDeployments).values({
-    sceneId: dest.sceneId, platform: 'decentraland', deploymentType: 'world', destinationId: dest.id,
-    target: { world: dest.worldName, parcels: dest.parcels }, status: 'building', deployedBy: by,
-  }).returning()
+  // One at a time per destination (double clicks, a route racing the sweep): the lock serialises check + insert.
+  const dep = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${dest.id}))`)
+    const busy = await tx.query.sceneDeployments.findFirst({
+      where: and(eq(sceneDeployments.destinationId, dest.id), inArray(sceneDeployments.status, ['building', 'deploying'])),
+      columns: { id: true },
+    })
+    if (busy) throw new DeployerError(409, 'deploy_in_progress', 'A deploy is already running for this World')
+    const [row] = await tx.insert(sceneDeployments).values({
+      sceneId: dest.sceneId, platform: 'decentraland', deploymentType: 'world', destinationId: dest.id,
+      target: { world: dest.worldName, parcels: dest.parcels }, status: 'building', deployedBy: by,
+    }).returning()
+    return row
+  })
 
   const run = runVirviDeploy(dep.id, dest, signer, opts).finally(() => running.delete(dep.id))
   running.set(dep.id, run)
@@ -356,4 +366,48 @@ export async function submitSignedDeploy(deploymentId: string, chain: AuthChain,
     console.error('[world-deployer] after deploy failed:', dep.id, err instanceof Error ? err.message : err)
   }
   return (await db.query.sceneDeployments.findFirst({ where: eq(sceneDeployments.id, dep.id) }))!
+}
+
+/**
+ * Cleans up deployments that never finished, run at the start of each sweep. A `building`/`deploying` row
+ * older than the deploy window whose entity is live was accepted but lost its bookkeeping: finish it.
+ * Otherwise it is marked failed (the sweep tries again). A World that can't be read leaves the row for the
+ * next sweep. Mode B rows still `awaiting_signature` past the window expire.
+ */
+export async function reconcileStaleDeployments(now: Date = new Date()): Promise<void> {
+  const cutoff = new Date(now.getTime() - DEPLOY_WINDOW_MS)
+  await db
+    .update(sceneDeployments)
+    .set({ status: 'failed', errorMessage: 'This publish request expired.' })
+    .where(and(eq(sceneDeployments.status, 'awaiting_signature'), lt(sceneDeployments.createdAt, cutoff)))
+
+  const stale = await db
+    .select()
+    .from(sceneDeployments)
+    .where(and(inArray(sceneDeployments.status, ['building', 'deploying']), lt(sceneDeployments.createdAt, cutoff)))
+  for (const row of stale) {
+    if (running.has(row.id) || !row.destinationId) continue
+    try {
+      const dest = await db.query.dclWorldDestinations.findFirst({ where: eq(dclWorldDestinations.id, row.destinationId) })
+      if (!dest) continue
+      let entities: LiveEntity[]
+      try {
+        entities = await getWorldsClient().getWorldEntities(dest.worldName)
+      } catch {
+        continue
+      }
+      const bundle = row.assetBundle as { entityId?: string; deployedFiles?: string[] } | null
+      const live = entities.find((e) => e.pointers.includes(dest.base))
+      if (bundle?.entityId && live?.id === bundle.entityId) {
+        await afterWorldDeploy(dest, bundle.entityId, bundle.deployedFiles ?? [], row.id)
+      } else {
+        await db
+          .update(sceneDeployments)
+          .set({ status: 'failed', errorMessage: 'This deploy was interrupted. Virvi will try again.' })
+          .where(and(eq(sceneDeployments.id, row.id), eq(sceneDeployments.status, row.status)))
+      }
+    } catch (err) {
+      console.error('[world-deployer] reconcile failed:', row.id, err instanceof Error ? err.message : err)
+    }
+  }
 }

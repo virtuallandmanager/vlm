@@ -187,6 +187,7 @@ export const config = {
 
   // How often the venue booking lifecycle sweep runs (0 disables, used in tests)
   lifecycleSweepMs: parseInt(env('LIFECYCLE_SWEEP_MS') || '5000'),
+  dclRedeploySweepMs: parseInt(env('DCL_REDEPLOY_SWEEP_MS') || '30000'),
 
   // Analytics background jobs (session close, rollups, retention); disabled in tests
   analyticsJobsEnabled: env('ANALYTICS_JOBS') !== 'false',
