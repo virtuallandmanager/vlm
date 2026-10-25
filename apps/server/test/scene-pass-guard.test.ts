@@ -57,6 +57,7 @@ const PUBLIC_EXACT = [
   'GET /api/assets/categories', // public category list
   'GET /api/catalog/packs', // public credits list (no bearer)
   'POST /api/advertiser-leads', // public: landing page early-access form (anonymous visitors, never reads a bearer)
+  'GET /api/studio/render-frames/*', // the signed frame token is the auth (no bearer)
   'GET /api/health', // health check
   'GET /metrics', // Prometheus scrape
   'GET /', // static dashboard

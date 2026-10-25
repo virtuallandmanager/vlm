@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { eq } from 'drizzle-orm'
 import { ringCodeOf } from 'vlm-shared'
 import { db } from '../src/db/connection.js'
 import {
@@ -6,6 +7,7 @@ import {
   sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
   uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
+  studioDesigns, studioPieces, studioRevisions, studioJobs, studioMessages, studioRenders, studioUsageDays,
 } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { createVenue, createBooking, addGrant } from '../src/venues/service.js'
@@ -79,11 +81,17 @@ async function fixtures() {
   }).returning()
   const [bKey] = await db.insert(apiKeys).values({ userId: b.id, name: 'B key', keyHash: 'b-hash', keyPrefix: 'vlm_k1_b' }).returning()
 
+  const [design] = await db.insert(studioDesigns).values({ ownerId: b.id, name: 'B cap', kind: 'wearable', agent: 'claude' }).returning()
+  const [designJob] = await db.insert(studioJobs).values({ designId: design.id, type: 'prompt', status: 'done', payload: {} }).returning()
+  const [designPiece] = await db.insert(studioPieces).values({ designId: design.id, category: 'hat', name: 'B cap' }).returning()
+  const [designRev] = await db.insert(studioRevisions).values({ pieceId: designPiece.id, number: 1, jobId: designJob.id, changeKind: 'new', meta: {}, files: [] }).returning()
+  await db.update(studioPieces).set({ latestRevisionId: designRev.id }).where(eq(studioPieces.id, designPiece.id))
+
   const aScene = (await createScene(a, 'A scene')).scene
   const [aEvent] = await db.insert(events).values({ ownerId: a.id, name: 'A event' }).returning()
   return {
     a, b, collaborator, scene, preset, element, instance, roleWallet, wallet, dcl, hyperfy, stream, event, giveaway, item,
-    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, world, pairing, arSpace, arFloor, arMarker, arDevice, aScene, aEvent,
+    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, world, pairing, arSpace, arFloor, arMarker, arDevice, design, aScene, aEvent,
   }
 }
 type F = Awaited<ReturnType<typeof fixtures>>
@@ -169,6 +177,11 @@ const CASES: Case[] = [
   { route: 'POST /api/hyperfy/worlds/:id/rotate-key', url: (f) => `/api/hyperfy/worlds/${f.world.id}/rotate-key` },
   { route: 'DELETE /api/hyperfy/pairings/:id', url: (f) => `/api/hyperfy/pairings/${f.pairing.id}` },
   { route: 'POST /api/hyperfy/pairings/:id/renew', url: (f) => `/api/hyperfy/pairings/${f.pairing.id}/renew`, body: () => ({ secret: 'guess' }) },
+  // design studio
+  { route: 'GET /api/studio/designs/:id', url: (f) => `/api/studio/designs/${f.design.id}` },
+  { route: 'PATCH /api/studio/designs/:id', url: (f) => `/api/studio/designs/${f.design.id}`, body: () => ({ name: 'pwned', archived: true }) },
+  { route: 'POST /api/studio/designs/:id/prompts', url: (f) => `/api/studio/designs/${f.design.id}/prompts`, body: () => ({ text: 'pwned' }) },
+  { route: 'POST /api/studio/designs/:id/renders', url: (f) => `/api/studio/designs/${f.design.id}/renders`, body: () => ({ category: 'hat', bodyShape: 'female', outfit: 'default', emote: null }) },
   { route: 'DELETE /api/hyperfy/worlds/:id', url: (f) => `/api/hyperfy/worlds/${f.world.id}` },
   { route: 'PATCH /api/hyperfy/worlds/:id', url: (f) => `/api/hyperfy/worlds/${f.world.id}`, body: () => ({ endsAt: null }) },
   { route: 'POST /api/hyperfy/worlds/:id/restore', url: (f) => `/api/hyperfy/worlds/${f.world.id}/restore` },
@@ -252,6 +265,7 @@ const NOT_CROSS_ACCOUNT: Record<string, string> = {
   'GET /api/studio/worker/designs/:designId/jobs/next': "the per-design worker token is the auth; another design's token is 403 (studio-worker-routes.test.ts)",
   'POST /api/studio/worker/jobs/:jobId/events': "the per-design worker token is the auth; another design's token is 403 (studio-worker-routes.test.ts)",
   'PUT /api/studio/worker/jobs/:jobId/files/*': "the per-design worker token is the auth; another design's token is 403 (studio-worker-routes.test.ts)",
+  'GET /api/studio/render-frames/*': 'the signed frame token is the auth; it names one frame of one design (studio-routes.test.ts)',
   'POST /api/studio/worker/jobs/:jobId/result': "the per-design worker token is the auth; another design's token is 403 (studio-worker-routes.test.ts)",
 }
 
@@ -261,6 +275,7 @@ const TABLES = [
   sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
   uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
+  studioDesigns, studioPieces, studioRevisions, studioJobs, studioMessages, studioRenders, studioUsageDays,
 ]
 async function snapshot(f: F) {
   const all = await Promise.all(TABLES.map((t) => db.select().from(t as any)))
@@ -278,14 +293,17 @@ describe('cross-account route walk', () => {
   let app: Awaited<ReturnType<typeof testApp>>
   let f: F
   const prevStreaming = config.streamingEnabled
+  const prevStudio = config.studioEnabled
   beforeEach(async () => {
     await resetDb()
     ;(config as any).streamingEnabled = true
+    ;(config as any).studioEnabled = true
     app = await testApp()
     f = await fixtures()
   })
   afterEach(async () => {
     ;(config as any).streamingEnabled = prevStreaming
+    ;(config as any).studioEnabled = prevStudio
     await app.close()
   })
 

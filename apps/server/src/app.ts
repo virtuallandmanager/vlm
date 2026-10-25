@@ -45,6 +45,7 @@ import advertiserLeadRoutes from './routes/advertiser-leads.js'
 import venueRoutes from './routes/venues.js'
 import ingestRoutes from './routes/ingest.js'
 import studioWorkerRoutes from './routes/studio-worker.js'
+import studioRoutes from './routes/studio.js'
 import { db } from './db/connection.js'
 import { sql } from 'drizzle-orm'
 import { existsSync } from 'node:fs'
@@ -205,6 +206,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(venueRoutes)
   await app.register(ingestRoutes)
   await app.register(studioWorkerRoutes)
+  await app.register(studioRoutes)
 
   // Health check
   app.get('/api/health', async (_request, reply) => {
