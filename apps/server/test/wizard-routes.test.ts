@@ -1,0 +1,167 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { eq } from 'drizzle-orm'
+import { db } from '../src/db/connection.js'
+import { assetLibraryItems, catalogPacks, scenes, scenePresets, sceneElements, sceneElementInstances, sceneLibrary, subscriptions } from '../src/db/schema.js'
+import { config } from '../src/config.js'
+import { resetDb } from './helpers/db.js'
+import { testApp, createUser, tokenFor } from './helpers/factories.js'
+import { THEMES } from '../src/wizard/themes.js'
+
+describe('wizard routes', () => {
+  let app: Awaited<ReturnType<typeof testApp>>
+  const prevUnlocked = config.allFeaturesUnlocked
+  beforeEach(async () => { await resetDb(); app = await testApp() })
+  afterEach(async () => { config.allFeaturesUnlocked = prevUnlocked; await app.close() })
+
+  const as = (u: Awaited<ReturnType<typeof createUser>>) => ({ authorization: `Bearer ${tokenFor(u)}` })
+  const plot2 = { width: 2, depth: 2, base: { x: 0, y: 0 } }
+
+  async function seedPack(id = 'dcl-builder-minitown', enabled = true) {
+    await db.insert(catalogPacks).values({ id, name: id, source: 'test', license: 'x', attribution: 'x', sourceUrl: 'x', enabled }).onConflictDoNothing()
+  }
+  async function seedAsset(sourceRef: string, o: Partial<typeof assetLibraryItems.$inferInsert> = {}) {
+    await seedPack(o.packId ?? 'dcl-builder-minitown')
+    const [a] = await db.insert(assetLibraryItems).values({
+      name: sourceRef, storageKey: `k/${sourceRef}`, cdnUrl: `https://cdn.test/${sourceRef}.glb`, packId: 'dcl-builder-minitown',
+      sourceRef, triangleCount: 1000, fileSizeBytes: 5000, isPublic: true, ...o,
+    }).returning()
+    return a
+  }
+  const book = (user: any, payload: any) => app.inject({ method: 'POST', url: '/api/wizard/scenes', headers: as(user), payload })
+  const counts = async () => ({
+    scenes: (await db.select().from(scenes)).length,
+    presets: (await db.select().from(scenePresets)).length,
+    elements: (await db.select().from(sceneElements)).length,
+    instances: (await db.select().from(sceneElementInstances)).length,
+    links: (await db.select().from(sceneLibrary)).length,
+  })
+
+  it('requires authentication', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/wizard/catalog' })).statusCode).toBe(401)
+  })
+
+  it('catalog resolves known refs, drops unknown and disabled-pack ones', async () => {
+    const u = await createUser()
+    const gal = THEMES.find((t) => t.id === 'gallery')!
+    const first = gal.items[0] // a dcl-gallery piece
+    const second = gal.items.find((i) => i.pack !== first.pack)! // a minitown piece, whose pack gets switched off
+    const a = await seedAsset(first.sourceRef, { packId: first.pack, dimensions: { width: 2, height: 3, depth: 4 } })
+    await seedAsset(second.sourceRef, { packId: second.pack })
+    await db.update(catalogPacks).set({ enabled: false }).where(eq(catalogPacks.id, second.pack))
+    const res = await app.inject({ method: 'GET', url: '/api/wizard/catalog', headers: as(u) })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    const t = body.themes.find((x: any) => x.id === 'gallery')
+    expect(t.items.every((i: any) => i.asset.id === a.id)).toBe(true)
+    expect(t.items.length).toBe(gal.items.filter((i) => i.sourceRef === first.sourceRef).length)
+    expect(t.items[0]).toMatchObject({ x: first.x, z: first.z, rotationY: first.rotationY })
+    expect(t.items[0].asset).toMatchObject({ name: a.name, cdnUrl: a.cdnUrl, triangleCount: 1000, fileSizeBytes: 5000, dimensions: { x: 2, y: 3, z: 4 } })
+    expect(body.themes.find((x: any) => x.id === 'empty').items).toEqual([])
+    expect(body.chips.map((c: any) => c.id)).toEqual(['nature', 'furniture', 'lighting', 'buildings', 'decor'])
+  })
+
+  it('bootstrap creates one preset, N elements, M instances and N library links', async () => {
+    const u = await createUser()
+    const a = await seedAsset('Tree'); const b = await seedAsset('Bench')
+    const res = await book(u, {
+      name: 'My park', plot: plot2, spawn: { x: 16, z: 3 },
+      items: [
+        { assetId: a.id, x: 4, z: 5, rotationY: 90 },
+        { assetId: a.id, x: 10, z: 12, rotationY: 0 },
+        { assetId: b.id, x: 20, z: 20, rotationY: 45 },
+      ],
+    })
+    expect(res.statusCode).toBe(201)
+    const { sceneId } = res.json()
+    expect(await counts()).toEqual({ scenes: 1, presets: 1, elements: 2, instances: 3, links: 2 })
+    const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, sceneId) })
+    expect(scene).toMatchObject({ name: 'My park', ownerId: u.id })
+    const [preset] = await db.select().from(scenePresets)
+    expect(preset.name).toBe('Default')
+    expect(scene!.activePresetId).toBe(preset.id)
+    const els = await db.select().from(sceneElements)
+    const tree = els.find((e) => e.name === a.name)!
+    expect(tree).toMatchObject({ type: 'model', presetId: preset.id, properties: { modelSrc: a.cdnUrl } })
+    const inst = (await db.select().from(sceneElementInstances).where(eq(sceneElementInstances.elementId, tree.id)))
+    expect(inst.map((i) => i.position).sort((x: any, y: any) => x.x - y.x)).toEqual([{ x: 4, y: 0, z: 5 }, { x: 10, y: 0, z: 12 }])
+    expect(inst.find((i: any) => i.position.x === 4)!.rotation).toEqual({ x: 0, y: 90, z: 0 })
+  })
+
+  it('accepts an empty plot (no items)', async () => {
+    const u = await createUser()
+    const res = await book(u, { name: 'Empty', plot: plot2, spawn: { x: 16, z: 3 }, items: [] })
+    expect(res.statusCode).toBe(201)
+    expect(await counts()).toEqual({ scenes: 1, presets: 1, elements: 0, instances: 0, links: 0 })
+  })
+
+  it('400s on a position outside the plot (x = 33 on 2x2), an invalid plot, a missing name or a non-catalog asset', async () => {
+    const u = await createUser()
+    const a = await seedAsset('Tree')
+    const [priv] = await db.insert(assetLibraryItems).values({ name: 'Mine', storageKey: 'm', uploadedBy: u.id, isPublic: false }).returning()
+    const ok = { name: 'S', plot: plot2, spawn: { x: 1, z: 1 }, items: [{ assetId: a.id, x: 1, z: 1, rotationY: 0 }] }
+    expect((await book(u, { ...ok, items: [{ assetId: a.id, x: 33, z: 1, rotationY: 0 }] })).statusCode).toBe(400)
+    expect((await book(u, { ...ok, items: [{ assetId: a.id, x: 1, z: -1, rotationY: 0 }] })).statusCode).toBe(400)
+    expect((await book(u, { ...ok, spawn: { x: 40, z: 1 } })).statusCode).toBe(400)
+    expect((await book(u, { ...ok, plot: { width: 0, depth: 2, base: { x: 0, y: 0 } } })).statusCode).toBe(400)
+    expect((await book(u, { ...ok, name: '  ' })).statusCode).toBe(400)
+    expect((await book(u, { ...ok, items: [{ assetId: priv.id, x: 1, z: 1, rotationY: 0 }] })).statusCode).toBe(400)
+    expect((await book(u, { ...ok, items: [{ assetId: '00000000-0000-0000-0000-000000000000', x: 1, z: 1, rotationY: 0 }] })).statusCode).toBe(400)
+    expect((await book(u, { ...ok, items: [{ assetId: 'nope', x: 1, z: 1, rotationY: 0 }] })).statusCode).toBe(400)
+    expect(await counts()).toEqual({ scenes: 0, presets: 0, elements: 0, instances: 0, links: 0 })
+  })
+
+  it('400s when items exceed the entity budget', async () => {
+    const u = await createUser()
+    const a = await seedAsset('Tree', { triangleCount: 1 })
+    const plot1 = { width: 1, depth: 1, base: { x: 0, y: 0 } }
+    const items = Array.from({ length: 181 }, () => ({ assetId: a.id, x: 1, z: 1, rotationY: 0 }))
+    expect((await book(u, { name: 'S', plot: plot1, spawn: { x: 1, z: 1 }, items })).statusCode).toBe(400)
+    expect((await book(u, { name: 'S', plot: plot1, spawn: { x: 1, z: 1 }, items: items.slice(0, 180) })).statusCode).toBe(201)
+  })
+
+  it('422 over_budget when the summed triangles exceed the plot budget, and creates nothing', async () => {
+    const u = await createUser()
+    const big = await seedAsset('Big', { triangleCount: 6000 })
+    const plot1 = { width: 1, depth: 1, base: { x: 0, y: 0 } }
+    const body = (n: number) => ({ name: 'S', plot: plot1, spawn: { x: 1, z: 1 }, items: Array.from({ length: n }, () => ({ assetId: big.id, x: 1, z: 1, rotationY: 0 })) })
+    const res = await book(u, body(2))
+    expect(res.statusCode).toBe(422)
+    expect(res.json()).toMatchObject({ error: 'over_budget', triangles: 12000, limit: 10000 })
+    expect(await counts()).toEqual({ scenes: 0, presets: 0, elements: 0, instances: 0, links: 0 })
+    expect((await book(u, body(1))).statusCode).toBe(201)
+  })
+
+  it('403 scene_limit_reached at the plan limit, creating nothing more', async () => {
+    config.allFeaturesUnlocked = false
+    const u = await createUser()
+    for (let i = 0; i < 3; i++) expect((await book(u, { name: `S${i}`, plot: plot2, spawn: { x: 1, z: 1 }, items: [] })).statusCode).toBe(201)
+    const res = await book(u, { name: 'S4', plot: plot2, spawn: { x: 1, z: 1 }, items: [] })
+    expect(res.statusCode).toBe(403)
+    expect(res.json()).toMatchObject({ error: 'scene_limit_reached', currentUsage: 3, limit: 3, tier: 'free' })
+    expect((await counts()).scenes).toBe(3)
+  })
+
+  it('options: hyperfy locked for a free user, open when unlocked, admin or creator tier', async () => {
+    config.allFeaturesUnlocked = false
+    const u = await createUser()
+    const get = async (user: any) => (await app.inject({ method: 'GET', url: '/api/wizard/options', headers: as(user) })).json()
+    let o = await get(u)
+    expect(o.hyperfy).toEqual({ allowed: false, requiredTier: 'creator' })
+    expect(o.scenes).toEqual({ used: 0, limit: 3 })
+    expect(o.dcl).toEqual({ virviDeploys: false, virviAddress: null })
+    expect((await get(await createUser({ role: 'admin' }))).hyperfy.allowed).toBe(true)
+    await db.insert(subscriptions).values({ userId: u.id, tier: 'creator', status: 'active' } as any)
+    expect((await get(u)).hyperfy.allowed).toBe(true)
+    config.allFeaturesUnlocked = true
+    o = await get(await createUser())
+    expect(o.hyperfy.allowed).toBe(true)
+    expect(o.scenes.limit).toBeNull()
+  })
+
+  it('GET /api/assets?category matches any of the comma-separated categories', async () => {
+    const a = await seedAsset('A', { category: 'Building' }); const b = await seedAsset('B', { category: 'Structure' }); await seedAsset('C', { category: 'Decor' })
+    const res = await app.inject({ method: 'GET', url: '/api/assets?category=Building,Structure' })
+    expect(res.json().assets.map((x: any) => x.id).sort()).toEqual([a.id, b.id].sort())
+    expect((await app.inject({ method: 'GET', url: '/api/assets?category=Decor' })).json().assets).toHaveLength(1)
+  })
+})

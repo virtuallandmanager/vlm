@@ -11,7 +11,7 @@
 
 import { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
-import { eq, ilike, and, or, sql, arrayContains } from 'drizzle-orm'
+import { eq, ilike, and, or, sql, arrayContains, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { assetLibraryItems, catalogPacks } from '../db/schema.js'
 import { browsableAsset } from '../catalog/visibility.js'
@@ -70,7 +70,9 @@ export default async function assetRoutes(app: FastifyInstance) {
     }
 
     if (query.category) {
-      conditions.push(eq(assetLibraryItems.category, query.category))
+      // Comma-separated: matches any of the listed categories
+      const cats = query.category.split(',').map((c) => c.trim()).filter(Boolean)
+      if (cats.length) conditions.push(cats.length === 1 ? eq(assetLibraryItems.category, cats[0]) : inArray(assetLibraryItems.category, cats))
     }
 
     if (query.tag) {
