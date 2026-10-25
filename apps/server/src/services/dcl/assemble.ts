@@ -131,10 +131,30 @@ export const defaultModelFetcher: ModelFetcher = async (url) => {
   }
   const res = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(60_000) })
   if (!res.ok) throw new ModelRefused(`Model download failed (${res.status})`)
-  const declared = Number(res.headers.get('content-length') ?? 0)
-  if (declared > DCL_MAX_FILE_BYTES) throw new ModelRefused('Model is over the 50 MB file limit')
-  const buf = new Uint8Array(await res.arrayBuffer())
-  if (buf.byteLength > DCL_MAX_FILE_BYTES) throw new ModelRefused('Model is over the 50 MB file limit')
+  const lenHeader = res.headers.get('content-length')
+  if (lenHeader !== null) {
+    const declared = Number(lenHeader)
+    if (!/^\d+$/.test(lenHeader.trim()) || !Number.isFinite(declared)) throw new ModelRefused('Model has an invalid content-length')
+    if (declared > DCL_MAX_FILE_BYTES) throw new ModelRefused('Model is over the 50 MB file limit')
+  }
+  if (!res.body) throw new ModelRefused('Model download had no body')
+  // Enforce the cap while streaming: content-length may be absent or wrong.
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > DCL_MAX_FILE_BYTES) {
+      await reader.cancel().catch(() => {})
+      throw new ModelRefused('Model is over the 50 MB file limit')
+    }
+    chunks.push(value)
+  }
+  const buf = new Uint8Array(total)
+  let off = 0
+  for (const c of chunks) { buf.set(c, off); off += c.byteLength }
   return buf
 }
 

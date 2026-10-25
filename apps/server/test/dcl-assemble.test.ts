@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { DCL_MAX_FILE_BYTES } from 'vlm-shared'
 import { config } from '../src/config.js'
 import { db } from '../src/db/connection.js'
 import { assetLibraryItems } from '../src/db/schema.js'
@@ -112,6 +113,37 @@ describe('defaultModelFetcher', () => {
   it('refuses foreign hosts and plain http', async () => {
     await expect(defaultModelFetcher('https://evil.example/x.glb')).rejects.toMatchObject({ name: 'ModelRefused' })
     await expect(defaultModelFetcher('http://cdn.virvi.test/x.glb')).rejects.toMatchObject({ name: 'ModelRefused' })
+  })
+})
+
+describe('defaultModelFetcher streaming cap', () => {
+  const URL_OK = 'https://8.8.8.8/m/big.glb' // public literal: no DNS in tests
+  beforeEach(() => { (config as { cdnUrl: string | null }).cdnUrl = 'https://8.8.8.8' })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('aborts an unbounded body without content-length before buffering it all', async () => {
+    const chunk = new Uint8Array(8 * 1024 * 1024)
+    let pulled = 0
+    let cancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) { pulled++; if (pulled > 100) return c.close(); c.enqueue(chunk) },
+      cancel() { cancelled = true },
+    })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(body)))
+    await expect(defaultModelFetcher(URL_OK)).rejects.toMatchObject({ name: 'ModelRefused' })
+    expect(cancelled).toBe(true)
+    expect(pulled * chunk.byteLength).toBeLessThan(DCL_MAX_FILE_BYTES + 3 * chunk.byteLength)
+    expect(pulled).toBeLessThan(100)
+  })
+
+  it('rejects a non-numeric content-length', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array(4), { headers: { 'content-length': 'abc' } })))
+    await expect(defaultModelFetcher(URL_OK)).rejects.toMatchObject({ name: 'ModelRefused' })
+  })
+
+  it('returns a small body', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([1, 2, 3]))))
+    expect(Array.from(await defaultModelFetcher(URL_OK))).toEqual([1, 2, 3])
   })
 })
 
