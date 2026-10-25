@@ -262,6 +262,8 @@ describe('wizardErrorMessage', () => {
     expect(wizardErrorMessage(apiError(400, { error: 'over_budget', message: 'This plot fits 10,000 triangles' }))).toBe('This plot fits 10,000 triangles')
     expect(wizardErrorMessage(apiError(403, { error: 'not_world_owner' }))).toMatch(/wallet that owns the name/)
     expect(wizardErrorMessage(apiError(400, { error: 'some_new_code' }))).toBe('Something went wrong. Try again in a moment.')
+    expect(wizardErrorMessage(apiError(422, { error: 'over_budget' }))).toMatch(/past Decentraland's limits/)
+    expect(wizardErrorMessage(apiError(409, { error: 'nothing_to_deploy' }))).toMatch(/already has everything/)
     expect(wizardErrorMessage(apiError(500, { error: 'HTTP 500' }))).toBe('Something went wrong on our side. Try again in a moment.')
     expect(wizardErrorMessage(apiError(400, { error: 'name is required (up to 120 characters)' }))).toBe('name is required (up to 120 characters)')
     expect(wizardErrorMessage(Object.assign(new Error('User rejected'), { code: 4001 }))).toMatch(/cancelled/)

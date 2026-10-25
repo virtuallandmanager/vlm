@@ -8,15 +8,17 @@
  *
  * Every deploy starts from what is live: a fresh destination gets the generic runtime, anything else
  * builds on the live entity at its base. If the live entity is not the one Virvi last deployed, it stops.
+ * Every path (the sweep, "Redeploy now", a mode B publish) first checks Decentraland's limits
+ * (`assertDeployable`), and never signs or uploads a deployment that would change nothing.
  */
 import { and, eq, inArray, lt, sql } from 'drizzle-orm'
-import { DCL_MAX_FILE_BYTES, DCL_PARCEL_M, parseParcel } from 'vlm-shared'
+import { DCL_MAX_FILE_BYTES, DCL_PARCEL_M, dclBudget, parseParcel } from 'vlm-shared'
 import { db } from '../../db/connection.js'
 import { dclWorldDestinations, sceneDeployments, scenes } from '../../db/schema.js'
 import { linkWorldLocation } from '../../setup/setups.js'
 import {
-  assembleFresh, assembleRedeploy, defaultModelFetcher, modelsInScene, wizardSceneJson,
-  type Assembled, type ModelFetcher,
+  assembleFresh, assembleRedeploy, defaultModelFetcher, modelsInScene, pendingModels, wizardSceneJson,
+  type Assembled, type ModelFetcher, type ModelNeed,
 } from './assemble.js'
 import { buildEntity, dclHash, verifyChain, virviSigner, type AuthChain, type ContentRef, type SceneMetadata } from './entity.js'
 import { DCL_RUNTIME_VERSION, runtimeFiles } from './runtime.js'
@@ -30,6 +32,10 @@ const RETIMESTAMP_AFTER_MS = 10_000
 const INLINE_MAX_BYTES = 64 * 1024
 const CHANGED_OUTSIDE = 'Your World changed outside Virvi'
 const UNREACHABLE = "Couldn't read your World from Decentraland"
+/** Starts the destination's statusDetail while models Virvi couldn't add hold it at needs_review. */
+export const REFUSED_PREFIX = "Virvi couldn't add "
+const NOTHING_NEW = 'Your World already has everything in this scene, so there was nothing to deploy.'
+const GENERIC_FAILURE = 'Something went wrong on our side while deploying. Try again in a few minutes.'
 
 export type Destination = typeof dclWorldDestinations.$inferSelect
 export type Deployment = typeof sceneDeployments.$inferSelect
@@ -98,6 +104,76 @@ export async function liveBaseFor(dest: Destination): Promise<LiveEntity | null>
   return live
 }
 
+/** The owner-facing sentence for models left out of a deployment. */
+export function refusedLine(refused: Assembled['refused']): string {
+  const list = refused.map((r) => `${r.name} (${r.reason})`).join(', ')
+  return `${REFUSED_PREFIX}${list}. Remove or replace ${refused.length === 1 ? 'it' : 'them'} in the scene, or press Redeploy now to try again.`
+}
+
+const plural = (n: number, one: string) => `${n.toLocaleString('en-US')} ${one}${n === 1 ? '' : 's'}`
+
+/**
+ * A plain sentence when the scene breaks Decentraland's per-parcel limits, else null. No network.
+ * Triangles and entities count every placed instance, as the wizard does.
+ */
+export function sceneLimitProblem(dest: Destination, all: ModelNeed[]): string | null {
+  const budget = dclBudget(dest.parcels.length)
+  const parcels = plural(dest.parcels.length, 'parcel')
+  const triangles = all.reduce((n, m) => n + (m.triangles ?? 0) * m.instances, 0)
+  if (triangles > budget.triangles) {
+    const unknown = all.filter((m) => m.triangles == null).length
+    const note = unknown > 0 ? ` ${unknown} model${unknown === 1 ? ' has' : 's have'} no triangle count yet and counted as 0.` : ''
+    return `Your scene would have ${plural(triangles, 'triangle')}, over the ${budget.triangles.toLocaleString('en-US')} your ${parcels} allow. Remove some models to publish.${note}`
+  }
+  const placed = all.reduce((n, m) => n + m.instances, 0)
+  if (placed > budget.entities) {
+    return `Your scene has ${plural(placed, 'placed model')}, over the ${budget.entities.toLocaleString('en-US')} your ${parcels} allow. Remove some to publish.`
+  }
+  return null
+}
+
+/** A plain sentence when the new models don't fit the owner's World storage, else null. */
+export async function storageProblem(dest: Destination, pending: ModelNeed[]): Promise<string | null> {
+  const bytes = pending.reduce((n, m) => n + (m.bytes ?? 0), 0)
+  if (bytes === 0) return null
+  let stats: { maxAllowedBytes: number; usedBytes: number } | null
+  try {
+    stats = await getWorldsClient().getWalletStats(dest.ownerWallet)
+  } catch {
+    return null // can't tell: let the deploy try, Decentraland will say if it's full
+  }
+  if (!stats || bytes <= stats.maxAllowedBytes - stats.usedBytes) return null
+  const mb = (n: number) => (n / 1_000_000).toFixed(1)
+  return `The new models need ${mb(bytes)} MB of World storage but only ${mb(Math.max(0, stats.maxAllowedBytes - stats.usedBytes))} MB is left.`
+}
+
+/**
+ * The check every deploy path runs first: the scene fits the plot and the World's storage. Otherwise the
+ * destination becomes over_budget and this throws 422 over_budget; a destination that fits again is cleared.
+ */
+export async function assertDeployable(dest: Destination): Promise<void> {
+  const problem = sceneLimitProblem(dest, await modelsInScene(dest.sceneId)) ?? (await storageProblem(dest, await pendingModels(dest)))
+  if (problem) {
+    if (dest.status !== 'over_budget' || dest.statusDetail !== problem) await setDestStatus(dest.id, 'over_budget', problem)
+    throw new DeployerError(422, 'over_budget', problem)
+  }
+  if (dest.status === 'over_budget') await setDestStatus(dest.id, 'ok', null)
+}
+
+/**
+ * A deployment that would add nothing is never signed or uploaded. Models that were refused hold the
+ * destination at needs_review with the reason (so nothing retries them on its own); otherwise the World
+ * is simply up to date. Either way the destination's file list is brought in line with what's live.
+ */
+async function nothingToDeploy(dest: Destination, a: Assembled): Promise<DeployerError> {
+  const detail = a.refused.length ? refusedLine(a.refused) : null
+  await db
+    .update(dclWorldDestinations)
+    .set({ status: detail ? 'needs_review' : 'ok', statusDetail: detail, deployedFiles: a.deployedFiles.map((f) => f.toLowerCase()), updatedAt: new Date() })
+    .where(eq(dclWorldDestinations.id, dest.id))
+  return new DeployerError(409, 'nothing_to_deploy', detail ?? NOTHING_NEW)
+}
+
 /** Default spawn: the plot's centre along x, on the ground, 1 m in from the base edge. */
 function defaultSpawn(parcels: string[]) {
   const xs = parcels.map((p) => parseParcel(p)?.x ?? 0)
@@ -154,7 +230,10 @@ async function describeNewFiles(a: Assembled): Promise<NewFileSource[]> {
     const rt = runtime.get(file)
     if (rt && (await dclHash(rt)) === hash) { out.push({ file, hash, runtimeVersion: DCL_RUNTIME_VERSION }); continue }
     const bytes = a.files.get(hash)!
-    if (bytes.byteLength > INLINE_MAX_BYTES) throw new Error(`Cannot keep ${file} for signing`)
+    if (bytes.byteLength > INLINE_MAX_BYTES) {
+      console.error('[world-deployer] generated file too big to keep for signing:', file, bytes.byteLength)
+      throw new DeployerError(500, 'deploy_failed', GENERIC_FAILURE)
+    }
     out.push({ file, hash, base64: Buffer.from(bytes).toString('base64') })
   }
   return out
@@ -195,7 +274,8 @@ function plainError(err: unknown): string {
     } catch { /* not JSON: keep the body */ }
     return `Decentraland rejected the deploy: ${reason.slice(0, 500) || `HTTP ${err.status}`}`
   }
-  return `The deploy failed: ${(err as Error)?.message ?? String(err)}`
+  // Anything else is internal: the detail goes to the log (the callers log it), never to the owner.
+  return GENERIC_FAILURE
 }
 
 async function markFailed(deploymentId: string, err: unknown) {
@@ -241,6 +321,7 @@ export async function startVirviDeploy(destinationId: string, by: string | null,
   const signer = virviSigner()
   if (!signer) throw new DeployerError(503, 'virvi_deploys_unavailable', 'Virvi deploys are not available right now')
   if (dest.mode !== 'virvi' || !dest.grantedAt) throw new DeployerError(409, 'not_granted', 'Virvi has no deploy permission on this World')
+  await assertDeployable(dest)
 
   // One at a time per destination (double clicks, a route racing the sweep): the lock serialises check + insert.
   const dep = await db.transaction(async (tx) => {
@@ -272,6 +353,14 @@ async function runVirviDeploy(
   try {
     const started = Date.now()
     const packed = await assembleFor(dest, started, opts.fetch)
+    if (!packed.assembled.changed) {
+      const err = await nothingToDeploy(dest, packed.assembled)
+      await db
+        .update(sceneDeployments)
+        .set({ status: 'failed', errorMessage: err.message, assetBundle: { added: [], refused: packed.assembled.refused, baseEntityId: packed.baseEntityId } })
+        .where(eq(sceneDeployments.id, deploymentId))
+      return
+    }
     const { a } = await retimestamp(packed.assembled, started)
     const progress = { modelsTotal: a.added.length, modelsUploaded: 0 }
     const bundle = { entityId: a.entityId, pointers: a.pointers, deployedFiles: a.deployedFiles, added: a.added, refused: a.refused, baseEntityId: packed.baseEntityId }
@@ -298,8 +387,10 @@ export async function prepareSignedDeploy(
   opts: DeployOptions = {},
 ): Promise<{ deployment: Deployment; payload: string; expiresAt: string }> {
   const dest = await loadDestination(destinationId)
+  await assertDeployable(dest)
   const started = Date.now()
   const packed = await assembleFor(dest, started, opts.fetch)
+  if (!packed.assembled.changed) throw await nothingToDeploy(dest, packed.assembled)
   const { a, timestamp } = await retimestamp(packed.assembled, started)
   const bundle: SignedBundle = {
     entityId: a.entityId,

@@ -5,7 +5,7 @@ import { Wallet } from 'ethers'
 import { and, eq, isNull } from 'drizzle-orm'
 import { config } from '../src/config.js'
 import { db } from '../src/db/connection.js'
-import { analyticsScenes, dclWorldDestinations, locationSetups, sceneDeployments } from '../src/db/schema.js'
+import { analyticsScenes, assetLibraryItems, dclWorldDestinations, locationSetups, sceneDeployments, scenes } from '../src/db/schema.js'
 import { chainSigner, verifyChain, virviSigner } from '../src/services/dcl/entity.js'
 import { setWorldsClient, WorldsError, type LiveEntity } from '../src/services/dcl/worlds-client.js'
 import {
@@ -13,7 +13,7 @@ import {
 } from '../src/services/dcl/world-deployer.js'
 import { getActiveSetup, linkWorldLocation } from '../src/setup/setups.js'
 import { resetDb } from './helpers/db.js'
-import { createElement, createScene, createUser } from './helpers/factories.js'
+import { createElement, createInstance, createScene, createUser } from './helpers/factories.js'
 import { FakeWorldsClient } from './helpers/fake-worlds.js'
 
 const CDN = 'https://cdn.virvi.test'
@@ -290,6 +290,83 @@ describe('prepareSignedDeploy / submitSignedDeploy (mode B)', () => {
     await submitSignedDeploy(prep.deployment.id, chain, { fetch: fetcher })
     await expect(submitSignedDeploy(prep.deployment.id, chain, { fetch: fetcher })).rejects.toMatchObject({ status: 409 })
     expect(fake.deployed).toHaveLength(1)
+  })
+})
+
+describe('every deploy path checks first', () => {
+  /** 3 placed trees of 8,000 triangles: 24,000, over the 20,000 two parcels allow. */
+  async function overBudget(mode: 'virvi' | 'sign') {
+    const s = await setup({ mode, models: [] })
+    await db.insert(assetLibraryItems).values({ name: 'tree', storageKey: 'k', cdnUrl: `${CDN}/m/tree.glb`, triangleCount: 8_000 })
+    const el = await createElement(s.preset.id, { type: 'model', name: 'tree', properties: { modelSrc: `${CDN}/m/tree.glb` } })
+    for (let i = 0; i < 3; i++) await createInstance(el.id)
+    return s
+  }
+
+  it.each(['virvi', 'sign'] as const)('mode %s over the triangle budget is 422 over_budget, with no row and the destination over_budget', async (mode) => {
+    const { user, dest } = await overBudget(mode)
+    const start = mode === 'virvi' ? startVirviDeploy : prepareSignedDeploy
+    const err = await start(dest.id, user.id, { fetch: fetcher }).catch((e) => e)
+    expect(err).toBeInstanceOf(DeployerError)
+    expect(err).toMatchObject({ status: 422, code: 'over_budget' })
+    expect(err.message).toMatch(/24,000 triangles/)
+    expect(await db.select().from(sceneDeployments)).toHaveLength(0)
+    expect(await destRow(dest.id)).toMatchObject({ status: 'over_budget' })
+  })
+
+  it('new model bytes over the World storage left is 422 over_budget', async () => {
+    const { user, dest } = await setup({ mode: 'sign' })
+    await db.insert(assetLibraryItems).values({ name: 'a', storageKey: 'k', cdnUrl: `${CDN}/m/a.glb`, triangleCount: 10, fileSizeBytes: 5_000 })
+    fake.stats.set(dest.ownerWallet, { maxAllowedBytes: 10_000, usedBytes: 8_000 })
+    await expect(prepareSignedDeploy(dest.id, user.id, { fetch: fetcher })).rejects.toMatchObject({ status: 422, code: 'over_budget' })
+    expect((await destRow(dest.id)).statusDetail).toMatch(/storage/)
+  })
+
+  it('a redeploy that would change nothing is not signed or uploaded', async () => {
+    const { user, dest } = await setup()
+    await whenSettled((await startVirviDeploy(dest.id, user.id, { fetch: fetcher })).id)
+    goLive()
+    const dep = await startVirviDeploy(dest.id, user.id, { fetch: fetcher })
+    await whenSettled(dep.id)
+    expect(fake.deployed).toHaveLength(1)
+    const row = await depRow(dep.id)
+    expect(row.status).not.toBe('deployed')
+    expect(row.errorMessage).toMatch(/already has everything/)
+    expect((await destRow(dest.id)).status).toBe('ok')
+
+    await db.update(dclWorldDestinations).set({ mode: 'sign' }).where(eq(dclWorldDestinations.id, dest.id))
+    await expect(prepareSignedDeploy(dest.id, user.id, { fetch: fetcher })).rejects.toMatchObject({ status: 409, code: 'nothing_to_deploy' })
+  })
+
+  it('a redeploy whose only new model is refused says which and why, and needs a look', async () => {
+    const { user, preset, dest } = await setup()
+    await whenSettled((await startVirviDeploy(dest.id, user.id, { fetch: fetcher })).id)
+    goLive()
+    await createElement(preset.id, { type: 'model', name: 'Evil chair', properties: { modelSrc: 'https://evil.example/x.glb' } })
+    const dep = await startVirviDeploy(dest.id, user.id, { fetch: fetcher })
+    await whenSettled(dep.id)
+    expect(fake.deployed).toHaveLength(1)
+    expect((await depRow(dep.id)).errorMessage).toMatch(/Evil chair/)
+    expect(await destRow(dest.id)).toMatchObject({ status: 'needs_review', statusDetail: expect.stringMatching(/Evil chair.*not hosted by Virvi/) })
+  })
+
+  it('an unexpected error is reported in plain words, never the raw message', async () => {
+    const { user, dest } = await setup()
+    fake.deploy = async () => { throw new Error('relation "secret_table" does not exist') }
+    const dep = await startVirviDeploy(dest.id, user.id, { fetch: fetcher })
+    await whenSettled(dep.id)
+    const row = await depRow(dep.id)
+    expect(row.status).toBe('failed')
+    expect(row.errorMessage).not.toMatch(/secret_table/)
+    expect(row.errorMessage).toMatch(/went wrong/)
+  })
+
+  it('a generated file too big to keep for signing is a DeployerError, not a bare 500', async () => {
+    const { user, dest } = await setup({ mode: 'sign' })
+    await db.update(scenes).set({ name: 'x'.repeat(70_000) }).where(eq(scenes.id, dest.sceneId))
+    const err = await prepareSignedDeploy(dest.id, user.id, { fetch: fetcher }).catch((e) => e)
+    expect(err).toBeInstanceOf(DeployerError)
+    expect(err.message).not.toMatch(/scene\.json/)
   })
 })
 

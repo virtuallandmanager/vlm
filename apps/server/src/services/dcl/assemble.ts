@@ -3,14 +3,14 @@
  *
  * A fresh deployment is the generic Virvi runtime + scene.json + every model. A redeploy starts
  * from the World's live entity: every live file stays (by hash), only missing models are fetched
- * and added, and a wizard-made scene on an older runtime gets the current one. Adopted scenes
- * (not made by the wizard) never have their code or metadata touched.
+ * and added, and a wizard-made scene on an older runtime gets the current one. Adopted scenes, and any
+ * live scene without Virvi's `virvi` block (not made by the wizard), never have their code or metadata touched.
  */
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, count, eq, inArray } from 'drizzle-orm'
 import { DCL_MAX_FILE_BYTES, localModelFile } from 'vlm-shared'
 import { config } from '../../config.js'
 import { db } from '../../db/connection.js'
-import { assetLibraryItems, mediaAssets, sceneElements, scenes } from '../../db/schema.js'
+import { assetLibraryItems, mediaAssets, sceneElementInstances, sceneElements, scenes } from '../../db/schema.js'
 import { assertPublicHttpUrl } from '../../net/public-url.js'
 import { buildEntity, dclHash, type ContentRef, type SceneMetadata } from './entity.js'
 import { DCL_RUNTIME_VERSION, runtimeFiles } from './runtime.js'
@@ -22,8 +22,11 @@ export interface ModelNeed {
   url: string
   /** Deployed path, `models/vlm/<basename>.glb`. */
   file: string
+  /** Of one copy of the model. */
   triangles: number | null
   bytes: number | null
+  /** Placed instances of every element using this file (the wizard counts triangles per instance). */
+  instances: number
 }
 
 export class ModelRefused extends Error {
@@ -44,7 +47,10 @@ export interface Assembled {
   deployedFiles: string[]
   /** Model files added by this deployment. */
   added: string[]
-  refused: Array<{ name: string; reason: string }>
+  /** Models left out, with the deployed path they would have had. */
+  refused: Array<{ name: string; file: string; reason: string }>
+  /** False when the World would get nothing new: no model added and no runtime upgrade. */
+  changed: boolean
   triangles: number
   newBytes: number
   newFileSources: Array<{ file: string; hash: string; url: string }>
@@ -62,15 +68,28 @@ export async function modelsInScene(sceneId: string): Promise<ModelNeed[]> {
     .where(and(eq(scenes.id, sceneId), eq(sceneElements.type, 'model')))
     .orderBy(sceneElements.createdAt, sceneElements.id)
 
-  const picked: Array<{ id: string; name: string; url: string; file: string }> = []
-  const seen = new Set<string>()
+  const placed = rows.length
+    ? await db
+        .select({ elementId: sceneElementInstances.elementId, n: count() })
+        .from(sceneElementInstances)
+        .where(inArray(sceneElementInstances.elementId, rows.map((r) => r.id)))
+        .groupBy(sceneElementInstances.elementId)
+    : []
+  const placedBy = new Map(placed.map((p) => [p.elementId, Number(p.n)]))
+
+  const picked: Array<{ id: string; name: string; url: string; file: string; instances: number }> = []
+  const byFile = new Map<string, (typeof picked)[number]>()
   for (const r of rows) {
     const url = (r.properties as { modelSrc?: unknown } | null)?.modelSrc
     if (typeof url !== 'string') continue
     const file = localModelFile(url)
-    if (!file || seen.has(file)) continue
-    seen.add(file)
-    picked.push({ id: r.id, name: r.name, url, file })
+    if (!file) continue
+    const instances = placedBy.get(r.id) ?? 0
+    const seen = byFile.get(file)
+    if (seen) { seen.instances += instances; continue }
+    const p = { id: r.id, name: r.name, url, file, instances }
+    byFile.set(file, p)
+    picked.push(p)
   }
   if (picked.length === 0) return []
 
@@ -96,6 +115,7 @@ export async function modelsInScene(sceneId: string): Promise<ModelNeed[]> {
       file: p.file,
       triangles: l?.triangles ?? null,
       bytes: l?.bytes ?? m?.bytes ?? null,
+      instances: p.instances,
     }
   })
 }
@@ -196,7 +216,8 @@ async function fetchModels(models: ModelNeed[], fetcher: ModelFetcher) {
       got.set(m.file, bytes)
       sources.push({ file: m.file, url: m.url })
     } catch (e) {
-      refused.push({ name: m.name, reason: e instanceof ModelRefused ? e.reason : `Could not fetch model: ${(e as Error).message}` })
+      if (!(e instanceof ModelRefused)) console.error('[assemble] model fetch failed:', m.url, (e as Error)?.message ?? e)
+      refused.push({ name: m.name, file: m.file, reason: e instanceof ModelRefused ? e.reason : 'Virvi could not download it' })
     }
   }
   return { got, sources, refused }
@@ -212,6 +233,7 @@ async function finish(input: {
   sources: Array<{ file: string; url: string }>
   refused: Assembled['refused']
   models: ModelNeed[]
+  changed: boolean
 }): Promise<Assembled> {
   const { entityId, files } = await buildEntity(input)
   const newFileSources = await Promise.all(
@@ -228,7 +250,8 @@ async function finish(input: {
     deployedFiles,
     added: input.sources.map((s) => s.file).sort(),
     refused: input.refused,
-    triangles: input.models.filter((m) => deployed.has(m.file.toLowerCase())).reduce((n, m) => n + (m.triangles ?? 0), 0),
+    changed: input.changed,
+    triangles: input.models.filter((m) => deployed.has(m.file.toLowerCase())).reduce((n, m) => n + (m.triangles ?? 0) * m.instances, 0),
     newBytes,
     newFileSources,
     existing: input.existing,
@@ -256,6 +279,7 @@ export async function assembleFresh(input: {
     sources,
     refused,
     models: input.models,
+    changed: true,
   })
 }
 
@@ -274,7 +298,9 @@ export async function assembleRedeploy(input: {
   let existing = live.content
   let metadata = live.metadata
   const newFiles = new Map<string, Uint8Array>(got)
-  if (!input.adopted && (live.metadata.virvi?.runtime ?? 0) < DCL_RUNTIME_VERSION) {
+  // Only a scene Virvi built (it carries the `virvi` block) gets Virvi's runtime; anything else is the owner's code.
+  const upgrade = !input.adopted && !!live.metadata.virvi && live.metadata.virvi.runtime < DCL_RUNTIME_VERSION
+  if (upgrade) {
     for (const [file, bytes] of await runtimeFiles()) {
       existing = existing.filter((c) => c.file !== file)
       newFiles.set(file, bytes)
@@ -299,5 +325,6 @@ export async function assembleRedeploy(input: {
     sources,
     refused,
     models: input.models,
+    changed: got.size > 0 || upgrade,
   })
 }

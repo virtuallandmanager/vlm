@@ -448,7 +448,11 @@ export default async function dclDestinationRoutes(app: FastifyInstance) {
     if (!live) throw new RouteError(409, 'no_live_scene')
     await db
       .update(dclWorldDestinations)
-      .set({ lastEntityId: live.id, deployedFiles: live.content.map((c) => c.file.toLowerCase()), status: 'ok', statusDetail: null, updatedAt: new Date() })
+      // A scene without Virvi's `virvi` block is the owner's own code (rebuilt in the Creator Hub, say): adopted, never touched
+      .set({
+        lastEntityId: live.id, deployedFiles: live.content.map((c) => c.file.toLowerCase()), adopted: !live.metadata?.virvi,
+        status: 'ok', statusDetail: null, updatedAt: new Date(),
+      })
       .where(eq(dclWorldDestinations.id, dest.id))
     return reply.send({ destination: await reload(dest.id) })
   }))

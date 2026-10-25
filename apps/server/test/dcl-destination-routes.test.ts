@@ -5,13 +5,13 @@ import { Wallet } from 'ethers'
 import { eq } from 'drizzle-orm'
 import { config } from '../src/config.js'
 import { db } from '../src/db/connection.js'
-import { dclWorldDestinations, sceneDeployments } from '../src/db/schema.js'
+import { assetLibraryItems, dclWorldDestinations, sceneDeployments } from '../src/db/schema.js'
 import { setDclDirectory } from '../src/analytics/dcl-directory.js'
-import { signedFetchPayload, virviSigner } from '../src/services/dcl/entity.js'
+import { dclHash, signedFetchPayload, virviSigner } from '../src/services/dcl/entity.js'
 import { setWorldsClient, WorldsError, type LiveEntity } from '../src/services/dcl/worlds-client.js'
-import { whenSettled } from '../src/services/dcl/world-deployer.js'
+import { startVirviDeploy, whenSettled } from '../src/services/dcl/world-deployer.js'
 import { resetDb } from './helpers/db.js'
-import { createElement, createScene, createUser, testApp, tokenFor, type TestUser } from './helpers/factories.js'
+import { createElement, createInstance, createScene, createUser, testApp, tokenFor, type TestUser } from './helpers/factories.js'
 import { createAnalyticsScene } from './helpers/analytics.js'
 import { createSetup } from './helpers/setups.js'
 import { FakeDclDirectory } from './helpers/fake-dcl.js'
@@ -464,6 +464,19 @@ describe('World destination routes', () => {
       expect(worlds.deployed).toHaveLength(1)
     })
 
+    it.each(['virvi', 'sign'] as const)('mode %s over the triangle budget is 422 over_budget with nothing started', async (mode) => {
+      const { scene, preset } = await createScene(user)
+      await db.insert(assetLibraryItems).values({ name: 'tree', storageKey: 'k', cdnUrl: `${CDN}/m/tree.glb`, triangleCount: 8_000 })
+      const el = await createElement(preset.id, { type: 'model', name: 'tree', properties: { modelSrc: `${CDN}/m/tree.glb` } })
+      for (let i = 0; i < 3; i++) await createInstance(el.id)
+      const dest = await insertDest(scene.id, { mode, grantedAt: mode === 'virvi' ? new Date() : null })
+      const res = await req('POST', `/api/dcl/destinations/${dest.id}/deploy`, {})
+      expect([res.statusCode, res.json().error]).toEqual([422, 'over_budget'])
+      expect(res.json().message).toMatch(/triangles/)
+      expect(await db.select().from(sceneDeployments)).toHaveLength(0)
+      expect(worlds.deployed).toHaveLength(0)
+    })
+
     it('a World read failure during a deploy maps to world_unreachable', async () => {
       const { scene } = await createScene(user)
       const dest = await insertDest(scene.id, { mode: 'sign' })
@@ -484,6 +497,26 @@ describe('World destination routes', () => {
     })
     worlds.entities.set(WORLD, [])
     expect((await req('POST', `/api/dcl/destinations/${dest.id}/rebase`, {})).json().error).toBe('no_live_scene')
+  })
+
+  it("rebasing onto a scene the owner built elsewhere marks it adopted; the next redeploy keeps the owner's code", async () => {
+    const { scene, preset } = await createScene(user)
+    const dest = await insertDest(scene.id, { lastEntityId: 'old', status: 'needs_review', statusDetail: 'changed', grantedAt: new Date() })
+    // The owner rebuilt the World in the Creator Hub: their own bin/index.js, no virvi block
+    const theirs = liveEntity('theirs', ['0,0', '1,0'])
+    theirs.content = await Promise.all(['bin/index.js', 'scene.json'].map(async (file) => ({ file, hash: await dclHash(new TextEncoder().encode(`owner ${file}`)) })))
+    worlds.entities.set(WORLD, [theirs])
+    expect((await req('POST', `/api/dcl/destinations/${dest.id}/rebase`, {})).statusCode).toBe(200)
+    expect((await destRow(dest.id)).adopted).toBe(true)
+
+    await createElement(preset.id, { type: 'model', name: 'B', properties: { modelSrc: `${CDN}/m/b.glb` } })
+    const fetch = async (url: string) => new TextEncoder().encode(`bytes of ${url}`)
+    await whenSettled((await startVirviDeploy(dest.id, user.id, { fetch })).id)
+    expect(worlds.deployed).toHaveLength(1)
+    const sent = worlds.deployed[0]
+    const entity = JSON.parse(new TextDecoder().decode(sent.files.get(sent.entityId)!))
+    expect(entity.content).toContainEqual(theirs.content[0])
+    expect(entity.metadata).toEqual(theirs.metadata)
   })
 
   describe('GET /api/scenes/:sceneId/dcl/destinations', () => {

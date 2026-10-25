@@ -8,8 +8,10 @@ import { assetLibraryItems, dclWorldDestinations, sceneDeployments, sceneElement
 import { setWorldsClient, WorldsError, type LiveEntity } from '../src/services/dcl/worlds-client.js'
 import { BATCH_WINDOW_MS, RETRY_BACKOFF_MS, startDclRedeploySweep, sweepRedeploys } from '../src/services/dcl/redeploy-sweep.js'
 import { DEPLOY_WINDOW_MS, startVirviDeploy, whenSettled } from '../src/services/dcl/world-deployer.js'
+import { DCL_RUNTIME_VERSION } from '../src/services/dcl/runtime.js'
+import { dclHash } from '../src/services/dcl/entity.js'
 import { resetDb } from './helpers/db.js'
-import { createElement, createScene, createUser, testApp, tokenFor } from './helpers/factories.js'
+import { createElement, createInstance, createScene, createUser, testApp, tokenFor } from './helpers/factories.js'
 import { FakeWorldsClient } from './helpers/fake-worlds.js'
 
 const CDN = 'https://cdn.virvi.test'
@@ -39,17 +41,29 @@ afterEach(() => {
   setWorldsClient(null)
 })
 
-async function setup(opts: { mode?: 'virvi' | 'sign'; models?: string[] } = {}) {
+/** The World's scene before the test: Virvi's runtime, no models yet (the owner's first deploy). */
+const FIRST: LiveEntity = {
+  id: 'bafyfirst',
+  pointers: ['0,0', '1,0'],
+  content: [{ file: 'bin/index.js', hash: await dclHash(enc('js')) }, { file: 'scene.json', hash: await dclHash(enc('scene')) }],
+  metadata: {
+    display: { title: 'Cafe' }, scene: { parcels: ['0,0', '1,0'], base: '0,0' }, main: 'bin/index.js', ecs7: true, runtimeVersion: '7',
+    worldConfiguration: { name: WORLD }, spawnPoints: [], virvi: { runtime: DCL_RUNTIME_VERSION, apiUrl: 'https://api.virvi.test', wssUrl: 'wss://api.virvi.test' },
+  } as LiveEntity['metadata'],
+}
+
+/** A destination whose first (owner-started) deploy is live, unless `fresh`. Each model is placed once. */
+async function setup(opts: { mode?: 'virvi' | 'sign'; models?: string[]; fresh?: boolean } = {}) {
   const owner = createUnsafeIdentity()
   const user = await createUser({ wallet: owner.address })
   const { scene, preset } = await createScene(user, 'Cafe')
-  for (const m of opts.models ?? ['a']) {
-    await createElement(preset.id, { type: 'model', name: m, properties: { modelSrc: `${CDN}/m/${m}.glb` } })
-  }
+  for (const m of opts.models ?? ['a']) await addModel(preset.id, m)
   const mode = opts.mode ?? 'virvi'
+  if (!opts.fresh) fake.entities.set(WORLD, [FIRST])
   const [dest] = await db.insert(dclWorldDestinations).values({
     sceneId: scene.id, ownerUserId: user.id, ownerWallet: owner.address.toLowerCase(), worldName: WORLD,
     base: '0,0', parcels: ['0,0', '1,0'], mode, grantedAt: mode === 'virvi' ? new Date() : null,
+    ...(opts.fresh ? {} : { lastEntityId: FIRST.id, deployedFiles: ['bin/index.js', 'scene.json'] }),
   }).returning()
   return { owner, user, scene, preset, dest }
 }
@@ -57,8 +71,11 @@ async function setup(opts: { mode?: 'virvi' | 'sign'; models?: string[] } = {}) 
 const destRow = async (id: string) => (await db.query.dclWorldDestinations.findFirst({ where: eq(dclWorldDestinations.id, id) }))!
 const depRow = async (id: string) => (await db.query.sceneDeployments.findFirst({ where: eq(sceneDeployments.id, id) }))!
 const deps = () => db.select().from(sceneDeployments)
-const addModel = (presetId: string, m: string) =>
-  createElement(presetId, { type: 'model', name: m, properties: { modelSrc: `${CDN}/m/${m}.glb` } })
+async function addModel(presetId: string, m: string, placed = 1, src = `${CDN}/m/${m}.glb`) {
+  const el = await createElement(presetId, { type: 'model', name: m, properties: { modelSrc: src } })
+  for (let i = 0; i < placed; i++) await createInstance(el.id)
+  return el
+}
 
 async function sweepAndSettle(now: Date) {
   const r = await sweepRedeploys(now, { fetch: fetcher })
@@ -218,6 +235,52 @@ describe('sweepRedeploys', () => {
     await sweepAndSettle(at(61))
     expect(fake.deployed).toHaveLength(0)
     expect(await deps()).toHaveLength(1)
+  })
+})
+
+describe('cross-task: what the sweep must never do', () => {
+  it('a refused model never causes endless identical redeploys; the owner sees which model and why', async () => {
+    const { preset, dest } = await setup()
+    await addModel(preset.id, 'evil', 1, 'https://evil.example/x.glb')
+    await sweepAndSettle(at(0))
+    await sweepAndSettle(at(61))
+    expect(fake.deployed).toHaveLength(1) // a went live, evil was refused
+    goLive()
+    for (const s of [100, 161, 300, 700, 1100, 1500]) await sweepAndSettle(at(s))
+    expect(fake.deployed).toHaveLength(1)
+    expect((await deps()).filter((d) => d.status === 'deployed')).toHaveLength(1)
+    const d = await destRow(dest.id)
+    expect(d.status).toBe('needs_review')
+    expect(d.statusDetail).toMatch(/evil/)
+    expect(d.statusDetail).toMatch(/not hosted by Virvi/)
+  })
+
+  it('a never-deployed destination is not deployed by the sweep (first deploys are owner-started)', async () => {
+    const { dest } = await setup({ fresh: true })
+    await sweepAndSettle(at(0))
+    await sweepAndSettle(at(61))
+    await sweepAndSettle(at(500))
+    expect(fake.deployed).toHaveLength(0)
+    expect(await deps()).toHaveLength(0)
+    expect((await destRow(dest.id)).pendingSince).toEqual(at(0))
+  })
+
+  it('counts triangles per placed instance, as the wizard does', async () => {
+    const { preset, dest } = await setup({ models: [] })
+    await db.insert(assetLibraryItems).values({ name: 'tree', storageKey: 'k1', cdnUrl: `${CDN}/m/tree.glb`, triangleCount: 6_000 })
+    await addModel(preset.id, 'tree', 4) // 24,000 placed > 20,000 for 2 parcels
+    await sweepAndSettle(at(0))
+    await sweepAndSettle(at(61))
+    expect(fake.deployed).toHaveLength(0)
+    expect(await destRow(dest.id)).toMatchObject({ status: 'over_budget' })
+    expect((await destRow(dest.id)).statusDetail).toMatch(/24,000 triangles/)
+  })
+
+  it('a sign destination over the triangle budget shows over_budget too', async () => {
+    const { dest } = await setup({ mode: 'sign', models: ['big'] })
+    await db.insert(assetLibraryItems).values({ name: 'big', storageKey: 'k1', cdnUrl: `${CDN}/m/big.glb`, triangleCount: 25_000 })
+    await sweepAndSettle(at(0))
+    expect(await destRow(dest.id)).toMatchObject({ status: 'over_budget' })
   })
 })
 

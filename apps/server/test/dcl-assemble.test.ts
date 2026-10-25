@@ -10,12 +10,12 @@ import {
 import { dclHash } from '../src/services/dcl/entity.js'
 import { runtimeFiles, DCL_RUNTIME_VERSION } from '../src/services/dcl/runtime.js'
 import type { LiveEntity } from '../src/services/dcl/worlds-client.js'
-import { createUser, createScene, createElement } from './helpers/factories.js'
+import { createUser, createScene, createElement, createInstance } from './helpers/factories.js'
 
 const CDN = 'https://cdn.virvi.test'
 const enc = (s: string) => new TextEncoder().encode(s)
 const need = (n: string, url = `${CDN}/m/${n}.glb`): ModelNeed => ({
-  elementId: n, name: n, url, file: `models/vlm/${n}.glb`, triangles: 100, bytes: 10,
+  elementId: n, name: n, url, file: `models/vlm/${n}.glb`, triangles: 100, bytes: 10, instances: 1,
 })
 
 let savedCdn: string | null
@@ -61,6 +61,29 @@ describe('assembleRedeploy', () => {
     expect(r.added).toEqual([])
     expect(r.existing.find((c) => c.file === 'bin/index.js')).toEqual(l.content[0])
     expect(JSON.stringify(r.metadata)).toBe(before)
+  })
+
+  it("never swaps in Virvi's runtime on a scene without a virvi block, even when not marked adopted", async () => {
+    const l = await live()
+    delete (l.metadata as { virvi?: unknown }).virvi
+    l.content[0].hash = await dclHash(enc('owner code'))
+    const before = JSON.stringify(l.metadata)
+    const r = await assembleRedeploy({ live: l, adopted: false, models: [need('a'), need('b')], timestamp: 1, fetch: fetcher() })
+    expect(r.existing.find((c) => c.file === 'bin/index.js')).toEqual(l.content[0])
+    expect(JSON.stringify(r.metadata)).toBe(before)
+    expect(r.added).toEqual(['models/vlm/b.glb'])
+  })
+
+  it('says whether anything would change: a new model or a runtime upgrade', async () => {
+    const same = await assembleRedeploy({ live: await live(), adopted: false, models: [need('a')], timestamp: 1, fetch: fetcher() })
+    expect(same.changed).toBe(false)
+    const refusedOnly = await assembleRedeploy({ live: await live(), adopted: false, models: [need('a'), need('x', 'https://evil.example/x.glb')], timestamp: 1, fetch: fetcher() })
+    expect([refusedOnly.changed, refusedOnly.refused.length]).toEqual([false, 1])
+    const added = await assembleRedeploy({ live: await live(), adopted: false, models: [need('a'), need('b')], timestamp: 1, fetch: fetcher() })
+    expect(added.changed).toBe(true)
+    const old = await live({}, 0)
+    old.content[0].hash = await dclHash(enc('old runtime'))
+    expect((await assembleRedeploy({ live: old, adopted: false, models: [need('a')], timestamp: 1, fetch: fetcher() })).changed).toBe(true)
   })
 
   it('upgrades the runtime of a wizard scene on an older version', async () => {
@@ -153,14 +176,15 @@ describe('modelsInScene / pendingModels', () => {
     const { scene, preset } = await createScene(user)
     const url = `${CDN}/m/Chair.glb`
     await db.insert(assetLibraryItems).values({ name: 'Chair', cdnUrl: url, storageKey: 'k', fileSizeBytes: 1234, triangleCount: 99 } as never)
-    await createElement(preset.id, { type: 'model', name: 'Chair', properties: { modelSrc: url } })
-    await createElement(preset.id, { type: 'model', name: 'Chair 2', properties: { modelSrc: url } })
+    const chair = await createElement(preset.id, { type: 'model', name: 'Chair', properties: { modelSrc: url } })
+    const chair2 = await createElement(preset.id, { type: 'model', name: 'Chair 2', properties: { modelSrc: url } })
+    for (const id of [chair.id, chair.id, chair2.id]) await createInstance(id)
     await createElement(preset.id, { type: 'model', name: 'Bad', properties: { modelSrc: 'https://x.example/thing.fbx' } })
     await createElement(preset.id, { type: 'model', name: 'Other', properties: { modelSrc: `${CDN}/m/Table.glb` } })
     const models = await modelsInScene(scene.id)
     expect(models.map((m) => m.file)).toEqual(['models/vlm/Chair.glb', 'models/vlm/Table.glb'])
-    expect(models[0]).toMatchObject({ triangles: 99, bytes: 1234 })
-    expect(models[1]).toMatchObject({ triangles: null, bytes: null })
+    expect(models[0]).toMatchObject({ triangles: 99, bytes: 1234, instances: 3 }) // placed instances of every element using the file
+    expect(models[1]).toMatchObject({ triangles: null, bytes: null, instances: 0 })
     const pending = await pendingModels({ sceneId: scene.id, deployedFiles: ['MODELS/VLM/chair.glb'] })
     expect(pending.map((m) => m.file)).toEqual(['models/vlm/Table.glb'])
   })
