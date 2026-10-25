@@ -26,15 +26,23 @@
  *   address's permission, creating the row if missing; once a row has parcels it covers only those parcels.
  *   It does not create the World's record, and `world_permissions` has a foreign key to it, so on a World
  *   that has never had a scene or permission it fails without the PUT first.
- * So the grant is the PUT, then the parcels POST: a parcel-scoped permission on any World. (Between the two
- * calls Virvi's permission is briefly world-wide.)
- * - `DELETE /world/{name}/permissions/deployment/{address}` removes the address's permission, parcels included.
+ * - A second PUT does NOT reset an existing row: it is `INSERT … ON CONFLICT DO NOTHING`, so a parcel-scoped
+ *   row keeps its parcels (the PUT neither widens it nor clears it), and the POST adds to them: parcels
+ *   accumulate across grants.
+ * - `DELETE /world/{name}/permissions/deployment/{address}` removes the address's permission, parcels included
+ *   (cascade). Deleting an address that has none is not an error, but the handler 404s when the World has no
+ *   record, which only exists once something (a deploy or a PUT) created it.
+ * So the grant is, in order: a reset DELETE (only when Virvi is already listed, so the World's record exists
+ * and old parcels are cleared), the PUT (world-wide, creates the record), the parcels POST (narrows it to the
+ * destination's parcels). The owner also signs a rollback DELETE up front: if the POST fails, Virvi would be
+ * left world-wide, so the rollback is sent at once; if that fails too the owner is told plainly (grant_partial).
  * - `GET /world/{name}/permissions` lists parcel-scoped deployers in `deployment.wallets` too.
  * All three writes are strict signed fetch (current 6.x payload), checked against the World owner.
  * `x-identity-metadata` is not read by these handlers; the only check on it is that `signer` isn't
  * `decentraland-kernel-scene`, and a missing header parses as `{}`. Virvi sends `'{}'` (the Creator Hub
  * sends no metadata on these calls). The parcels POST's JSON body is not covered by the signature.
- * The Worlds server accepts a signed fetch only within 60 s of its timestamp (crypto-middleware's default).
+ * The Worlds server accepts a signed fetch only within 60 s of its timestamp (crypto-middleware's default), so
+ * Virvi refuses anything older than 50 s rather than forwarding what Decentraland will reject.
  */
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
@@ -60,8 +68,8 @@ import { deploymentForCaller, publicDeployment } from './deploy.js'
 
 /** Signed-fetch metadata Virvi sends on permission calls (see the header comment). */
 const PERMISSION_METADATA = '{}'
-/** A grant or revoke POST must come within this long of the timestamp chosen at GET. */
-const SIGNED_REQUEST_MAX_AGE_MS = 5 * 60_000
+/** A grant or revoke POST must come within this long of the timestamp chosen at GET: under Decentraland's 60 s. */
+const SIGNED_REQUEST_MAX_AGE_MS = 50_000
 /** Clock skew tolerated for a timestamp in the future. */
 const FUTURE_SKEW_MS = 60_000
 /** DCL names and ENS names, ASCII only. */
@@ -160,14 +168,25 @@ function virviAddress(): string {
 type Signable = SignedRequest & { payload: string }
 const signable = (r: SignedRequest): Signable => ({ ...r, payload: signedFetchPayload(r.method, r.path, r.timestamp, r.metadata) })
 
-/** The grant: world-wide PUT, then narrowed to the destination's parcels plus any live scene it replaces (R3). */
-async function grantRequests(dest: Destination, virvi: string, timestamp: number): Promise<SignedRequest[]> {
-  const entities = await read(() => getWorldsClient().getWorldEntities(dest.worldName))
+type GrantStep = SignedRequest & { purpose: 'reset' | 'grant' | 'scope' | 'rollback' }
+
+/**
+ * The grant (see the header): [reset DELETE when Virvi is already listed], world-wide PUT, the parcels POST
+ * narrowing it to the destination's parcels plus any live scene it replaces (R3), and the rollback DELETE.
+ */
+async function grantRequests(dest: Destination, virvi: string, timestamp: number): Promise<GrantStep[]> {
+  const [entities, { deployers }] = await Promise.all([
+    read(() => getWorldsClient().getWorldEntities(dest.worldName)),
+    read(() => getWorldsClient().getDeployers(dest.worldName)),
+  ])
   const parcels = unique([...dest.parcels, ...overlapping(entities, dest.parcels)])
   const w = encodeURIComponent(dest.worldName)
+  const remove = { method: 'DELETE', path: `/world/${w}/permissions/deployment/${virvi}`, metadata: PERMISSION_METADATA, timestamp } as const
   return [
-    { method: 'PUT', path: `/world/${w}/permissions/deployment/${virvi}`, metadata: PERMISSION_METADATA, timestamp },
-    { method: 'POST', path: `/world/${w}/permissions/deployment/address/${virvi}/parcels`, metadata: PERMISSION_METADATA, timestamp, body: { parcels } },
+    ...(deployers.includes(virvi) ? [{ ...remove, purpose: 'reset' } as const] : []),
+    { method: 'PUT', path: `/world/${w}/permissions/deployment/${virvi}`, metadata: PERMISSION_METADATA, timestamp, purpose: 'grant' },
+    { method: 'POST', path: `/world/${w}/permissions/deployment/address/${virvi}/parcels`, metadata: PERMISSION_METADATA, timestamp, body: { parcels }, purpose: 'scope' },
+    { ...remove, purpose: 'rollback' },
   ]
 }
 
@@ -180,15 +199,14 @@ function signedTimestamp(raw: unknown): number {
   const ts = raw as number
   const now = Date.now()
   if (ts > now + FUTURE_SKEW_MS) throw new RouteError(400, 'invalid_timestamp')
-  if (now - ts > SIGNED_REQUEST_MAX_AGE_MS) throw new RouteError(400, 'expired')
+  if (now - ts > SIGNED_REQUEST_MAX_AGE_MS) {
+    throw new RouteError(400, 'expired', { message: 'The signatures took too long to reach Decentraland. Please try again and sign straight away.' })
+  }
   return ts
 }
 
-/**
- * Checks each chain against the payload the server derives for its request (owner as signer), then
- * forwards the requests in order. Nothing is sent unless every chain verifies.
- */
-async function forwardSigned(requests: SignedRequest[], chains: unknown, owner: string, failCode: string) {
+/** Checks each chain against the payload the server derives for its request, with the owner as signer. */
+async function verifyChains(requests: SignedRequest[], chains: unknown, owner: string): Promise<AuthChain[]> {
   if (!Array.isArray(chains) || chains.length !== requests.length || !chains.every(Array.isArray)) {
     throw new RouteError(400, 'invalid_chains')
   }
@@ -197,15 +215,55 @@ async function forwardSigned(requests: SignedRequest[], chains: unknown, owner: 
     if (chainSigner(signed[i]) !== owner) throw new RouteError(403, 'not_world_owner')
     if (!(await verifyChain(signed[i], signable(req).payload, owner))) throw new RouteError(400, 'invalid_signature')
   }
+  return signed
+}
+
+const refusal = (err: WorldsError) => `Decentraland refused it: ${err.body.slice(0, 300) || `HTTP ${err.status}`}`
+
+/** Verifies every chain, then forwards the requests in order. Nothing is sent unless every chain verifies. */
+async function forwardSigned(requests: SignedRequest[], chains: unknown, owner: string, failCode: string) {
+  const signed = await verifyChains(requests, chains, owner)
   for (const [i, req] of requests.entries()) {
     try {
       await getWorldsClient().sendSigned(req, signed[i])
     } catch (err) {
-      if (err instanceof WorldsError) {
-        throw new RouteError(502, failCode, { message: `Decentraland refused it: ${err.body.slice(0, 300) || `HTTP ${err.status}`}` })
-      }
+      if (err instanceof WorldsError) throw new RouteError(502, failCode, { message: refusal(err) })
       throw err
     }
+  }
+}
+
+const PARTIAL_GRANT =
+  "Virvi can currently deploy anywhere in your World, not just this scene's parcels, and removing that failed. " +
+  "Remove Virvi's permission from this page, or in the Creator Hub under your World's permissions."
+
+/**
+ * Sends a verified grant. If the parcels POST fails after the world-wide PUT, the pre-signed rollback goes out at
+ * once; if that fails too, 502 grant_partial. grantedAt is cleared whenever Virvi's permission was touched.
+ */
+async function sendGrant(dest: Destination, steps: GrantStep[], chains: AuthChain[]) {
+  const send = (i: number) => getWorldsClient().sendSigned(steps[i], chains[i])
+  const rollback = steps.findIndex((s) => s.purpose === 'rollback')
+  let touched = false
+  for (const [i, step] of steps.entries()) {
+    if (step.purpose === 'rollback') continue
+    try {
+      await send(i)
+    } catch (err) {
+      if (!(err instanceof WorldsError)) throw err
+      if (touched) await db.update(dclWorldDestinations).set({ grantedAt: null, updatedAt: new Date() }).where(eq(dclWorldDestinations.id, dest.id))
+      if (step.purpose === 'scope') {
+        try {
+          await send(rollback)
+        } catch (again) {
+          if (!(again instanceof WorldsError)) throw again
+          throw new RouteError(502, 'grant_partial', { message: PARTIAL_GRANT })
+        }
+        throw new RouteError(502, 'grant_rejected', { message: `${refusal(err)}. Virvi's permission was removed again, so nothing changed.` })
+      }
+      throw new RouteError(502, 'grant_rejected', { message: refusal(err) })
+    }
+    touched = true
   }
 }
 
@@ -340,7 +398,8 @@ export default async function dclDestinationRoutes(app: FastifyInstance) {
     const owner = await requireOwner(request.user.id, dest)
     const virvi = virviAddress()
     const timestamp = signedTimestamp(request.body?.timestamp)
-    await forwardSigned(await grantRequests(dest, virvi, timestamp), request.body?.chains, owner, 'grant_rejected')
+    const steps = await grantRequests(dest, virvi, timestamp)
+    await sendGrant(dest, steps, await verifyChains(steps, request.body?.chains, owner))
     const { deployers } = await read(() => getWorldsClient().getDeployers(dest.worldName))
     if (!deployers.includes(virvi)) throw new RouteError(502, 'grant_not_visible')
     await db.update(dclWorldDestinations).set({ mode: 'virvi', grantedAt: new Date(), updatedAt: new Date() }).where(eq(dclWorldDestinations.id, dest.id))

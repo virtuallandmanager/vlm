@@ -264,25 +264,39 @@ describe('World destination routes', () => {
   })
 
   describe('grant', () => {
-    it('round trip: two signed requests in order, then grantedAt', async () => {
+    /** The fake's World state follows the permission calls, as the real server's does. */
+    function trackPermissions() {
+      const orig = worlds.sendSigned.bind(worlds)
+      worlds.sendSigned = async (r, c) => {
+        await orig(r, c)
+        const d = worlds.deployers.get(WORLD)!
+        if (r.method === 'PUT') worlds.deployers.set(WORLD, { ...d, deployers: unique([...d.deployers, virvi]) })
+        if (r.method === 'DELETE') worlds.deployers.set(WORLD, { ...d, deployers: d.deployers.filter((x) => x !== virvi) })
+      }
+    }
+    const unique = (xs: string[]) => [...new Set(xs)]
+    const sign = (requests: any[]) => Promise.all(requests.map((r: any) => chainFor(owner, r.payload)))
+
+    it('round trip: PUT, parcels POST and a pre-signed rollback; the first two are sent, then grantedAt', async () => {
       const { scene } = await createScene(user)
       const dest = await insertDest(scene.id, { mode: 'virvi', base: '0,0', parcels: ['0,0', '1,0'] })
       // The World's live scene overlaps the plot and is bigger: its footprint joins the grant
       worlds.entities.set(WORLD, [liveEntity('e1', ['0,0', '0,1', '0,2']), liveEntity('far', ['9,9'])])
+      trackPermissions()
 
       const got = await req('GET', `/api/dcl/destinations/${dest.id}/grant`)
       expect(got.statusCode).toBe(200)
       const { virviAddress, requests } = got.json()
       expect(virviAddress).toBe(virvi)
-      expect(requests).toHaveLength(2)
-      const [put, post] = requests
+      expect(requests.map((r: any) => r.purpose)).toEqual(['grant', 'scope', 'rollback'])
+      const [put, post, rollback] = requests
       expect(put).toMatchObject({ method: 'PUT', path: `/world/${WORLD}/permissions/deployment/${virvi}`, metadata: '{}' })
       expect(post).toMatchObject({ method: 'POST', path: `/world/${WORLD}/permissions/deployment/address/${virvi}/parcels`, metadata: '{}' })
+      expect(rollback).toMatchObject({ method: 'DELETE', path: `/world/${WORLD}/permissions/deployment/${virvi}`, metadata: '{}' })
       expect([...post.body.parcels].sort()).toEqual(['0,0', '0,1', '0,2', '1,0'])
       for (const r of requests) expect(r.payload).toBe(signedFetchPayload(r.method, r.path, r.timestamp, r.metadata))
 
-      worlds.deployers.set(WORLD, { owner: user.wallet, deployers: [virvi] })
-      const chains = [await chainFor(owner, put.payload), await chainFor(owner, post.payload)]
+      const chains = await sign(requests)
       const res = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains, timestamp: put.timestamp })
       expect(res.statusCode).toBe(200)
       expect(worlds.signed.map((s) => [s.req.method, s.req.path])).toEqual([['PUT', put.path], ['POST', post.path]])
@@ -292,12 +306,58 @@ describe('World destination routes', () => {
       expect(res.json().destination.grantedAt).not.toBeNull()
     })
 
+    it('a second grant starts clean: the old parcel list is removed first (the PUT would not reset it)', async () => {
+      const { scene } = await createScene(user)
+      const dest = await insertDest(scene.id, { mode: 'virvi' })
+      worlds.deployers.set(WORLD, { owner: user.wallet, deployers: [virvi] })
+      trackPermissions()
+      const { requests } = (await req('GET', `/api/dcl/destinations/${dest.id}/grant`)).json()
+      expect(requests.map((r: any) => [r.purpose, r.method])).toEqual([['reset', 'DELETE'], ['grant', 'PUT'], ['scope', 'POST'], ['rollback', 'DELETE']])
+      const res = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: await sign(requests), timestamp: requests[0].timestamp })
+      expect(res.statusCode).toBe(200)
+      expect(worlds.signed.map((s) => s.req.method)).toEqual(['DELETE', 'PUT', 'POST'])
+    })
+
+    it('when the parcels POST fails, the pre-signed rollback removes the world-wide permission', async () => {
+      const { scene } = await createScene(user)
+      const dest = await insertDest(scene.id)
+      trackPermissions()
+      const tracked = worlds.sendSigned
+      worlds.sendSigned = async (r, c) => {
+        if (r.method === 'POST') throw new WorldsError(400, '{"error":"bad parcels"}')
+        return tracked(r, c)
+      }
+      const { requests } = (await req('GET', `/api/dcl/destinations/${dest.id}/grant`)).json()
+      const res = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: await sign(requests), timestamp: requests[0].timestamp })
+      expect([res.statusCode, res.json().error]).toEqual([502, 'grant_rejected'])
+      expect(res.json().message).toMatch(/removed again/)
+      expect(worlds.signed.map((s) => s.req.method)).toEqual(['PUT', 'DELETE'])
+      expect(worlds.deployers.get(WORLD)!.deployers).toEqual([])
+      expect((await destRow(dest.id)).grantedAt).toBeNull()
+    })
+
+    it('when the rollback fails too, 502 grant_partial says Virvi can deploy anywhere and how to remove it', async () => {
+      const { scene } = await createScene(user)
+      const dest = await insertDest(scene.id, { grantedAt: new Date() })
+      trackPermissions()
+      const tracked = worlds.sendSigned
+      worlds.sendSigned = async (r, c) => {
+        if (r.method !== 'PUT') throw new WorldsError(503, '')
+        return tracked(r, c)
+      }
+      const { requests } = (await req('GET', `/api/dcl/destinations/${dest.id}/grant`)).json()
+      const res = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: await sign(requests), timestamp: requests[0].timestamp })
+      expect([res.statusCode, res.json().error]).toEqual([502, 'grant_partial'])
+      expect(res.json().message).toMatch(/anywhere in your World/)
+      expect(res.json().message).toMatch(/Creator Hub/)
+      expect((await destRow(dest.id)).grantedAt).toBeNull()
+    })
+
     it("502 grant_not_visible when Virvi isn't listed afterwards", async () => {
       const { scene } = await createScene(user)
       const dest = await insertDest(scene.id)
       const { requests } = (await req('GET', `/api/dcl/destinations/${dest.id}/grant`)).json()
-      const chains = await Promise.all(requests.map((r: any) => chainFor(owner, r.payload)))
-      const res = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains, timestamp: requests[0].timestamp })
+      const res = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: await sign(requests), timestamp: requests[0].timestamp })
       expect([res.statusCode, res.json().error]).toEqual([502, 'grant_not_visible'])
       expect(worlds.signed).toHaveLength(2)
       expect((await destRow(dest.id)).grantedAt).toBeNull()
@@ -318,10 +378,12 @@ describe('World destination routes', () => {
       const r2 = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: forged, timestamp: ts })
       expect([r2.statusCode, r2.json().error]).toEqual([400, 'invalid_signature'])
 
-      const old = ts - 6 * 60_000
+      // Past 50 s: Decentraland would refuse it at 60 s, so Virvi refuses first, in plain words
+      const old = Date.now() - 51_000
       const stale = await Promise.all(requests.map((r: any) => chainFor(owner, signedFetchPayload(r.method, r.path, old, r.metadata))))
       const r3 = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: stale, timestamp: old })
       expect([r3.statusCode, r3.json().error]).toEqual([400, 'expired'])
+      expect(r3.json().message).toMatch(/try again/i)
 
       const good = await chainFor(owner, requests[0].payload)
       const r4 = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: [good], timestamp: ts })
@@ -335,7 +397,7 @@ describe('World destination routes', () => {
       worlds.deployers.set(WORLD, { owner: '0x' + 'b'.repeat(40), deployers: [] })
       for (const [method, url, body] of [
         ['GET', `/api/dcl/destinations/${dest.id}/grant`, undefined],
-        ['POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: [[], []], timestamp: Date.now() }],
+        ['POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: [[], [], []], timestamp: Date.now() }],
         ['DELETE', `/api/dcl/destinations/${dest.id}/grant`, undefined],
         ['POST', `/api/dcl/destinations/${dest.id}/deploy`, {}],
       ] as const) {
