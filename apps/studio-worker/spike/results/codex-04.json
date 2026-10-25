@@ -1,0 +1,36 @@
+{
+  "agent": "codex",
+  "model": "gpt-6.1-sol",
+  "brief": "04-emote-build.md",
+  "skillsSha": null,
+  "outcome": "ok",
+  "wallSec": 112.2,
+  "turns": 1,
+  "tokens": {
+    "input": 48,
+    "cachedInput": 435636,
+    "cacheWrite": 35090,
+    "output": 3845
+  },
+  "costUsd": 0.1523,
+  "checker": {
+    "ran": true,
+    "pass": true,
+    "warnings": 0,
+    "failures": 0,
+    "report": "Friendly_Two_Handed_Wave.glb\n  PASS  model file size                          0.15 MB                        <= 2 MB server; warn over 1 MB (export keyed channels only)\n  PASS  scene roots                              ['Armature']                   Armature [+ Armature_Prop]\n  PASS  clips                                    ['Friendly_Two_Handed_Wave']   exactly 1\n  PASS  Friendly_Two_Handed_Wave length          3.000 s                        <= 10 s (hard error)\n  PASS  Friendly_Two_Handed_Wave frames          91                             <= 300\n  PASS  Friendly_Two_Handed_Wave fps (keys / length) 30.0                           30 (Builder estimates this way)\n  PASS  deform bones keyed at first+last frame   62/62                          Builder warning; docs ask for all\n  PASS  rotation jumps between keys (>90deg)     none                           players interpolate: a flip sweeps through in-world\n  INFO  largest avatar bone scale                1.00 Avatar_LeftToeBase        \n  PASS  hips horizontal travel                   0.00 m                         <= 1 m\n  INFO  hips highest point                       1.00 m                         <= 4 m\n  PASS  loop seam: first key == last key         all match                      run check_loop.py too\n  PASS  no meshes without Armature_Prop          0                              \nNO FAILS\n"
+  },
+  "glbs": [
+    "out/Friendly_Two_Handed_Wave.glb"
+  ],
+  "session": "01a170f3-b2d9-7720-8ca7-4b66d9379df9",
+  "error": null,
+  "sessionTotal": {
+    "input": 48,
+    "cached_input": 435636,
+    "cache_write": 35090,
+    "output": 3845,
+    "turns": 1,
+    "costUsd": 0.1523
+  }
+}

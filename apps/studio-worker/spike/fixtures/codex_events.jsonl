@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"01a1702b-0000-7140-8c7c-2f4dfa2575b6"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Building the hat."}}
+{"type":"turn.completed","usage":{"input_tokens":1200000,"cached_input_tokens":1000000,"cache_write_input_tokens":50000,"output_tokens":30000,"reasoning_output_tokens":12000}}
+{"type":"turn.started"}
+{"type":"turn.completed","usage":{"input_tokens":2000000,"cached_input_tokens":1900000,"cache_write_input_tokens":0,"output_tokens":20000,"reasoning_output_tokens":8000}}

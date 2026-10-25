@@ -1,0 +1,11 @@
+{
+  "mode": "webgpu",
+  "angle": "vulkan",
+  "emote": false,
+  "ok": false,
+  "framesWritten": 72,
+  "blankFrames": 72,
+  "bootSec": 39.3,
+  "secPerFrame": 0.423,
+  "error": "45 console errors, see runs/preview-webgpu-vulkan/frame_console.log\n"
+}

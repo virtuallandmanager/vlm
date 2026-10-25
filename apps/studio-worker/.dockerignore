@@ -1,0 +1,5 @@
+# Never send keys, the base avatar files or run output to a builder; the spike code goes to machines separately
+.env
+assets/
+runs/
+spike/

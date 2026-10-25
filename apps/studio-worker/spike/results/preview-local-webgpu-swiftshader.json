@@ -1,0 +1,11 @@
+{
+  "mode": "webgpu",
+  "angle": "swiftshader",
+  "emote": false,
+  "ok": false,
+  "framesWritten": 72,
+  "blankFrames": 72,
+  "bootSec": 43.9,
+  "secPerFrame": 0.473,
+  "error": "45 console errors, see /work/runs/preview-webgpu-swiftshader/frame_console.log\n"
+}
