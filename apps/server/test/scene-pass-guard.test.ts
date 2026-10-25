@@ -72,6 +72,9 @@ const PUBLIC_PREFIX = [
   'POST /hook/', // platform hooks: per-hook secret in the URL
   'GET /api/docs', // Swagger UI and its static files
   'GET /uploads/', // static uploaded media
+  'GET /api/studio/worker/', // studio worker machines: the per-design worker token is the auth
+  'PUT /api/studio/worker/', // studio worker machines: the per-design worker token is the auth
+  'POST /api/studio/worker/', // studio worker machines: the per-design worker token is the auth
 ]
 // Read an optional bearer but treat a scene pass as no bearer (so the walk cannot see a 403).
 // Each entry has its own test below.

@@ -1,0 +1,117 @@
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { eq, sql } from 'drizzle-orm'
+import { db } from '../db/connection.js'
+import { studioDesigns, studioJobs } from '../db/schema.js'
+import { config } from '../config.js'
+import { hashWorkerToken } from '../studio/machines.js'
+import { checkFilePath, getStudioStore, jobFileKey, workspaceKey } from '../studio/store.js'
+import { applyResult, parseResult } from '../studio/results.js'
+import { publishStudio } from '../studio/events.js'
+
+/**
+ * VLM's side of apps/studio-worker/CONTRACT.md. Each design's machine authenticates with its own worker token; a token
+ * reaches only its design and that design's jobs. Workers upload dozens of files a job, so the global rate limit is off.
+ */
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const MB = 1024 * 1024
+const FILE_LIMIT = 50 * MB
+const WORKSPACE_LIMIT = 1024 * MB
+const MAX_EVENT_TEXT = 4000
+
+type Design = typeof studioDesigns.$inferSelect
+type Job = typeof studioJobs.$inferSelect
+declare module 'fastify' {
+  interface FastifyRequest {
+    studioDesign?: Design
+    studioJob?: Job
+  }
+}
+
+async function workerAuth(request: FastifyRequest, reply: FastifyReply) {
+  if (!config.studioEnabled) return reply.status(404).send({ error: 'not_found' })
+  const auth = request.headers.authorization
+  const token = auth?.startsWith('Bearer ') ? auth.slice(7) : ''
+  const [design] = token
+    ? await db.select().from(studioDesigns).where(eq(studioDesigns.workerTokenHash, hashWorkerToken(token)))
+    : []
+  if (!design) return reply.status(401).send({ error: 'invalid_worker_token' })
+  const params = request.params as { designId?: string; jobId?: string }
+  if (params.designId !== undefined && params.designId !== design.id) return reply.status(403).send({ error: 'forbidden' })
+  if (params.jobId !== undefined) {
+    const [job] = UUID.test(params.jobId) ? await db.select().from(studioJobs).where(eq(studioJobs.id, params.jobId)) : []
+    if (!job) return reply.status(404).send({ error: 'job_not_found' })
+    if (job.designId !== design.id) return reply.status(403).send({ error: 'forbidden' })
+    request.studioJob = job
+  }
+  request.studioDesign = design
+}
+
+export default async function studioWorkerRoutes(app: FastifyInstance) {
+  await app.register(async (scope) => {
+    // Workspaces and job files are raw bytes of any type
+    scope.addContentTypeParser('*', { parseAs: 'buffer', bodyLimit: WORKSPACE_LIMIT }, (_req, body, done) => done(null, body))
+    const opts = { preHandler: workerAuth, config: { rateLimit: false }, schema: { hide: true } } as const
+
+    scope.get('/api/studio/worker/designs/:designId/workspace', opts, async (request, reply) => {
+      const obj = await getStudioStore().get(workspaceKey(request.studioDesign!.id))
+      if (!obj) return reply.status(404).send({ error: 'no_workspace' })
+      return reply.type('application/gzip').send(obj.body)
+    })
+
+    scope.put('/api/studio/worker/designs/:designId/workspace', { ...opts, bodyLimit: WORKSPACE_LIMIT }, async (request, reply) => {
+      const body = request.body
+      if (!Buffer.isBuffer(body) || !body.length) return reply.status(400).send({ error: 'empty_workspace' })
+      await getStudioStore().put(workspaceKey(request.studioDesign!.id), body, 'application/gzip')
+      return reply.status(204).send()
+    })
+
+    scope.get('/api/studio/worker/designs/:designId/jobs/next', opts, async (request, reply) => {
+      const designId = request.studioDesign!.id
+      const rows = await db.execute<{ id: string; payload: Record<string, unknown> }>(sql`
+        UPDATE studio_jobs SET status = 'taken', taken_at = now()
+        WHERE id = (
+          SELECT id FROM studio_jobs WHERE design_id = ${designId} AND status = 'queued'
+          ORDER BY created_at, id LIMIT 1 FOR UPDATE SKIP LOCKED
+        ) AND status = 'queued'
+        RETURNING id, payload`)
+      const job = (rows as unknown as { id: string; payload: Record<string, unknown> }[])[0]
+      if (!job) return reply.status(204).send()
+      await publishStudio(designId, { type: 'job', jobId: job.id, status: 'taken' })
+      return reply.send({ jobId: job.id, ...job.payload })
+    })
+
+    scope.post('/api/studio/worker/jobs/:jobId/events', opts, async (request, reply) => {
+      const e = request.body as { type?: unknown; text?: unknown; phase?: unknown } | null
+      const job = request.studioJob!
+      if (e?.type === 'progress' && typeof e.text === 'string') {
+        await publishStudio(job.designId, { type: 'progress', jobId: job.id, text: e.text.slice(0, MAX_EVENT_TEXT) })
+      } else if (e?.type === 'phase' && typeof e.phase === 'string' && /^[a-z_]{1,32}$/.test(e.phase)) {
+        await publishStudio(job.designId, { type: 'phase', jobId: job.id, phase: e.phase })
+      } else {
+        return reply.status(400).send({ error: 'bad_event' })
+      }
+      return reply.status(204).send()
+    })
+
+    scope.put('/api/studio/worker/jobs/:jobId/files/*', { ...opts, bodyLimit: FILE_LIMIT }, async (request, reply) => {
+      const path = (request.params as { '*': string })['*']
+      const checked = checkFilePath(path)
+      if (!checked.ok) return reply.status(400).send({ error: 'bad_path', reason: checked.reason })
+      const job = request.studioJob!
+      if (job.status !== 'taken') return reply.status(409).send({ error: 'job_not_taken' })
+      const body = request.body
+      if (!Buffer.isBuffer(body)) return reply.status(400).send({ error: 'not_bytes' })
+      const type = (request.headers['content-type'] ?? 'application/octet-stream').split(';')[0].trim().slice(0, 100)
+      await getStudioStore().put(jobFileKey(job.designId, job.id, path), body, type)
+      return reply.status(204).send()
+    })
+
+    scope.post('/api/studio/worker/jobs/:jobId/result', opts, async (request, reply) => {
+      const parsed = parseResult(request.body)
+      if (!parsed.ok) return reply.status(400).send({ error: 'bad_result', reason: parsed.reason })
+      await applyResult(request.studioJob!.id, parsed.result, new Date())
+      return reply.status(204).send()
+    })
+  })
+}

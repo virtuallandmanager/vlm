@@ -111,3 +111,13 @@ export async function publishStreamStatus(e: Omit<StreamStatusEvent, 'type'>): P
     console.error('[bus] stream_status publish failed:', err)
   }
 }
+
+/** Publish on any topic (after the DB write). Never throws, like publishSceneTouched. */
+export async function publishOnBus(topic: string, data: unknown): Promise<void> {
+  if (!presence) return
+  try {
+    await presence.publish(topic, data)
+  } catch (err) {
+    console.error(`[bus] ${topic.split(':')[0]} publish failed:`, err)
+  }
+}

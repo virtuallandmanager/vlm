@@ -1,5 +1,5 @@
 import { db } from '../../src/db/connection.js'
-import { studioDesigns } from '../../src/db/schema.js'
+import { studioDesigns, studioJobs } from '../../src/db/schema.js'
 import type { WorkerMachineSpec } from '../../src/hyperfy/fly.js'
 import type { TestUser } from './factories.js'
 
@@ -44,4 +44,63 @@ export async function createDesign(
     .values({ ownerId: user.id, name: 'Neon cap', kind: 'wearable', agent: 'claude', ...opts })
     .returning()
   return d
+}
+
+/** Gives the design a worker token, as ensureWorker would, and returns it. */
+export async function issueWorker(design: { id: string }, machineId = 'm-test') {
+  const { randomBytes } = await import('node:crypto')
+  const { hashWorkerToken } = await import('../../src/studio/machines.js')
+  const { eq } = await import('drizzle-orm')
+  const token = randomBytes(32).toString('base64url')
+  await db.update(studioDesigns).set({ machineId, workerTokenHash: hashWorkerToken(token) }).where(eq(studioDesigns.id, design.id))
+  return token
+}
+
+export const PROMPT_PAYLOAD = {
+  type: 'prompt',
+  kind: 'wearable',
+  agent: 'claude',
+  model: 'claude-opus-5-5',
+  prompt: 'a neon cap with a glowing visor',
+  selectedSlots: ['hat'],
+  limits: { timeoutSec: 1500, maxTurns: 80, costCeilingUsd: 3 },
+  render: null,
+}
+
+export async function queueJob(
+  design: { id: string },
+  payload: Record<string, unknown> = PROMPT_PAYLOAD,
+  opts: Partial<typeof studioJobs.$inferInsert> = {},
+) {
+  const [j] = await db.insert(studioJobs)
+    .values({ designId: design.id, type: String(payload.type), payload, ...opts })
+    .returning()
+  return j
+}
+
+/** The CONTRACT.md Result example, for a job. */
+export function okResult(jobId: string, over: Record<string, unknown> = {}) {
+  return {
+    jobId,
+    outcome: 'ok',
+    agent: 'claude',
+    model: 'claude-opus-5-5',
+    skillsSha: '3430ce2ef5b7f9d388fcb7c923f50e0dcb505420',
+    wallSec: 412.3,
+    tokens: { input: 2100, cachedInput: 820000, cacheWrite: 61000, output: 18000 },
+    costUsd: 0.74,
+    reply: 'I built a rounded cap with a neon visor strip...',
+    proposal: null,
+    pieces: [{
+      category: 'hat',
+      changed: true,
+      changeKind: 'new',
+      meta: { name: 'Neon Cap', description: '...', category: 'hat', hides: [], replaces: [], tags: ['cyberpunk'], changeKind: 'new' },
+      checker: { pass: true, failures: 0, warnings: 1 },
+      files: ['pieces/hat/neon_cap_male.glb', 'pieces/hat/neon_cap_female.glb', 'pieces/hat/piece.json', 'checks/hat.txt'],
+      renders: { 'spin-male-default': 36 },
+    }],
+    error: null,
+    ...over,
+  }
 }

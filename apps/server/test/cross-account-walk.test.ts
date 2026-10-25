@@ -247,6 +247,12 @@ const NOT_CROSS_ACCOUNT: Record<string, string> = {
   'POST /hook/register': 'public by owner decision: scene content is public in-world (address checks and the 20-per-scene cap guard it)',
   'GET /hook/config': 'public by owner decision: scene content is public in-world',
   'GET /hook/scene': 'public by owner decision: scene content is public in-world',
+  'GET /api/studio/worker/designs/:designId/workspace': "the per-design worker token is the auth; another design's token is 403 (studio-worker-routes.test.ts)",
+  'PUT /api/studio/worker/designs/:designId/workspace': "the per-design worker token is the auth; another design's token is 403 (studio-worker-routes.test.ts)",
+  'GET /api/studio/worker/designs/:designId/jobs/next': "the per-design worker token is the auth; another design's token is 403 (studio-worker-routes.test.ts)",
+  'POST /api/studio/worker/jobs/:jobId/events': "the per-design worker token is the auth; another design's token is 403 (studio-worker-routes.test.ts)",
+  'PUT /api/studio/worker/jobs/:jobId/files/*': "the per-design worker token is the auth; another design's token is 403 (studio-worker-routes.test.ts)",
+  'POST /api/studio/worker/jobs/:jobId/result': "the per-design worker token is the auth; another design's token is 403 (studio-worker-routes.test.ts)",
 }
 
 // Every table holding B's fixtures; a refused request must leave all of them as they were.
