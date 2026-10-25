@@ -11,6 +11,7 @@ import { runMigrations } from './db/migrate.js'
 import { buildApp } from './app.js'
 import { startLifecycleSweep } from './venues/lifecycle.js'
 import { startHostedWorldSweep, SWEEP_INTERVAL_MS } from './hyperfy/sweep.js'
+import { startStudioSweep, STUDIO_SWEEP_MS } from './studio/sweep.js'
 import { hyperfyHosting } from './services/hyperfy/infrastructure.js'
 import { startAnalyticsJobs } from './analytics/jobs.js'
 import { initBus } from './realtime/bus.js'
@@ -80,6 +81,10 @@ async function main() {
   if (hyperfyHosting().available) {
     startHostedWorldSweep(SWEEP_INTERVAL_MS)
     console.log(`[vlm-server] Hosted Hyperfy world sweep every ${SWEEP_INTERVAL_MS}ms`)
+  }
+  if (config.studioEnabled) {
+    startStudioSweep(STUDIO_SWEEP_MS)
+    console.log(`[vlm-server] Design Studio sweep every ${STUDIO_SWEEP_MS}ms`)
   }
   startAnalyticsJobs()
   console.log('[vlm-server] Analytics jobs started')
