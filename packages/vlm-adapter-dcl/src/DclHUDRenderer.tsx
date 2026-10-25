@@ -74,7 +74,7 @@ interface HUDState {
   layout: HUDLayoutItem[]
   layoutLoaded: boolean
   layoutFailed: boolean
-  editMessage: { text: string; error: boolean } | null
+  editMessage: { text: string; error: boolean; action?: { label: string; action: string } } | null
   confirmDelete: string | null
   missingModels: number
   /** The Media Library's Upload view: an upload link (this computer) and its QR (phone), minted on open. */
@@ -688,9 +688,18 @@ function NavBar() {
 
 function EditMessage() {
   if (!state.editMessage) return null
+  const { action } = state.editMessage
   return (
-    <Label value={state.editMessage.text} fontSize={10} color={state.editMessage.error ? C.danger : C.success}
-      textAlign="top-left" uiTransform={{ width: '100%', height: 24 }} />
+    <UiEntity uiTransform={{ width: '100%', flexDirection: 'column' }}>
+      <Label value={state.editMessage.text} fontSize={10} color={state.editMessage.error ? C.danger : C.success}
+        textAlign="top-left" uiTransform={{ width: '100%', height: 24 }} />
+      {action && (
+        <UiEntity uiTransform={{ width: '100%', margin: { bottom: 6 } }}>
+          <Button label={action.label} color={C.accent} height={26} fontSize={11}
+            onPress={() => onSceneAction?.(action.action)} />
+        </UiEntity>
+      )}
+    </UiEntity>
   )
 }
 
@@ -1453,8 +1462,8 @@ export class DclHUDRenderer implements HUDRenderer {
   }
 
   /** A one-line result for the Assets / Layout panels (null clears it). */
-  setEditMessage(text: string | null, error = false): void {
-    state.editMessage = text === null ? null : { text, error }
+  setEditMessage(text: string | null, error = false, action?: { label: string; action: string }): void {
+    state.editMessage = text === null ? null : { text, error, action }
   }
 
   setScenes(scenes: Scene[]): void {

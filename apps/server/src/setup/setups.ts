@@ -1,4 +1,6 @@
+import { randomBytes } from 'node:crypto'
 import { and, eq, isNull } from 'drizzle-orm'
+import { locationKeyFor } from 'vlm-shared'
 import { db } from '../db/connection.js'
 import { analyticsScenes, locationSetups, sceneRoles, scenePresets, scenes } from '../db/schema.js'
 import { getDclDirectory, type DclDirectory } from '../analytics/dcl-directory.js'
@@ -90,6 +92,73 @@ async function release(setup: LocationSetupRow, scene: AnalyticsSceneRow, now: D
       .where(and(eq(analyticsScenes.id, scene.id), eq(analyticsScenes.vlmSceneId, setup.vlmSceneId)))
   })
   return null
+}
+
+/**
+ * Links a World Virvi just deployed to its VLM scene: the location row (as the registry would write it
+ * for a World ref) and the active setup, so the in-world editor works with no "Set up VLM here" step.
+ * Another scene's setup there is ended as 'replaced'; the same scene's only gets the new entity id.
+ */
+export async function linkWorldLocation(input: {
+  world: string
+  vlmSceneId: string
+  hostUserId: string
+  entityId: string
+  title: string
+  base?: string
+  parcels?: string[]
+}, now = new Date()): Promise<void> {
+  const world = input.world.toLowerCase()
+  const locationKey = locationKeyFor({ realm: world, isWorld: true, isPreview: false, worldName: world }, null)
+  await db.transaction(async (tx) => {
+    const [loc] = await tx
+      .insert(analyticsScenes)
+      .values({
+        kind: 'world',
+        locationKey,
+        realm: world,
+        baseParcel: input.base ?? null,
+        parcels: input.parcels ?? [],
+        worldName: world,
+        activeEntityId: input.entityId,
+        title: input.title,
+        salt: randomBytes(32).toString('hex'),
+        isPreview: false,
+        vlmSceneId: input.vlmSceneId,
+        lastEntityCheckAt: now,
+      })
+      .onConflictDoUpdate({
+        target: analyticsScenes.locationKey,
+        set: {
+          realm: world,
+          ...(input.base ? { baseParcel: input.base } : {}),
+          ...(input.parcels ? { parcels: input.parcels } : {}),
+          activeEntityId: input.entityId,
+          title: input.title,
+          vlmSceneId: input.vlmSceneId,
+          lastEntityCheckAt: now,
+          updatedAt: now,
+        },
+      })
+      .returning()
+    const [active] = await tx
+      .select()
+      .from(locationSetups)
+      .where(and(eq(locationSetups.analyticsSceneId, loc.id), isNull(locationSetups.endedAt)))
+      .for('update')
+    if (active?.vlmSceneId === input.vlmSceneId) {
+      await tx.update(locationSetups).set({ deploymentEntityId: input.entityId }).where(eq(locationSetups.id, active.id))
+      return
+    }
+    if (active) {
+      await tx.update(locationSetups).set({ endedAt: now, endReason: 'replaced' }).where(eq(locationSetups.id, active.id))
+    }
+    await tx.insert(locationSetups).values({
+      analyticsSceneId: loc.id, vlmSceneId: input.vlmSceneId, hostUserId: input.hostUserId, deploymentEntityId: input.entityId, startedAt: now,
+    })
+    // A new host starts with wallet visibility off, as in setUpLocation.
+    await tx.update(analyticsScenes).set({ walletVisibility: false }).where(eq(analyticsScenes.id, loc.id))
+  })
 }
 
 /** Create (or reuse) the wallet's user, a VLM scene with a default preset, and the active setup. Free: no plan limits. */

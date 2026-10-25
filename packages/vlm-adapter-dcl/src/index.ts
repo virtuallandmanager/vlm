@@ -1,4 +1,4 @@
-import { VLM, resolveApiUrl, analyticsUrlFor, handoffUrlFor, dashboardOriginFor, hudStatus, applyLibraryChange } from 'vlm-core'
+import { VLM, resolveApiUrl, analyticsUrlFor, handoffUrlFor, dashboardOriginFor, hudStatus, applyLibraryChange, placedMessage } from 'vlm-core'
 import { VLMHttpClient } from 'vlm-client'
 import type { SetupStatus, SceneLibraryItem } from 'vlm-client'
 import type { VLMConnectionState } from 'vlm-core'
@@ -331,6 +331,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         layout = (preset?.elements ?? []).filter((el: any) => LAYOUT_TYPES.has(el.type)).map(toLayoutItem)
         renderer?.setLayout(layout)
       }
+      let publishUrl: string | null = null // the Publish action's target, set when a model is placed
       const place = async (assetId: string) => {
         let asset = media.find((a) => a.id === assetId)
         if (!asset) {
@@ -367,15 +368,24 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         }
         layout = [...layout.filter((el) => el.id !== element.id), toLayoutItem(element)]
         renderer?.setLayout(layout)
-        renderer?.setEditMessage(
-          kind === 'image'
-            ? `Placed ${asset.name}`
-            : `Placed ${asset.name} — run npx vlm-dcl sync and redeploy to see it`,
-        )
+        if (kind === 'image') {
+          renderer?.setEditMessage(`Placed ${asset.name}`)
+          return
+        }
+        // What happens next depends on the scene's World destination; a failed lookup reads as "none"
+        const destination = await vlm.httpClient.getDclPublishStatus(sceneId).then((r) => r.destination, () => null)
+        const next = placedMessage(asset.name, destination)
+        publishUrl = next.publish && destination ? destination.publishUrl : null
+        if (publishUrl) renderer?.setEditMessage(next.text, false, { label: 'Publish', action: 'open_publish' })
+        else renderer?.setEditMessage(next.text)
       }
 
       setSceneActionHandler(async (action: string, data?: any) => {
         if (action === 'open_analytics') return openAnalytics(sceneId)
+        if (action === 'open_publish') {
+          if (publishUrl) void Promise.resolve(adapter.openUrl(publishUrl)).catch(() => {})
+          return
+        }
 
         if (action === 'retry') return reconnect(sceneId)
 

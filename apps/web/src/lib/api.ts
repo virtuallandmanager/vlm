@@ -3,9 +3,121 @@ import { useCallback } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
 import { requestHeaders } from './request-headers'
+import type { Plot } from 'vlm-shared'
+import type { AuthChain } from '@dcl/crypto'
 import type { ArFileFormat, ArMounting } from './ar'
 import type { ArDeviceKind, ArDeviceSummary, ArPairApprovalInfo, ArFloorView, ArMarkerView, ArSpaceView, AdminAd, AdminAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyPairingSummary, HyperfyWorldSummary } from 'vlm-shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
+
+// ── New Scene Wizard and Decentraland Worlds ────────────────────────────────
+
+export interface WizardAsset {
+  id: string
+  name: string
+  thumbnailUrl: string | null
+  cdnUrl: string | null
+  dimensions: { x: number; y: number; z: number } | null
+  triangleCount: number | null
+  fileSizeBytes: number
+}
+
+export interface WizardCatalog {
+  themes: Array<{ id: string; name: string; items: Array<{ asset: WizardAsset; x: number; z: number; rotationY: number }> }>
+  chips: Array<{ id: string; label: string; categories: string[]; assets: WizardAsset[] }>
+}
+
+export interface WizardOptions {
+  dcl: { virviDeploys: boolean; virviAddress: string | null }
+  hyperfy: { allowed: boolean; requiredTier: string }
+  scenes: { used: number; limit: number | null }
+}
+
+export interface WizardSceneBody {
+  name: string
+  plot: Plot
+  spawn: { x: number; z: number }
+  items: Array<{ assetId: string; x: number; z: number; rotationY: number }>
+  /** True with a Decentraland destination; false (Hyperfy/AR only) skips the per-parcel budget. */
+  dcl: boolean
+}
+
+/** A World as the server describes it; `footprint` is the parcels of its live scene(s), null when it has none. */
+export interface DclWorld {
+  world: string
+  hasScene: boolean
+  footprint: { base: string; parcels: string[] } | null
+  storage: { maxAllowedBytes: number; usedBytes: number } | null
+}
+
+export type DclDestinationMode = 'virvi' | 'sign'
+
+export interface DclDestination {
+  id: string
+  sceneId: string
+  ownerUserId: string
+  ownerWallet: string
+  worldName: string
+  base: string
+  parcels: string[]
+  mode: DclDestinationMode
+  grantedAt: string | null
+  status: string
+  statusDetail: string | null
+  lastEntityId: string | null
+  deployedFiles: string[]
+  pendingSince: string | null
+  adopted: boolean
+  spawn: { x: number; y: number; z: number } | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** A model in the scene that the World doesn't have yet. */
+export interface DclPendingModel {
+  elementId: string
+  name: string
+  url: string
+  file: string
+  triangles: number | null
+  bytes: number | null
+}
+
+/** A deployment row (the Hyperfy admin code never reaches the browser). */
+export interface DclDeployment {
+  id: string
+  sceneId: string
+  status: string
+  [key: string]: any
+}
+
+/** A request the owner's wallet must sign for Decentraland's Worlds server. */
+export interface DclSignRequest {
+  method: 'PUT' | 'POST' | 'DELETE'
+  path: string
+  metadata: string
+  timestamp: number
+  body?: unknown
+  /** What to sign (personal-sign payload for the signed fetch). */
+  payload: string
+}
+
+export type DclGrantPurpose = 'reset' | 'grant' | 'scope' | 'rollback'
+
+export interface DclGrantRequests {
+  virviAddress: string
+  /** Every request shares one timestamp: submit `requests[0].timestamp`. */
+  requests: Array<DclSignRequest & { purpose: DclGrantPurpose }>
+}
+
+export interface DclRevokeRequests {
+  requests: DclSignRequest[]
+}
+
+/** Sign every request's `payload`, in order; Decentraland rejects them after ~60 s (the server after 50 s). */
+export interface DclSignedSubmission {
+  chains: AuthChain[]
+  timestamp: number
+}
 
 /** Read a File as base64 (no `data:…;base64,` prefix) for JSON upload bodies. */
 export function fileToBase64(file: File): Promise<string> {
@@ -267,23 +379,48 @@ export function useApi() {
     createCheckout: (priceId: string) => apiFetch<{ url: string }>('/api/billing/checkout', { method: 'POST', body: JSON.stringify({ priceId }) }),
     getPortalUrl: () => apiFetch<{ url: string }>('/api/billing/portal', { method: 'POST', body: JSON.stringify({}) }),
 
+    // New Scene Wizard
+    getWizardCatalog: () => apiFetch<WizardCatalog>('/api/wizard/catalog'),
+    getWizardOptions: () => apiFetch<WizardOptions>('/api/wizard/options'),
+    /** 400 (incl. `unmeasured_asset`, `invalid_plot`), 403 `scene_limit_reached`, 422 `over_budget` ({ message, triangles, limit } on err.body). */
+    bootstrapWizardScene: (data: WizardSceneBody) =>
+      apiFetch<{ sceneId: string }>('/api/wizard/scenes', { method: 'POST', body: JSON.stringify(data) }),
+
+    // Decentraland Worlds
+    getDclNames: () => apiFetch<{ wallets: Array<{ address: string; names: DclWorld[] }> }>('/api/dcl/names'),
+    getDclWorld: (world: string) => apiFetch<DclWorld & { owner: boolean }>(`/api/dcl/worlds/${encodeURIComponent(world)}`),
+    /** Pass `plot` (and `spawn`) to build a new scene there, or omit both to adopt the live scene. 409 `world_in_use` carries `sceneId`. */
+    createDclDestination: (data: { sceneId: string; world: string; mode: DclDestinationMode; plot?: Plot; spawn?: { x: number; z: number } }) =>
+      apiFetch<{ destination: DclDestination; replaces?: { parcels: string[] } }>('/api/dcl/destinations', { method: 'POST', body: JSON.stringify(data) }),
+    /** The scene's World destinations, and Worlds set up in-world for it (Creator Hub `vlm-dcl` scenes) it can adopt. */
+    getSceneDclDestinations: (sceneId: string) =>
+      apiFetch<{ destinations: DclDestination[]; adoptable: Array<{ world: string }> }>(`/api/scenes/${sceneId}/dcl/destinations`),
+    getDclDestination: (id: string) =>
+      apiFetch<{ destination: DclDestination; pending: DclPendingModel[]; refused: Array<{ name: string; reason: string }>; lastDeployment: DclDeployment | null }>(`/api/dcl/destinations/${id}`),
+    patchDclDestination: (id: string, data: { mode: DclDestinationMode }) =>
+      apiFetch<{ destination: DclDestination; message?: string }>(`/api/dcl/destinations/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    getDclGrant: (id: string) => apiFetch<DclGrantRequests>(`/api/dcl/destinations/${id}/grant`),
+    submitDclGrant: (id: string, data: DclSignedSubmission) =>
+      apiFetch<{ destination: DclDestination }>(`/api/dcl/destinations/${id}/grant`, { method: 'POST', body: JSON.stringify(data) }),
+    getDclRevoke: (id: string) => apiFetch<DclRevokeRequests>(`/api/dcl/destinations/${id}/grant`, { method: 'DELETE' }),
+    submitDclRevoke: (id: string, data: DclSignedSubmission) =>
+      apiFetch<{ destination: DclDestination }>(`/api/dcl/destinations/${id}/revoke`, { method: 'POST', body: JSON.stringify(data) }),
+    /** Mode virvi answers 202 with just the deployment; mode sign adds the `payload` to sign (then `submitDeploySignature`). */
+    deployDclDestination: (id: string) =>
+      apiFetch<{ deployment: DclDeployment; payload?: string; expiresAt?: string }>(`/api/dcl/destinations/${id}/deploy`, { method: 'POST' }),
+    /** 409 `expired`: prepare the deploy again. */
+    submitDeploySignature: (deploymentId: string, chain: AuthChain) =>
+      apiFetch<{ deployment: DclDeployment }>(`/api/deploy/${deploymentId}/signature`, { method: 'POST', body: JSON.stringify({ chain }) }),
+    rebaseDclDestination: (id: string) =>
+      apiFetch<{ destination: DclDestination }>(`/api/dcl/destinations/${id}/rebase`, { method: 'POST' }),
+
     // Deployments
     getDeployments: (sceneId: string) =>
       apiFetch<{ deployments: any[] }>(`/api/deploy/scene/${sceneId}`),
     getDeployment: (id: string) =>
       apiFetch<{ deployment: any }>(`/api/deploy/${id}`),
-    createDeployment: (data: { sceneId: string; platform: string; deploymentType: string; target: Record<string, unknown>; walletId?: string }) =>
-      apiFetch<{ deployment: any }>('/api/deploy', { method: 'POST', body: JSON.stringify(data) }),
     cancelDeployment: (id: string) =>
       apiFetch<{ deployment: any }>(`/api/deploy/${id}/cancel`, { method: 'POST' }),
-    redeployDeployment: (id: string) =>
-      apiFetch<{ deployment: any }>(`/api/deploy/${id}/redeploy`, { method: 'POST' }),
-    getDeployWallets: () =>
-      apiFetch<{ wallets: any[] }>('/api/deploy/wallets'),
-    createDeployWallet: (data: { platform: string; walletAddress: string; encryptedPrivateKey?: string; label?: string }) =>
-      apiFetch<{ wallet: any }>('/api/deploy/wallets', { method: 'POST', body: JSON.stringify(data) }),
-    deleteDeployWallet: (id: string) =>
-      apiFetch<{ deleted: boolean }>(`/api/deploy/wallets/${id}`, { method: 'DELETE' }),
     getDeployPlatforms: () => apiFetch<{ platforms: { decentraland: boolean; hyperfy: boolean } }>('/api/deploy/platforms'),
 
     // Hyperfy HUD pairings

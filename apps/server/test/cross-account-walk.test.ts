@@ -1,11 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { ringCodeOf } from 'vlm-shared'
 import { db } from '../src/db/connection.js'
 import {
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
-  sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
+  sceneDeployments, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
   uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
+  dclWorldDestinations,
 } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { createVenue, createBooking, addGrant } from '../src/venues/service.js'
@@ -13,12 +14,9 @@ import { resetDb } from './helpers/db.js'
 import { testApp, createUser, createScene, createElement, createInstance, tokenFor, randomWallet, type TestUser } from './helpers/factories.js'
 import { createAnalyticsScene } from './helpers/analytics.js'
 import { createSetup } from './helpers/setups.js'
-
-// A refused route must never reach the catalyst.
-vi.mock('../src/services/dcl/deployer.js', async () => {
-  const actual = await vi.importActual<typeof import('../src/services/dcl/deployer.js')>('../src/services/dcl/deployer.js')
-  return { ...actual, executeDCLDeploy: vi.fn(async () => {}) }
-})
+import { Wallet } from 'ethers'
+import { setWorldsClient } from '../src/services/dcl/worlds-client.js'
+import { FakeWorldsClient } from './helpers/fake-worlds.js'
 
 const H = 3600_000
 const AD_ID = '00000000-0000-4000-8000-000000000001'
@@ -35,7 +33,6 @@ async function fixtures() {
   await db.insert(sceneCollaborators).values({ sceneId: scene.id, userId: collaborator.id, role: 'editor' })
   const roleWallet = randomWallet()
   await db.insert(sceneRoles).values({ sceneId: scene.id, walletAddress: roleWallet, role: 'editor', grantedByUserId: b.id })
-  const [wallet] = await db.insert(deploymentWallets).values({ userId: b.id, platform: 'decentraland', walletAddress: '0xb', encryptedPrivateKey: 'not-decryptable' }).returning()
   const [dcl] = await db.insert(sceneDeployments).values({ sceneId: scene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET, deployedBy: b.id }).returning()
   const [hyperfy] = await db.insert(sceneDeployments).values({
     sceneId: scene.id, platform: 'hyperfy', deploymentType: 'instance', status: 'deployed',
@@ -77,13 +74,19 @@ async function fixtures() {
   const [arDevice] = await db.insert(arDevices).values({
     userId: b.id, secretHash: 'b-device-secret-hash', kind: 'shared', status: 'claimed', codeExpiresAt: new Date(Date.now() + H), expiresAt: new Date(Date.now() + H),
   }).returning()
+  const [destination] = await db.insert(dclWorldDestinations).values({
+    sceneId: scene.id, ownerUserId: b.id, ownerWallet: b.wallet!, worldName: 'b-world.dcl.eth', base: '0,0', parcels: ['0,0'], mode: 'sign',
+  }).returning()
+  const [signDeploy] = await db.insert(sceneDeployments).values({
+    sceneId: scene.id, platform: 'decentraland', deploymentType: 'world', destinationId: destination.id, target: { world: 'b-world.dcl.eth' }, status: 'awaiting_signature', deployedBy: b.id,
+  }).returning()
   const [bKey] = await db.insert(apiKeys).values({ userId: b.id, name: 'B key', keyHash: 'b-hash', keyPrefix: 'vlm_k1_b' }).returning()
 
   const aScene = (await createScene(a, 'A scene')).scene
   const [aEvent] = await db.insert(events).values({ ownerId: a.id, name: 'A event' }).returning()
   return {
-    a, b, collaborator, scene, preset, element, instance, roleWallet, wallet, dcl, hyperfy, stream, event, giveaway, item,
-    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, world, pairing, arSpace, arFloor, arMarker, arDevice, aScene, aEvent,
+    a, b, collaborator, scene, preset, element, instance, roleWallet, dcl, hyperfy, stream, event, giveaway, item,
+    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, destination, signDeploy, world, pairing, arSpace, arFloor, arMarker, arDevice, aScene, aEvent,
   }
 }
 type F = Awaited<ReturnType<typeof fixtures>>
@@ -145,13 +148,22 @@ const CASES: Case[] = [
   { route: 'POST /api/ar/devices/:id/spaces', url: (f) => `/api/ar/devices/${f.arDevice.id}/spaces`, body: () => ({ secret: 'guess' }) },
   { route: 'DELETE /api/ar/devices/:id', url: (f) => `/api/ar/devices/${f.arDevice.id}` },
   // deploy
-  { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.scene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET }) },
-  { route: 'POST /api/deploy', url: () => '/api/deploy', body: (f) => ({ sceneId: f.aScene.id, platform: 'decentraland', deploymentType: 'parcel', target: PUBLIC_TARGET, walletId: f.wallet.id }) },
   { route: 'GET /api/deploy/:id', url: (f) => `/api/deploy/${f.dcl.id}` },
   { route: 'GET /api/deploy/scene/:sceneId', url: (f) => `/api/deploy/scene/${f.scene.id}` },
   { route: 'POST /api/deploy/:id/cancel', url: (f) => `/api/deploy/${f.dcl.id}/cancel` },
-  { route: 'POST /api/deploy/:id/redeploy', url: (f) => `/api/deploy/${f.dcl.id}/redeploy` },
-  { route: 'DELETE /api/deploy/wallets/:id', url: (f) => `/api/deploy/wallets/${f.wallet.id}` },
+  { route: 'POST /api/deploy/:id/signature', url: (f) => `/api/deploy/${f.signDeploy.id}/signature`, body: () => ({ chain: [] }) },
+  // Decentraland World destinations
+  { route: 'POST /api/dcl/destinations', url: () => '/api/dcl/destinations', body: (f) => ({ sceneId: f.scene.id, world: 'a-world.dcl.eth', mode: 'sign', plot: { width: 1, depth: 1, base: { x: 0, y: 0 } } }) },
+  { route: 'GET /api/dcl/destinations/:id', url: (f) => `/api/dcl/destinations/${f.destination.id}` },
+  { route: 'PATCH /api/dcl/destinations/:id', url: (f) => `/api/dcl/destinations/${f.destination.id}`, body: () => ({ mode: 'virvi' }) },
+  { route: 'GET /api/dcl/destinations/:id/grant', url: (f) => `/api/dcl/destinations/${f.destination.id}/grant` },
+  { route: 'POST /api/dcl/destinations/:id/grant', url: (f) => `/api/dcl/destinations/${f.destination.id}/grant`, body: () => ({ chains: [[], []], timestamp: Date.now() }) },
+  { route: 'DELETE /api/dcl/destinations/:id/grant', url: (f) => `/api/dcl/destinations/${f.destination.id}/grant` },
+  { route: 'POST /api/dcl/destinations/:id/revoke', url: (f) => `/api/dcl/destinations/${f.destination.id}/revoke`, body: () => ({ chains: [[]], timestamp: Date.now() }) },
+  { route: 'POST /api/dcl/destinations/:id/deploy', url: (f) => `/api/dcl/destinations/${f.destination.id}/deploy` },
+  { route: 'POST /api/dcl/destinations/:id/rebase', url: (f) => `/api/dcl/destinations/${f.destination.id}/rebase` },
+  { route: 'GET /api/scenes/:sceneId/dcl/publish-status', url: (f) => `/api/scenes/${f.scene.id}/dcl/publish-status` },
+  { route: 'GET /api/scenes/:sceneId/dcl/destinations', url: (f) => `/api/scenes/${f.scene.id}/dcl/destinations` },
   // events and command center
   { route: 'GET /api/events/:eventId', url: (f) => `/api/events/${f.event.id}` },
   { route: 'PUT /api/events/:eventId', url: (f) => `/api/events/${f.event.id}`, body: () => ({ name: 'pwned' }) },
@@ -247,14 +259,16 @@ const NOT_CROSS_ACCOUNT: Record<string, string> = {
   'POST /hook/register': 'public by owner decision: scene content is public in-world (address checks and the 20-per-scene cap guard it)',
   'GET /hook/config': 'public by owner decision: scene content is public in-world',
   'GET /hook/scene': 'public by owner decision: scene content is public in-world',
+  'GET /api/dcl/worlds/:world': "public Decentraland data about a typed World name; it only says whether the caller's own wallets own it",
 }
 
 // Every table holding B's fixtures; a refused request must leave all of them as they were.
 const TABLES = [
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
-  sceneDeployments, deploymentWallets, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
+  sceneDeployments, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
   uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
+  dclWorldDestinations,
 ]
 async function snapshot(f: F) {
   const all = await Promise.all(TABLES.map((t) => db.select().from(t as any)))
@@ -272,14 +286,22 @@ describe('cross-account route walk', () => {
   let app: Awaited<ReturnType<typeof testApp>>
   let f: F
   const prevStreaming = config.streamingEnabled
+  const prevDeployKey = config.virviDclDeployKey
   beforeEach(async () => {
     await resetDb()
     ;(config as any).streamingEnabled = true
+    // Never reach Decentraland: B's World is owned by B in the fake
+    ;(config as any).virviDclDeployKey = Wallet.createRandom().privateKey
+    const worlds = new FakeWorldsClient()
+    setWorldsClient(worlds)
     app = await testApp()
     f = await fixtures()
+    worlds.deployers.set('b-world.dcl.eth', { owner: f.b.wallet, deployers: [] })
   })
   afterEach(async () => {
     ;(config as any).streamingEnabled = prevStreaming
+    ;(config as any).virviDclDeployKey = prevDeployKey
+    setWorldsClient(null)
     await app.close()
   })
 

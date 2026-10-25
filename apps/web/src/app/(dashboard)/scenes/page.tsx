@@ -6,13 +6,15 @@ import { useEffect, useState, Suspense } from 'react'
 import Link from 'next/link'
 import SceneEditorPage from './[sceneId]/client'
 import { ArrowUpRightIcon, CheckIcon, CopyIcon, GridIcon, ListIcon, PlusIcon, ScenesIcon } from '@/components/icons'
-import { EmptyState, InlineDescription, PageHeader, PrimaryButton, SearchField, useStoredView, ViewToggle, Skeleton } from '@/components/ui'
+import { EmptyState, InlineDescription, PageHeader, SearchField, useStoredView, ViewToggle, Skeleton } from '@/components/ui'
 import { filterScenes, placeholderHues, shortId } from '@/lib/scenes'
 import { countLabel, plural } from '@/lib/format'
 
 type Scene = { id: string; name: string; description?: string | null; thumbnailUrl?: string | null; relationship?: string }
 const RELATIONSHIP_LABEL: Record<string, string> = { cohost: 'Co-host', editor: 'Editor', viewer: 'Viewer' }
 const VIEW_KEY = 'vlm.scenes.view'
+/** PrimaryButton's look, on a link to the New Scene Wizard. */
+const NEW_SCENE_CLASS = 'clip-corner inline-flex items-center gap-1.5 bg-accent px-4 py-2.5 text-sm font-semibold text-accent-ink transition-colors hover:bg-accent-hover'
 /** Only owners and co-hosts can change a scene's details. */
 const canDescribe = (s: Scene) => !s.relationship || s.relationship === 'owner' || s.relationship === 'cohost'
 
@@ -73,13 +75,18 @@ function ScenesContent() {
         title="Scenes"
         count={loading ? undefined : countLabel(scenes.length)}
         subtitle="Manage your virtual worlds."
-        actions={<PrimaryButton onClick={() => setShowCreate(!showCreate)}><PlusIcon size={16} /> Create Scene</PrimaryButton>}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setShowCreate(!showCreate)} className="rounded-md bg-gray-800 px-4 py-2.5 text-sm hover:bg-gray-700">Blank scene</button>
+            <Link href="/scenes/new" className={NEW_SCENE_CLASS}><PlusIcon size={16} /> New scene</Link>
+          </div>
+        }
       />
 
       {showCreate && (
         <form onSubmit={handleCreate} className="mb-6 flex flex-wrap gap-2 rounded-lg border border-gray-800 bg-gray-900 p-3">
           <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
-            placeholder="Scene name" autoFocus
+            placeholder="Blank scene name" autoFocus
             className="min-w-48 flex-1 rounded-md border border-gray-800 bg-gray-950 px-4 py-2 text-white outline-none focus:border-blue-400" />
           <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-700">Create</button>
           <button type="button" onClick={() => setShowCreate(false)} className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700">Cancel</button>
@@ -103,7 +110,7 @@ function ScenesContent() {
       ) : scenes.length === 0 ? (
         <EmptyState icon={<ScenesIcon size={40} />} title="No scenes yet"
           body="A scene is one of your virtual worlds. Create one to start placing media and running events."
-          action={<PrimaryButton onClick={() => setShowCreate(true)}><PlusIcon size={16} /> Create Scene</PrimaryButton>} />
+          action={<Link href="/scenes/new" className={NEW_SCENE_CLASS}><PlusIcon size={16} /> New scene</Link>} />
       ) : shown.length === 0 ? (
         <p className="py-12 text-center text-gray-500">No scenes match “{query.trim()}”.</p>
       ) : view === 'grid' ? (

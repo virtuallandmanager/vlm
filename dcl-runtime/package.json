@@ -1,0 +1,16 @@
+{
+  "name": "virvi-dcl-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Generic Virvi Decentraland runtime scene, deployed for every wizard World",
+  "scripts": {
+    "build": "sdk-commands build"
+  },
+  "devDependencies": {
+    "@dcl/js-runtime": "7.21.0",
+    "@dcl/sdk": "7.21.0"
+  },
+  "dependencies": {
+    "vlm-dcl": "file:../packages/vlm-smart-item-dcl"
+  }
+}
