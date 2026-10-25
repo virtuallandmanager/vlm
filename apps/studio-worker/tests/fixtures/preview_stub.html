@@ -1,0 +1,37 @@
+<!doctype html>
+<!-- A stand-in for wearable-preview that speaks just its message protocol: `ready`, `load` after the first render
+     and after each `update`, and `controller_response` to each `controller_request`. Every request is POSTed to
+     /log so a test can see it. ?stub=hang never sends ready; ?stub=noload never changes the triangle count. -->
+<html><body style="margin:0"><canvas id="c" width="512" height="512"></canvas><script>
+const stub = new URLSearchParams(location.search).get('stub')
+const c = document.getElementById('c').getContext('2d')
+let triangles = 12000, turn = 0
+function draw() {
+  const g = c.createLinearGradient(0, 0, 512, 512)
+  g.addColorStop(0, `hsl(${turn * 10}, 70%, 50%)`)
+  g.addColorStop(1, `hsl(${turn * 10 + 120}, 70%, 30%)`)
+  c.fillStyle = g
+  c.fillRect(0, 0, 512, 512)
+}
+draw()
+const post = (type, payload) => window.parent.postMessage({ type, payload }, '*')
+window.addEventListener('message', (e) => {
+  const d = e.data || {}
+  if (d.type === 'update') {
+    if (stub !== 'noload') triangles += 1500
+    setTimeout(() => post('load', { renderer: 'babylon' }), 100)
+  } else if (d.type === 'controller_request') {
+    const { id, namespace, method, params } = d.payload
+    fetch('/log', { method: 'POST', body: JSON.stringify({ namespace, method, params }) })
+    let result = null
+    if (method === 'getMetrics') result = { triangles, materials: 4, meshes: 9, textures: 2 }
+    if (method === 'getLength') result = 3.0
+    if (method === 'changeCameraPosition') { turn += 1; draw() }
+    post('controller_response', { id, ok: true, result })
+  }
+})
+if (stub !== 'hang') {
+  post('ready', null)
+  setTimeout(() => post('load', { renderer: 'babylon' }), 100)
+}
+</script></body></html>
