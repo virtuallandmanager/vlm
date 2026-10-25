@@ -35,8 +35,8 @@
  *   record, which only exists once something (a deploy or a PUT) created it.
  * So the grant is, in order: a reset DELETE (only when Virvi is already listed, so the World's record exists
  * and old parcels are cleared), the PUT (world-wide, creates the record), the parcels POST (narrows it to the
- * destination's parcels). The owner also signs a rollback DELETE up front: if the POST fails, Virvi would be
- * left world-wide, so the rollback is sent at once; if that fails too the owner is told plainly (grant_partial).
+ * destination's parcels). The owner also signs a rollback DELETE up front: if the PUT or the POST fails, Virvi may
+ * be left world-wide, so the rollback is sent at once; if that fails too the owner is told plainly (grant_partial).
  * - `GET /world/{name}/permissions` lists parcel-scoped deployers in `deployment.wallets` too.
  * All three writes are strict signed fetch (current 6.x payload), checked against the World owner.
  * `x-identity-metadata` is not read by these handlers; the only check on it is that `signer` isn't
@@ -71,6 +71,10 @@ import { deploymentForCaller, publicDeployment } from './deploy.js'
 const PERMISSION_METADATA = '{}'
 /** A grant or revoke POST must come within this long of the timestamp chosen at GET: under Decentraland's 60 s. */
 const SIGNED_REQUEST_MAX_AGE_MS = 50_000
+/** How long Decentraland accepts a signed request after its timestamp. */
+const SIGNED_REQUEST_TTL_MS = 60_000
+/** Time left before a signed request with this timestamp expires (at least 1 s, so it is still tried). */
+const timeLeft = (timestamp: number) => Math.max(1_000, timestamp + SIGNED_REQUEST_TTL_MS - Date.now())
 /** Clock skew tolerated for a timestamp in the future. */
 const FUTURE_SKEW_MS = 60_000
 /** DCL names and ENS names, ASCII only. */
@@ -219,14 +223,15 @@ async function verifyChains(requests: SignedRequest[], chains: unknown, owner: s
   return signed
 }
 
-const refusal = (err: WorldsError) => `Decentraland refused it: ${err.body.slice(0, 300) || `HTTP ${err.status}`}`
+const refusal = (err: WorldsError) =>
+  err.status === 0 ? "Decentraland didn't answer in time" : `Decentraland refused it: ${err.body.slice(0, 300) || `HTTP ${err.status}`}`
 
 /** Verifies every chain, then forwards the requests in order. Nothing is sent unless every chain verifies. */
 async function forwardSigned(requests: SignedRequest[], chains: unknown, owner: string, failCode: string) {
   const signed = await verifyChains(requests, chains, owner)
   for (const [i, req] of requests.entries()) {
     try {
-      await getWorldsClient().sendSigned(req, signed[i])
+      await getWorldsClient().sendSigned(req, signed[i], timeLeft(req.timestamp))
     } catch (err) {
       if (err instanceof WorldsError) throw new RouteError(502, failCode, { message: refusal(err) })
       throw err
@@ -239,32 +244,43 @@ const PARTIAL_GRANT =
   "Remove Virvi's permission from this page, or in the Creator Hub under your World's permissions."
 
 /**
- * Sends a verified grant. If the parcels POST fails after the world-wide PUT, the pre-signed rollback goes out at
- * once; if that fails too, 502 grant_partial. grantedAt is cleared whenever Virvi's permission was touched.
+ * Sends a verified grant. If the PUT or the parcels POST fails, Virvi may hold a world-wide permission (a PUT that
+ * timed out or got a 5xx may have landed), so the pre-signed rollback goes out at once; a 404 from it means there was
+ * nothing to remove. If the rollback fails too, 502 grant_partial, unless the failure was the PUT with a plain 4xx
+ * (nothing was granted). Each step but the rollback gets half the time the signatures have left, so a slow step
+ * can't use up the rollback's. grantedAt is cleared whenever Virvi's permission was touched.
  */
 async function sendGrant(dest: Destination, steps: GrantStep[], chains: AuthChain[]) {
-  const send = (i: number) => getWorldsClient().sendSigned(steps[i], chains[i])
+  const send = (i: number, timeoutMs: number) => getWorldsClient().sendSigned(steps[i], chains[i], timeoutMs)
   const rollback = steps.findIndex((s) => s.purpose === 'rollback')
   let touched = false
+  let reset = false
   for (const [i, step] of steps.entries()) {
     if (step.purpose === 'rollback') continue
     try {
-      await send(i)
+      await send(i, Math.max(1_000, Math.floor(timeLeft(step.timestamp) / 2)))
     } catch (err) {
       if (!(err instanceof WorldsError)) throw err
-      if (touched) await db.update(dclWorldDestinations).set({ grantedAt: null, updatedAt: new Date() }).where(eq(dclWorldDestinations.id, dest.id))
-      if (step.purpose === 'scope') {
+      if (touched || step.purpose === 'grant') {
+        await db.update(dclWorldDestinations).set({ grantedAt: null, updatedAt: new Date() }).where(eq(dclWorldDestinations.id, dest.id))
+      }
+      const earlier = reset ? " Virvi's earlier permission on this World was removed, so it can't deploy there until you grant it again." : ''
+      if (step.purpose === 'grant' || step.purpose === 'scope') {
+        // A PUT refused with a plain 4xx granted nothing; anything else may have.
+        const mayHold = step.purpose === 'scope' || err.status === 0 || err.status >= 500
         try {
-          await send(rollback)
+          await send(rollback, timeLeft(steps[rollback].timestamp))
         } catch (again) {
           if (!(again instanceof WorldsError)) throw again
-          throw new RouteError(502, 'grant_partial', { message: PARTIAL_GRANT })
+          if (again.status !== 404 && mayHold) throw new RouteError(502, 'grant_partial', { message: PARTIAL_GRANT })
         }
-        throw new RouteError(502, 'grant_rejected', { message: `${refusal(err)}. Virvi's permission was removed again, so nothing changed.` })
+        const undone = step.purpose === 'scope' ? " Virvi's permission was removed again, so nothing changed." : ''
+        throw new RouteError(502, 'grant_rejected', { message: `${refusal(err)}.${undone}${earlier}` })
       }
       throw new RouteError(502, 'grant_rejected', { message: refusal(err) })
     }
     touched = true
+    if (step.purpose === 'reset') reset = true
   }
 }
 
@@ -402,7 +418,10 @@ export default async function dclDestinationRoutes(app: FastifyInstance) {
     const steps = await grantRequests(dest, virvi, timestamp)
     await sendGrant(dest, steps, await verifyChains(steps, request.body?.chains, owner))
     const { deployers } = await read(() => getWorldsClient().getDeployers(dest.worldName))
-    if (!deployers.includes(virvi)) throw new RouteError(502, 'grant_not_visible')
+    if (!deployers.includes(virvi)) {
+      await db.update(dclWorldDestinations).set({ grantedAt: null, updatedAt: new Date() }).where(eq(dclWorldDestinations.id, dest.id))
+      throw new RouteError(502, 'grant_not_visible')
+    }
     await db.update(dclWorldDestinations).set({ mode: 'virvi', grantedAt: new Date(), updatedAt: new Date() }).where(eq(dclWorldDestinations.id, dest.id))
     return reply.send({ destination: await reload(dest.id) })
   }))

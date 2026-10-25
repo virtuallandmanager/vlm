@@ -43,7 +43,8 @@ export interface WorldsClient {
   /** The World's live scene entities; [] when it has none. */
   getWorldEntities(world: string): Promise<LiveEntity[]>
   deploy(d: { entityId: string; authChain: AuthChain; files: Map<string, Uint8Array> }): Promise<void>
-  sendSigned(req: SignedRequest, chain: AuthChain): Promise<void>
+  /** `timeoutMs` defaults to the write timeout; callers cap it to what the signature has left. */
+  sendSigned(req: SignedRequest, chain: AuthChain, timeoutMs?: number): Promise<void>
   /** Never cached: callers act on the answer right away. */
   getDeployers(world: string): Promise<{ owner: string | null; deployers: string[] }>
   getWalletStats(address: string): Promise<{ maxAllowedBytes: number; usedBytes: number } | null>
@@ -112,7 +113,7 @@ export class HttpWorldsClient implements WorldsClient {
     if (res.status !== 200) throw new WorldsError(res.status, body)
   }
 
-  async sendSigned(req: SignedRequest, chain: AuthChain): Promise<void> {
+  async sendSigned(req: SignedRequest, chain: AuthChain, timeoutMs = WRITE_TIMEOUT_MS): Promise<void> {
     const headers: Record<string, string> = {
       'x-identity-timestamp': String(req.timestamp),
       'x-identity-metadata': req.metadata,
@@ -125,7 +126,7 @@ export class HttpWorldsClient implements WorldsClient {
       headers['content-type'] = 'application/json'
       body = JSON.stringify(req.body)
     }
-    const res = await request(`${this.base}${req.path}`, { method: req.method, headers, body }, WRITE_TIMEOUT_MS)
+    const res = await request(`${this.base}${req.path}`, { method: req.method, headers, body }, Math.min(timeoutMs, WRITE_TIMEOUT_MS))
     if (!res.ok) throw new WorldsError(res.status, await readBody(res))
   }
 

@@ -28,7 +28,7 @@ export class FakeWorldsClient implements WorldsClient {
     this.maybeFail()
     this.deployed.push(d)
   }
-  async sendSigned(req: SignedRequest, chain: AuthChain) {
+  async sendSigned(req: SignedRequest, chain: AuthChain, _timeoutMs?: number) {
     this.hit()
     this.maybeFail()
     this.signed.push({ req, chain })

@@ -353,6 +353,76 @@ describe('World destination routes', () => {
       expect((await destRow(dest.id)).grantedAt).toBeNull()
     })
 
+    it('when the PUT times out (it may have landed), the rollback goes out; each step gets less time than the signature has left', async () => {
+      const { scene } = await createScene(user)
+      const dest = await insertDest(scene.id)
+      trackPermissions()
+      const tracked = worlds.sendSigned
+      const timeouts: Array<[string, number | undefined]> = []
+      worlds.sendSigned = async (r, c, timeoutMs?: number) => {
+        timeouts.push([r.method, timeoutMs])
+        if (r.method === 'PUT') throw new WorldsError(0, '', 'timed out')
+        return tracked(r, c)
+      }
+      const { requests } = (await req('GET', `/api/dcl/destinations/${dest.id}/grant`)).json()
+      const res = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: await sign(requests), timestamp: requests[0].timestamp })
+      expect([res.statusCode, res.json().error]).toEqual([502, 'grant_rejected'])
+      expect(timeouts.map(([m]) => m)).toEqual(['PUT', 'DELETE'])
+      expect(worlds.signed.map((s) => s.req.method)).toEqual(['DELETE'])
+      for (const [, ms] of timeouts) expect(ms).toBeLessThanOrEqual(60_000)
+      expect(timeouts[0][1]!).toBeLessThan(timeouts[1][1]!) // the PUT leaves time for the rollback
+    })
+
+    it('an ambiguous PUT failure whose rollback also fails is grant_partial; a plain 4xx is not', async () => {
+      const { scene } = await createScene(user)
+      const dest = await insertDest(scene.id)
+      const status = { put: 503 }
+      worlds.sendSigned = async (r) => { throw new WorldsError(r.method === 'PUT' ? status.put : 500, '') }
+      let { requests } = (await req('GET', `/api/dcl/destinations/${dest.id}/grant`)).json()
+      let res = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: await sign(requests), timestamp: requests[0].timestamp })
+      expect([res.statusCode, res.json().error]).toEqual([502, 'grant_partial'])
+
+      status.put = 400
+      ;({ requests } = (await req('GET', `/api/dcl/destinations/${dest.id}/grant`)).json())
+      res = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: await sign(requests), timestamp: requests[0].timestamp })
+      expect([res.statusCode, res.json().error]).toEqual([502, 'grant_rejected'])
+    })
+
+    it('a 404 from the rollback means there was nothing to remove', async () => {
+      const { scene } = await createScene(user)
+      const dest = await insertDest(scene.id)
+      worlds.sendSigned = async (r) => { throw new WorldsError(r.method === 'PUT' ? 0 : 404, '') }
+      const { requests } = (await req('GET', `/api/dcl/destinations/${dest.id}/grant`)).json()
+      const res = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: await sign(requests), timestamp: requests[0].timestamp })
+      expect([res.statusCode, res.json().error]).toEqual([502, 'grant_rejected'])
+    })
+
+    it('a PUT that fails after the reset says the old permission was removed', async () => {
+      const { scene } = await createScene(user)
+      const dest = await insertDest(scene.id, { grantedAt: new Date() })
+      worlds.deployers.set(WORLD, { owner: user.wallet, deployers: [virvi] })
+      trackPermissions()
+      const tracked = worlds.sendSigned
+      worlds.sendSigned = async (r, c) => {
+        if (r.method === 'PUT') throw new WorldsError(400, 'nope')
+        return tracked(r, c)
+      }
+      const { requests } = (await req('GET', `/api/dcl/destinations/${dest.id}/grant`)).json()
+      const res = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: await sign(requests), timestamp: requests[0].timestamp })
+      expect([res.statusCode, res.json().error]).toEqual([502, 'grant_rejected'])
+      expect(res.json().message).toMatch(/earlier permission .*was removed/)
+      expect((await destRow(dest.id)).grantedAt).toBeNull()
+    })
+
+    it('grant_not_visible clears a stale grantedAt', async () => {
+      const { scene } = await createScene(user)
+      const dest = await insertDest(scene.id, { grantedAt: new Date() })
+      const { requests } = (await req('GET', `/api/dcl/destinations/${dest.id}/grant`)).json()
+      const res = await req('POST', `/api/dcl/destinations/${dest.id}/grant`, { chains: await sign(requests), timestamp: requests[0].timestamp })
+      expect(res.json().error).toBe('grant_not_visible')
+      expect((await destRow(dest.id)).grantedAt).toBeNull()
+    })
+
     it("502 grant_not_visible when Virvi isn't listed afterwards", async () => {
       const { scene } = await createScene(user)
       const dest = await insertDest(scene.id)
