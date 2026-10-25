@@ -152,6 +152,14 @@ export const config = {
   hyperfyRouterDomain: env('HYPERFY_ROUTER_DOMAIN'), // worlds.vlm.gg
   hyperfySecretKey: env('HYPERFY_SECRET_KEY'), // 32-byte hex, encrypts admin codes
 
+  // ── Design Studio (cloud only; see src/studio/README.md) ───────────────
+  studioWorkerImage: env('STUDIO_WORKER_IMAGE'), // registry.fly.io/vlm-studio-worker:<git-sha>
+  studioS3Uri: env('STUDIO_S3_URI'), // private bucket, s3://<key>:<secret>@<account>.r2.cloudflarestorage.com/<bucket>, or file://<dir>
+  studioFlyApp: env('STUDIO_FLY_APP') || 'vlm-studio-worker',
+  studioClaudeModel: env('STUDIO_CLAUDE_MODEL') || 'claude-opus-5-5',
+  studioCodexModel: env('STUDIO_CODEX_MODEL') || 'gpt-6.1-sol',
+  studioEnabled: mode === 'cloud' && !!env('STUDIO_WORKER_IMAGE') && !!env('STUDIO_S3_URI'),
+
   // ── Metrics ─────────────────────────────────────────────────────────────
   metricsEnabled: env('ENABLE_METRICS') === 'true' || mode !== 'single',
 

@@ -46,6 +46,10 @@ export interface TierLimits {
   recording: boolean
   crossWorldBroadcast: boolean
   customDomain: boolean
+  // Design Studio: prompts a day, the hidden daily spend that stops prompts, and designs open (not archived) at once
+  studioPromptsPerDay: number
+  studioDailyCostCeilingUsd: number
+  studioOpenDesigns: number
 }
 
 export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
@@ -62,6 +66,9 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     recording: false,
     crossWorldBroadcast: false,
     customDomain: false,
+    studioPromptsPerDay: 3,
+    studioDailyCostCeilingUsd: 6,
+    studioOpenDesigns: 1,
   },
   creator: {
     scenes: 20,
@@ -76,6 +83,9 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     recording: false,
     crossWorldBroadcast: false,
     customDomain: false,
+    studioPromptsPerDay: 15,
+    studioDailyCostCeilingUsd: 30,
+    studioOpenDesigns: Infinity,
   },
   pro: {
     scenes: 100,
@@ -90,6 +100,9 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     recording: true,
     crossWorldBroadcast: false,
     customDomain: true,
+    studioPromptsPerDay: 40,
+    studioDailyCostCeilingUsd: 75,
+    studioOpenDesigns: Infinity,
   },
   studio: {
     scenes: Infinity,
@@ -104,6 +117,9 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     recording: true,
     crossWorldBroadcast: true,
     customDomain: true,
+    studioPromptsPerDay: 100,
+    studioDailyCostCeilingUsd: 200,
+    studioOpenDesigns: Infinity,
   },
   enterprise: {
     scenes: Infinity,
@@ -118,6 +134,9 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     recording: true,
     crossWorldBroadcast: true,
     customDomain: true,
+    studioPromptsPerDay: 300,
+    studioDailyCostCeilingUsd: 600,
+    studioOpenDesigns: Infinity,
   },
 }
 

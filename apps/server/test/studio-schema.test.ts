@@ -1,0 +1,71 @@
+import { describe, it, expect, beforeEach } from 'vitest'
+import { eq } from 'drizzle-orm'
+import { db } from '../src/db/connection.js'
+import {
+  studioDesigns,
+  studioPieces,
+  studioRevisions,
+  studioJobs,
+  studioMessages,
+  studioRenders,
+  studioUsageDays,
+} from '../src/db/schema.js'
+import { TIER_LIMITS } from '../src/integrations/stripe.js'
+import { resetDb } from './helpers/db.js'
+import { createUser } from './helpers/factories.js'
+
+async function design() {
+  const user = await createUser()
+  const [d] = await db.insert(studioDesigns).values({ ownerId: user.id, name: 'Neon cap', kind: 'wearable', agent: 'claude' }).returning()
+  return { user, d }
+}
+
+describe('design studio schema', () => {
+  beforeEach(resetDb)
+
+  it('studio tables accept a design with a piece, revision, job, message, render and usage day', async () => {
+    const { user, d } = await design()
+    expect(d.status).toBe('idle')
+    const [job] = await db.insert(studioJobs).values({ designId: d.id, type: 'prompt', payload: { type: 'prompt' } }).returning()
+    expect(job.status).toBe('queued')
+    expect(job.counted).toBe(false)
+    const [piece] = await db.insert(studioPieces).values({ designId: d.id, category: 'hat', name: 'Neon cap' }).returning()
+    const [rev] = await db.insert(studioRevisions).values({
+      pieceId: piece.id, number: 1, jobId: job.id, changeKind: 'new', meta: { name: 'Neon cap' },
+      checker: { pass: true, failures: [], warnings: [] }, files: ['pieces/hat/cap_male.glb'],
+    }).returning()
+    await db.update(studioPieces).set({ latestRevisionId: rev.id }).where(eq(studioPieces.id, piece.id))
+    await db.insert(studioMessages).values({ designId: d.id, role: 'agent', agent: 'claude', text: 'Done', jobId: job.id })
+    const [render] = await db.insert(studioRenders).values({ revisionId: rev.id, viewKey: 'spin-male-default', jobId: job.id, status: 'ready', frames: 36 }).returning()
+    await db.insert(studioUsageDays).values({ userId: user.id, day: '2026-10-25', prompts: 1, costUsd: 0.74 })
+
+    const [p] = await db.select().from(studioPieces).where(eq(studioPieces.id, piece.id))
+    expect(p.latestRevisionId).toBe(rev.id)
+    expect(render.frames).toBe(36)
+    const [u] = await db.select().from(studioUsageDays)
+    expect(u).toMatchObject({ day: '2026-10-25', prompts: 1, costUsd: 0.74 })
+    expect((await db.select().from(studioMessages))[0].text).toBe('Done')
+  })
+
+  it('one piece per category per design', async () => {
+    const { d } = await design()
+    await db.insert(studioPieces).values({ designId: d.id, category: 'hat', name: 'a' })
+    await expect(db.insert(studioPieces).values({ designId: d.id, category: 'hat', name: 'b' })).rejects.toThrow(/unique|duplicate/i)
+  })
+
+  it('one open prompt job per design', async () => {
+    const { d } = await design()
+    await db.insert(studioJobs).values({ designId: d.id, type: 'prompt', payload: {} })
+    await expect(db.insert(studioJobs).values({ designId: d.id, type: 'prompt', payload: {} })).rejects.toThrow(/unique|duplicate/i)
+    await db.insert(studioJobs).values({ designId: d.id, type: 'render', payload: {} })
+    await db.insert(studioJobs).values({ designId: d.id, type: 'prompt', status: 'done', payload: {} })
+  })
+
+  it('plan limits carry the studio allowances', () => {
+    expect(TIER_LIMITS.free).toMatchObject({ studioPromptsPerDay: 3, studioDailyCostCeilingUsd: 6, studioOpenDesigns: 1 })
+    expect(TIER_LIMITS.creator).toMatchObject({ studioPromptsPerDay: 15, studioDailyCostCeilingUsd: 30, studioOpenDesigns: Infinity })
+    expect(TIER_LIMITS.pro).toMatchObject({ studioPromptsPerDay: 40, studioDailyCostCeilingUsd: 75 })
+    expect(TIER_LIMITS.studio).toMatchObject({ studioPromptsPerDay: 100, studioDailyCostCeilingUsd: 200 })
+    expect(TIER_LIMITS.enterprise).toMatchObject({ studioPromptsPerDay: 300, studioDailyCostCeilingUsd: 600 })
+  })
+})

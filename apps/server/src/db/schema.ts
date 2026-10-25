@@ -1341,3 +1341,107 @@ export const advertiserLeads = pgTable('advertiser_leads', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+// ── Design Studio ────────────────────────────────────────────────────────────
+// A design is one conversation that builds wearable pieces (or one emote) through an agent on a Fly worker machine.
+// Files never live here: they are in the private studio bucket under designs/<id>/ (src/studio/store.ts).
+
+export const studioDesigns = pgTable('studio_designs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ownerId: uuid('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  kind: text('kind').notNull(), // wearable | emote
+  agent: text('agent').notNull(), // claude | codex
+  status: text('status').notNull().default('idle'), // idle | building
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+  lastJobAt: timestamp('last_job_at', { withTimezone: true }),
+  machineId: text('machine_id'),
+  // Set while one server creates the design's machine, so concurrent prompts create it once (stale after 2 min)
+  machineClaimedAt: timestamp('machine_claimed_at', { withTimezone: true }),
+  // SHA-256 of the machine's STUDIO_WORKER_TOKEN; the token itself is never stored
+  workerTokenHash: text('worker_token_hash').unique(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  ownerIdx: index('studio_designs_owner_idx').on(t.ownerId),
+}))
+
+export const studioPieces = pgTable('studio_pieces', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  designId: uuid('design_id').notNull().references(() => studioDesigns.id, { onDelete: 'cascade' }),
+  category: text('category').notNull(),
+  name: text('name').notNull(),
+  latestRevisionId: uuid('latest_revision_id'), // no FK: revisions reference pieces
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  categoryUq: uniqueIndex('studio_pieces_design_category_uq').on(t.designId, t.category),
+}))
+
+export const studioRevisions = pgTable('studio_revisions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  pieceId: uuid('piece_id').notNull().references(() => studioPieces.id, { onDelete: 'cascade' }),
+  number: integer('number').notNull(),
+  // The job that made it; the revision log reads the prompt, agent, model, skills SHA and cost from there
+  jobId: uuid('job_id').notNull(),
+  changeKind: text('change_kind').notNull(),
+  meta: jsonb('meta').notNull(),
+  checker: jsonb('checker'), // { pass, failures, warnings }
+  files: jsonb('files').$type<string[]>().notNull(), // contract paths, under designs/<d>/jobs/<jobId>/
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  numberUq: uniqueIndex('studio_revisions_piece_number_uq').on(t.pieceId, t.number),
+}))
+
+export const studioJobs = pgTable('studio_jobs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  designId: uuid('design_id').notNull().references(() => studioDesigns.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(), // prompt | render
+  status: text('status').notNull().default('queued'), // queued | taken | done | failed
+  payload: jsonb('payload').notNull(), // the contract's Job, without jobId
+  result: jsonb('result'),
+  // Whether the prompt used the owner's allowance, and on which UTC day (refunds and cost go to that day)
+  counted: boolean('counted').notNull().default(false),
+  countedDay: date('counted_day', { mode: 'string' }),
+  takenAt: timestamp('taken_at', { withTimezone: true }),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  designStatusIdx: index('studio_jobs_design_status_idx').on(t.designId, t.status, t.createdAt),
+  // One prompt at a time per design, held by the database
+  oneOpenPromptUq: uniqueIndex('studio_jobs_one_open_prompt_uq')
+    .on(t.designId)
+    .where(sql`${t.type} = 'prompt' AND ${t.status} IN ('queued', 'taken')`),
+}))
+
+export const studioMessages = pgTable('studio_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  designId: uuid('design_id').notNull().references(() => studioDesigns.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(), // user | agent | system
+  agent: text('agent'),
+  text: text('text').notNull(),
+  jobId: uuid('job_id'),
+  proposal: jsonb('proposal'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  designIdx: index('studio_messages_design_idx').on(t.designId, t.createdAt),
+}))
+
+export const studioRenders = pgTable('studio_renders', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  revisionId: uuid('revision_id').notNull().references(() => studioRevisions.id, { onDelete: 'cascade' }),
+  viewKey: text('view_key').notNull(), // <mode>-<bodyShape>-<outfit>[-<emote>], as the contract names render folders
+  jobId: uuid('job_id').notNull(), // frames are stored under this job's files
+  frames: integer('frames').notNull().default(0),
+  status: text('status').notNull(), // queued | ready | failed
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  viewUq: uniqueIndex('studio_renders_revision_view_uq').on(t.revisionId, t.viewKey),
+}))
+
+export const studioUsageDays = pgTable('studio_usage_days', {
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  day: date('day', { mode: 'string' }).notNull(), // UTC
+  prompts: integer('prompts').notNull().default(0),
+  costUsd: doublePrecision('cost_usd').notNull().default(0),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.userId, t.day] }),
+}))
