@@ -1,0 +1,7 @@
+# The studio worker's Fly app. No services: nothing is exposed. VLM's server (Plan 3) starts one machine per design
+# from the image in this app's registry; `fly deploy --build-only --push` puts an image there.
+app = "vlm-studio-worker"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"

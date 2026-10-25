@@ -25,6 +25,7 @@ class FakeApi:
         self.files: dict[str, bytes] = {}  # '<job id>/<path>' -> body
         self.results: list[dict] = []
         self.fail: dict[tuple[str, str], int] = {}  # (method, path suffix) -> status to answer instead
+        self.on_event = None  # called with (job id, event) as each arrives
 
     def phases(self, job_id: str) -> list[str]:
         return [e['phase'] for j, e in self.events if j == job_id and e['type'] == 'phase']
@@ -53,6 +54,8 @@ class FakeApi:
             job_id, what = parts[1], parts[2]
             if what == 'events' and method == 'POST':
                 self.events.append((job_id, json.loads(body)))
+                if self.on_event:
+                    self.on_event(job_id, self.events[-1][1])
                 return 204, b''
             if what == 'files' and method == 'PUT':
                 self.files[f"{job_id}/{'/'.join(parts[3:])}"] = body
