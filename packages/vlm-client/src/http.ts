@@ -267,6 +267,10 @@ export class VLMHttpClient {
     return this._fetch(`/api/scenes/${sceneId}/roles`)
   }
 
+  async getDclPublishStatus(sceneId: string): Promise<{ destination: null | { id: string; world: string; mode: 'virvi' | 'sign'; status: string; pending: number; publishUrl: string } }> {
+    return this._fetch(`/api/scenes/${sceneId}/dcl/publish-status`)
+  }
+
   async addSceneRole(sceneId: string, wallet: string, role: 'cohost' | 'editor' | 'viewer'): Promise<{ role: SceneRoleEntry }> {
     return this._fetch(`/api/scenes/${sceneId}/roles`, { method: 'POST', body: JSON.stringify({ wallet, role }) })
   }

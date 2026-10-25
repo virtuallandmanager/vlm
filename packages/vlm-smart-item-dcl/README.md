@@ -45,10 +45,12 @@ editors or viewers by wallet address.
 - Upload images (PNG, JPG, WebP, GIF up to 10 MB) and GLB models (up to 50 MB) on vlm.gg (Media),
   or place them from the in-world HUD (Assets → Place).
 - Images appear live for everyone.
-- Decentraland only loads 3D models that are deployed with your scene, so after adding a GLB run
-  `npx vlm-dcl sync` in your scene folder (it downloads your VLM models into `models/vlm/`), then
-  deploy as usual. After that, moving, scaling and showing/hiding models is live. The HUD tells you
-  when models need a sync.
+- Decentraland only loads 3D models that are deployed with your scene. By default Virvi deploys them
+  to your World for you (set it up at vlm.gg/deploy); if you publish yourself, the HUD's Publish
+  button opens the publish page. After that, moving, scaling and showing/hiding models is live.
+- `npx vlm-dcl sync` is optional, if you want the files locally: run it in your scene folder and it
+  downloads your VLM models into `models/vlm/`, then deploy as usual. The HUD tells you when models
+  need a sync.
 - `npx vlm-dcl sync --dry-run` shows what would change; `--server <url>` for self-hosted VLM.
 
 ## Creator Hub
