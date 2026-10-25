@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { Readable } from 'node:stream'
 import { createRequire } from 'node:module'
 import { db } from '../src/db/connection.js'
 import { studioJobs, studioPieces, studioRevisions, studioRenders, studioMessages, studioDesigns, studioUsageDays } from '../src/db/schema.js'
@@ -61,6 +62,64 @@ describe('studio worker routes', () => {
       expect(wrong.statusCode).toBe(401)
     }
     expect((await db.select().from(studioJobs).where(eq(studioJobs.id, bJob.id)))[0].status).toBe('taken')
+  })
+
+  it('a request without a worker token is refused before its body is read', async () => {
+    const { design } = await setup()
+    const job = await queueJob(design)
+    // A body that takes 5 s to arrive: an answer within 2 s proves auth ran before the body was read
+    const endless = () => {
+      let sent = false
+      return new Readable({
+        read() {
+          if (sent) return
+          sent = true
+          this.push(Buffer.alloc(64 * 1024))
+          setTimeout(() => this.push(null), 5000)
+        },
+      })
+    }
+    const calls = [
+      { method: 'PUT', url: `${W}/designs/${design.id}/workspace`, headers: { 'content-type': 'application/gzip' } },
+      { method: 'POST', url: `${W}/jobs/${job.id}/result`, headers: { 'content-type': 'application/octet-stream' } },
+      { method: 'PUT', url: `${W}/jobs/${job.id}/files/pieces/hat/a.glb`, headers: { 'content-type': 'model/gltf-binary' } },
+    ]
+    for (const c of calls) {
+      const res = await Promise.race([
+        app.inject({ ...c, payload: endless() } as any),
+        new Promise<'hung'>((r) => setTimeout(() => r('hung'), 2000)),
+      ])
+      expect(res === 'hung' ? 'hung' : res.statusCode, c.url).toBe(401)
+    }
+  })
+
+  it('the result route takes only JSON', async () => {
+    const { design, token } = await setup()
+    const job = await queueJob(design)
+    await take(job.id)
+    const res = await app.inject({ method: 'POST', url: `${W}/jobs/${job.id}/result`, headers: { ...auth(token), 'content-type': 'application/octet-stream' }, payload: Buffer.from('{}') })
+    expect(res.statusCode).toBe(415)
+  })
+
+  it('workspaces stream to and from the store', async () => {
+    const { design, token } = await setup()
+    const streamed = { put: 0, get: 0 }
+    setStudioStore({
+      ...store,
+      put: async () => { throw new Error('buffered put') },
+      get: async () => { throw new Error('buffered get') },
+      putStream: async (key: string, body: Readable, length: number, type: string) => { streamed.put++; return store.putStream(key, body, length, type) },
+      getStream: async (key: string) => { streamed.get++; return store.getStream(key) },
+    } as any)
+    const bytes = Buffer.alloc(3 * 1024 * 1024, 7)
+    const put = await app.inject({ method: 'PUT', url: `${W}/designs/${design.id}/workspace`, headers: { ...auth(token), 'content-type': 'application/gzip' }, payload: bytes })
+    expect(put.statusCode).toBe(204)
+    const got = await app.inject({ method: 'GET', url: `${W}/designs/${design.id}/workspace`, headers: auth(token) })
+    expect(got.statusCode).toBe(200)
+    expect(got.rawPayload.equals(bytes)).toBe(true)
+    expect(streamed).toEqual({ put: 1, get: 1 })
+    const empty = await app.inject({ method: 'PUT', url: `${W}/designs/${design.id}/workspace`, headers: { ...auth(token), 'content-type': 'application/gzip' }, payload: Buffer.alloc(0) })
+    expect(empty.statusCode).toBe(400)
   })
 
   it('studio worker routes are 404 when the studio is off', async () => {

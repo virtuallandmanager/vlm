@@ -1,5 +1,8 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from '@aws-sdk/client-s3'
-import { mkdir, readFile, writeFile, rm, readdir } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, rm, readdir, stat } from 'node:fs/promises'
+import { createReadStream, createWriteStream } from 'node:fs'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from '../config.js'
@@ -12,6 +15,15 @@ export interface StudioStore {
   put(key: string, body: Buffer, contentType: string): Promise<void>
   get(key: string): Promise<{ body: Buffer; contentType: string } | null>
   deletePrefix(prefix: string): Promise<number>
+  /** Workspaces are large: they stream through, never held whole in memory. */
+  putStream(key: string, body: Readable, length: number, contentType: string): Promise<void>
+  getStream(key: string): Promise<{ body: Readable; contentType: string; length?: number } | null>
+}
+
+async function collect(body: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  for await (const c of body) chunks.push(Buffer.from(c))
+  return Buffer.concat(chunks)
 }
 
 export const workspaceKey = (designId: string) => `designs/${designId}/workspace.tar.gz`
@@ -48,6 +60,18 @@ export function r2StudioStore(uri = config.studioS3Uri): StudioStore {
   return {
     async put(key, body, contentType) {
       await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }))
+    },
+    async putStream(key, body, length, contentType) {
+      await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentLength: length, ContentType: contentType }))
+    },
+    async getStream(key) {
+      try {
+        const res = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+        return { body: res.Body as Readable, contentType: res.ContentType ?? 'application/octet-stream', length: res.ContentLength }
+      } catch (err) {
+        if ((err as { name?: string }).name === 'NoSuchKey') return null
+        throw err
+      }
     },
     async get(key) {
       try {
@@ -104,6 +128,20 @@ export function localStudioStore(dir: string): StudioStore {
       await writeFile(o, body)
       await writeFile(t, contentType)
     },
+    async putStream(key, body, _length, contentType) {
+      const o = path('objects', key), t = path('types', key)
+      await mkdir(dirname(o), { recursive: true })
+      await mkdir(dirname(t), { recursive: true })
+      await pipeline(body, createWriteStream(o))
+      await writeFile(t, contentType)
+    },
+    async getStream(key) {
+      const o = path('objects', key)
+      const st = await stat(o).catch(() => null)
+      if (!st?.isFile()) return null
+      const contentType = await readFile(path('types', key), 'utf8').catch(() => 'application/octet-stream')
+      return { body: createReadStream(o), contentType, length: st.size }
+    },
     async get(key) {
       const o = path('objects', key)
       try {
@@ -138,6 +176,11 @@ export function memoryStudioStore(): StudioStore & { keys(): string[] } {
       let n = 0
       for (const k of [...objects.keys()]) if (k.startsWith(prefix)) { objects.delete(k); n++ }
       return n
+    },
+    async putStream(key, body, _length, contentType) { objects.set(key, { body: await collect(body), contentType }) },
+    async getStream(key) {
+      const o = objects.get(key)
+      return o ? { body: Readable.from([o.body]), contentType: o.contentType, length: o.body.length } : null
     },
     keys: () => [...objects.keys()].sort(),
   }

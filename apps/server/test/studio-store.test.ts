@@ -49,6 +49,14 @@ describe('studio store', () => {
       expect(await s.get('designs/d1/a')).toBeNull()
       expect((await s.get('designs/d2/c'))?.body.toString()).toBe('c')
       expect(await s.get('designs/nope')).toBeNull()
+      const { Readable } = await import('node:stream')
+      await s.putStream('designs/d3/workspace.tar.gz', Readable.from([Buffer.from('ab'), Buffer.from('cd')]), 4, 'application/gzip')
+      const st = await s.getStream('designs/d3/workspace.tar.gz')
+      const chunks: Buffer[] = []
+      for await (const c of st!.body) chunks.push(Buffer.from(c))
+      expect(Buffer.concat(chunks).toString()).toBe('abcd')
+      expect(st).toMatchObject({ contentType: 'application/gzip', length: 4 })
+      expect(await s.getStream('designs/nope')).toBeNull()
     })
   }
 

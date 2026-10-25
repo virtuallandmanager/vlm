@@ -4,6 +4,7 @@ import { db } from '../src/db/connection.js'
 import { studioDesigns } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { ensureWorker, destroyWorker, hashWorkerToken, StudioMachineError } from '../src/studio/machines.js'
+import { FlyError } from '../src/hyperfy/fly.js'
 import { resetDb } from './helpers/db.js'
 import { createUser } from './helpers/factories.js'
 import { createDesign, fakeFly } from './helpers/studio.js'
@@ -64,6 +65,40 @@ describe('studio worker machines', () => {
     const r = await row(d.id)
     expect(r.machineId).toBe('m2')
     expect(r.workerTokenHash).not.toBe(first)
+  })
+
+  it('a machine Fly reports destroyed or failed is replaced', async () => {
+    for (const state of ['destroyed', 'destroying', 'failed']) {
+      const fly = fakeFly()
+      const d = await createDesign(await createUser())
+      await ensureWorker(d.id, { fly })
+      fly.machines.get('m1')!.state = state
+      await ensureWorker(d.id, { fly })
+      expect(fly.calls.create, state).toHaveLength(2)
+      expect((await row(d.id)).machineId).toBe('m2')
+    }
+  })
+
+  it('a stopping machine that refuses to start is left for the sweep, not failed', async () => {
+    const fly = fakeFly()
+    const d = await createDesign(await createUser())
+    await ensureWorker(d.id, { fly })
+    fly.machines.get('m1')!.state = 'stopping'
+    fly.startMachine = async () => { throw new FlyError('Fly POST start returned 412: machine is stopping', 412, '') }
+    await expect(ensureWorker(d.id, { fly })).resolves.toBeUndefined()
+  })
+
+  it('the token hash is stored before the machine can call in', async () => {
+    const fly = fakeFly()
+    const d = await createDesign(await createUser())
+    let hashAtCreate: string | null | undefined
+    const create = fly.createWorkerMachine
+    fly.createWorkerMachine = async (app, spec) => {
+      hashAtCreate = (await row(d.id)).workerTokenHash
+      return create(app, spec)
+    }
+    await ensureWorker(d.id, { fly })
+    expect(hashAtCreate).toBe(hashWorkerToken(fly.calls.create[0].env.STUDIO_WORKER_TOKEN))
   })
 
   it('fly failure is a StudioMachineError with no token in its message', async () => {

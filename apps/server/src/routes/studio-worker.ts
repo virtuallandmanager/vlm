@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import type { Readable } from 'node:stream'
 import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { studioDesigns, studioJobs } from '../db/schema.js'
@@ -49,23 +50,50 @@ async function workerAuth(request: FastifyRequest, reply: FastifyReply) {
 
 export default async function studioWorkerRoutes(app: FastifyInstance) {
   await app.register(async (scope) => {
-    // Workspaces and job files are raw bytes of any type
-    scope.addContentTypeParser('*', { parseAs: 'buffer', bodyLimit: WORKSPACE_LIMIT }, (_req, body, done) => done(null, body))
-    const opts = { preHandler: workerAuth, config: { rateLimit: false }, schema: { hide: true } } as const
+    // Auth runs before any body is read, so a request without a token never makes the server buffer anything
+    scope.addHook('onRequest', workerAuth)
+    const opts = { config: { rateLimit: false }, schema: { hide: true } } as const
 
-    scope.get('/api/studio/worker/designs/:designId/workspace', opts, async (request, reply) => {
-      const obj = await getStudioStore().get(workspaceKey(request.studioDesign!.id))
-      if (!obj) return reply.status(404).send({ error: 'no_workspace' })
-      return reply.type('application/gzip').send(obj.body)
+    // The workspace streams through to the store: a gzip body of known length, never held whole in memory
+    await scope.register(async (ws) => {
+      ws.removeAllContentTypeParsers()
+      ws.addContentTypeParser('application/gzip', (_req, payload, done) => done(null, payload))
+
+      ws.get('/api/studio/worker/designs/:designId/workspace', opts, async (request, reply) => {
+        const obj = await getStudioStore().getStream(workspaceKey(request.studioDesign!.id))
+        if (!obj) return reply.status(404).send({ error: 'no_workspace' })
+        if (obj.length !== undefined) reply.header('Content-Length', obj.length)
+        return reply.type('application/gzip').send(obj.body)
+      })
+
+      ws.put('/api/studio/worker/designs/:designId/workspace', opts, async (request, reply) => {
+        const length = Number(request.headers['content-length'])
+        if (!Number.isInteger(length) || length <= 0) return reply.status(400).send({ error: 'empty_workspace' })
+        if (length > WORKSPACE_LIMIT) return reply.status(413).send({ error: 'workspace_too_large' })
+        await getStudioStore().putStream(workspaceKey(request.studioDesign!.id), request.body as Readable, length, 'application/gzip')
+        return reply.status(204).send()
+      })
     })
 
-    scope.put('/api/studio/worker/designs/:designId/workspace', { ...opts, bodyLimit: WORKSPACE_LIMIT }, async (request, reply) => {
-      const body = request.body
-      if (!Buffer.isBuffer(body) || !body.length) return reply.status(400).send({ error: 'empty_workspace' })
-      await getStudioStore().put(workspaceKey(request.studioDesign!.id), body, 'application/gzip')
-      return reply.status(204).send()
+    // Job files keep their exact bytes whatever their type (piece.json is JSON, checker reports are text)
+    await scope.register(async (files) => {
+      files.removeAllContentTypeParsers()
+      files.addContentTypeParser('*', { parseAs: 'buffer', bodyLimit: FILE_LIMIT }, (_req, body, done) => done(null, body))
+      files.put('/api/studio/worker/jobs/:jobId/files/*', { ...opts, bodyLimit: FILE_LIMIT }, async (request, reply) => {
+        const path = (request.params as { '*': string })['*']
+        const checked = checkFilePath(path)
+        if (!checked.ok) return reply.status(400).send({ error: 'bad_path', reason: checked.reason })
+        const job = request.studioJob!
+        if (job.status !== 'taken') return reply.status(409).send({ error: 'job_not_taken' })
+        const body = request.body
+        if (!Buffer.isBuffer(body)) return reply.status(400).send({ error: 'not_bytes' })
+        const type = (request.headers['content-type'] ?? 'application/octet-stream').split(';')[0].trim().slice(0, 100)
+        await getStudioStore().put(jobFileKey(job.designId, job.id, path), body, type)
+        return reply.status(204).send()
+      })
     })
 
+    // The rest take JSON only
     scope.get('/api/studio/worker/designs/:designId/jobs/next', opts, async (request, reply) => {
       const designId = request.studioDesign!.id
       const rows = await db.execute<{ id: string; payload: Record<string, unknown> }>(sql`
@@ -92,24 +120,6 @@ export default async function studioWorkerRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: 'bad_event' })
       }
       return reply.status(204).send()
-    })
-
-    // Job files keep their exact bytes whatever their type (piece.json is JSON, checker reports are text)
-    await scope.register(async (files) => {
-      files.removeAllContentTypeParsers()
-      files.addContentTypeParser('*', { parseAs: 'buffer', bodyLimit: FILE_LIMIT }, (_req, body, done) => done(null, body))
-      files.put('/api/studio/worker/jobs/:jobId/files/*', { ...opts, bodyLimit: FILE_LIMIT }, async (request, reply) => {
-        const path = (request.params as { '*': string })['*']
-        const checked = checkFilePath(path)
-        if (!checked.ok) return reply.status(400).send({ error: 'bad_path', reason: checked.reason })
-        const job = request.studioJob!
-        if (job.status !== 'taken') return reply.status(409).send({ error: 'job_not_taken' })
-        const body = request.body
-        if (!Buffer.isBuffer(body)) return reply.status(400).send({ error: 'not_bytes' })
-        const type = (request.headers['content-type'] ?? 'application/octet-stream').split(';')[0].trim().slice(0, 100)
-        await getStudioStore().put(jobFileKey(job.designId, job.id, path), body, type)
-        return reply.status(204).send()
-      })
     })
 
     scope.post('/api/studio/worker/jobs/:jobId/result', opts, async (request, reply) => {

@@ -11,6 +11,11 @@ export type RenderFrame = { designId: string; revisionId: string; viewKey: strin
 
 export const RENDER_URL_TTL_MS = 3600_000
 
+/** Expiries fall on the hour, one to two hours out, so re-reading a design gives the same URLs and the browser cache holds. */
+export function frameUrlExpiry(now: Date): Date {
+  return new Date(Math.ceil(now.getTime() / RENDER_URL_TTL_MS) * RENDER_URL_TTL_MS + RENDER_URL_TTL_MS)
+}
+
 const key = () => createHmac('sha256', config.jwtSecret).update('studio-render-frames').digest()
 const mac = (body: string) => createHmac('sha256', key()).update(body).digest('base64url')
 

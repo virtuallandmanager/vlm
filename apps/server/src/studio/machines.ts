@@ -42,6 +42,7 @@ export function setMachineDeps(d: Partial<MachineDeps> | null): void {
 export const hashWorkerToken = (token: string) => createHash('sha256').update(token).digest('hex')
 
 const CLAIM_STALE_MS = 2 * 60_000
+const DEAD = ['destroyed', 'destroying', 'failed']
 const IDLE_EXIT_SEC = '600'
 
 function plain(err: unknown, secret?: string): string {
@@ -65,14 +66,16 @@ export async function ensureWorker(designId: string, deps: Partial<MachineDeps> 
     } catch (err) {
       throw new StudioMachineError(`The studio machine could not be reached: ${plain(err)}`)
     }
-    if (state === null) {
-      // Destroyed outside VLM: forget it and make a new one
+    if (state === null || DEAD.includes(state)) {
+      // Destroyed outside VLM (Fly reports `destroyed` for a while before 404) or failed: forget it and make a new one
       await db.update(studioDesigns).set({ machineId: null, workerTokenHash: null })
         .where(and(eq(studioDesigns.id, designId), eq(studioDesigns.machineId, design.machineId)))
     } else if (state === 'stopped' || state === 'suspended' || state === 'stopping') {
       try {
         await d.fly.startMachine(app, design.machineId)
       } catch (err) {
+        // Mid-stop, Fly refuses a start; the sweep starts it again for a job still waiting a minute later
+        if (state === 'stopping') return
         const raced = err instanceof FlyError && (err.status === 412 || /already/i.test(err.message))
         const now = raced ? await d.fly.getMachineState(app, design.machineId).catch(() => null) : null
         if (now !== 'started' && now !== 'starting') {
@@ -85,9 +88,12 @@ export async function ensureWorker(designId: string, deps: Partial<MachineDeps> 
     }
   }
 
+  if (!config.studioWorkerImage) throw new StudioMachineError('The studio is not configured (STUDIO_WORKER_IMAGE).')
   const now = d.now()
+  // The claim stores the new token's hash, so the machine's first call can authenticate however fast it boots
+  const token = randomBytes(32).toString('base64url')
   const claimed = await db.update(studioDesigns)
-    .set({ machineClaimedAt: now })
+    .set({ machineClaimedAt: now, workerTokenHash: hashWorkerToken(token) })
     .where(and(
       eq(studioDesigns.id, designId),
       isNull(studioDesigns.machineId),
@@ -96,11 +102,8 @@ export async function ensureWorker(designId: string, deps: Partial<MachineDeps> 
     .returning({ id: studioDesigns.id })
   if (!claimed.length) return // another request is creating it; that machine takes the job
 
-  if (!config.studioWorkerImage) {
-    await db.update(studioDesigns).set({ machineClaimedAt: null }).where(eq(studioDesigns.id, designId))
-    throw new StudioMachineError('The studio is not configured (STUDIO_WORKER_IMAGE).')
-  }
-  const token = randomBytes(32).toString('base64url')
+  const release = () => db.update(studioDesigns).set({ machineClaimedAt: null, workerTokenHash: null })
+    .where(and(eq(studioDesigns.id, designId), isNull(studioDesigns.machineId)))
   let id: string
   try {
     ;({ id } = await d.fly.createWorkerMachine(app, {
@@ -114,12 +117,10 @@ export async function ensureWorker(designId: string, deps: Partial<MachineDeps> 
       },
     }))
   } catch (err) {
-    await db.update(studioDesigns).set({ machineClaimedAt: null }).where(eq(studioDesigns.id, designId))
+    await release()
     throw new StudioMachineError(`The studio machine could not be created: ${plain(err, token)}`)
   }
-  await db.update(studioDesigns)
-    .set({ machineId: id, workerTokenHash: hashWorkerToken(token), machineClaimedAt: null })
-    .where(eq(studioDesigns.id, designId))
+  await db.update(studioDesigns).set({ machineId: id, machineClaimedAt: null }).where(eq(studioDesigns.id, designId))
 }
 
 /** Deletes the design's machine and forgets its token; a later job creates a new one. */

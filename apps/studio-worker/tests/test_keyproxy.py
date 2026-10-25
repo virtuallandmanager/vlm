@@ -115,3 +115,22 @@ def test_proxy_answers_502_when_upstream_is_down():
     assert r.status == 502
     assert b'real-key' not in r.read()
     srv.shutdown()
+
+
+def test_proxy_forwards_only_the_agents_endpoints(upstream):
+    srv = keyproxy.serve(0, upstream, 'authorization', 'sk-real', None, allowed=keyproxy.OPENAI_PATHS)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    for path in ('/v1/files', '/v1/fine_tuning/jobs', '/v1/batches', '/v1/responsesX', '/v1/../v1/files', '/'):
+        _, r = post(srv, {'authorization': 'Bearer studio-proxy'}, path=path)
+        assert r.status == 403, path
+        assert b'sk-real' not in r.read()
+    assert Upstream.seen == []
+    for path in ('/v1/responses', '/v1/responses/resp_1/cancel', '/v1/models?limit=1'):
+        _, r = post(srv, {'authorization': 'Bearer studio-proxy'}, path=path)
+        assert r.status == 200, path
+        r.read()
+    assert keyproxy.allowed_path('/v1/messages?beta=true', keyproxy.ANTHROPIC_PATHS)
+    assert keyproxy.allowed_path('/v1/messages/count_tokens', keyproxy.ANTHROPIC_PATHS)
+    assert not keyproxy.allowed_path('/v1/messages/batches', keyproxy.ANTHROPIC_PATHS)
+    assert not keyproxy.allowed_path('/v1/files', keyproxy.ANTHROPIC_PATHS)
+    srv.shutdown()

@@ -3,7 +3,7 @@
 Runs as its own `keyproxy` user (the agent can't read its environment) on 127.0.0.1: Anthropic on 8890, OpenAI on
 8891. Each request is forwarded unchanged to the provider through the allowlisting proxy, with the client's key
 headers replaced by the real one, and the response is streamed back as it arrives (server-sent events included).
-Nothing about a request is ever logged.
+Only the endpoints the agents use are forwarded; a refused one logs its method and path, nothing else.
 """
 import http.client
 import os
@@ -13,6 +13,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 ANTHROPIC_PORT, OPENAI_PORT = 8890, 8891
+# The endpoints the agents use, and no others (no files, batches or fine-tunes on VLM's keys): exact paths and prefixes
+ANTHROPIC_PATHS = ({'/v1/messages', '/v1/messages/count_tokens', '/v1/models'}, ('/v1/models/',))
+OPENAI_PATHS = ({'/v1/responses', '/v1/models'}, ('/v1/responses/', '/v1/models/'))
 UPSTREAM_TIMEOUT_SEC = 900  # between reads; an agent's stream can sit quiet while the model thinks
 CHUNK = 65536
 # Hop-by-hop headers, and the ones this proxy sets itself
@@ -20,7 +23,15 @@ DROP = {'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
         'transfer-encoding', 'upgrade', 'host', 'content-length', 'x-api-key', 'authorization'}
 
 
-def _handler(upstream: str, header: str, key: str, proxy: str | None):
+def allowed_path(path: str, rules) -> bool:
+    exact, prefixes = rules
+    p = path.split('?', 1)[0]
+    if '..' in p.split('/') or '//' in p or '%' in p:
+        return False
+    return p in exact or any(p.startswith(x) and len(p) > len(x) for x in prefixes)
+
+
+def _handler(upstream: str, header: str, key: str, proxy: str | None, allowed=None):
     up = urlsplit(upstream)
     via = urlsplit(proxy) if proxy else None
 
@@ -51,8 +62,19 @@ def _handler(upstream: str, header: str, key: str, proxy: str | None):
                     self.rfile.readline()
             return self.rfile.read(int(self.headers.get('content-length') or 0))
 
+        def _refuse(self):
+            msg = b'{"error":"the key proxy does not forward this endpoint"}'
+            self.send_response(403)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(msg)))
+            self.end_headers()
+            self.wfile.write(msg)
+            print(f'keyproxy: refused {self.command} {self.path.split("?", 1)[0][:100]}', file=sys.stderr, flush=True)
+
         def _forward(self):
             body = self._body()
+            if allowed is not None and not allowed_path(self.path, allowed):
+                return self._refuse()
             headers = {k: v for k, v in self.headers.items() if k.lower() not in DROP}
             headers['Host'] = up.netloc
             headers[header] = f'Bearer {key}' if header == 'authorization' else key
@@ -100,8 +122,8 @@ def _handler(upstream: str, header: str, key: str, proxy: str | None):
     return Handler
 
 
-def serve(port: int, upstream: str, header: str, key: str, proxy: str | None) -> ThreadingHTTPServer:
-    srv = ThreadingHTTPServer(('127.0.0.1', port), _handler(upstream, header, key, proxy))
+def serve(port: int, upstream: str, header: str, key: str, proxy: str | None, allowed=None) -> ThreadingHTTPServer:
+    srv = ThreadingHTTPServer(('127.0.0.1', port), _handler(upstream, header, key, proxy, allowed))
     srv.daemon_threads = True
     return srv
 
@@ -109,8 +131,9 @@ def serve(port: int, upstream: str, header: str, key: str, proxy: str | None) ->
 def main() -> None:
     proxy = os.environ.get('HTTPS_PROXY') or None
     servers = [
-        serve(ANTHROPIC_PORT, 'https://api.anthropic.com', 'x-api-key', os.environ.get('ANTHROPIC_API_KEY', ''), proxy),
-        serve(OPENAI_PORT, 'https://api.openai.com', 'authorization', os.environ.get('OPENAI_API_KEY', ''), proxy),
+        serve(ANTHROPIC_PORT, 'https://api.anthropic.com', 'x-api-key', os.environ.get('ANTHROPIC_API_KEY', ''), proxy,
+              ANTHROPIC_PATHS),
+        serve(OPENAI_PORT, 'https://api.openai.com', 'authorization', os.environ.get('OPENAI_API_KEY', ''), proxy, OPENAI_PATHS),
     ]
     for k in ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY'):
         os.environ.pop(k, None)

@@ -28,8 +28,15 @@ export async function sweepStudio(now: Date, deps: Partial<MachineDeps> = {}): P
   ))
   let lost = await failJobs(taken.map((j) => j.id), MACHINE_STOPPED, now)
 
-  const neverTaken = await db.select({ id: studioJobs.id }).from(studioJobs)
-    .where(and(eq(studioJobs.status, 'queued'), lt(studioJobs.createdAt, new Date(now.getTime() - QUEUED_LOST_MS))))
+  // A worker takes one job at a time: a job waiting behind a running one, or one that finished under 10 minutes
+  // ago, is not lost. The 10 minutes count from the later of its queuing and the design's last taken or finished job.
+  const lostBefore = new Date(now.getTime() - QUEUED_LOST_MS).toISOString()
+  const neverTaken = await db.select({ id: studioJobs.id }).from(studioJobs).where(and(
+    eq(studioJobs.status, 'queued'),
+    sql`${studioJobs.createdAt} < ${lostBefore}::timestamptz`,
+    sql`NOT EXISTS (SELECT 1 FROM studio_jobs o WHERE o.design_id = ${studioJobs.designId} AND o.id <> ${studioJobs.id}
+      AND (o.status = 'taken' OR o.finished_at >= ${lostBefore}::timestamptz))`,
+  ))
   lost += await failJobs(neverTaken.map((j) => j.id), MACHINE_NEVER_STARTED, now)
 
   const waiting = await db.selectDistinct({ designId: studioJobs.designId }).from(studioJobs)

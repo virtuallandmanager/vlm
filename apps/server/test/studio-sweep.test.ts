@@ -63,6 +63,19 @@ describe('studio sweep', () => {
     expect((await promptStatus(owner.id, T0)).used).toBe(0)
   })
 
+  it('a job queued behind a running one is not failed as never started', async () => {
+    const owner = await createUser()
+    const design = await createDesign(owner, { status: 'building', machineId: 'm1', lastJobAt: T0 })
+    await queueJob(design, undefined, { status: 'taken', takenAt: T0, createdAt: T0 })
+    const render = await queueJob(design, { type: 'render', limits: { timeoutSec: 300 }, render: {} }, { createdAt: at(MIN) })
+    expect((await sweepStudio(at(20 * MIN), { fly: fakeFly() })).lost).toBe(0)
+    // The prompt finished at minute 22; the machine has had 10 minutes since to take the render
+    await db.update(studioJobs).set({ status: 'done', finishedAt: at(22 * MIN) }).where(eq(studioJobs.type, 'prompt'))
+    expect((await sweepStudio(at(30 * MIN), { fly: fakeFly() })).lost).toBe(0)
+    expect((await sweepStudio(at(33 * MIN), { fly: fakeFly() })).lost).toBe(1)
+    expect((await db.select().from(studioJobs).where(eq(studioJobs.id, render.id)))[0].status).toBe('failed')
+  })
+
   it('a queued job waiting over a minute gets its machine started again', async () => {
     const fly = fakeFly()
     const design = await createDesign(await createUser(), { status: 'building', lastJobAt: T0 })

@@ -156,7 +156,8 @@ export default async function studioRoutes(app: FastifyInstance) {
 
   // The signed token is the authority: no bearer. Every check failing is the same 403. A wildcard, not :token, because
   // tokens pass Fastify's 100-character parameter limit.
-  app.get('/api/studio/render-frames/*', { preHandler: studioOn, schema: { hide: true } }, async (request, reply) => {
+  // One view is 36 frames: a page loads hundreds a minute, so frames get their own, higher limit
+  app.get('/api/studio/render-frames/*', { preHandler: studioOn, schema: { hide: true }, config: { rateLimit: { max: 3000, timeWindow: '1 minute' } } }, async (request, reply) => {
     const f = verifyRenderFrame((request.params as { '*': string })['*'], new Date())
     const forbidden = () => reply.status(403).send({ error: 'forbidden' })
     if (!f || !UUID.test(f.jobId) || !UUID.test(f.designId) || !UUID.test(f.revisionId)) return forbidden()

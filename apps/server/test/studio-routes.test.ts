@@ -10,6 +10,7 @@ import { signRenderFrame, verifyRenderFrame } from '../src/studio/render-urls.js
 import { viewKey } from '../src/studio/designs.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, tokenFor, type TestUser } from './helpers/factories.js'
+import { buildApp } from '../src/app.js'
 import { createDesign, fakeFly, okResult, issueWorker } from './helpers/studio.js'
 
 const S = '/api/studio'
@@ -274,6 +275,26 @@ describe('studio dashboard routes', () => {
     )
     expect((await app.inject({ method: 'GET', url: new URL(crossed).pathname })).statusCode).toBe(403)
     expect((await app.inject({ method: 'GET', url: `${S}/render-frames/garbage` })).statusCode).toBe(403)
+  })
+
+  it('frame urls stay the same between reads, and a page can load many views', async () => {
+    const u = await createUser()
+    const { design } = await builtHat(u)
+    const read = async () => (await app.inject({ method: 'GET', url: `${S}/designs/${design.id}`, headers: as(u) })).json().pieces[0].renders['spin-male-default'].urls
+    const first = await read()
+    await new Promise((r) => setTimeout(r, 1100))
+    expect(await read()).toEqual(first)
+
+    const limited = await buildApp({ logger: false, backfill: false }) // the global rate limit on, as in production
+    await limited.ready()
+    try {
+      const path = new URL(first[0]).pathname
+      const codes = new Set<number>()
+      for (let i = 0; i < 150; i++) codes.add((await limited.inject({ method: 'GET', url: path })).statusCode)
+      expect([...codes]).toEqual([200])
+    } finally {
+      await limited.close()
+    }
   })
 
   it('designs of other users are 404', async () => {

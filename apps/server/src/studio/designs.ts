@@ -6,7 +6,7 @@ import { reservePrompt, promptStatus } from './quota.js'
 import { ensureWorker } from './machines.js'
 import { failJobs } from './results.js'
 import { publishStudio } from './events.js'
-import { signRenderFrame, RENDER_URL_TTL_MS } from './render-urls.js'
+import { signRenderFrame, frameUrlExpiry } from './render-urls.js'
 
 /** What the dashboard's studio routes share: limits, view keys, the design detail, and queuing prompts and renders. */
 
@@ -58,7 +58,7 @@ export async function designDetail(d: Design, now: Date) {
   const revIds = pieces.map((p) => p.latestRevisionId).filter((x): x is string => !!x)
   const revs = revIds.length ? await db.select().from(studioRevisions).where(inArray(studioRevisions.id, revIds)) : []
   const renders = revIds.length ? await db.select().from(studioRenders).where(inArray(studioRenders.revisionId, revIds)) : []
-  const expires = new Date(now.getTime() + RENDER_URL_TTL_MS)
+  const expires = frameUrlExpiry(now)
   const messages = await db.select().from(studioMessages).where(eq(studioMessages.designId, d.id))
     .orderBy(asc(studioMessages.createdAt), asc(studioMessages.id))
   const [active] = await db.select({ id: studioJobs.id, type: studioJobs.type, status: studioJobs.status }).from(studioJobs)
@@ -198,7 +198,7 @@ export async function requestRender(
   })
   if ('ready' in queued && queued.ready) {
     const r = queued.ready
-    const expires = new Date(now.getTime() + RENDER_URL_TTL_MS)
+    const expires = frameUrlExpiry(now)
     return {
       status: 'ready',
       frames: r.frames,
