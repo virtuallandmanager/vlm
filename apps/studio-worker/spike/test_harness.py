@@ -20,8 +20,9 @@ def test_parse_claude_result():
 
 def test_parse_codex_events():
     u = parse_codex_events((FIX / 'codex_events.jsonl').read_text().splitlines())
+    # Each turn.completed carries the session's running total, so the last one is the total.
     # Codex's input_tokens includes the cached and cache-write tokens; Usage keeps the three apart, as Claude reports them
-    assert (u.input, u.cached_input, u.cache_write, u.output) == (250000, 2900000, 50000, 50000)
+    assert (u.input, u.cached_input, u.cache_write, u.output) == (100000, 1900000, 0, 20000)
     assert u.turns == 2
     assert u.cost_usd is None  # Codex doesn't report dollars; cost_usd() prices it
 
@@ -74,6 +75,34 @@ def test_codex_home_is_kept_in_the_run(tmp_path):
 def test_model_is_pinned_on_the_command():
     assert harness.agent_command('codex', 'p', None, 'gpt-6.1-sol')[-3:] == ['-m', 'gpt-6.1-sol', 'p']
     assert harness.agent_command('claude', 'p', None, 'claude-opus-5-5')[-2:] == ['--model', 'claude-opus-5-5']
+
+
+def test_claude_tokens_come_from_model_usage():
+    # The top-level usage can miss calls; modelUsage is what total_cost_usd is computed from
+    obj = {'num_turns': 3, 'total_cost_usd': 0.5,
+           'usage': {'input_tokens': 1, 'cache_read_input_tokens': 2, 'cache_creation_input_tokens': 3, 'output_tokens': 4},
+           'modelUsage': {'claude-opus-5-5': {'inputTokens': 10, 'cacheReadInputTokens': 20, 'cacheCreationInputTokens': 30,
+                                              'outputTokens': 40, 'costUSD': 0.5}}}
+    u = parse_claude_result(obj)
+    assert (u.input, u.cached_input, u.cache_write, u.output, u.cost_usd) == (10, 20, 30, 40, 0.5)
+
+
+def test_resumed_run_counts_only_its_own_share(tmp_path):
+    # Both CLIs report the whole session's usage when resumed; a resumed run is charged the difference
+    def fake(name, tokens, cost):
+        m = {'inputTokens': tokens, 'cacheReadInputTokens': tokens * 100, 'cacheCreationInputTokens': tokens * 10,
+             'outputTokens': tokens, 'costUSD': cost}
+        f = tmp_path / name
+        f.write_text('#!/bin/sh\necho \'' + json.dumps({'num_turns': 2, 'total_cost_usd': cost, 'session_id': 's1',
+                                                         'modelUsage': {'claude-opus-5-5': m}}) + '\'\n')
+        f.chmod(0o755)
+        return [str(f)]
+    harness.run(agent='claude', brief_path=_brief(tmp_path), out=tmp_path / 'a', command=fake('one.sh', 100, 0.75))
+    again = harness.run(agent='claude', brief_path=_brief(tmp_path), out=tmp_path / 'b', command=fake('two.sh', 130, 0.875),
+                        resume=tmp_path / 'a')
+    assert again['tokens'] == {'input': 30, 'cachedInput': 3000, 'cacheWrite': 300, 'output': 30}
+    assert again['costUsd'] == 0.125
+    assert again['sessionTotal']['costUsd'] == 0.875
 
 
 def test_cost_uses_price_table():

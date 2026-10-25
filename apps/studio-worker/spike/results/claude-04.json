@@ -1,0 +1,36 @@
+{
+  "agent": "claude",
+  "model": "claude-opus-5-5",
+  "brief": "04-emote-build.md",
+  "skillsSha": null,
+  "outcome": "ok",
+  "wallSec": 194.7,
+  "turns": 14,
+  "tokens": {
+    "input": 20,
+    "cachedInput": 319965,
+    "cacheWrite": 39463,
+    "output": 14487
+  },
+  "costUsd": 0.5511280000000001,
+  "checker": {
+    "ran": true,
+    "pass": true,
+    "warnings": 0,
+    "failures": 0,
+    "report": "Friendly_Wave.glb\n  PASS  model file size                          0.27 MB                        <= 2 MB server; warn over 1 MB (export keyed channels only)\n  PASS  scene roots                              ['Armature']                   Armature [+ Armature_Prop]\n  PASS  clips                                    ['Friendly_Wave']              exactly 1\n  PASS  Friendly_Wave length                     3.000 s                        <= 10 s (hard error)\n  PASS  Friendly_Wave frames                     91                             <= 300\n  PASS  Friendly_Wave fps (keys / length)        30.0                           30 (Builder estimates this way)\n  PASS  deform bones keyed at first+last frame   62/62                          Builder warning; docs ask for all\n  PASS  rotation jumps between keys (>90deg)     none                           players interpolate: a flip sweeps through in-world\n  INFO  largest avatar bone scale                1.00 Avatar_RightHandIndex2    \n  PASS  hips horizontal travel                   0.00 m                         <= 1 m\n  INFO  hips highest point                       1.00 m                         <= 4 m\n  PASS  loop seam: first key == last key         all match                      run check_loop.py too\n  PASS  no meshes without Armature_Prop          0                              \nNO FAILS\n"
+  },
+  "glbs": [
+    "out/Friendly_Wave.glb"
+  ],
+  "session": "d0fb6532-ff89-4d0c-aa06-d1b690fba215",
+  "error": null,
+  "sessionTotal": {
+    "input": 20,
+    "cached_input": 319965,
+    "cache_write": 39463,
+    "output": 14487,
+    "turns": 14,
+    "costUsd": 0.5511280000000001
+  }
+}

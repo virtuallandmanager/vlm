@@ -12,7 +12,7 @@ import re
 import shutil
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 SKILLS = Path('/opt/skills')
@@ -38,23 +38,31 @@ class Usage:
 
 
 def parse_claude_result(obj: dict) -> Usage:
-    u = obj.get('usage') or {}
-    return Usage(input=u.get('input_tokens', 0), cached_input=u.get('cache_read_input_tokens', 0),
-                 cache_write=u.get('cache_creation_input_tokens', 0), output=u.get('output_tokens', 0),
+    """Totals modelUsage, which total_cost_usd is computed from; the top-level usage can miss calls."""
+    models = (obj.get('modelUsage') or {}).values()
+    if not models:
+        u = obj.get('usage') or {}
+        return Usage(input=u.get('input_tokens', 0), cached_input=u.get('cache_read_input_tokens', 0),
+                     cache_write=u.get('cache_creation_input_tokens', 0), output=u.get('output_tokens', 0),
+                     turns=obj.get('num_turns', 0), cost_usd=obj.get('total_cost_usd'))
+    total = lambda k: sum(m.get(k, 0) for m in models)
+    return Usage(input=total('inputTokens'), cached_input=total('cacheReadInputTokens'),
+                 cache_write=total('cacheCreationInputTokens'), output=total('outputTokens'),
                  turns=obj.get('num_turns', 0), cost_usd=obj.get('total_cost_usd'))
 
 
 def parse_codex_events(lines: list[str]) -> Usage | None:
-    """Sums the usage on every turn.completed event; None when there is none (the run failed before any turn ended).
+    """The usage on the last turn.completed event, which is the session's running total; None when there is none
+    (the run failed before any turn ended).
 
     Codex's input_tokens includes its cached and cache-write tokens, and output_tokens its reasoning tokens."""
     turns = [e for e in (_json(l) for l in lines) if e and e.get('type') == 'turn.completed' and e.get('usage')]
     if not turns:
         return None
-    total = lambda k: sum(t['usage'].get(k, 0) for t in turns)
-    cached, written = total('cached_input_tokens'), total('cache_write_input_tokens')
-    return Usage(input=total('input_tokens') - cached - written, cached_input=cached, cache_write=written,
-                 output=total('output_tokens'), turns=len(turns))
+    u = turns[-1]['usage']
+    cached, written = u.get('cached_input_tokens', 0), u.get('cache_write_input_tokens', 0)
+    return Usage(input=u.get('input_tokens', 0) - cached - written, cached_input=cached, cache_write=written,
+                 output=u.get('output_tokens', 0), turns=len(turns))
 
 
 def cost_usd(usage: Usage, prices: dict, model: str) -> float | None:
@@ -104,9 +112,9 @@ def run(agent: str, brief_path: Path, out: Path, command: list[str] | None = Non
         resume: Path | None = None, prices: dict | None = None, model: str | None = None) -> dict:
     out = Path(out)
     meta, words = read_brief(brief_path)
+    before = _session_total(resume)
     if resume:  # continue the same conversation and working files
-        prev = json.loads((Path(resume) / 'result.json').read_text())
-        session = prev.get('session')
+        session = json.loads((Path(resume) / 'result.json').read_text()).get('session')
         if not out.exists():
             subprocess.run(['cp', '-a', str(resume), str(out)], check=True)
     else:
@@ -123,7 +131,7 @@ def run(agent: str, brief_path: Path, out: Path, command: list[str] | None = Non
     start = time.monotonic()
     result = {'agent': agent, 'model': model, 'brief': Path(brief_path).name, 'skillsSha': _skills_sha(),
               'outcome': 'error', 'wallSec': None, 'turns': None, 'tokens': None, 'costUsd': None,
-              'checker': {'ran': False}, 'glbs': [], 'session': session, 'error': None}
+              'checker': {'ran': False}, 'glbs': [], 'session': session, 'sessionTotal': None, 'error': None}
     try:
         p = subprocess.run(cmd, cwd=out, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True,
                            timeout=timeout)
@@ -136,27 +144,9 @@ def run(agent: str, brief_path: Path, out: Path, command: list[str] | None = Non
     result['wallSec'] = round(time.monotonic() - start, 1)
     (out / 'agent.log').write_text(stdout + '\n--- stderr ---\n' + p.stderr)
 
-    usage, failed = None, p.returncode != 0
-    if agent == 'claude':
-        obj = _json(stdout.strip().splitlines()[-1]) if stdout.strip() else None
-        if obj:
-            usage = parse_claude_result(obj)
-            result['session'] = obj.get('session_id')
-            result['model'] = model or next(iter(obj.get('modelUsage') or {}), None)
-            failed = failed or bool(obj.get('is_error'))
-    else:
-        lines = stdout.splitlines()
-        usage = parse_codex_events(lines)
-        started = next((e for e in map(_json, lines) if e and e.get('type') == 'thread.started'), None)
-        result['session'] = started and started.get('thread_id')
-        failed = failed or any((_json(l) or {}).get('type') == 'turn.failed' for l in lines)
-    if usage:
-        result['turns'] = usage.turns
-        result['tokens'] = {'input': usage.input, 'cachedInput': usage.cached_input, 'cacheWrite': usage.cache_write,
-                            'output': usage.output}
-        result['costUsd'] = usage.cost_usd if usage.cost_usd is not None else cost_usd(
-            usage, prices or _prices(), result['model'] or f'{agent}-default')
-    if usage is None or failed:
+    scored, failed = score(agent, stdout, before, prices, model)
+    result.update(scored)
+    if result['tokens'] is None or failed or p.returncode != 0:
         result['error'] = (p.stderr or stdout)[-2000:]
         return _write(out, result)
 
@@ -164,6 +154,60 @@ def run(agent: str, brief_path: Path, out: Path, command: list[str] | None = Non
     result['checker'] = run_checker(meta, out)
     result['outcome'] = 'ok' if result['glbs'] else 'no_output'
     return _write(out, result)
+
+
+def score(agent: str, stdout: str, before: Usage | None = None, prices: dict | None = None,
+          model: str | None = None) -> tuple[dict, bool]:
+    """Reads the CLI's output into result.json fields, and whether the CLI reported a failure.
+
+    Both CLIs report the whole session's usage, so a resumed run is charged its total less `before`."""
+    fields, usage, failed = {}, None, False
+    if agent == 'claude':
+        obj = _json(stdout.strip().splitlines()[-1]) if stdout.strip() else None
+        if obj:
+            usage = parse_claude_result(obj)
+            fields['session'] = obj.get('session_id')
+            fields['model'] = model or next(iter(obj.get('modelUsage') or {}), None)
+            failed = bool(obj.get('is_error'))
+    else:
+        lines = stdout.splitlines()
+        usage = parse_codex_events(lines)
+        started = next((e for e in map(_json, lines) if e and e.get('type') == 'thread.started'), None)
+        if started:
+            fields['session'] = started.get('thread_id')
+        failed = any((_json(l) or {}).get('type') == 'turn.failed' for l in lines)
+    if not usage:
+        return fields, failed
+    if usage.cost_usd is None:
+        usage.cost_usd = cost_usd(usage, prices or _prices(), fields.get('model') or model or f'{agent}-default')
+    fields['sessionTotal'] = {**asdict(usage), 'costUsd': usage.cost_usd}
+    del fields['sessionTotal']['cost_usd']
+    own = usage
+    if before:
+        own = Usage(input=usage.input - before.input, cached_input=usage.cached_input - before.cached_input,
+                    cache_write=usage.cache_write - before.cache_write, output=usage.output - before.output,
+                    turns=usage.turns, cost_usd=None if usage.cost_usd is None or before.cost_usd is None
+                    else round(usage.cost_usd - before.cost_usd, 6))
+    fields.update(turns=own.turns, costUsd=own.cost_usd,
+                  tokens={'input': own.input, 'cachedInput': own.cached_input, 'cacheWrite': own.cache_write,
+                          'output': own.output})
+    return fields, failed
+
+
+def rescore(out: Path, resume: Path | None = None) -> dict:
+    """Re-reads a finished run's agent.log with the current scoring, without running the agent again."""
+    result = json.loads((Path(out) / 'result.json').read_text())
+    stdout = (Path(out) / 'agent.log').read_text().split('\n--- stderr ---\n')[0]
+    result.update(score(result['agent'], stdout, _session_total(resume), model=result['model'])[0])
+    return _write(Path(out), result)
+
+
+def _session_total(resume: Path | None) -> Usage | None:
+    if not resume:
+        return None
+    t = json.loads((Path(resume) / 'result.json').read_text()).get('sessionTotal')
+    return t and Usage(input=t['input'], cached_input=t['cached_input'], cache_write=t['cache_write'],
+                       output=t['output'], turns=t['turns'], cost_usd=t['costUsd'])
 
 
 def _agent_home(agent: str, out: Path) -> dict:
@@ -213,6 +257,7 @@ if __name__ == '__main__':
     ap.add_argument('--out', required=True, type=Path)
     ap.add_argument('--resume', type=Path)
     ap.add_argument('--model', help='recorded model name, and the price-table key when the CLI does not report one')
+    ap.add_argument('--rescore', action='store_true', help="re-read a finished run's agent.log; runs nothing")
     a = ap.parse_args()
-    r = run(a.agent, a.brief, a.out, resume=a.resume, model=a.model)
+    r = rescore(a.out, a.resume) if a.rescore else run(a.agent, a.brief, a.out, resume=a.resume, model=a.model)
     print(json.dumps({k: r[k] for k in ('outcome', 'wallSec', 'turns', 'costUsd')}))

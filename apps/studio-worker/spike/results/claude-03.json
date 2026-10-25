@@ -1,0 +1,37 @@
+{
+  "agent": "claude",
+  "model": "claude-opus-5-5",
+  "brief": "03-set-jacket-build.md",
+  "skillsSha": null,
+  "outcome": "ok",
+  "wallSec": 609.2,
+  "turns": 22,
+  "tokens": {
+    "input": 38,
+    "cachedInput": 890277,
+    "cacheWrite": 57543,
+    "output": 24433
+  },
+  "costUsd": 0.9545824,
+  "checker": {
+    "ran": true,
+    "pass": true,
+    "warnings": 0,
+    "failures": 0,
+    "report": "CourierJacket_BaseFemale.glb\n  PASS  triangles (upper_body)                   1486                           <= 1500\n  PASS  materials (excl. AvatarSkin_MAT)         2                              <= 2\n  PASS  textures (excl. AvatarSkin_MAT)          1                              <= 2\n  PASS  texture tex_BaseFemale                   png 512x512                    square <= 1024, power of 2\n  PASS  no _mouth/_eyebrows/_eyes names          ok                             \n  PASS  model file size                          0.22 MB                        <= 2 MB (server)\n  PASS  no animations                            0                              \n  PASS  no cameras                               0                              \n  PASS  no lights                                0                              \n  PASS  no shape keys                            0                              \n  PASS  scene root                               ['Armature']                   ['Armature']\n  PASS  every mesh skinned                       yes                            \n  PASS  joints are Avatar_* or *springbone*      yes                            \n  PASS  no _end/_neutral leaf bones              none                           \n  PASS  full Avatar skeleton present             62/62                          \n  PASS  <= 4 influences (no JOINTS_1)            0                              \n  PASS  unweighted vertices                      0                              0\n  INFO  finger bones weighted                    0                              \n  PASS  bounding box w x h x d                   1.38 x 0.57 x 0.36 m           <= 2.42 x 2.42 x 1.4\n  INFO  spring chains                            0                              \nCourierJacket_BaseMale.glb\n  PASS  triangles (upper_body)                   1426                           <= 1500\n  PASS  materials (excl. AvatarSkin_MAT)         2                              <= 2\n  PASS  textures (excl. AvatarSkin_MAT)          1                              <= 2\n  PASS  texture tex_BaseMale                     png 512x512                    square <= 1024, power of 2\n  PASS  no _mouth/_eyebrows/_eyes names          ok                             \n  PASS  model file size                          0.19 MB                        <= 2 MB (server)\n  PASS  no animations                            0                              \n  PASS  no cameras                               0                              \n  PASS  no lights                                0                              \n  PASS  no shape keys                            0                              \n  PASS  scene root                               ['Armature']                   ['Armature']\n  PASS  every mesh skinned                       yes                            \n  PASS  joints are Avatar_* or *springbone*      yes                            \n  PASS  no _end/_neutral leaf bones              none                           \n  PASS  full Avatar skeleton present             62/62                          \n  PASS  <= 4 influences (no JOINTS_1)            0                              \n  PASS  unweighted vertices                      0                              0\n  INFO  finger bones weighted                    0                              \n  PASS  bounding box w x h x d                   1.38 x 0.64 x 0.37 m           <= 2.42 x 2.42 x 1.4\n  INFO  spring chains                            0                              \nNO FAILS\n"
+  },
+  "glbs": [
+    "out/CourierJacket_BaseFemale.glb",
+    "out/CourierJacket_BaseMale.glb"
+  ],
+  "session": "4e2d67ba-d860-42a6-80f4-5bcc1547ebd6",
+  "error": null,
+  "sessionTotal": {
+    "input": 38,
+    "cached_input": 890277,
+    "cache_write": 57543,
+    "output": 24433,
+    "turns": 22,
+    "costUsd": 0.9545824
+  }
+}
