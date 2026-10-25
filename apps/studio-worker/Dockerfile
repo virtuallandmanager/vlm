@@ -30,8 +30,8 @@ RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor
     && apt-get install -y --no-install-recommends google-chrome-stable nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Python tools: numpy for the checkers, Playwright for the preview, pytest for the spike harness
-RUN pip3 install --no-cache-dir numpy playwright pytest && playwright install-deps chromium
+# Python tools: numpy for the checkers, Playwright for the preview, Pillow to read its frames, pytest for the spike
+RUN pip3 install --no-cache-dir numpy pillow playwright pytest && playwright install-deps chromium
 
 # Agent CLIs
 RUN npm install -g @anthropic-ai/claude-code @openai/codex && npm cache clean --force
