@@ -304,4 +304,31 @@ describe('FlyApi', () => {
       expect(await mk(fn).runJob('vlm-worlds-db-jobs', JOB)).toEqual({ exitCode: 0 })
     })
   })
+
+  describe('studio worker machines', () => {
+    it('createWorkerMachine sends a performance-4x machine with no services and no restart', async () => {
+      const { fn, calls } = fakeFetch(() => ({ body: { id: 'w1', state: 'created' } }))
+      const r = await mk(fn).createWorkerMachine('vlm-studio-worker', { name: 'design-d1', image: 'img:2', env: { A: 'b' } })
+      expect(r).toEqual({ id: 'w1' })
+      expect(calls[0].method).toBe('POST')
+      expect(calls[0].url).toBe('https://api.machines.dev/v1/apps/vlm-studio-worker/machines')
+      expect(calls[0].body).toEqual({
+        name: 'design-d1',
+        region: 'iad',
+        config: {
+          image: 'img:2',
+          env: { A: 'b' },
+          guest: { cpu_kind: 'performance', cpus: 4, memory_mb: 8192 },
+          restart: { policy: 'no' },
+          auto_destroy: false,
+        },
+      })
+    })
+
+    it('getMachineState reads the state, and null when the machine is gone', async () => {
+      const { fn } = fakeFetch((c) => (c.url.endsWith('/m1') ? { body: { id: 'm1', state: 'stopped' } } : { status: 404, body: { error: 'not found' } }))
+      expect(await mk(fn).getMachineState('a', 'm1')).toBe('stopped')
+      expect(await mk(fn).getMachineState('a', 'm2')).toBeNull()
+    })
+  })
 })

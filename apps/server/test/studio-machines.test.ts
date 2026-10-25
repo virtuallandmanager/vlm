@@ -1,0 +1,94 @@
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest'
+import { eq } from 'drizzle-orm'
+import { db } from '../src/db/connection.js'
+import { studioDesigns } from '../src/db/schema.js'
+import { config } from '../src/config.js'
+import { ensureWorker, destroyWorker, hashWorkerToken, StudioMachineError } from '../src/studio/machines.js'
+import { resetDb } from './helpers/db.js'
+import { createUser } from './helpers/factories.js'
+import { createDesign, fakeFly } from './helpers/studio.js'
+
+const row = async (id: string) => (await db.select().from(studioDesigns).where(eq(studioDesigns.id, id)))[0]
+
+describe('studio worker machines', () => {
+  const prev = config.studioWorkerImage
+  beforeAll(() => { (config as any).studioWorkerImage = 'registry.fly.io/vlm-studio-worker:test' })
+  afterAll(() => { (config as any).studioWorkerImage = prev })
+  beforeEach(resetDb)
+
+  it("creates one machine with the worker's env and a hashed token", async () => {
+    const fly = fakeFly()
+    const d = await createDesign(await createUser())
+    await ensureWorker(d.id, { fly })
+    expect(fly.calls.create).toHaveLength(1)
+    const spec = fly.calls.create[0]
+    expect(spec.name).toBe(`design-${d.id}`)
+    expect(spec.image).toBe('registry.fly.io/vlm-studio-worker:test')
+    expect(spec.env).toMatchObject({ VLM_API_URL: config.publicUrl, STUDIO_DESIGN_ID: d.id, STUDIO_IDLE_EXIT_SEC: '600' })
+    expect(spec.env.STUDIO_WORKER_TOKEN).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(spec.env).not.toHaveProperty('ANTHROPIC_API_KEY')
+    expect(spec.env).not.toHaveProperty('OPENAI_API_KEY')
+    const r = await row(d.id)
+    expect(r.machineId).toBe('m1')
+    expect(r.workerTokenHash).toBe(hashWorkerToken(spec.env.STUDIO_WORKER_TOKEN))
+    expect(r.machineClaimedAt).toBeNull()
+  })
+
+  it('concurrent ensureWorker creates once', async () => {
+    const fly = fakeFly()
+    const d = await createDesign(await createUser())
+    await Promise.all(Array.from({ length: 5 }, () => ensureWorker(d.id, { fly })))
+    expect(fly.calls.create).toHaveLength(1)
+  })
+
+  it('a stopped machine is started, a running one left alone', async () => {
+    const fly = fakeFly()
+    const d = await createDesign(await createUser())
+    await ensureWorker(d.id, { fly })
+    await ensureWorker(d.id, { fly })
+    expect(fly.calls.start).toHaveLength(0)
+    fly.machines.get('m1')!.state = 'stopped'
+    await ensureWorker(d.id, { fly })
+    expect(fly.calls.start).toEqual(['m1'])
+    expect(fly.calls.create).toHaveLength(1)
+  })
+
+  it('a machine destroyed outside VLM is recreated', async () => {
+    const fly = fakeFly()
+    const d = await createDesign(await createUser())
+    await ensureWorker(d.id, { fly })
+    const first = (await row(d.id)).workerTokenHash
+    fly.machines.clear()
+    await ensureWorker(d.id, { fly })
+    expect(fly.calls.create).toHaveLength(2)
+    const r = await row(d.id)
+    expect(r.machineId).toBe('m2')
+    expect(r.workerTokenHash).not.toBe(first)
+  })
+
+  it('fly failure is a StudioMachineError with no token in its message', async () => {
+    const fly = fakeFly()
+    fly.failCreate = (spec) => new Error(`Fly said no to ${JSON.stringify(spec.env)}`)
+    const d = await createDesign(await createUser())
+    const err = await ensureWorker(d.id, { fly }).catch((e) => e)
+    expect(err).toBeInstanceOf(StudioMachineError)
+    expect(err.message).not.toContain(fly.calls.create[0].env.STUDIO_WORKER_TOKEN)
+    const r = await row(d.id)
+    expect(r.machineId).toBeNull()
+    expect(r.machineClaimedAt).toBeNull()
+    fly.failCreate = null
+    await ensureWorker(d.id, { fly })
+    expect((await row(d.id)).machineId).toBe('m1')
+  })
+
+  it('destroyWorker deletes the machine and forgets the token', async () => {
+    const fly = fakeFly()
+    const d = await createDesign(await createUser())
+    await ensureWorker(d.id, { fly })
+    await destroyWorker(d.id, { fly })
+    expect(fly.calls.del).toEqual(['m1'])
+    const r = await row(d.id)
+    expect(r.machineId).toBeNull()
+    expect(r.workerTokenHash).toBeNull()
+  })
+})

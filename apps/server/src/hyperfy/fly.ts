@@ -20,6 +20,9 @@ export const JOB_MACHINE_PREFIX = 'db-job-'
 /** A one-shot machine: runs `cmd` in `image` and stops. */
 export type JobSpec = { image: string; env: Record<string, string>; cmd: string[] }
 
+/** A Design Studio worker: one per design, no services (it only calls out), never restarted by Fly. */
+export type WorkerMachineSpec = { name: string; image: string; env: Record<string, string> }
+
 type FlyOpts = { token: string; org: string; fetch?: typeof fetch; baseUrl?: string; timeoutMs?: number }
 
 const REGION = 'iad'
@@ -73,6 +76,20 @@ function machineBody(m: WorldMachineSpec) {
         min_machines_running: 0,
         ports: [{ port: 80, handlers: ['http'] }, { port: 443, handlers: ['tls', 'http'] }],
       }],
+    },
+  }
+}
+
+function workerBody(m: WorkerMachineSpec) {
+  return {
+    name: m.name,
+    region: REGION,
+    config: {
+      image: m.image,
+      env: m.env,
+      guest: { cpu_kind: 'performance', cpus: 4, memory_mb: 8192 },
+      restart: { policy: 'no' },
+      auto_destroy: false,
     },
   }
 }
@@ -162,6 +179,22 @@ export class FlyApi {
   async createMachine(app: string, m: WorldMachineSpec): Promise<{ id: string }> {
     const r = await this.json<{ id: string }>('POST', `/apps/${encodeURIComponent(app)}/machines`, machineBody(m))
     return { id: r.id }
+  }
+
+  async createWorkerMachine(app: string, m: WorkerMachineSpec): Promise<{ id: string }> {
+    const r = await this.json<{ id: string }>('POST', `/apps/${encodeURIComponent(app)}/machines`, workerBody(m))
+    return { id: r.id }
+  }
+
+  /** The machine's state (started, stopped, ...), or null when it no longer exists. */
+  async getMachineState(app: string, id: string): Promise<string | null> {
+    const { status, text } = await this.request('GET', `/apps/${encodeURIComponent(app)}/machines/${encodeURIComponent(id)}`, undefined, [404])
+    if (status === 404) return null
+    try {
+      const state = (JSON.parse(text) as { state?: unknown }).state
+      if (typeof state === 'string') return state
+    } catch { /* fall through */ }
+    throw new FlyError(`Fly GET machine ${id} returned ${status} without a state`, status, text.slice(0, 500))
   }
 
   async updateMachine(app: string, id: string, m: WorldMachineSpec): Promise<void> {
