@@ -5,13 +5,15 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { studioJobs, studioPieces, studioRenders, studioRevisions } from '../src/db/schema.js'
+import { studioEntitlements, studioJobs, studioPayments, studioPieces, studioRenders, studioRevisions } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { initBus } from '../src/realtime/bus.js'
 import { memoryStudioStore, setStudioStore, workspaceKey } from '../src/studio/store.js'
 import { studioTopic } from '../src/studio/events.js'
 import { resetDb } from './helpers/db.js'
-import { testApp, createUser } from './helpers/factories.js'
+import { testApp, createUser, tokenFor } from './helpers/factories.js'
+import { quoteFinalize } from '../src/studio/pricing.js'
+import { grantPayment } from '../src/studio/payments.js'
 import { createDesign, issueWorker, queueJob, PROMPT_PAYLOAD } from './helpers/studio.js'
 
 const { LocalPresence } = createRequire(import.meta.url)('colyseus') as any
@@ -81,4 +83,65 @@ describe.skipIf(!hasPython)('the studio worker contract', () => {
     expect(phases).toEqual(['building', 'checking', 'rendering', 'saving'])
     expect(events.filter((e) => e.type === 'job' && e.jobId === prompt.id).map((e) => e.status)).toEqual(['taken', 'done'])
   }, 120_000)
+
+  it('the python worker packages a paid revision', async () => {
+    await resetDb()
+    await app?.close()
+    initBus(new LocalPresence())
+    app = await testApp()
+    const url = await app.listen({ port: 0, host: '127.0.0.1' })
+    const prevMachines = config.studioMachines
+    ;(config as any).studioMachines = 'external' // this test's worker is the design's machine
+    try {
+      const owner = await createUser()
+      const design = await createDesign(owner)
+      const token = await issueWorker(design)
+      await queueJob(design, PROMPT_PAYLOAD)
+      const worker = spawn('python3', [DRIVER], {
+        env: { ...process.env, VLM_API_URL: url, STUDIO_WORKER_TOKEN: token, STUDIO_DESIGN_ID: design.id, STUDIO_IDLE_EXIT_SEC: '8', STUDIO_FAKE_TOOLS: '1' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      let log = ''
+      worker.stdout.on('data', (d) => (log += d))
+      worker.stderr.on('data', (d) => (log += d))
+      const exited = new Promise<number | null>((r) => worker.on('exit', (code) => r(code)))
+      const until = async <T>(read: () => Promise<T | undefined>, what: string): Promise<T> => {
+        const deadline = Date.now() + 90_000
+        for (;;) {
+          const v = await read()
+          if (v) return v
+          if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}\n${log}`)
+          await new Promise((r) => setTimeout(r, 100))
+        }
+      }
+      await until(async () => (await db.select().from(studioRevisions))[0], 'the revision')
+
+      // Pay for it, as the webhook would
+      const q = await quoteFinalize(design, ['hat'], [])
+      const [pay] = await db.insert(studioPayments).values({ userId: owner.id, designId: design.id, kind: 'finalize', amountCents: q.totalCents, lines: q.lines }).returning()
+      expect(await grantPayment(pay.id, 'pi_contract', new Date())).toBe('granted')
+      const entitlement = await until(async () => {
+        const [e] = await db.select().from(studioEntitlements)
+        return e && e.status !== 'packaging' ? e : undefined
+      }, 'the package')
+      expect(await exited, log).toBe(0)
+      expect(entitlement, log).toMatchObject({ status: 'ready' })
+      expect(entitlement.checks).toMatchObject({ thumbnail: { pass: true }, clipping: { pass: true, failed: [] } })
+      const [job] = await db.select().from(studioJobs).where(eq(studioJobs.id, entitlement.jobId!))
+      expect(job, log).toMatchObject({ type: 'finalize', status: 'done', result: { outcome: 'ok' } })
+
+      const res = await app.inject({
+        method: 'GET', url: `/api/studio/designs/${design.id}/pieces/hat/revisions/1/package`,
+        headers: { authorization: `Bearer ${tokenFor(owner)}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const zip = res.rawPayload
+      expect(zip.subarray(0, 2).toString()).toBe('PK')
+      for (const name of ['REPORT.md', 'neon_cap_male.glb', 'neon_cap_female.glb', 'item.zip', 'thumbnail.png', 'promo.mp4']) {
+        expect(zip.includes(Buffer.from(name)), name).toBe(true)
+      }
+    } finally {
+      ;(config as any).studioMachines = prevMachines
+    }
+  }, 150_000)
 })
