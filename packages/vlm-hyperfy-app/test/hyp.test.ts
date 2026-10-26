@@ -31,19 +31,23 @@ const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex')
 const script = () => files[header.assets.findIndex((a) => a.type === 'script')].toString('utf8')
 
 describe('vlm.hyp', () => {
-  it('build output parses back into a blueprint with model, script and the two props, and every asset url is the sha256 of its bytes', () => {
+  it('build output parses back into a blueprint with model, script, the two props and the HUD icon, and every asset url is the sha256 of its bytes', () => {
     const { blueprint, assets } = header
     expect(blueprint).toMatchObject({
       name: 'VLM',
       props: { feedUrl: 'https://api.vlm.gg', worldKey: '' },
       preload: false,
     })
-    expect(Object.keys(blueprint.props).sort()).toEqual(['feedUrl', 'worldKey'])
-    expect(assets.map((a) => a.type)).toEqual(['model', 'script'])
+    expect(Object.keys(blueprint.props).sort()).toEqual(['feedUrl', 'hudIcon', 'worldKey'])
+    expect(assets.map((a) => a.type)).toEqual(['model', 'script', 'texture'])
     expect(blueprint.model).toBe(assets[0].url)
     expect(blueprint.script).toBe(assets[1].url)
+    // A file prop, as Hyperfy stores them: exported and uploaded with the app, read by the script as props.hudIcon.url
+    expect(blueprint.props.hudIcon).toEqual({ type: 'texture', name: 'hud-v.png', url: assets[2].url })
+    expect(assets[2].mime).toBe('image/png')
+    expect(files[2].equals(readFileSync(join(pkg, '../vlm-smart-item-dcl/assets/hud-v.png')))).toBe(true)
     assets.forEach((a, i) => {
-      const ext = a.type === 'model' ? 'glb' : 'js'
+      const ext = { model: 'glb', script: 'js', texture: 'png' }[a.type]
       expect(a.url).toBe(`asset://${sha(files[i])}.${ext}`)
       expect(a.size).toBe(files[i].length)
     })
