@@ -619,3 +619,4 @@ export type { DclEditModeState } from './transform/edit-mode.js'
 export { SHIFT_ACTION } from './transform/input.js'
 export type { VLMInitConfig }
 export { startVLMAnalytics, stopVLMAnalytics, DclAnalyticsProbe, getAnalyticsSceneRef } from './analytics.js'
+export { HUD_ICON_SRC } from './hud/icon.js'

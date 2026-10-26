@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { locationFromSceneJson, sync } from '../bin/sync.mjs'
+import { locationFromSceneJson, sync, install, HUD_ICON_FILE } from '../bin/sync.mjs'
 
 const GC_SCENE = { scene: { base: '-3,-2', parcels: ['-3,-2'] } }
 
@@ -249,4 +249,76 @@ test('a listed file with unsupported name characters gets a re-upload warning', 
   const logs2 = []
   await run(tmp(), stub([traversal]), { log: (m) => logs2.push(m) })
   assert.ok(logs2.some((l) => l.includes('unsafe or invalid')))
+})
+
+const ICON = path.join(import.meta.dirname, '..', 'assets', 'hud-v.png')
+
+test('sync installs the HUD icon at the path the HUD loads, and keeps it current', async () => {
+  const cwd = tmp()
+  const r = await run(cwd, stub([model('a', 10)]))
+  assert.equal(r.icon, 'installed')
+  const dest = path.join(cwd, HUD_ICON_FILE)
+  assert.ok(fs.readFileSync(dest).equals(fs.readFileSync(ICON)))
+  // The HUD (vlm-adapter-dcl) textures the launcher from the same scene-relative path
+  const hud = fs.readFileSync(path.join(import.meta.dirname, '..', '..', 'vlm-adapter-dcl', 'src', 'hud', 'icon.ts'), 'utf8')
+  assert.ok(hud.includes(`HUD_ICON_SRC = '${HUD_ICON_FILE}'`))
+  assert.equal((await run(cwd, stub([model('a', 10)]))).icon, 'unchanged')
+  fs.writeFileSync(dest, 'old')
+  assert.equal((await run(cwd, stub([model('a', 10)]))).icon, 'installed')
+  assert.ok(fs.readFileSync(dest).equals(fs.readFileSync(ICON)))
+  assert.deepEqual(fs.readdirSync(path.dirname(dest)), ['hud-v.png'])
+})
+
+test('the HUD icon is installed even when the location is not set up; not on --dry-run', async () => {
+  const cwd = tmp()
+  await assert.rejects(run(cwd, stub([], 404)), /isn't set up/)
+  assert.ok(fs.existsSync(path.join(cwd, HUD_ICON_FILE)))
+  const dry = tmp()
+  const r = await run(dry, stub([model('a', 10)]), { dryRun: true })
+  assert.equal(r.icon, 'installed')
+  assert.ok(!fs.existsSync(path.join(dry, 'images')))
+})
+
+test('the HUD icon is never written through a symlinked images folder', async () => {
+  for (const link of ['images', 'images/virvi', HUD_ICON_FILE]) {
+    const cwd = tmp()
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'vlm-out-'))
+    const parent = path.dirname(path.join(cwd, link))
+    fs.mkdirSync(parent, { recursive: true })
+    const target = link === HUD_ICON_FILE ? path.join(outside, 'x.png') : outside
+    if (link === HUD_ICON_FILE) fs.writeFileSync(target, 'mine')
+    fs.symlinkSync(target, path.join(cwd, link))
+    await assert.rejects(run(cwd, stub([model('a', 10)])), /symlink/)
+    if (link === HUD_ICON_FILE) assert.equal(fs.readFileSync(target, 'utf8'), 'mine')
+    else assert.deepEqual(fs.readdirSync(outside), [])
+  }
+})
+
+test('install: icon always; Creator Hub script only in a Creator Hub project, edits kept unless --force', () => {
+  const code = tmp()
+  assert.deepEqual(install({ cwd: code, log: () => {} }), { icon: 'installed', script: null })
+  assert.ok(fs.existsSync(path.join(code, HUD_ICON_FILE)))
+  assert.ok(!fs.existsSync(path.join(code, 'assets')))
+
+  const hub = tmp()
+  fs.mkdirSync(path.join(hub, 'assets/scene'), { recursive: true })
+  const script = path.join(hub, 'assets/scene/Scripts/VLMManager.ts')
+  const pkgScript = fs.readFileSync(path.join(import.meta.dirname, '..', 'creator-hub', 'VLMManager.ts'), 'utf8')
+  assert.deepEqual(install({ cwd: hub, log: () => {} }), { icon: 'installed', script: 'installed' })
+  assert.equal(fs.readFileSync(script, 'utf8'), pkgScript)
+  assert.deepEqual(install({ cwd: hub, log: () => {} }), { icon: 'unchanged', script: 'unchanged' })
+  fs.writeFileSync(script, '// edited')
+  const logs = []
+  assert.equal(install({ cwd: hub, log: (m) => logs.push(m) }).script, 'differs')
+  assert.equal(fs.readFileSync(script, 'utf8'), '// edited')
+  assert.ok(logs.some((l) => l.includes('--force')))
+  assert.equal(install({ cwd: hub, force: true, log: () => {} }).script, 'installed')
+  assert.equal(fs.readFileSync(script, 'utf8'), pkgScript)
+
+  const dry = tmp()
+  fs.mkdirSync(path.join(dry, 'assets/scene'), { recursive: true })
+  install({ cwd: dry, dryRun: true, log: () => {} })
+  assert.ok(!fs.existsSync(path.join(dry, 'images')))
+  assert.ok(!fs.existsSync(path.join(dry, 'assets/scene/Scripts')))
+  assert.throws(() => install({ cwd: tmp(null), log: () => {} }), /scene\.json/)
 })

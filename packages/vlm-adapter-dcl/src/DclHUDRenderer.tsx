@@ -10,6 +10,7 @@
 
 import ReactEcs, { ReactEcsRenderer, UiEntity, Label, Input } from '@dcl/sdk/react-ecs'
 import { Color4 } from '@dcl/sdk/math'
+import { engine } from '@dcl/sdk/ecs'
 import type {
   HUDRenderer,
   HUDPanelState,
@@ -26,6 +27,7 @@ import type { UploadToken } from 'vlm-client'
 import { nearbyPlayers } from './players.js'
 import { markHudPress } from './hud/press.js'
 import { EditModeBar, NO_EDIT_MODE, type EditModeHUDState } from './hud/EditModeBar.js'
+import { HUD_ICON_SRC, hudIconDot } from './hud/icon.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -170,6 +172,8 @@ const C = {
   successSoft: Color4.create(0.18, 0.75, 0.38, 0.15),
   warning: Color4.create(0.88, 0.68, 0.08, 1),
   danger: Color4.create(0.88, 0.28, 0.28, 1),
+  /** Virvi cyan #08DDEB, the launcher dot when connected */
+  virvi: Color4.create(8 / 255, 221 / 255, 235 / 255, 1),
   transparent: Color4.create(0, 0, 0, 0),
   white08: Color4.create(1, 1, 1, 0.08),
   white15: Color4.create(1, 1, 1, 0.15),
@@ -179,35 +183,44 @@ const C = {
 // Shared Components
 // ---------------------------------------------------------------------------
 
+const LAUNCHER_SIZE = 44
+const LAUNCHER_ICON = 34
+const LAUNCHER_DOT = hudIconDot(LAUNCHER_ICON)
+
+/** The launcher: the Virvi symbol on the dark square; its dot is the connection status. */
 function HUDToggleButton() {
-  const isConnected = state.connectionState === 'connected'
-  const dotColor = isConnected ? C.success : state.connectionState === 'error' ? C.danger : C.warning
+  const dotColor =
+    state.connectionState === 'connected' ? C.virvi : state.connectionState === 'error' ? C.danger : C.warning
 
   return (
     <UiEntity
       uiTransform={{
         positionType: 'absolute',
         position: { right: 12, top: 12 },
-        width: 44,
-        height: 44,
+        width: LAUNCHER_SIZE,
+        height: LAUNCHER_SIZE,
         alignItems: 'center',
         justifyContent: 'center',
       }}
       uiBackground={{ color: C.bg }}
       onMouseDown={() => { markHudPress(); state.hudVisible = !state.hudVisible }}
     >
-      <Label value="VLM" fontSize={12} color={C.text}
-        uiTransform={{ width: 44, height: 34 }} />
-      {/* Status dot */}
       <UiEntity
-        uiTransform={{
-          positionType: 'absolute',
-          position: { right: 4, bottom: 4 },
-          width: 8,
-          height: 8,
-        }}
-        uiBackground={{ color: dotColor }}
-      />
+        uiTransform={{ width: LAUNCHER_ICON, height: LAUNCHER_ICON }}
+        uiBackground={{ texture: { src: HUD_ICON_SRC }, textureMode: 'stretch', color: C.text }}
+      >
+        {/* Status dot, where the symbol's dot is */}
+        <UiEntity
+          uiTransform={{
+            positionType: 'absolute',
+            position: { left: LAUNCHER_DOT.left, top: LAUNCHER_DOT.top },
+            width: LAUNCHER_DOT.diameter,
+            height: LAUNCHER_DOT.diameter,
+            borderRadius: LAUNCHER_DOT.diameter / 2,
+          }}
+          uiBackground={{ color: dotColor }}
+        />
+      </UiEntity>
     </UiEntity>
   )
 }
@@ -1346,7 +1359,10 @@ export class DclHUDRenderer implements HUDRenderer {
   init() {
     if (this.initialized) return
     this.initialized = true
-    ReactEcsRenderer.setUiRenderer(VLMHUD)
+    // Added alongside the scene's own UI (setUiRenderer would replace it). Sizes are 1920x1080 design
+    // pixels, scaled to the screen by the SDK's virtual canvas (so the HUD isn't tiny on high-DPI screens);
+    // a virtual size set by the scene's main UI takes precedence. zIndex keeps the HUD above the scene's UI.
+    ReactEcsRenderer.addUiRenderer(engine.addEntity(), VLMHUD, { virtualWidth: 1920, virtualHeight: 1080, zIndex: 1000 })
     console.log('[VLM HUD] DCL HUD renderer initialized')
   }
 
