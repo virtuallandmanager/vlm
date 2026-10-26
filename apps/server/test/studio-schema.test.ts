@@ -9,6 +9,10 @@ import {
   studioMessages,
   studioRenders,
   studioUsageDays,
+  studioPayments,
+  studioEntitlements,
+  studioMistakeReports,
+  studioPromptCredits,
 } from '../src/db/schema.js'
 import { TIER_LIMITS } from '../src/integrations/stripe.js'
 import { resetDb } from './helpers/db.js'
@@ -67,5 +71,24 @@ describe('design studio schema', () => {
     expect(TIER_LIMITS.pro).toMatchObject({ studioPromptsPerDay: 40, studioDailyCostCeilingUsd: 75 })
     expect(TIER_LIMITS.studio).toMatchObject({ studioPromptsPerDay: 100, studioDailyCostCeilingUsd: 200 })
     expect(TIER_LIMITS.enterprise).toMatchObject({ studioPromptsPerDay: 300, studioDailyCostCeilingUsd: 600 })
+  })
+
+  it('payment tables hold one entitlement per revision and one report per entitlement', async () => {
+    const { user, d } = await design()
+    expect(d.finalizedAt).toBeNull()
+    const [job] = await db.insert(studioJobs).values({ designId: d.id, type: 'prompt', payload: {}, countedFrom: 'credit' }).returning()
+    expect(job.countedFrom).toBe('credit')
+    const [piece] = await db.insert(studioPieces).values({ designId: d.id, category: 'hat', name: 'Neon cap' }).returning()
+    const [rev] = await db.insert(studioRevisions).values({ pieceId: piece.id, number: 1, jobId: job.id, changeKind: 'new', meta: {}, files: [] }).returning()
+    const [pay] = await db.insert(studioPayments).values({ userId: user.id, designId: d.id, kind: 'finalize', amountCents: 2900 }).returning()
+    expect(pay).toMatchObject({ status: 'pending', lines: [], prompts: 0, refundedCents: 0, stripeSessionId: null })
+    const ent = { revisionId: rev.id, paymentId: pay.id, userId: user.id, designId: d.id, category: 'hat', kind: 'first', amountCents: 2900, status: 'packaging' }
+    const [e] = await db.insert(studioEntitlements).values(ent).returning()
+    await expect(db.insert(studioEntitlements).values(ent)).rejects.toMatchObject({ code: '23505' })
+    const report = { entitlementId: e.id, userId: user.id, text: 'the sleeve clips', refundCents: 0, status: 'waived' }
+    await db.insert(studioMistakeReports).values(report)
+    await expect(db.insert(studioMistakeReports).values(report)).rejects.toMatchObject({ code: '23505' })
+    const [c] = await db.insert(studioPromptCredits).values({ userId: user.id }).returning()
+    expect(c.balance).toBe(0)
   })
 })

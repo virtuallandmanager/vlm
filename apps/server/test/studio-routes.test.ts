@@ -78,6 +78,16 @@ describe('studio dashboard routes', () => {
     }
   })
 
+  it('a finalized design is not open', async () => {
+    const u = await createUser()
+    const first = (await create(u)).json()
+    expect(first.finalizedAt).toBeNull()
+    await db.update(studioDesigns).set({ finalizedAt: new Date() }).where(eq(studioDesigns.id, first.id))
+    expect((await create(u, { kind: 'emote', agent: 'codex' })).statusCode).toBe(201)
+    const usage = await app.inject({ method: 'GET', url: `${S}/usage`, headers: as(u) })
+    expect(usage.json().openDesigns).toBe(1)
+  })
+
   it('creating designs respects the agent list and the open-design limit', async () => {
     const u = await createUser()
     const grok = await create(u, { kind: 'wearable', agent: 'grok' })

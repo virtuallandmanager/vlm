@@ -32,12 +32,12 @@ export function viewKey(kind: string, view: View): string {
 }
 
 export function publicDesign(d: Design) {
-  return { id: d.id, name: d.name, kind: d.kind, agent: d.agent, status: d.status, archivedAt: d.archivedAt, lastJobAt: d.lastJobAt, createdAt: d.createdAt }
+  return { id: d.id, name: d.name, kind: d.kind, agent: d.agent, status: d.status, archivedAt: d.archivedAt, lastJobAt: d.lastJobAt, finalizedAt: d.finalizedAt, createdAt: d.createdAt }
 }
 
 export async function openDesignCount(userId: string): Promise<number> {
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(studioDesigns)
-    .where(and(eq(studioDesigns.ownerId, userId), isNull(studioDesigns.archivedAt)))
+    .where(and(eq(studioDesigns.ownerId, userId), isNull(studioDesigns.archivedAt), isNull(studioDesigns.finalizedAt)))
   return n
 }
 

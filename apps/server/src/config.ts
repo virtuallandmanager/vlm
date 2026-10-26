@@ -23,6 +23,26 @@ export function roomsDistributed(c: { useRedisPresence: boolean; redisUrl?: stri
   return c.useRedisPresence && !!c.redisUrl
 }
 
+/** Design Studio prices in US cents, each a setting (see src/studio/README.md). A bad value refuses to start. */
+export function studioPricesFrom(e: Record<string, string | undefined>) {
+  const cents = (name: string, def: number) => {
+    const raw = e[name]
+    if (raw === undefined || raw === '') return def
+    if (!/^\d+$/.test(raw)) throw new Error(`${name} must be a whole number of cents`)
+    return Number(raw)
+  }
+  return {
+    wearable: cents('STUDIO_PRICE_WEARABLE_CENTS', 2900),
+    extraPiece: cents('STUDIO_PRICE_EXTRA_PIECE_CENTS', 1900),
+    emote: cents('STUDIO_PRICE_EMOTE_CENTS', 3900),
+    revisionWearable: cents('STUDIO_REVISION_WEARABLE_CENTS', 1500),
+    revisionExtraPiece: cents('STUDIO_REVISION_EXTRA_PIECE_CENTS', 1000),
+    revisionEmote: cents('STUDIO_REVISION_EMOTE_CENTS', 2000),
+    topupCents: cents('STUDIO_TOPUP_CENTS', 500),
+    topupPrompts: cents('STUDIO_TOPUP_PROMPTS', 10),
+  }
+}
+
 /** Refuse to start a production-like server on the well-known development JWT secret. */
 export function assertProductionSecrets(c: { mode: VLMMode; nodeEnv?: string; jwtSecret: string }): void {
   const production = c.mode === 'cloud' || c.nodeEnv === 'production'
@@ -183,6 +203,7 @@ export const config = {
   studioMachines: (env('STUDIO_MACHINES') === 'external' ? 'external' : 'fly') as 'fly' | 'external',
   studioClaudeModel: env('STUDIO_CLAUDE_MODEL') || 'claude-opus-5-5',
   studioCodexModel: env('STUDIO_CODEX_MODEL') || 'gpt-6.1-sol',
+  studioPrices: studioPricesFrom(process.env),
   studioEnabled: mode === 'cloud' && !!env('STUDIO_WORKER_IMAGE') && !!env('STUDIO_S3_URI'),
 
   // ── Metrics ─────────────────────────────────────────────────────────────
