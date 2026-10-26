@@ -75,7 +75,7 @@ function hostedVouch(answer: (req: VouchReq, n: number) => unknown) {
   return { calls, virviVouch }
 }
 const admin = (id: string, name: string) => ({ id, name, admin: true, builder: false, position: new Vector3() })
-const START = { code: 'SLF234', approveUrl: 'https://vlm.gg/pair/SLF234', qrUrl: 'https://q', expiresAt: new Date(Date.now() + 600_000).toISOString() }
+const START = { code: 'SLF234', approveUrl: 'https://virvi.io/pair/SLF234', qrUrl: 'https://q', expiresAt: new Date(Date.now() + 600_000).toISOString() }
 
 /**
  * Host globals a browser or Node has but Hyperfy's script compartment doesn't: any use is recorded. (Anything else
@@ -301,7 +301,7 @@ describe('the Virvi app script', () => {
     const c = run({
       isServer: false,
       me: { id: 'p1', name: 'Pip', admin: false, builder: true, position: new Vector3() },
-      route: (url) => (url.endsWith('/api/hyperfy/pair') ? res(200, { code: 'ABC234', approveUrl: 'https://vlm.gg/pair/ABC234', qrUrl: 'https://q', expiresAt: new Date(Date.now() + 600_000).toISOString() }) : undefined),
+      route: (url) => (url.endsWith('/api/hyperfy/pair') ? res(200, { code: 'ABC234', approveUrl: 'https://virvi.io/pair/ABC234', qrUrl: 'https://q', expiresAt: new Date(Date.now() + 600_000).toISOString() }) : undefined),
     })
     c.update()
     const link = button(c.added, 'Link to Virvi')
@@ -318,7 +318,7 @@ describe('the Virvi app script', () => {
   it('hosted: a virvi:link request is answered with the vouch result for that player only', async () => {
     const players = [admin('p1', 'Pip'), admin('p2', 'Bo')]
     const v = hostedVouch((_req, n) => {
-      if (n === 1) return { status: 'unlinked', code: 'ABC234', approveUrl: 'https://vlm.gg/pair/ABC234', qrUrl: 'https://q', expiresAt: 'e', pairingId: 'pair-1' }
+      if (n === 1) return { status: 'unlinked', code: 'ABC234', approveUrl: 'https://virvi.io/pair/ABC234', qrUrl: 'https://q', expiresAt: 'e', pairingId: 'pair-1' }
       if (n === 2) return { status: 'pending' }
       return { status: 'linked', pass: 'PASS', passExpiresAt: 'x', pairingId: 'pair-1', sceneId: 'scene-1', user: { id: 'u1', displayName: 'Ada' } }
     })
@@ -327,7 +327,7 @@ describe('the Virvi app script', () => {
     s.handlers.get('virvi:link')!({ hyperfyPlayerId: 'p2', playerName: 'Mallory', attempt: 4 }, 'p1')
     await s.settle()
     expect(v.calls[0]).toEqual({ hyperfyPlayerId: 'p1', playerName: 'Pip' })
-    expect(s.sentTo).toEqual([{ playerId: 'p1', name: 'virvi:link', data: { status: 'unlinked', code: 'ABC234', approveUrl: 'https://vlm.gg/pair/ABC234', qrUrl: 'https://q', expiresAt: 'e', attempt: 4 } }])
+    expect(s.sentTo).toEqual([{ playerId: 'p1', name: 'virvi:link', data: { status: 'unlinked', code: 'ABC234', approveUrl: 'https://virvi.io/pair/ABC234', qrUrl: 'https://q', expiresAt: 'e', attempt: 4 } }])
     // polls with the pending pairing until it's approved
     await s.tick()
     expect(v.calls[1]).toEqual({ hyperfyPlayerId: 'p1', playerName: 'Pip', pendingPairingId: 'pair-1' })

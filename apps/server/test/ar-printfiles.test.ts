@@ -219,7 +219,7 @@ describe('paper PDF', () => {
     expect(text.startsWith('%PDF-')).toBe(true)
     expect(text.trimEnd().endsWith('%%EOF')).toBe(true)
     expect(text).toContain(ringCodeOf(ID))
-    expect(text).toContain(`vlm.gg/s/${ringCodeOf(ID)}`)
+    expect(text).toContain(`virvi.io/s/${ringCodeOf(ID)}`)
     expect(text).toContain('100%')
     expect(text).toContain('/MediaBox [0 0 612 792]')
     expect(text).not.toContain('/Image')

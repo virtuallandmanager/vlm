@@ -13,7 +13,7 @@ function tmp(sceneJson = GC_SCENE) {
   return d
 }
 const model = (n, bytes, extra = {}) => ({
-  elementId: 'e' + n, name: 'm' + n, url: `https://cdn.vlm.gg/u/${n}.glb`, file: `models/virvi/${n}.glb`, sizeBytes: bytes, ...extra,
+  elementId: 'e' + n, name: 'm' + n, url: `https://cdn.virvi.io/u/${n}.glb`, file: `models/virvi/${n}.glb`, sizeBytes: bytes, ...extra,
 })
 function stub(models, status = 200, body) {
   const calls = []
@@ -168,7 +168,7 @@ test('untracked existing file is never overwritten or tracked', async () => {
 test('case-only rename and duplicates do not delete the downloaded file', async () => {
   const cwd = tmp()
   await run(cwd, stub([model('a', 10)]))
-  const up = { ...model('A', 10), url: 'https://cdn.vlm.gg/u/A.glb' }
+  const up = { ...model('A', 10), url: 'https://cdn.virvi.io/u/A.glb' }
   const r = await run(cwd, stub([up, model('a', 10)]))
   assert.equal(r.removed.length, 0)
   assert.equal(r.downloaded.length + r.skipped.length, 1)
@@ -241,7 +241,7 @@ test('manifest is written atomically (no tmp files left behind)', async () => {
 test('a listed file with unsupported name characters gets a re-upload warning', async () => {
   const cwd = tmp()
   const logs = []
-  const bad = model('x', 5, { name: 'Fancy', url: 'https://cdn.vlm.gg/u/my%20duck.glb', file: 'models/virvi/my duck.glb' })
+  const bad = model('x', 5, { name: 'Fancy', url: 'https://cdn.virvi.io/u/my%20duck.glb', file: 'models/virvi/my duck.glb' })
   const r = await run(cwd, stub([bad, model('a', 10)]), { log: (m) => logs.push(m) })
   assert.deepEqual(r.downloaded, ['models/virvi/a.glb'])
   assert.ok(logs.some((l) => l.includes("can't be synced because its name has unsupported characters — re-upload it")), logs.join('\n'))

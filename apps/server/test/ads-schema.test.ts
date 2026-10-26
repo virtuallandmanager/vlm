@@ -40,7 +40,7 @@ describe('ad spaces schema and plumbing', () => {
   it('ad_events allows one row per ad, element, level, day and viewer', async () => {
     const owner = await createUser()
     const { scene } = await createScene(owner)
-    const [ad] = await db.insert(ads).values({ name: 'House', kind: 'house', clickUrl: 'https://vlm.gg' }).returning()
+    const [ad] = await db.insert(ads).values({ name: 'House', kind: 'house', clickUrl: 'https://virvi.io' }).returning()
     const row = {
       adId: ad.id, elementId: crypto.randomUUID(), sceneId: scene.id, level: 'onscreen', day: '2026-10-19',
       viewerKey: 'w:0xabc', verified: true, house: true, occurredAt: new Date(),

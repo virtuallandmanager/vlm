@@ -6,7 +6,7 @@
  * - single/scalable mode (no Stripe): all features unlocked — middleware is a no-op
  * - cloud mode (with Stripe): checks user subscription tier against required tier
  *
- * Self-hosters get everything for free. The hosted vlm.gg service gates premium
+ * Self-hosters get everything for free. The hosted virvi.io service gates premium
  * features behind subscriptions.
  */
 

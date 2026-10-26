@@ -9,7 +9,7 @@ import { startGameServer, joinScene } from './helpers/game-server.js'
 import { onSceneTouched } from '../src/realtime/bus.js'
 import { sceneSnapshot } from '../src/hyperfy/snapshot.js'
 
-const URL_A = 'https://live.vlm.gg/streams/ka/playlist.m3u8'
+const URL_A = 'https://live.virvi.io/streams/ka/playlist.m3u8'
 
 describe('hyperfy scene snapshot and scene-touched signal', () => {
   let gs: Awaited<ReturnType<typeof startGameServer>>

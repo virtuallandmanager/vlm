@@ -8,7 +8,7 @@ type Res = { ok: boolean; status: number; json(): Promise<unknown> } | undefined
 type Call = { url: string; init: { method?: string; headers?: Record<string, string>; body?: string } }
 const res = (status: number, body: unknown = {}): Res => ({ ok: status >= 200 && status < 300, status, json: async () => body })
 
-const START = { code: 'ABC234', approveUrl: 'https://vlm.gg/pair/ABC234', qrUrl: 'https://api/qr.png', expiresAt: '2026-10-21T00:10:00.000Z' }
+const START = { code: 'ABC234', approveUrl: 'https://virvi.io/pair/ABC234', qrUrl: 'https://api/qr.png', expiresAt: '2026-10-21T00:10:00.000Z' }
 const T0 = Date.parse('2026-10-21T00:00:00.000Z')
 
 /** Fake clock + timers + fetch routed by "METHOD path". */

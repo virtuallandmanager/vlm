@@ -15,7 +15,7 @@ export function dashboardOriginFor(apiUrl: string): string | null {
 }
 
 export function dashboardUrlFor(apiUrl: string): string {
-  return dashboardOriginFor(apiUrl) ?? 'https://vlm.gg'
+  return dashboardOriginFor(apiUrl) ?? 'https://virvi.io'
 }
 
 export function analyticsUrlFor(apiUrl: string, sceneId: string): string {
@@ -24,7 +24,7 @@ export function analyticsUrlFor(apiUrl: string, sceneId: string): string {
 
 /**
  * The hand-off page link. The code rides in the fragment, which browsers never send to a server, log or put in a Referer.
- * Null when the dashboard origin can't be derived from the API URL: a code is never sent to the vlm.gg fallback.
+ * Null when the dashboard origin can't be derived from the API URL: a code is never sent to the virvi.io fallback.
  */
 export function handoffUrlFor(apiUrl: string, code: string, next: string): string | null {
   const origin = dashboardOriginFor(apiUrl)

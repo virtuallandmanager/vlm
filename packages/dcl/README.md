@@ -1,6 +1,6 @@
 # vlm-dcl
 
-[Virtual Land Manager](https://vlm.gg) for Decentraland SDK7 scenes: visitor analytics,
+[Virtual Land Manager](https://virvi.io) for Decentraland SDK7 scenes: visitor analytics,
 the in-world management HUD, and live scene content managed from the VLM dashboard.
 
 Version 2 is a rewrite. It is not compatible with the 0.x (SDK6-era) API.
@@ -25,7 +25,7 @@ export async function main() {
 ```
 
 `createVLM()` starts analytics straight away, with no account or scene ID needed. Scene owners
-get the management HUD (top right) and can claim the scene's analytics on vlm.gg later.
+get the management HUD (top right) and can claim the scene's analytics on virvi.io later.
 
 Analytics only (no HUD, no live content):
 
@@ -41,16 +41,16 @@ export function main() {
 
 Deploy, then walk into your scene with the wallet that owns, operates or deployed it. The VLM HUD
 (top right) shows **Set up VLM here**: one press makes you the scene's host — no account or email
-needed. Open **Roles** in the HUD (or the scene's Roles tab on vlm.gg) to make others co-hosts,
+needed. Open **Roles** in the HUD (or the scene's Roles tab on virvi.io) to make others co-hosts,
 editors or viewers by wallet address.
 
 ## Images and 3D models
 
-- Upload images (PNG, JPG, WebP, GIF up to 10 MB) and GLB models (up to 50 MB) on vlm.gg (Media),
+- Upload images (PNG, JPG, WebP, GIF up to 10 MB) and GLB models (up to 50 MB) on virvi.io (Media),
   or place them from the in-world HUD (Assets → Place).
 - Images appear live for everyone.
 - Decentraland only loads 3D models that are deployed with your scene. By default Virvi deploys them
-  to your World for you (set it up at vlm.gg/deploy); if you publish yourself, the HUD's Publish
+  to your World for you (set it up at virvi.io/deploy); if you publish yourself, the HUD's Publish
   button opens the publish page. After that, moving, scaling and showing/hiding models is live.
 - `npx vlm-dcl sync` is optional, if you want the files locally: run it in your scene folder and it
   downloads your VLM models into `models/vlm/`, then deploy as usual. The HUD tells you when models

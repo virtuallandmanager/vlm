@@ -21,7 +21,7 @@ describe('ensureNetworkPolyfills (runtimes without URL / XMLHttpRequest, e.g. De
     expect(u.hostname).toBe('localhost')
     expect(u.port).toBe('3010')
     expect(u.host).toBe('localhost:3010')
-    const p = new g.URL('wss://api.vlm.gg/sub/path?x=1')
+    const p = new g.URL('wss://api.virvi.io/sub/path?x=1')
     expect(p.pathname).toBe('/sub/path')
     expect(p.search).toBe('?x=1')
     expect(p.port).toBe('')

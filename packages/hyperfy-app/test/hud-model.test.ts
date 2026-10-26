@@ -91,7 +91,7 @@ describe('hudModel', () => {
         pairing: {
           status: 'waiting',
           code: 'ABC234',
-          approveUrl: 'https://vlm.gg/pair/ABC234',
+          approveUrl: 'https://virvi.io/pair/ABC234',
           qrUrl: 'https://api/qr.png',
           expiresAt: 'x',
         },
@@ -100,7 +100,7 @@ describe('hudModel', () => {
     expect(waiting.link).toMatchObject({
       status: 'waiting',
       code: 'ABC-234',
-      approveUrl: 'https://vlm.gg/pair/ABC234',
+      approveUrl: 'https://virvi.io/pair/ABC234',
       qrUrl: 'https://api/qr.png',
       canLink: false,
     })

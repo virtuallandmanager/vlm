@@ -38,10 +38,10 @@ const HOSTING_CONFIG = {
   hyperfyWorldsDatabaseUrl: 'postgres://admin:adminpw@worlds-db.internal/worlds',
   hyperfyWorldsDbUrlTemplate: 'postgres://{user}:{password}@worlds-db.flycast:5432/worlds',
   hyperfyAssetsS3Uri: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/virvi-hyperfy',
-  hyperfyAssetsBaseUrl: 'https://worlds-cdn.vlm.gg',
-  hyperfyRouterDomain: 'worlds.vlm.gg',
+  hyperfyAssetsBaseUrl: 'https://worlds-cdn.virvi.io',
+  hyperfyRouterDomain: 'worlds.virvi.io',
   hyperfySecretKey: 'ab'.repeat(32),
-  publicUrl: 'https://api.vlm.gg',
+  publicUrl: 'https://api.virvi.io',
 }
 
 function installFakes(opts: { failStart?: boolean; failUpdate?: boolean; failDeleteApp?: boolean } = {}) {

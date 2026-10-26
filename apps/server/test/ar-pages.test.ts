@@ -69,7 +69,7 @@ describe('AR static pages', () => {
     }
 
     it('lists the package and certificate fingerprints', async () => {
-      ;(config as any).androidAppPackage = 'gg.virvi.spaces'
+      ;(config as any).androidAppPackage = 'io.virvi.ar'
       ;(config as any).androidCertSha256 = ['AA:BB', 'CC:DD']
       await appWithDashboard()
       const res = await app.inject({ method: 'GET', url: '/.well-known/assetlinks.json' })
@@ -77,7 +77,7 @@ describe('AR static pages', () => {
       expect(res.headers['content-type']).toMatch(/^application\/json/)
       expect(res.json()).toEqual([{
         relation: ['delegate_permission/common.handle_all_urls'],
-        target: { namespace: 'android_app', package_name: 'gg.virvi.spaces', sha256_cert_fingerprints: ['AA:BB', 'CC:DD'] },
+        target: { namespace: 'android_app', package_name: 'io.virvi.ar', sha256_cert_fingerprints: ['AA:BB', 'CC:DD'] },
       }])
     })
 

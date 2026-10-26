@@ -26,10 +26,10 @@ describe('lastSeenLabel', () => {
 
 describe('setupSteps', () => {
   it('gives the four steps with the feed url', () => {
-    expect(setupSteps('https://api.vlm.gg')).toEqual([
+    expect(setupSteps('https://api.virvi.io')).toEqual([
       'Download the Virvi app and drag vlm.hyp into your Hyperfy world.',
       "Open the app's settings and paste your world key into Virvi world key.",
-      'Leave Virvi feed URL as https://api.vlm.gg unless Virvi support tells you otherwise.',
+      'Leave Virvi feed URL as https://api.virvi.io unless Virvi support tells you otherwise.',
       'Your scene appears within a few seconds and follows your edits.',
     ])
   })
@@ -55,7 +55,7 @@ describe('hyperfyErrorMessage', () => {
 })
 
 const world = (over: Partial<HyperfyWorldSummary>): HyperfyWorldSummary => ({
-  id: 'w1', sceneId: 's1', name: 'Gallery', kind: 'hosted', address: 'gallery.worlds.vlm.gg', status: 'running',
+  id: 'w1', sceneId: 's1', name: 'Gallery', kind: 'hosted', address: 'gallery.worlds.virvi.io', status: 'running',
   errorMessage: null, keyPrefix: 'virviw_abcdefg', createdAt: '2026-10-01T00:00:00Z', lastSeenAt: null,
   endsAt: null, endedAt: null, purgeAfter: null, ...over,
 })

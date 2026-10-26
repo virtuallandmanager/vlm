@@ -8,13 +8,13 @@ import { resetDb } from './helpers/db.js'
 import { createUser, createScene, tokenFor, testApp } from './helpers/factories.js'
 
 const KEY = 'test-webhook-secret'
-const PLAYLIST = 'https://live.vlm.gg/streams/k1/playlist.m3u8'
+const PLAYLIST = 'https://live.virvi.io/streams/k1/playlist.m3u8'
 
 async function stream(ownerId: string, streamKey = 'k1', status: 'ready' | 'live' | 'offline' = 'ready') {
   const [row] = await db.insert(streamingServers).values({
     ownerId, name: 'Main', status, streamKey, playbackId: `pb-${streamKey}`,
-    rtmpUrl: `rtmp://ingest.vlm.gg/live/${streamKey}`,
-    hlsPlaylistUrl: `https://live.vlm.gg/streams/${streamKey}/playlist.m3u8`,
+    rtmpUrl: `rtmp://ingest.virvi.io/live/${streamKey}`,
+    hlsPlaylistUrl: `https://live.virvi.io/streams/${streamKey}/playlist.m3u8`,
   }).returning()
   return row
 }

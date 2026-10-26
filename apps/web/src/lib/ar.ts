@@ -29,7 +29,7 @@ export function resizeNote(m: ArMarkerView): string {
     : 'Changing the size means reprinting this ring.'
 }
 
-export const shareUrl = (code: string): string => `https://vlm.gg/s/${code}`
+export const shareUrl = (code: string): string => `https://virvi.io/s/${code}`
 
 /** The ring code in a /s/<code> address, normalised; null when the last segment isn't a valid code (or is the static placeholder). */
 export function spaceCodeFromPath(path: string): string | null {

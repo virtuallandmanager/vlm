@@ -778,10 +778,10 @@ export const streamingServers = pgTable('streaming_servers', {
   name: text('name').notNull(),
   type: streamingServerTypeEnum('type').notNull().default('shared'),
   status: streamingServerStatusEnum('status').notNull().default('provisioning'),
-  rtmpUrl: text('rtmp_url'), // e.g. rtmp://ingest.vlm.gg/live
+  rtmpUrl: text('rtmp_url'), // e.g. rtmp://ingest.virvi.io/live
   streamKey: text('stream_key'), // unique key for this stream — secret: only the owner and the media server see it
   playbackId: text('playback_id'), // public id (128-bit random) in the playback URL and HLS folder — never the stream key
-  hlsPlaylistUrl: text('hls_playlist_url'), // e.g. https://cdn.vlm.gg/streams/{id}/playlist.m3u8
+  hlsPlaylistUrl: text('hls_playlist_url'), // e.g. https://cdn.virvi.io/streams/{id}/playlist.m3u8
   region: text('region').default('us-east-1'),
   infrastructureId: text('infrastructure_id'), // ECS task ARN, Fly machine ID, etc.
   sceneId: uuid('scene_id').references(() => scenes.id), // optional: auto-link to a scene's video
@@ -929,7 +929,7 @@ export const hyperfyWorlds = pgTable('hyperfy_worlds', {
   slugUq: uniqueIndex('hyperfy_worlds_slug_uq').on(t.slug).where(sql`${t.purgedAt} IS NULL`),
 }))
 
-// ── Hyperfy HUD pairings (a Hyperfy player is paired to a Virvi user, who approves on vlm.gg) ──
+// ── Hyperfy HUD pairings (a Hyperfy player is paired to a Virvi user, who approves on virvi.io) ──
 
 export const hyperfyPairings = pgTable('hyperfy_pairings', {
   id: uuid('id').primaryKey().defaultRandom(),

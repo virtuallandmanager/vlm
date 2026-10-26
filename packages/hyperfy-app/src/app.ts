@@ -37,7 +37,7 @@ const sameTransform = (a: VirviTransform, b: VirviTransform) =>
 const HELLO = 'virvi:hello'
 
 app.configure([
-  { key: 'feedUrl', type: 'text', label: 'Virvi feed URL', initial: 'https://api.vlm.gg' },
+  { key: 'feedUrl', type: 'text', label: 'Virvi feed URL', initial: 'https://api.virvi.io' },
   { key: 'worldKey', type: 'text', label: 'Virvi world key', initial: '' },
 ])
 
@@ -45,7 +45,7 @@ if (world.isServer) runServer()
 else runHud(runClient(), { app, world, fetch, setTimeout, props, Matrix4, uuid })
 
 function runServer(): void {
-  const feedUrl = (props.feedUrl || 'https://api.vlm.gg').trim().replace(/\/+$/, '')
+  const feedUrl = (props.feedUrl || 'https://api.virvi.io').trim().replace(/\/+$/, '')
   const worldKey = (props.worldKey || '').trim()
   runLinkRelay({ app, world, setTimeout, vouch: app.virviVouch })
   if (!worldKey) {

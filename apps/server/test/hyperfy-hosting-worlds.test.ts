@@ -34,10 +34,10 @@ const HOSTING_CONFIG = {
   hyperfyWorldsDatabaseUrl: 'postgres://admin:adminpw@worlds-db.internal/worlds',
   hyperfyWorldsDbUrlTemplate: 'postgres://{user}:{password}@worlds-db.flycast:5432/worlds',
   hyperfyAssetsS3Uri: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/virvi-hyperfy',
-  hyperfyAssetsBaseUrl: 'https://worlds-cdn.vlm.gg',
-  hyperfyRouterDomain: 'worlds.vlm.gg',
+  hyperfyAssetsBaseUrl: 'https://worlds-cdn.virvi.io',
+  hyperfyRouterDomain: 'worlds.virvi.io',
   hyperfySecretKey: 'ab'.repeat(32),
-  publicUrl: 'https://api.vlm.gg',
+  publicUrl: 'https://api.virvi.io',
   allFeaturesUnlocked: false,
 }
 
@@ -141,12 +141,12 @@ describe('hosted Hyperfy worlds', () => {
   })
 
   it('create inserts provisioning, then running after health, with the exact env (no secrets in logs)', async () => {
-    ;(config as any).publicUrl = 'https://api.staging.vlm.gg'
+    ;(config as any).publicUrl = 'https://api.staging.virvi.io'
     await setTier(owner.id, 'pro')
     const gate = deferred()
     const f = fakes({ dbGate: gate.promise })
     const { world, adminCode } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Moon Base!', endsAt: null }, f.deps)
-    expect(world).toMatchObject({ kind: 'hosted', status: 'provisioning', address: 'moon-base.worlds.vlm.gg', sceneId, name: 'Moon Base!' })
+    expect(world).toMatchObject({ kind: 'hosted', status: 'provisioning', address: 'moon-base.worlds.virvi.io', sceneId, name: 'Moon Base!' })
     expect((await row(world.id)).status).toBe('provisioning')
     expect((await row(world.id)).flyApp).toBe('vlm-w-moon-base')
     gate.resolve()
@@ -154,26 +154,26 @@ describe('hosted Hyperfy worlds', () => {
 
     expect((await row(world.id)).status).toBe('running')
     expect(f.healthUrls.length).toBeGreaterThanOrEqual(2)
-    expect(new Set(f.healthUrls)).toEqual(new Set(['https://moon-base.worlds.vlm.gg/']))
+    expect(new Set(f.healthUrls)).toEqual(new Set(['https://moon-base.worlds.virvi.io/']))
     const machine = f.machines.get('vlm-w-moon-base')!
     expect(machine.image).toBe('registry.fly.io/vlm-hyperfy-image:abc123')
     expect(machine.env).toEqual({
       PORT: '3000',
       WORLD: 'world',
-      PUBLIC_WS_URL: 'wss://moon-base.worlds.vlm.gg/ws',
-      PUBLIC_API_URL: 'https://moon-base.worlds.vlm.gg/api',
+      PUBLIC_WS_URL: 'wss://moon-base.worlds.virvi.io/ws',
+      PUBLIC_API_URL: 'https://moon-base.worlds.virvi.io/api',
       ASSETS: 's3',
       ASSETS_S3_URI: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/virvi-hyperfy/moon-base',
-      ASSETS_BASE_URL: 'https://worlds-cdn.vlm.gg/moon-base',
+      ASSETS_BASE_URL: 'https://worlds-cdn.virvi.io/moon-base',
       DB_URI: 'postgres://world_moon_base:dbpw_moon-base_s3cr3t@worlds-db.flycast:5432/worlds',
       DB_SCHEMA: 'world_moon_base',
       JWT_SECRET: expect.stringMatching(/^[0-9a-f]{64}$/),
       ADMIN_CODE: adminCode,
       SAVE_INTERVAL: '60',
       CLEAN: 'true',
-      PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: 'wss://api.staging.vlm.gg',
+      PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: 'wss://api.staging.virvi.io',
       PUBLIC_MAX_UPLOAD_SIZE: '12',
-      VIRVI_FEED_URL: 'https://api.staging.vlm.gg',
+      VIRVI_FEED_URL: 'https://api.staging.virvi.io',
       VLM_WORLD_KEY: expect.stringMatching(/^virviw_[0-9a-f]{64}$/),
       VLM_WORLD_SECRET: expect.stringMatching(/^[0-9a-f]{64}$/),
     })
@@ -208,7 +208,7 @@ describe('hosted Hyperfy worlds', () => {
     expect((await row(world.id)).worldSecretHash).toBe(stored.worldSecretHash)
   })
 
-  it('creator gets a fly.dev address and public IPs; pro gets a worlds.vlm.gg address and no IPs', async () => {
+  it('creator gets a fly.dev address and public IPs; pro gets a worlds.virvi.io address and no IPs', async () => {
     await setTier(owner.id, 'creator')
     const c = fakes()
     const { world: small } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Small World', endsAt: null }, c.deps)
@@ -225,7 +225,7 @@ describe('hosted Hyperfy worlds', () => {
     const p = fakes()
     const { world: big } = await createHostedWorld({ ownerId: pro.id, sceneId: proScene, name: 'Big World', endsAt: null }, p.deps)
     await hostedWorldSettled(big.id)
-    expect(big.address).toBe('big-world.worlds.vlm.gg')
+    expect(big.address).toBe('big-world.worlds.virvi.io')
     expect(p.calls.some((x) => x.startsWith('allocatePublicIps'))).toBe(false)
     // Router-addressed worlds get one private Flycast address, for the router's large-body proxying.
     expect(p.calls.filter((x) => x.startsWith('allocatePrivateIp'))).toEqual(['allocatePrivateIp vlm-w-big-world'])
@@ -279,7 +279,7 @@ describe('hosted Hyperfy worlds', () => {
     expect((await row(a.world.id)).slug).toBe('moon')
     expect((await row(b.world.id)).slug).toBe('moon-2')
     expect((await row(c.world.id)).slug).toBe('moon-3')
-    expect(b.world.address).toBe('moon-2.worlds.vlm.gg')
+    expect(b.world.address).toBe('moon-2.worlds.virvi.io')
 
     // Names that slug to too little, or too much, still give a slug the router accepts.
     const d = await createHostedWorld({ ownerId: other.id, sceneId: otherScene, name: '!!', endsAt: null }, f.deps)

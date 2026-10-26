@@ -9,8 +9,8 @@ import { AdHost } from './ads/host.js'
 // Default API URLs by environment
 const API_URLS: Record<string, string> = {
   dev: 'http://localhost:3010',
-  staging: 'https://staging-api.vlm.gg',
-  prod: 'https://api.vlm.gg',
+  staging: 'https://api.staging.virvi.io',
+  prod: 'https://api.virvi.io',
 }
 export function resolveApiUrl(config: Partial<VirviInitConfig> = {}): string {
   const env = config.env || 'prod'
@@ -19,8 +19,8 @@ export function resolveApiUrl(config: Partial<VirviInitConfig> = {}): string {
 
 const WSS_URLS: Record<string, string> = {
   dev: 'ws://localhost:3010',
-  staging: 'wss://staging-api.vlm.gg',
-  prod: 'wss://api.vlm.gg',
+  staging: 'wss://api.staging.virvi.io',
+  prod: 'wss://api.virvi.io',
 }
 
 export type VirviConnectionState =

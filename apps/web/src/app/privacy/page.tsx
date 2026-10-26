@@ -45,12 +45,12 @@ export default function PrivacyPage() {
           Call <code className="rounded bg-gray-800 px-1.5 py-0.5 text-sm">POST /api/analytics/me/delete</code> with your session token. A
           dashboard control for this is coming. This removes your sessions, events and positions from every scene.
           To ask for your data to be deleted, or for help, email{' '}
-          <a href="mailto:support@vlm.gg" className="text-blue-400 hover:underline">support@vlm.gg</a>.
+          <a href="mailto:support@virvi.io" className="text-blue-400 hover:underline">support@virvi.io</a>.
         </p>
 
         <h2>Virvi Spaces on Quest</h2>
         <p>
-          Virvi Spaces is the Meta Quest app that shows a Virvi space in your room. It talks to vlm.gg. Pictures, videos and 3D models in a space load from wherever its owner hosts them, which may be outside vlm.gg; those hosts see the headset's network address like any website would.
+          Virvi Spaces is the Meta Quest app that shows a Virvi space in your room. It talks to virvi.io. Pictures, videos and 3D models in a space load from wherever its owner hosts them, which may be outside virvi.io; those hosts see the headset's network address like any website would.
         </p>
         <ul className="list-disc pl-5">
           <li>
@@ -75,18 +75,18 @@ export default function PrivacyPage() {
         </ul>
         <p>
           Visit events follow the same retention as the rest of Virvi analytics, above. They carry no identity, so there is nothing to look up
-          or delete for a single visitor. A builder can revoke a paired headset on vlm.gg, which stops it from editing. To ask for your data to be
+          or delete for a single visitor. A builder can revoke a paired headset on virvi.io, which stops it from editing. To ask for your data to be
           deleted, or for help, email{' '}
-          <a href="mailto:support@vlm.gg" className="text-blue-400 hover:underline">support@vlm.gg</a>.
+          <a href="mailto:support@virvi.io" className="text-blue-400 hover:underline">support@virvi.io</a>.
         </p>
 
         <h2>Advertiser early access</h2>
         <p>
-          When you ask for advertising early access on vlm.gg, Virvi stores the email address, name, company or project, website and message you
+          When you ask for advertising early access on virvi.io, Virvi stores the email address, name, company or project, website and message you
           enter, and the time you sent the form. It's used only to contact you about advertising on Virvi. If you send the form again with the same
           email, the new answers replace the old ones (fields you leave blank keep what you sent before). Your IP address is used briefly to
           limit repeated submissions and is not stored. To be removed from the list, email{' '}
-          <a href="mailto:sales@vlm.gg" className="text-blue-400 hover:underline">sales@vlm.gg</a>.
+          <a href="mailto:sales@virvi.io" className="text-blue-400 hover:underline">sales@virvi.io</a>.
         </p>
       </article>
     </div>

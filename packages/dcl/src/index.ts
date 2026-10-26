@@ -74,7 +74,7 @@ export class VirviSmartItem {
   spawn(host: Entity, props: VirviSmartItemProps, channel: IChannel) {
     const {
       sceneId,
-      serverUrl = 'https://vlm.gg',
+      serverUrl = 'https://virvi.io',
       showBeacon = false,
       enableHud = true,
       enableAnalytics = true,
@@ -174,7 +174,7 @@ export class VirviSmartItem {
         enableHud,
         // Only set sceneId if actually provided (empty string = no scene)
         ...(sceneId ? { sceneId } : {}),
-        ...(serverUrl && serverUrl !== 'https://vlm.gg' ? {
+        ...(serverUrl && serverUrl !== 'https://virvi.io' ? {
           apiUrl: serverUrl,
           wssUrl: serverUrl.replace(/^http/, 'ws'),
         } : {}),
@@ -260,7 +260,7 @@ export function startVirviManager(entity: Entity, options: VirviManagerOptions =
   const item = new VirviSmartItem()
   item.spawn(entity, {
     sceneId: options.sceneId || '',
-    serverUrl: options.serverUrl || 'https://vlm.gg',
+    serverUrl: options.serverUrl || 'https://virvi.io',
     showBeacon: options.showBeacon ?? false,
     enableHud: options.enableHud ?? true,
     enableAnalytics: options.enableAnalytics ?? true,

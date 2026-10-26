@@ -42,7 +42,7 @@ async function fixtures() {
   }).returning()
   const [stream] = await db.insert(streamingServers).values({
     ownerId: b.id, name: 'B stream', status: 'ready', streamKey: 'b-key', playbackId: 'b-pb', sceneId: scene.id,
-    rtmpUrl: 'rtmp://ingest.vlm.gg/live/b-key', hlsPlaylistUrl: 'https://live.vlm.gg/streams/b-pb/playlist.m3u8',
+    rtmpUrl: 'rtmp://ingest.virvi.io/live/b-key', hlsPlaylistUrl: 'https://live.virvi.io/streams/b-pb/playlist.m3u8',
   }).returning()
   const [event] = await db.insert(events).values({ ownerId: b.id, name: 'B event' }).returning()
   const [giveaway] = await db.insert(giveaways).values({ ownerId: b.id, name: 'B giveaway' }).returning()

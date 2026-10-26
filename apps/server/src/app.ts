@@ -288,7 +288,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     })
   }
 
-  // Android app links: claims vlm.gg/s/<code> for the Quest app. Registered before the static handler and SPA
+  // Android app links: claims virvi.io/s/<code> for the Quest app. Registered before the static handler and SPA
   // fallback so neither answers it. No fingerprints yet means [], so nothing claims links before the app is signed.
   app.get('/.well-known/assetlinks.json', (_request, reply) => {
     const fingerprints = config.androidCertSha256

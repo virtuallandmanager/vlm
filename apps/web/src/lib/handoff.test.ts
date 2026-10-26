@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { runHandoff, hasAccountSession } from './handoff'
 
-const base = 'https://vlm.gg/auth/handoff/#code=SECRET&next=%2Fanalytics%2F%3Fscene%3Dabc'
+const base = 'https://virvi.io/auth/handoff/#code=SECRET&next=%2Fanalytics%2F%3Fscene%3Dabc'
 
 function deps(status: number) {
   const calls: string[] = []
@@ -34,13 +34,13 @@ describe('runHandoff', () => {
   })
   it('an off-site next is ignored', async () => {
     const { d } = deps(200)
-    d.href = 'https://vlm.gg/auth/handoff/#code=X&next=%2F%2Fevil.com'
+    d.href = 'https://virvi.io/auth/handoff/#code=X&next=%2F%2Fevil.com'
     await runHandoff(d)
     expect(d.go).toHaveBeenLastCalledWith('/analytics/')
   })
   it('a code in the query string is never exchanged, and is removed from the address bar', async () => {
     const { calls, d } = deps(200)
-    d.href = 'https://vlm.gg/auth/handoff/?code=SECRET&next=%2Fanalytics%2F%3Fscene%3Dabc'
+    d.href = 'https://virvi.io/auth/handoff/?code=SECRET&next=%2Fanalytics%2F%3Fscene%3Dabc'
     expect(await runHandoff(d)).toBe('fallback')
     expect(d.exchange).not.toHaveBeenCalled()
     expect(calls[0]).toBe('replace:/auth/handoff/')

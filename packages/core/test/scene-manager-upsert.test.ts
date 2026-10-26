@@ -101,10 +101,10 @@ describe('model resolution via adapter.resolveModelSrc', () => {
     ;(virvi as any).events.on('models_missing', (n: number) => counts.push(n))
 
     ;(virvi as any).sceneManager.handlePresetUpdate({
-      action: 'init', scenePreset: { models: [model('https://cdn.vlm.gg/u1/ab12.glb')] },
+      action: 'init', scenePreset: { models: [model('https://cdn.virvi.io/u1/ab12.glb')] },
     })
 
-    expect(resolveModelSrc).toHaveBeenCalledWith('https://cdn.vlm.gg/u1/ab12.glb')
+    expect(resolveModelSrc).toHaveBeenCalledWith('https://cdn.virvi.io/u1/ab12.glb')
     expect(adapter.createEntity).not.toHaveBeenCalled()
     expect(adapter.setGltfModel).not.toHaveBeenCalled()
     expect(virvi.missingModels()).toBe(1)
@@ -117,9 +117,9 @@ describe('model resolution via adapter.resolveModelSrc', () => {
     const virvi = new Virvi(adapter)
     const sm = (virvi as any).sceneManager
     sm.handlePresetUpdate({
-      action: 'init', scenePreset: { models: [model('https://cdn.vlm.gg/u1/ab12.glb'), model('https://cdn.vlm.gg/u1/ok.glb', 'm2')] },
+      action: 'init', scenePreset: { models: [model('https://cdn.virvi.io/u1/ab12.glb'), model('https://cdn.virvi.io/u1/ok.glb', 'm2')] },
     })
-    expect(virvi.missingModelSrcs()).toEqual(['https://cdn.vlm.gg/u1/ab12.glb'])
+    expect(virvi.missingModelSrcs()).toEqual(['https://cdn.virvi.io/u1/ab12.glb'])
     sm.handlePresetUpdate({ action: 'delete', element: 'model', id: 'm1' })
     expect(virvi.missingModelSrcs()).toEqual([])
   })
@@ -130,7 +130,7 @@ describe('model resolution via adapter.resolveModelSrc', () => {
     const counts: number[] = []
     ;(virvi as any).events.on('models_missing', (n: number) => counts.push(n))
     const sm = (virvi as any).sceneManager
-    sm.handlePresetUpdate({ action: 'init', scenePreset: { models: [model('https://cdn.vlm.gg/u1/ab12.glb')] } })
+    sm.handlePresetUpdate({ action: 'init', scenePreset: { models: [model('https://cdn.virvi.io/u1/ab12.glb')] } })
     sm.handlePresetUpdate({ action: 'delete', element: 'model', id: 'm1' })
     expect(virvi.missingModels()).toBe(0)
     expect(counts).toEqual([1, 0])
@@ -141,10 +141,10 @@ describe('model resolution via adapter.resolveModelSrc', () => {
     const { adapter, live } = fakeAdapter({ resolveModelSrc: () => (available ? 'models/virvi/ab12.glb' : null) })
     const virvi = new Virvi(adapter)
     const sm = (virvi as any).sceneManager
-    sm.handlePresetUpdate({ action: 'init', scenePreset: { models: [model('https://cdn.vlm.gg/u1/ab12.glb')] } })
+    sm.handlePresetUpdate({ action: 'init', scenePreset: { models: [model('https://cdn.virvi.io/u1/ab12.glb')] } })
     expect(virvi.missingModels()).toBe(1)
     available = true
-    sm.handlePresetUpdate({ action: 'upsert', element: 'model', elementData: model('https://cdn.vlm.gg/u1/ab12.glb') })
+    sm.handlePresetUpdate({ action: 'upsert', element: 'model', elementData: model('https://cdn.virvi.io/u1/ab12.glb') })
     expect(virvi.missingModels()).toBe(0)
     expect(live.size).toBe(1)
   })
@@ -155,7 +155,7 @@ describe('model resolution via adapter.resolveModelSrc', () => {
       const storage = VirviStorageImpl.create()
       return { sm: new SceneManager(adapter, storage, new EventBus()) }
     })()
-    sm.handlePresetUpdate({ action: 'init', scenePreset: { models: [model('https://cdn.vlm.gg/u1/ab12.glb')] } })
+    sm.handlePresetUpdate({ action: 'init', scenePreset: { models: [model('https://cdn.virvi.io/u1/ab12.glb')] } })
     expect(adapter.createEntity).toHaveBeenCalledTimes(1)
     expect(adapter.setGltfModel).toHaveBeenCalledWith(expect.anything(), 'models/virvi/ab12.glb')
   })
@@ -184,9 +184,9 @@ describe('Virvi.onModelsMissing', () => {
     const counts: number[] = []
     const off = virvi.onModelsMissing((n) => counts.push(n))
     const sm = (virvi as any).sceneManager
-    sm.handlePresetUpdate({ action: 'init', scenePreset: { models: [model('https://cdn.vlm.gg/u1/ab12.glb')] } })
+    sm.handlePresetUpdate({ action: 'init', scenePreset: { models: [model('https://cdn.virvi.io/u1/ab12.glb')] } })
     // An upsert of a still-missing model deletes then recreates: listeners always see the current count
-    sm.handlePresetUpdate({ action: 'upsert', element: 'model', elementData: model('https://cdn.vlm.gg/u1/ab12.glb') })
+    sm.handlePresetUpdate({ action: 'upsert', element: 'model', elementData: model('https://cdn.virvi.io/u1/ab12.glb') })
     expect(counts).toEqual([1, 0, 1])
     expect(virvi.missingModels()).toBe(1)
     off()

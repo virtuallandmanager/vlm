@@ -671,7 +671,7 @@ export default function SettingsPage() {
                         disabled={billingActionLoading === tier}
                         onClick={async () => {
                           if (tier === 'enterprise') {
-                            window.open('mailto:sales@vlm.gg?subject=Enterprise%20Plan', '_blank')
+                            window.open('mailto:sales@virvi.io?subject=Enterprise%20Plan', '_blank')
                             return
                           }
                           setBillingActionLoading(tier)

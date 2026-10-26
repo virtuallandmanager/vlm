@@ -4,7 +4,7 @@
  * Modes:
  *   single   — Self-hosted, one server, in-memory Colyseus presence
  *   scalable — Self-hosted, multiple servers + Redis presence
- *   cloud    — Hosted vlm.gg SaaS, multi-tenant, billing enabled
+ *   cloud    — Hosted virvi.io SaaS, multi-tenant, billing enabled
  */
 
 export type VirviMode = 'single' | 'scalable' | 'cloud'
@@ -78,13 +78,13 @@ export const config = {
   logLevel: env('LOG_LEVEL') || (env('NODE_ENV') === 'production' ? 'info' : 'debug'),
 
   // ── Android app links (/.well-known/assetlinks.json) ─────────────────────
-  androidAppPackage: env('ANDROID_APP_PACKAGE') || 'gg.virvi.spaces',
+  androidAppPackage: env('ANDROID_APP_PACKAGE') || 'io.virvi.ar',
   // Release-key SHA-256 fingerprints, comma-separated; empty until the app is signed
   androidCertSha256: normalizeCertFingerprints(env('ANDROID_CERT_SHA256') || ''),
 
   // ── Virvi Spaces reports ───────────────────────────────────────────────────
   // Where a visitor's "Report this space" is emailed (best-effort; reports are always stored and shown on /admin)
-  arReportsEmail: env('AR_REPORTS_EMAIL') || 'support@vlm.gg',
+  arReportsEmail: env('AR_REPORTS_EMAIL') || 'support@virvi.io',
 
   // ── Database ────────────────────────────────────────────────────────────
   databaseUrl: env('DATABASE_URL')!,
@@ -172,7 +172,7 @@ export const config = {
   hyperfyWorldsDbUrlTemplate: env('HYPERFY_WORLDS_DB_URL_TEMPLATE'), // what worlds connect with; {user} and {password}
   hyperfyAssetsS3Uri: env('HYPERFY_ASSETS_S3_URI'), // s3://<key>:<secret>@<account>.r2.cloudflarestorage.com/<bucket>
   hyperfyAssetsBaseUrl: env('HYPERFY_ASSETS_BASE_URL'), // the bucket's CDN origin
-  hyperfyRouterDomain: env('HYPERFY_ROUTER_DOMAIN'), // worlds.vlm.gg
+  hyperfyRouterDomain: env('HYPERFY_ROUTER_DOMAIN'), // worlds.virvi.io
   hyperfySecretKey: env('HYPERFY_SECRET_KEY'), // 32-byte hex, encrypts admin codes
 
   // ── Design Studio (cloud only; see src/studio/README.md) ───────────────
@@ -208,7 +208,7 @@ export const config = {
   smtpPort: parseInt(env('SMTP_PORT') || '587'),
   smtpUser: env('SMTP_USER'),
   smtpPass: env('SMTP_PASS'),
-  emailFrom: env('EMAIL_FROM') || 'noreply@vlm.gg',
+  emailFrom: env('EMAIL_FROM') || 'noreply@virvi.io',
 
   // ── Limits ──────────────────────────────────────────────────────────────
   maxRoomsPerServer: parseInt(env('MAX_ROOMS') || (mode === 'single' ? '50' : '500')),

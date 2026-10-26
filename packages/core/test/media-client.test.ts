@@ -7,7 +7,7 @@ describe('VirviHttpClient media + element calls', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   it('getMedia GETs /api/media and returns the assets', async () => {
-    const assets = [{ id: 'a1', filename: 'duck.glb', contentType: 'model/gltf-binary', publicUrl: 'https://cdn.vlm.gg/u1/ab.glb', sizeBytes: 10 }]
+    const assets = [{ id: 'a1', filename: 'duck.glb', contentType: 'model/gltf-binary', publicUrl: 'https://cdn.virvi.io/u1/ab.glb', sizeBytes: 10 }]
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ assets }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     const client = new VirviHttpClient('https://api.example')
@@ -18,7 +18,7 @@ describe('VirviHttpClient media + element calls', () => {
   })
 
   it('getSceneLibrary GETs the scene library with the bearer header and returns items', async () => {
-    const items = [{ id: 'l1', kind: 'media', name: 'cat.png', contentType: 'image/png', url: 'https://cdn.vlm.gg/s1/cat.png', sizeBytes: 5 }]
+    const items = [{ id: 'l1', kind: 'media', name: 'cat.png', contentType: 'image/png', url: 'https://cdn.virvi.io/s1/cat.png', sizeBytes: 5 }]
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ items }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     const client = new VirviHttpClient('https://api.example')
@@ -62,7 +62,7 @@ describe('VirviHttpClient media + element calls', () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ element: { id: 'e1' } }), { status: 201 }))
     vi.stubGlobal('fetch', fetchMock)
     const client = new VirviHttpClient('https://api.example')
-    const body = { type: 'image', name: 'cat.png', properties: { textureSrc: 'https://cdn.vlm.gg/u1/c.png' } }
+    const body = { type: 'image', name: 'cat.png', properties: { textureSrc: 'https://cdn.virvi.io/u1/c.png' } }
     const res = await client.createElement('p1', body)
     expect(res.element.id).toBe('e1')
     expect(call(fetchMock)[0]).toBe('https://api.example/api/presets/p1/elements')

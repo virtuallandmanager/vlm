@@ -37,8 +37,8 @@ describe('spaceReadiness', () => {
 })
 
 describe('shareUrl', () => {
-  it('builds the vlm.gg link', () => {
-    expect(shareUrl('2E3D4C5')).toBe('https://vlm.gg/s/2E3D4C5')
+  it('builds the virvi.io link', () => {
+    expect(shareUrl('2E3D4C5')).toBe('https://virvi.io/s/2E3D4C5')
   })
 })
 

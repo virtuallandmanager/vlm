@@ -162,7 +162,7 @@ export async function createVirvi(config?: Partial<VirviInitConfig> & { enableHu
 
   // Stats tab: signs the browser in as this wallet via a single-use hand-off code, created only on the press and never logged.
   // Any failure to create it (guest, unverified, rate limit, network) opens the plain dashboard link instead.
-  // When the dashboard origin can't be derived from the API URL, no code is minted: it would go to the vlm.gg fallback.
+  // When the dashboard origin can't be derived from the API URL, no code is minted: it would go to the virvi.io fallback.
   const openAnalytics = (sceneId: string): void => {
     const apiUrl = resolveApiUrl(config ?? {})
     const next = `/analytics/?scene=${encodeURIComponent(sceneId)}`

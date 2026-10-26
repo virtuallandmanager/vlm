@@ -14,7 +14,7 @@ const TIMEOUT_MS = 60000
 const LIST_TIMEOUT_MS = 30000
 const TMP_RE = /\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.virvi-tmp$/
 const SIZE_EXCLUDES = new Set(['node_modules', 'bin', '.git', 'dist'])
-export const DEFAULT_SERVER = 'https://api.vlm.gg'
+export const DEFAULT_SERVER = 'https://api.virvi.io'
 
 /** Scene-relative path of the HUD launcher icon; must match HUD_ICON_SRC in virvi-adapter-dcl (src/hud/icon.ts). */
 export const HUD_ICON_FILE = 'images/virvi/hud-v.png'

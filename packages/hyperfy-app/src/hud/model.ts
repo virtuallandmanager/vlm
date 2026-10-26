@@ -204,7 +204,7 @@ function linkCard(p: PairingState, linking: boolean): HudViewModel['link'] {
     case 'waiting':
       return {
         status: p.status,
-        label: 'Approve this code on vlm.gg',
+        label: 'Approve this code on virvi.io',
         code: formatPairingCode(p.code),
         approveUrl: p.approveUrl,
         qrUrl: p.qrUrl,

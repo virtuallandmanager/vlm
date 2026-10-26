@@ -508,7 +508,7 @@ export function paperPdf(markerId: number, diameterMm: number): Buffer {
   ops.push('0 g', `${X(15)} ${Y(barY + 3)} ${num(100 * k)} ${num(3 * k)} re f`)
   for (let t = 0; t <= 100; t += 10) ops.push(`${X(15 + t)} ${Y(barY)} m ${X(15 + t)} ${Y(barY - 2)} l S`)
   text(118, barY + 2.5, 11, '100 mm')
-  text(15, barY + 12, 11, `${code}   vlm.gg/s/${code}`)
+  text(15, barY + 12, 11, `${code}   virvi.io/s/${code}`)
 
   const content = ops.join('\n')
   const objects = [

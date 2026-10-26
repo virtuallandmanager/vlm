@@ -47,7 +47,7 @@ describe('AR space reports', () => {
     expect(Object.keys(rows[0]).sort()).toEqual(['createdAt', 'id', 'platform', 'reason', 'spaceId', 'status'])
     await vi.waitFor(() => expect(sendEmail).toHaveBeenCalledTimes(1))
     const [to, subject, html] = vi.mocked(sendEmail).mock.calls[0]
-    expect(to).toBe('support@vlm.gg')
+    expect(to).toBe('support@virvi.io')
     expect(subject).toBe('Virvi Spaces report: unsafe — Arcade <b>')
     expect(html).toContain('Arcade &lt;b&gt;')
     expect(html).not.toContain('<b>Arcade <b>')

@@ -35,7 +35,7 @@ describe('vlm.hyp', () => {
     const { blueprint, assets } = header
     expect(blueprint).toMatchObject({
       name: 'Virvi',
-      props: { feedUrl: 'https://api.vlm.gg', worldKey: '' },
+      props: { feedUrl: 'https://api.virvi.io', worldKey: '' },
       preload: false,
     })
     expect(Object.keys(blueprint.props).sort()).toEqual(['feedUrl', 'hudIcon', 'worldKey'])

@@ -69,7 +69,7 @@ export interface HudSandbox {
  */
 export function runHud(hooks: ClientEditHooks, sandbox: HudSandbox): void {
   const { app, world, fetch, setTimeout, props, Matrix4, uuid } = sandbox
-  const feedUrl = (props.feedUrl || 'https://api.vlm.gg').trim().replace(/\/+$/, '')
+  const feedUrl = (props.feedUrl || 'https://api.virvi.io').trim().replace(/\/+$/, '')
   const worldKey = (props.worldKey || '').trim()
   let ui: HudUi = initialUi()
   let link: PairingState = { status: 'idle' }
