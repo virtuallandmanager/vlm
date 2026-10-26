@@ -247,4 +247,103 @@ describe('studio payments', () => {
     const [sub] = await db.select().from(subscriptions).where(eq(subscriptions.userId, u.id))
     expect(sub).toMatchObject({ stripeSubscriptionId: 'sub_1', status: 'active' })
   })
+
+  describe('mistake reports', () => {
+    const report = (u: TestUser, id: string, category: string, n: number, text = 'the sleeve clips through the arm when waving') =>
+      app.inject({ method: 'POST', url: `/api/studio/designs/${id}/pieces/${category}/revisions/${n}/report`, headers: as(u), payload: { text } })
+
+    async function revised(u: TestUser, opts: { paidAt?: Date } = {}) {
+      const d = await createDesign(u)
+      await entitle(d, await addRevision(d, 'hat'))
+      await entitle(d, await addRevision(d, 'feet'))
+      await addRevision(d, 'feet')
+      const rev = await addRevision(d, 'hat')
+      // hat revision 2, paid as the second revision line in its checkout
+      const { entitlement } = await entitle(d, rev, { amountCents: 1000, paidAt: opts.paidAt, paymentIntent: 'pi_rev' })
+      return { d, entitlement }
+    }
+
+    it("a report refunds the revision's line in full", async () => {
+      const u = await createUser()
+      const { d, entitlement } = await revised(u)
+      const res = await report(u, d.id, 'hat', 2)
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toEqual({ status: 'refunded', refundCents: 1000 })
+      expect(stripe.calls.refunds).toEqual([{
+        params: expect.objectContaining({ payment_intent: 'pi_rev', amount: 1000 }),
+        opts: { idempotencyKey: `studio-report-${entitlement.id}` },
+      }])
+      const [row] = await db.select().from(studioMistakeReports)
+      expect(row).toMatchObject({ entitlementId: entitlement.id, status: 'refunded', refundCents: 1000, text: 'the sleeve clips through the arm when waving' })
+      expect(row.stripeRefundId).toMatch(/^re_/)
+      const [pay] = await db.select().from(studioPayments).where(eq(studioPayments.id, entitlement.paymentId))
+      expect(pay.refundedCents).toBe(1000)
+    })
+
+    it('a second report is 409 already_reported', async () => {
+      const u = await createUser()
+      const { d } = await revised(u)
+      await report(u, d.id, 'hat', 2)
+      const again = await report(u, d.id, 'hat', 2)
+      expect(again.statusCode).toBe(409)
+      expect(again.json().code).toBe('already_reported')
+      expect(stripe.calls.refunds).toHaveLength(1)
+    })
+
+    it("a first finalize can't be reported", async () => {
+      const u = await createUser()
+      const { d } = await revised(u)
+      const res = await report(u, d.id, 'hat', 1)
+      expect(res.statusCode).toBe(409)
+      expect(res.json().code).toBe('not_a_revision')
+    })
+
+    it('after 30 days the window is closed', async () => {
+      const u = await createUser()
+      const { d } = await revised(u, { paidAt: new Date(Date.now() - 31 * 24 * 3600 * 1000) })
+      const res = await report(u, d.id, 'hat', 2)
+      expect(res.statusCode).toBe(409)
+      expect(res.json().code).toBe('report_window_closed')
+    })
+
+    it('a refused refund stores no report', async () => {
+      const u = await createUser()
+      const { d, entitlement } = await revised(u)
+      stripe.failRefunds = true
+      const res = await report(u, d.id, 'hat', 2)
+      expect(res.statusCode).toBe(502)
+      expect(res.json().code).toBe('stripe_error')
+      expect(await db.select().from(studioMistakeReports)).toHaveLength(0)
+      stripe.failRefunds = false
+      expect((await report(u, d.id, 'hat', 2)).statusCode).toBe(200)
+      expect(stripe.calls.refunds.map((r) => r.opts.idempotencyKey)).toEqual([`studio-report-${entitlement.id}`, `studio-report-${entitlement.id}`])
+    })
+
+    it('the customer keeps the files after a refund', async () => {
+      const u = await createUser()
+      const { d, entitlement } = await revised(u)
+      expect((await report(u, d.id, 'hat', 2)).statusCode).toBe(200)
+      const [e] = await db.select().from(studioEntitlements).where(eq(studioEntitlements.id, entitlement.id))
+      expect(e.status).toBe('ready')
+    })
+
+    it('report input and ownership are checked', async () => {
+      const u = await createUser()
+      const { d } = await revised(u)
+      expect((await report(u, d.id, 'hat', 2, 'short')).statusCode).toBe(400)
+      expect((await report(u, d.id, 'hat', 9)).statusCode).toBe(402)
+      expect((await report(u, d.id, 'hat', 9)).json().code).toBe('not_paid')
+      expect((await report(await createUser(), d.id, 'hat', 2)).statusCode).toBe(404)
+    })
+
+    it('nothing charged means nothing to refund', async () => {
+      const u = await createUser()
+      const d = await createDesign(u)
+      await entitle(d, await addRevision(d, 'hat'))
+      await entitle(d, await addRevision(d, 'hat'), { amountCents: 0 })
+      const res = await report(u, d.id, 'hat', 2)
+      expect(res.statusCode).toBe(409)
+      expect(res.json().code).toBe('nothing_charged')
+    })
+  })
 })

@@ -19,6 +19,7 @@ import { publishStudio } from './events.js'
 // Stripe refuses an expires_at under 30 minutes away, measured when it receives the request
 const CHECKOUT_TTL_MS = 31 * 60 * 1000
 export const FINALIZE_LIMITS = { timeoutSec: 1800, maxTurns: 0, costCeilingUsd: 0 }
+export const REPORT_WINDOW_DAYS = 30
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export class PaymentError extends Error {
@@ -222,4 +223,55 @@ export async function handleStudioSession(event: { type: string; data?: { object
     await db.update(studioPayments).set({ status: 'expired' }).where(and(eq(studioPayments.id, id), eq(studioPayments.status, 'pending')))
   }
   return true
+}
+
+/**
+ * The customer says a paid revision fixed the agent's own mistake: its line is refunded in full through Stripe, at
+ * once and without review (VLM reviews the log afterwards). Stripe is called first, with a key tied to the
+ * entitlement, so a refused refund stores nothing and a retry can't refund twice.
+ */
+export async function reportMistake(
+  design: Design,
+  category: string,
+  revisionNumber: number,
+  text: string,
+  now: Date,
+): Promise<{ status: 'refunded'; refundCents: number }> {
+  const [row] = await db.select({ e: studioEntitlements, pay: studioPayments })
+    .from(studioEntitlements)
+    .innerJoin(studioRevisions, eq(studioRevisions.id, studioEntitlements.revisionId))
+    .innerJoin(studioPieces, eq(studioPieces.id, studioRevisions.pieceId))
+    .innerJoin(studioPayments, eq(studioPayments.id, studioEntitlements.paymentId))
+    .where(and(eq(studioPieces.designId, design.id), eq(studioPieces.category, category), eq(studioRevisions.number, revisionNumber)))
+  if (!row) throw new PaymentError(402, 'not_paid')
+  const { e, pay } = row
+  if (e.kind !== 'revision') throw new PaymentError(409, 'not_a_revision')
+  if (!(e.amountCents > 0)) throw new PaymentError(409, 'nothing_charged')
+  const [existing] = await db.select({ id: studioMistakeReports.id }).from(studioMistakeReports).where(eq(studioMistakeReports.entitlementId, e.id))
+  if (existing) throw new PaymentError(409, 'already_reported')
+  if (!pay.paidAt || now.getTime() - pay.paidAt.getTime() > REPORT_WINDOW_DAYS * 24 * 3600 * 1000) {
+    throw new PaymentError(409, 'report_window_closed')
+  }
+  if (!pay.stripePaymentIntent) throw new PaymentError(409, 'nothing_charged')
+  let refundId: string
+  try {
+    const refund = await (await getStripe()).refunds.create(
+      { payment_intent: pay.stripePaymentIntent, amount: e.amountCents, metadata: { vlm_studio_entitlement_id: e.id, reason: 'agent_mistake' } },
+      { idempotencyKey: `studio-report-${e.id}` },
+    )
+    refundId = refund.id
+  } catch (err) {
+    console.error('[studio] mistake refund failed:', err instanceof Error ? err.message : err)
+    throw new PaymentError(502, 'stripe_error')
+  }
+  await db.transaction(async (tx) => {
+    const [inserted] = await tx.insert(studioMistakeReports).values({
+      entitlementId: e.id, userId: e.userId, text, refundCents: e.amountCents, status: 'refunded', stripeRefundId: refundId,
+    }).onConflictDoNothing().returning()
+    if (inserted) {
+      await tx.update(studioPayments).set({ refundedCents: sql`${studioPayments.refundedCents} + ${e.amountCents}` })
+        .where(eq(studioPayments.id, pay.id))
+    }
+  })
+  return { status: 'refunded', refundCents: e.amountCents }
 }

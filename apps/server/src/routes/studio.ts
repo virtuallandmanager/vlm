@@ -8,7 +8,7 @@ import { getSubscription } from '../integrations/stripe.js'
 import { getStudioStore, jobFileKey } from '../studio/store.js'
 import { verifyRenderFrame, framePath } from '../studio/render-urls.js'
 import { quoteFinalize, QuoteError } from '../studio/pricing.js'
-import { createFinalizeCheckout, createTopupCheckout, PaymentError } from '../studio/payments.js'
+import { createFinalizeCheckout, createTopupCheckout, reportMistake, PaymentError } from '../studio/payments.js'
 import {
   BASE_EMOTES, BODY_SHAPES, OUTFITS, WEARABLE_CATEGORIES,
   designDetail, openDesignCount, publicDesign, queuePrompt, requestRender, usage, type Design, type View,
@@ -196,6 +196,23 @@ export default async function studioRoutes(app: FastifyInstance) {
     }
     try {
       return await createFinalizeCheckout(d, { id: request.user.id, email: request.user.email ?? null }, categories, reports, new Date())
+    } catch (err) {
+      return checkoutRefusal(reply, err)
+    }
+  })
+
+  app.post('/api/studio/designs/:id/pieces/:category/revisions/:number/report', auth, async (request, reply) => {
+    const d = await ownDesign(request)
+    if (!d) return notFound(reply)
+    if (!config.stripeSecretKey) return paymentsOff(reply)
+    const { category, number } = request.params as { category: string; number: string }
+    if (!/^[a-z_]{1,32}$/.test(category) || !/^[1-9][0-9]{0,5}$/.test(number)) return reply.status(400).send({ error: 'unknown revision' })
+    const text = (request.body as { text?: unknown } | null)?.text
+    if (typeof text !== 'string' || text.trim().length < REPORT_MIN || text.length > REPORT_MAX) {
+      return reply.status(400).send({ error: `a report must be ${REPORT_MIN}-${REPORT_MAX} characters` })
+    }
+    try {
+      return await reportMistake(d, category, Number(number), text.trim(), new Date())
     } catch (err) {
       return checkoutRefusal(reply, err)
     }
