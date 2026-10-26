@@ -9,8 +9,10 @@ import {
   uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
   dclWorldDestinations,
   studioDesigns, studioPieces, studioRevisions, studioJobs, studioMessages, studioRenders, studioUsageDays,
+  studioPayments, studioEntitlements, studioMistakeReports, studioPromptCredits,
 } from '../src/db/schema.js'
 import { config } from '../src/config.js'
+import { memoryStudioStore, setStudioStore } from '../src/studio/store.js'
 import { createVenue, createBooking, addGrant } from '../src/venues/service.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, createScene, createElement, createInstance, tokenFor, randomWallet, type TestUser } from './helpers/factories.js'
@@ -89,6 +91,15 @@ async function fixtures() {
   const [designPiece] = await db.insert(studioPieces).values({ designId: design.id, category: 'hat', name: 'B cap' }).returning()
   const [designRev] = await db.insert(studioRevisions).values({ pieceId: designPiece.id, number: 1, jobId: designJob.id, changeKind: 'new', meta: {}, files: [] }).returning()
   await db.update(studioPieces).set({ latestRevisionId: designRev.id }).where(eq(studioPieces.id, designPiece.id))
+  // B paid for revision 1 as a revision (so a report would refund it); its package is ready to download
+  const [designPayment] = await db.insert(studioPayments).values({
+    userId: b.id, designId: design.id, kind: 'finalize', status: 'paid', amountCents: 1000, paidAt: new Date(), stripePaymentIntent: 'pi_b',
+  }).returning()
+  await db.insert(studioEntitlements).values({
+    revisionId: designRev.id, paymentId: designPayment.id, userId: b.id, designId: design.id, category: 'hat', kind: 'revision', amountCents: 1000, status: 'ready',
+    packageKey: `designs/${design.id}/jobs/${designJob.id}/final/hat/package.zip`,
+  }).returning()
+  await db.insert(studioPromptCredits).values({ userId: b.id, balance: 3 })
 
   const aScene = (await createScene(a, 'A scene')).scene
   const [aEvent] = await db.insert(events).values({ ownerId: a.id, name: 'A event' }).returning()
@@ -193,6 +204,11 @@ const CASES: Case[] = [
   { route: 'GET /api/studio/designs/:id', url: (f) => `/api/studio/designs/${f.design.id}` },
   { route: 'PATCH /api/studio/designs/:id', url: (f) => `/api/studio/designs/${f.design.id}`, body: () => ({ name: 'pwned', archived: true }) },
   { route: 'POST /api/studio/designs/:id/prompts', url: (f) => `/api/studio/designs/${f.design.id}/prompts`, body: () => ({ text: 'pwned' }) },
+  { route: 'GET /api/studio/designs/:id/finalize', url: (f) => `/api/studio/designs/${f.design.id}/finalize` },
+  { route: 'POST /api/studio/designs/:id/finalize', url: (f) => `/api/studio/designs/${f.design.id}/finalize`, body: () => ({ reports: { hat: 'pwned pwned pwned' } }) },
+  { route: 'POST /api/studio/designs/:id/pieces/:category/revisions/:number/report', url: (f) => `/api/studio/designs/${f.design.id}/pieces/hat/revisions/1/report`, body: () => ({ text: 'the agent broke it, refund me' }) },
+  { route: 'GET /api/studio/designs/:id/pieces/:category/revisions/:number/package', url: (f) => `/api/studio/designs/${f.design.id}/pieces/hat/revisions/1/package` },
+  { route: 'POST /api/studio/designs/:id/pieces/:category/revisions/:number/package/retry', url: (f) => `/api/studio/designs/${f.design.id}/pieces/hat/revisions/1/package/retry` },
   { route: 'POST /api/studio/designs/:id/renders', url: (f) => `/api/studio/designs/${f.design.id}/renders`, body: () => ({ category: 'hat', bodyShape: 'female', outfit: 'default', emote: null }) },
   { route: 'DELETE /api/hyperfy/worlds/:id', url: (f) => `/api/hyperfy/worlds/${f.world.id}` },
   { route: 'PATCH /api/hyperfy/worlds/:id', url: (f) => `/api/hyperfy/worlds/${f.world.id}`, body: () => ({ endsAt: null }) },
@@ -280,6 +296,7 @@ const NOT_CROSS_ACCOUNT: Record<string, string> = {
   'PUT /api/studio/worker/jobs/:jobId/files/*': "the per-design worker token is the auth; another design's token is 403 (studio-worker-routes.test.ts)",
   'GET /api/studio/render-frames/*': 'the signed frame token is the auth; it names one frame of one design (studio-routes.test.ts)',
   'POST /api/studio/worker/jobs/:jobId/result': "the per-design worker token is the auth; another design's token is 403 (studio-worker-routes.test.ts)",
+  'GET /api/studio/worker/jobs/:jobId/inputs/*': "the per-design worker token is the auth; another design's token is 403 (studio-finalize.test.ts)",
 }
 
 // Every table holding B's fixtures; a refused request must leave all of them as they were.
@@ -290,6 +307,7 @@ const TABLES = [
   uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
   dclWorldDestinations,
   studioDesigns, studioPieces, studioRevisions, studioJobs, studioMessages, studioRenders, studioUsageDays,
+  studioPayments, studioEntitlements, studioMistakeReports, studioPromptCredits,
 ]
 async function snapshot(f: F) {
   const all = await Promise.all(TABLES.map((t) => db.select().from(t as any)))
@@ -319,11 +337,16 @@ describe('cross-account route walk', () => {
     setWorldsClient(worlds)
     app = await testApp()
     f = await fixtures()
+    const store = memoryStudioStore()
+    setStudioStore(store)
+    const [paid] = await db.select().from(studioEntitlements)
+    await store.put(paid.packageKey!, Buffer.from('PK-b-package'), 'application/zip')
     worlds.deployers.set('b-world.dcl.eth', { owner: f.b.wallet, deployers: [] })
   })
   afterEach(async () => {
     ;(config as any).streamingEnabled = prevStreaming
     ;(config as any).studioEnabled = prevStudio
+    setStudioStore(null)
     ;(config as any).virviDclDeployKey = prevDeployKey
     setWorldsClient(null)
     await app.close()
