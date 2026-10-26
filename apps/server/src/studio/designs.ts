@@ -17,6 +17,8 @@ export const PROMPT_LIMITS = { timeoutSec: 1500, maxTurns: 80, costCeilingUsd: 3
 export const RENDER_LIMITS = { timeoutSec: 300, maxTurns: 80, costCeilingUsd: 3 }
 export const CONTINUE_TEXT = 'Continue where you stopped.'
 export const START_FAILED = 'The studio machine could not start.'
+export const fixChecksText = (categories: string[]) =>
+  `Fix every FAIL the checker reported for: ${categories.join(', ')}. Change nothing else.`
 
 export const WEARABLE_CATEGORIES = [
   'eyebrows', 'eyes', 'facial_hair', 'hair', 'mouth', 'upper_body', 'lower_body', 'feet', 'earring', 'eyewear', 'hat',
@@ -46,6 +48,7 @@ export async function usage(userId: string, limit: number, now: Date) {
   return {
     plan: s.plan,
     promptsLeft: s.left,
+    credits: s.credits,
     allowance: s.allowance,
     resetsAt: s.resetsAt,
     openDesigns: await openDesignCount(userId),
@@ -110,7 +113,7 @@ export async function startWorker(designId: string, jobId: string, now: Date): P
 
 export async function queuePrompt(
   design: Design,
-  input: { text: string | null; selectedSlots: string[] | null; continue: boolean },
+  input: { text: string | null; selectedSlots: string[] | null; continue: boolean; fixChecks?: boolean },
   now: Date,
 ): Promise<{ ok: true; jobId: string } | ({ ok: false } & Refusal)> {
   let jobId: string
@@ -130,13 +133,24 @@ export async function queuePrompt(
           throw new Refused({ status: 409, body: { error: 'nothing_to_continue', code: 'nothing_to_continue' } })
         }
       }
-      const counted = !input.continue
+      let fixText: string | null = null
+      if (input.fixChecks) {
+        // Fixing what the checker failed is the agent's job, so it doesn't use the allowance
+        const failing = await tx.select({ category: studioPieces.category, checker: studioRevisions.checker }).from(studioPieces)
+          .innerJoin(studioRevisions, eq(studioRevisions.id, studioPieces.latestRevisionId))
+          .where(eq(studioPieces.designId, d.id))
+          .orderBy(asc(studioPieces.category))
+        const categories = failing.filter((p) => (p.checker as { pass?: boolean } | null)?.pass === false).map((p) => p.category)
+        if (!categories.length) throw new Refused({ status: 409, body: { error: 'nothing_to_fix', code: 'nothing_to_fix' } })
+        fixText = fixChecksText(categories)
+      }
+      const counted = !input.continue && !input.fixChecks
       const r = await reservePrompt(d.ownerId, now, { counted }, tx)
       if (!r.ok) {
         const s = await promptStatus(d.ownerId, now)
         throw new Refused({ status: 429, body: { error: r.reason, code: r.reason, resetsAt: s.resetsAt } })
       }
-      const text = input.continue ? CONTINUE_TEXT : input.text!
+      const text = input.continue ? CONTINUE_TEXT : fixText ?? input.text!
       await tx.insert(studioMessages).values({ designId: d.id, role: 'user', text })
       const [job] = await tx.insert(studioJobs).values({
         designId: d.id,
@@ -153,6 +167,7 @@ export async function queuePrompt(
         },
         counted,
         countedDay: r.day,
+        countedFrom: r.from,
       }).returning({ id: studioJobs.id })
       await tx.update(studioDesigns).set({ status: 'building', lastJobAt: now }).where(eq(studioDesigns.id, d.id))
       return job.id

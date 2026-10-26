@@ -136,8 +136,14 @@ export default async function studioRoutes(app: FastifyInstance) {
   app.post('/api/studio/designs/:id/prompts', auth, async (request, reply) => {
     const d = await ownDesign(request)
     if (!d) return notFound(reply)
-    const b = (request.body ?? {}) as { text?: unknown; selectedSlots?: unknown; continue?: unknown }
+    const b = (request.body ?? {}) as { text?: unknown; selectedSlots?: unknown; continue?: unknown; fixChecks?: unknown }
     const cont = b.continue === true
+    const fixChecks = b.fixChecks === true
+    if (fixChecks) {
+      const r = await queuePrompt(d, { text: null, selectedSlots: null, continue: false, fixChecks: true }, new Date())
+      if (!r.ok) return reply.status(r.status).send(r.body)
+      return reply.status(202).send({ jobId: r.jobId })
+    }
     if (!cont && (typeof b.text !== 'string' || !b.text.trim() || b.text.length > MAX_PROMPT)) {
       return reply.status(400).send({ error: `text must be 1-${MAX_PROMPT} characters` })
     }

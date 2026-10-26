@@ -2,7 +2,7 @@ import { and, eq, inArray, max, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { studioDesigns, studioJobs, studioMessages, studioPieces, studioRenders, studioRevisions } from '../db/schema.js'
 import { checkFilePath } from './store.js'
-import { recordCost, refundPrompt, utcDay, type Exec } from './quota.js'
+import { recordCost, refundPrompt, utcDay, type Exec, type PromptSource } from './quota.js'
 import { publishStudio } from './events.js'
 
 /** A worker's Result, as apps/studio-worker/CONTRACT.md defines it (only the fields VLM reads are typed). */
@@ -139,7 +139,7 @@ export async function applyResult(jobId: string, result: ContractResult, now: Da
       }
       if (design) await recordCost(design.ownerId, day, result.costUsd ?? 0, tx)
       const refunded = result.outcome === 'error' && job.counted && !!design
-      if (refunded) await refundPrompt(design!.ownerId, day, tx)
+      if (refunded) await refundPrompt(design!.ownerId, day, job.countedFrom as PromptSource | null, tx)
       const note = systemNote(result, refunded)
       if (note) await tx.insert(studioMessages).values({ designId: job.designId, role: 'system', text: note, jobId: job.id })
     } else {
@@ -182,7 +182,7 @@ export async function failJobs(
       if (!job) return null
       const [design] = await tx.select().from(studioDesigns).where(eq(studioDesigns.id, job.designId))
       if (job.type === 'prompt') {
-        if (job.counted && design) await refundPrompt(design.ownerId, job.countedDay ?? utcDay(now), tx)
+        if (job.counted && design) await refundPrompt(design.ownerId, job.countedDay ?? utcDay(now), job.countedFrom as PromptSource | null, tx)
         await tx.insert(studioMessages).values({
           designId: job.designId, role: 'system', jobId: job.id,
           text: `${error}${job.counted ? ' Your prompt was not counted.' : ''}`,
