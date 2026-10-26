@@ -1,0 +1,23 @@
+{
+  "paths": [
+    "docs/superpowers/**",
+    "VLM_V2_*.md",
+    "pnpm-lock.yaml",
+    "**/package-lock.json",
+    "scripts/vlm-allowlist.json",
+    "scripts/check-no-vlm*.mjs"
+  ],
+  "tokens": [
+    "vlm-w-",
+    "vlm-worlds(-router|-pg|-db-jobs)?",
+    "vlm-hyperfy-image",
+    "vlm-studio-(worker|spike)",
+    "vlm-streaming",
+    "vlm-media",
+    "vlm-quest(-release\\.jks)?",
+    "\\bvlm_(test|dev|prod|main|next)\\b",
+    "postgres(ql)?://vlm:",
+    "@[\\w.-]+:\\d+/vlm\\b",
+    "virvi-xr/vlm-(api|ui|jobs|scenes|dcl-qc|proxy|dcl-sdk6|dcl-sdk7|hyperfy-sdk2)"
+  ]
+}
