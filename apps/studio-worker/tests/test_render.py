@@ -102,3 +102,19 @@ def test_studio_preview_takes_relative_paths(tmp_path, stub, monkeypatch):
     assert sorted(p.name for p in paths) == sorted(f'{s}-{v}.png' for s in ('male', 'female')
                                                    for v in ('front', 'right', 'back', 'left'))
     assert all((tmp_path / p).exists() for p in paths)
+
+
+def test_thumbnail_mode_query():
+    assert 'disableBackground=true' in render._query({'bodyShape': 'male', 'outfit': 'default', 'emote': None, 'mode': 'thumbnail'})
+    assert 'disableBackground=false' in render._query(SPIN)
+
+
+def test_emote_thumbnail_is_mid_emote_and_square(tmp_path, stub):
+    from PIL import Image
+    calls = stub()
+    r = render.render([WAVE], {**SPIN, 'mode': 'thumbnail'}, tmp_path, size=512, watchdog_sec=60)
+    assert r['ok'] is True, r
+    assert [c['params'][0] for c in calls if c['method'] == 'goTo'] == pytest.approx([1.5])
+    assert [f.name for f in r['frames']] == ['thumbnail.png']
+    image = Image.open(r['frames'][0])
+    assert image.size == (256, 256) and image.mode == 'RGBA'

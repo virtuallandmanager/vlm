@@ -46,6 +46,10 @@ class Api:
     def put_file(self, job_id: str, path: str, data: bytes, content_type: str) -> None:
         self._call('PUT', f'/jobs/{quote(job_id)}/files/{quote(path)}', data, content_type)
 
+    def get_input(self, job_id: str, path: str) -> bytes:
+        """One of a finalize job's input files: the paid revision's own bytes."""
+        return self._call('GET', f'/jobs/{quote(job_id)}/inputs/{quote(path)}')[1]
+
     def post_result(self, job_id: str, result: dict) -> None:
         deadline = time.monotonic() + RESULT_RETRY_SEC
         while True:
