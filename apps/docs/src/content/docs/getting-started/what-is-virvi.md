@@ -1,11 +1,11 @@
 ---
-title: What is VLM?
-description: An introduction to Virtual Land Manager
+title: What is Virvi?
+description: An introduction to Virvi
 sidebar:
   order: 1
 ---
 
-Virtual Land Manager (VLM) is an open-source platform for managing virtual metaverse scenes across multiple platforms from a single interface. One operator can deploy worlds, manage live events, place and arrange 3D assets, control video streams, and monitor analytics across Decentraland, Hyperfy, Second Life, and any future platform.
+Virvi is an open-source platform for managing virtual metaverse scenes across multiple platforms from a single interface. One operator can deploy worlds, manage live events, place and arrange 3D assets, control video streams, and monitor analytics across Decentraland, Hyperfy, Second Life, and any future platform.
 
 ## The Problem
 
@@ -18,7 +18,7 @@ Managing a brand presence across multiple metaverse platforms is painful:
 
 ## The Solution
 
-VLM provides:
+Virvi provides:
 
 - **One dashboard** to manage scenes across all platforms
 - **Real-time sync** — change a video URL in the dashboard and it updates in-world within milliseconds
@@ -30,9 +30,9 @@ VLM provides:
 ## Architecture
 
 ```
-Web Dashboard ──→ VLM API (Fastify + Colyseus) ──→ Platform Adapters
+Web Dashboard ──→ Virvi API (Fastify + Colyseus) ──→ Platform Adapters
                        │                              ├── Decentraland (SDK 7)
-                       │                              ├── Hyperfy (VLM app)
+                       │                              ├── Hyperfy (Virvi app)
                        ├── PostgreSQL                 └── Second Life (HTTP hooks)
                        ├── Redis (optional)
                        └── Streaming Server (RTMP → HLS)
@@ -44,6 +44,6 @@ Web Dashboard ──→ VLM API (Fastify + Colyseus) ──→ Platform Adapters
 |------|-----|-------|
 | `single` | Solo creator, small team | 5 minutes, one container |
 | `scalable` | Studio, organization | 30 minutes, multiple containers + Redis |
-| `cloud` | Hosted vlm.gg SaaS | Managed by us, multi-tenant with billing |
+| `cloud` | Hosted virvi.io SaaS | Managed by us, multi-tenant with billing |
 
 Self-hosters get every feature for free. No billing gates, no feature locks.

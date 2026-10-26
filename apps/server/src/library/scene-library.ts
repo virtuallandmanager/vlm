@@ -119,7 +119,7 @@ export async function linkToScene(
 
 /**
  * Link every media file / model already placed in a scene (URL in element or instance properties).
- * Keys are the media-bearing ones in virvi-shared element types; `playlist` is an array of video URLs.
+ * Keys are the media-bearing ones in @virvixr/shared element types; `playlist` is an array of video URLs.
  * Only the scene owner's own media, and models the owner uploaded or public catalog models, are linked.
  * Idempotent; returns rows added. Startup goes through runStartupBackfill so it happens once.
  */

@@ -18,6 +18,7 @@
     "\\bvlm_(test|dev|prod|main|next)\\b",
     "postgres(ql)?://vlm:",
     "@[\\w.-]+:\\d+/vlm\\b",
-    "virvi-xr/vlm-(api|ui|jobs|scenes|dcl-qc|proxy|dcl-sdk6|dcl-sdk7|hyperfy-sdk2)"
+    "virvi-xr/vlm-(api|ui|jobs|scenes|dcl-qc|proxy|dcl-sdk6|dcl-sdk7|hyperfy-sdk2)",
+    "VLM_V2_\\w+"
   ]
 }

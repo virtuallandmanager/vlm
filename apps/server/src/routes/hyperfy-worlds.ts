@@ -96,7 +96,7 @@ export default async function hyperfyWorldRoutes(app: FastifyInstance) {
     try {
       file = await readFile(APP_HYP)
     } catch (err) {
-      request.log.error({ err, path: APP_HYP }, 'hyperfy app.hyp is missing; run the virvi-hyperfy-app build')
+      request.log.error({ err, path: APP_HYP }, 'hyperfy app.hyp is missing; run the @virvixr/hyperfy-app build')
       return reply.code(503).send({ error: 'app_unavailable' })
     }
     return reply

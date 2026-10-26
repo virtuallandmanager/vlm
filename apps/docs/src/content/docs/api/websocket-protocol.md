@@ -3,9 +3,9 @@ title: WebSocket Protocol
 description: Colyseus message types for real-time sync
 ---
 
-VLM uses [Colyseus](https://colyseus.io/) for real-time WebSocket communication. Two room types are available.
+Virvi uses [Colyseus](https://colyseus.io/) for real-time WebSocket communication. Two room types are available.
 
-## vlm_scene Room
+## virvi_scene Room
 
 Join with: `{ sessionToken, sceneId, clientType, user }`
 
@@ -30,7 +30,7 @@ Join with: `{ sessionToken, sceneId, clientType, user }`
 | `user_message` | `{ messageId, data, type: 'inbound' }` | Custom message from other client |
 | `host_joined` / `host_left` | `{ displayName }` | Host client joined/left |
 
-## vlm_command_center Room
+## virvi_command_center Room
 
 Join with: `{ sessionToken, eventId }`
 

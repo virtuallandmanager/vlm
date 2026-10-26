@@ -22,7 +22,7 @@ const ROLE_ERRORS: Record<string, string> = {
   host_has_no_wallet: 'Link your wallet in Settings before transferring host.',
 }
 
-/** Map a virvi-client error (`HTTP 409: {"error":"is_host"}`) to text for the Roles panel. */
+/** Map a @virvixr/client error (`HTTP 409: {"error":"is_host"}`) to text for the Roles panel. */
 function friendlyRoleError(err: unknown): string {
   const m = /^HTTP \d+: ([\s\S]*)$/.exec(err instanceof Error ? err.message : String(err))
   if (m) {
@@ -36,7 +36,7 @@ function friendlyRoleError(err: unknown): string {
   return 'Something went wrong — try again'
 }
 
-/** Map a virvi-client error from a media / layout edit to text for the Assets and Layout panels. */
+/** Map a @virvixr/client error from a media / layout edit to text for the Assets and Layout panels. */
 function friendlyEditError(err: unknown): string {
   const status = Number(/^HTTP (\d+):/.exec(err instanceof Error ? err.message : String(err))?.[1])
   if (status === 401 || status === 403) return "You don't have permission to edit this scene"

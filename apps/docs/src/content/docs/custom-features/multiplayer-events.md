@@ -1,33 +1,33 @@
 ---
 title: Multiplayer Events
-description: Using vlm.sendMessage and vlm.onMessage for custom real-time messaging between players.
+description: Using virvi.sendMessage and virvi.onMessage for custom real-time messaging between players.
 ---
 
-Multiplayer Events let you send and receive custom real-time messages between all players in a scene. Built on VLM's Colyseus infrastructure, this system enables interactive multiplayer experiences without managing your own networking.
+Multiplayer Events let you send and receive custom real-time messages between all players in a scene. Built on Virvi's Colyseus infrastructure, this system enables interactive multiplayer experiences without managing your own networking.
 
 ## How It Works
 
-- Messages are broadcast through the VLM Colyseus room for your scene.
+- Messages are broadcast through the Virvi Colyseus room for your scene.
 - All connected players in the same world instance receive the message.
 - Messages are fire-and-forget (not persisted). For persistent data, use [Scene State](/custom-features/scene-state/).
 - Message payloads are JSON-serializable objects.
 
 ## Sending a Message
 
-Use `vlm.sendMessage` to broadcast a message to all players:
+Use `virvi.sendMessage` to broadcast a message to all players:
 
 ```typescript
-import { vlm } from "@vlm/sdk";
+import { virvi } from "@virvi/sdk";
 
 // Send a simple message
-vlm.sendMessage("emoji-reaction", {
+virvi.sendMessage("emoji-reaction", {
   emoji: "fire",
   position: { x: 10, y: 2, z: 5 },
 });
 
 // Send a game event
-vlm.sendMessage("player-scored", {
-  playerId: vlm.userId,
+virvi.sendMessage("player-scored", {
+  playerId: virvi.userId,
   points: 100,
 });
 ```
@@ -36,15 +36,15 @@ The first argument is the **message type** (a string you define). The second is 
 
 ## Receiving Messages
 
-Use `vlm.onMessage` to listen for incoming messages:
+Use `virvi.onMessage` to listen for incoming messages:
 
 ```typescript
-vlm.onMessage("emoji-reaction", (data, senderId) => {
+virvi.onMessage("emoji-reaction", (data, senderId) => {
   // Show the emoji effect at the specified position
   spawnEmojiEffect(data.emoji, data.position);
 });
 
-vlm.onMessage("player-scored", (data, senderId) => {
+virvi.onMessage("player-scored", (data, senderId) => {
   // Update the scoreboard
   updateScoreboard(data.playerId, data.points);
 });
@@ -62,7 +62,7 @@ The sender also receives their own message, so you can use the same handler for 
 Unsubscribe from a message type when you no longer need it:
 
 ```typescript
-const unsubscribe = vlm.onMessage("emoji-reaction", handler);
+const unsubscribe = virvi.onMessage("emoji-reaction", handler);
 
 // Later, stop listening
 unsubscribe();

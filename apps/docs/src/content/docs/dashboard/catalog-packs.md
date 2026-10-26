@@ -3,7 +3,7 @@ title: Catalog Packs
 description: Free, ready-made 3D models from open-source collections, added to your scenes without using storage.
 ---
 
-The **3D Asset Library** in the dashboard includes VLM's catalog: free models from open-source collections by Mr Dhingia, the Last Slice In World Builder artists, and Decentraland's asset packs. Each collection is split into **packs** (one per artist or theme).
+The **3D Asset Library** in the dashboard includes Virvi's catalog: free models from open-source collections by Mr Dhingia, the Last Slice In World Builder artists, and Decentraland's asset packs. Each collection is split into **packs** (one per artist or theme).
 
 ## Finding models
 
@@ -20,7 +20,7 @@ Each catalog model shows its artist, pack and license.
 
 Open a model and choose **Add to scene**. It appears in that scene's Media Library, both in the dashboard and in the in-world HUD, ready to place.
 
-Catalog models are hosted by VLM and only linked into your scene, so they **never count toward your storage**.
+Catalog models are hosted by Virvi and only linked into your scene, so they **never count toward your storage**.
 
 ## Credits
 

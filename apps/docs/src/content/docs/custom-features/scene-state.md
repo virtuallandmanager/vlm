@@ -1,32 +1,32 @@
 ---
 title: Scene State
-description: Using vlm.setState and vlm.getState for persistent key-value storage per user per scene.
+description: Using virvi.setState and virvi.getState for persistent key-value storage per user per scene.
 ---
 
 Scene State provides a simple persistent key-value store scoped to each user within each scene. Use it to save user preferences, progress, or any custom data that should survive across sessions.
 
 ## How It Works
 
-- Data is stored as key-value pairs on the VLM server.
+- Data is stored as key-value pairs on the Virvi server.
 - Each entry is scoped to a specific **user** and **scene** combination.
 - State persists across sessions — when a user returns to your scene, their data is still there.
 - Keys are strings. Values can be strings, numbers, booleans, or JSON-serializable objects.
 
 ## Setting State
 
-Use `vlm.setState` to save a value:
+Use `virvi.setState` to save a value:
 
 ```typescript
-import { vlm } from "@vlm/sdk";
+import { virvi } from "@virvi/sdk";
 
 // Save a simple value
-await vlm.setState("theme", "dark");
+await virvi.setState("theme", "dark");
 
 // Save a number
-await vlm.setState("score", 42);
+await virvi.setState("score", 42);
 
 // Save an object
-await vlm.setState("preferences", {
+await virvi.setState("preferences", {
   musicVolume: 0.8,
   showTutorial: false,
 });
@@ -36,16 +36,16 @@ await vlm.setState("preferences", {
 
 ## Getting State
 
-Use `vlm.getState` to retrieve a previously saved value:
+Use `virvi.getState` to retrieve a previously saved value:
 
 ```typescript
-const theme = await vlm.getState("theme");
+const theme = await virvi.getState("theme");
 // "dark"
 
-const score = await vlm.getState("score");
+const score = await virvi.getState("score");
 // 42
 
-const prefs = await vlm.getState("preferences");
+const prefs = await virvi.getState("preferences");
 // { musicVolume: 0.8, showTutorial: false }
 ```
 
@@ -56,7 +56,7 @@ If the key does not exist, `getState` returns `undefined`.
 Remove a key by setting it to `null`:
 
 ```typescript
-await vlm.setState("theme", null);
+await virvi.setState("theme", null);
 ```
 
 ## Common Use Cases

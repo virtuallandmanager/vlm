@@ -4,7 +4,7 @@
  * Orchestrates all HUD panels, handles access control, and bridges
  * Colyseus messages to the notification feed and panel updates.
  *
- * Created by virvi-core after session start — only for authorized operators
+ * Created by @virvixr/core after session start — only for authorized operators
  * (scene admin+ with a platform that supports screen-space UI).
  */
 

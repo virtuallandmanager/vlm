@@ -2,7 +2,7 @@
  * HUD Types — Interfaces for the in-world management HUD.
  *
  * The HUDRenderer interface is implemented per-platform (DCL UI Toolkit,
- * Hyperfy panels, Three.js HTML). The virvi-hud package contains
+ * Hyperfy panels, Three.js HTML). The @virvixr/hud package contains
  * platform-agnostic logic that calls these methods.
  */
 

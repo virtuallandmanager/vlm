@@ -1,6 +1,6 @@
 ---
 title: REST API Reference
-description: Complete list of VLM API endpoints
+description: Complete list of Virvi API endpoints
 ---
 
 All endpoints are prefixed with `/api` except the platform hooks (`/hook/*`). Authenticated endpoints require `Authorization: Bearer <token>`, where the token is an access token or an [API key](/api/authentication#api-keys).

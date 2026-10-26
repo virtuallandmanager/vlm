@@ -4,10 +4,13 @@ import starlight from '@astrojs/starlight'
 export default defineConfig({
   integrations: [
     starlight({
-      title: 'VLM Docs',
-      description: 'Virtual Land Manager — Documentation',
+      title: 'Virvi Docs',
+      description: 'Virvi documentation',
+      // The navy wordmark on the light theme, the white one on the dark theme.
+      logo: { light: './src/assets/virvi-logo-dark.svg', dark: './src/assets/virvi-logo-light.svg', alt: 'Virvi', replacesTitle: true },
+      favicon: '/favicon.svg',
       social: {
-        github: 'https://github.com/virtuallandmanager/vlm',
+        github: 'https://github.com/virvi-xr/virvi',
       },
       sidebar: [
         {

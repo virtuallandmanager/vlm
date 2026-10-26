@@ -60,7 +60,7 @@ export class Virvi {
   private saveTimeoutSystem: ((dt: number) => void) | null = null
   private static SAVE_TIMEOUT_MS = 5000
   public storage: VirviStorageType
-  public hud: any | null = null // HUDManager — typed as any to avoid hard dep on virvi-hud
+  public hud: any | null = null // HUDManager — typed as any to avoid hard dep on @virvixr/hud
 
   constructor(adapter: VirviPlatformAdapter) {
     this.adapter = adapter
@@ -426,7 +426,7 @@ export class Virvi {
       })
       this.hud.init()
     } catch {
-      // virvi-hud not installed — that's fine, it's optional
+      // @virvixr/hud not installed — that's fine, it's optional
     }
   }
 

@@ -31,7 +31,7 @@ describe('production bundling of the pure modules', () => {
     })
   }
 
-  it('edit mode takes only the transform session and its math from virvi-core', async () => {
+  it('edit mode takes only the transform session and its math from @virvixr/core', async () => {
     // What the app's edit wiring pulls in: the session (a value) next to the edit modules.
     const { entryPoints: _, ...opts } = bundleOptions(pkg, '')
     const out = await build({

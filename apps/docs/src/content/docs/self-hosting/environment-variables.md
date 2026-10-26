@@ -1,13 +1,13 @@
 ---
 title: Environment Variables
-description: Complete reference for all VLM environment variables
+description: Complete reference for all Virvi environment variables
 ---
 
 ## Required (All Modes)
 
 | Variable | Description |
 |----------|-------------|
-| `VLM_MODE` | `single` \| `scalable` \| `cloud` (default: `single`) |
+| `VIRVI_MODE` | `single` \| `scalable` \| `cloud` (default: `single`) |
 | `DATABASE_URL` | PostgreSQL connection string |
 | `JWT_SECRET` | Random 64-char string for JWT signing |
 | `PUBLIC_URL` | Public URL of this instance |
@@ -48,8 +48,8 @@ description: Complete reference for all VLM environment variables
 |----------|-------------|
 | `ENABLE_STREAMING` | `true` to enable streaming features |
 | `RTMP_INGEST_URL` | RTMP ingest base URL (default: `rtmp://localhost:1935/live`) |
-| `HLS_BASE_URL` | Playback base URL, e.g. `https://live.vlm.gg/streams` (default: `http://localhost:8000/streams`) |
-| `STREAMING_WEBHOOK_KEY` | Shared secret with the media server (`VLM_WEBHOOK_KEY` there) for publish checks and live/offline webhooks. Required in cloud mode; when unset, self-hosted servers accept unauthenticated media-server calls |
+| `HLS_BASE_URL` | Playback base URL, e.g. `https://live.virvi.io/streams` (default: `http://localhost:8000/streams`) |
+| `STREAMING_WEBHOOK_KEY` | Shared secret with the media server (`VIRVI_WEBHOOK_KEY` there) for publish checks and live/offline webhooks. Required in cloud mode; when unset, self-hosted servers accept unauthenticated media-server calls |
 
 ## Platform Hooks
 
@@ -63,7 +63,7 @@ description: Complete reference for all VLM environment variables
 |----------|-------------|
 | `HYPERFY_INFRA_PROVIDER` | `fly` \| `docker` \| `local` (default: `local`) |
 | `FLY_API_TOKEN` | Fly.io API token |
-| `FLY_HYPERFY_APP` | Fly.io app name (default: `vlm-hyperfy`) |
+| `FLY_HYPERFY_APP` | Fly.io app name (default: `virvi-hyperfy`) |
 | `HYPERFY_IMAGE` | Docker image for Hyperfy worlds |
 | `DOCKER_SOCKET` | Docker socket path (default: `/var/run/docker.sock`) |
 

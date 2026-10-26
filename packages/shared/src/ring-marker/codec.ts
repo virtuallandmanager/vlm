@@ -102,7 +102,7 @@ export function parseRingCode(code: string): number | null {
 
 /** Uniform 32-bit id, never 0. Server-only use. */
 export function randomRingId(): number {
-  // virvi-shared's tsconfig has neither DOM nor Node types, so type the global by hand.
+  // @virvixr/shared's tsconfig has neither DOM nor Node types, so type the global by hand.
   const { crypto } = globalThis as unknown as { crypto: { getRandomValues(a: Uint32Array): Uint32Array } }
   const buf = new Uint32Array(1)
   do crypto.getRandomValues(buf)

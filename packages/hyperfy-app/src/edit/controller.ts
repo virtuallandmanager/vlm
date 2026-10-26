@@ -1,6 +1,6 @@
 /**
  * Edit mode's state and wiring, free of Hyperfy nodes. It feeds pointer rays (world space, Hyperfy frame) into
- * virvi-core's TransformSession in Virvi coordinates, shows the draft through `preview`, and saves with VirviApi. Drafts
+ * @virvixr/core's TransformSession in Virvi coordinates, shows the draft through `preview`, and saves with VirviApi. Drafts
  * and saves stay in Virvi coordinates; only rays are mapped (rays.ts) and the app maps drafts back for display.
  */
 import type { Vec3 } from '@virvixr/shared'

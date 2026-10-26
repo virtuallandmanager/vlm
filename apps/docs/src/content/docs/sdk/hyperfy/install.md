@@ -1,9 +1,9 @@
 ---
 title: Hyperfy Setup
-description: Show a VLM scene in your own Hyperfy world with the VLM app.
+description: Show a Virvi scene in your own Hyperfy world with the Virvi app.
 ---
 
-The **VLM app** is a small Hyperfy app (a `.hyp` file) that shows one of your VLM scenes in a Hyperfy world you run yourself. It reads the scene from VLM and follows your edits, so you manage the scene in the dashboard and the world keeps up.
+The **Virvi app** is a small Hyperfy app (a `.hyp` file) that shows one of your Virvi scenes in a Hyperfy world you run yourself. It reads the scene from Virvi and follows your edits, so you manage the scene in the dashboard and the world keeps up.
 
 ## What you need
 
@@ -15,19 +15,19 @@ The **VLM app** is a small Hyperfy app (a `.hyp` file) that shows one of your VL
 
 1. In the dashboard, open **Deploy** and pick the scene.
 2. Under **Your Hyperfy worlds**, choose **Connect a world** and give it a name.
-3. A one-time panel shows the **world key**, a **Download VLM app (.hyp)** link and the setup steps. Copy the key now: you won't see it again.
+3. A one-time panel shows the **world key**, a **Download Virvi app (.hyp)** link and the setup steps. Copy the key now: you won't see it again.
 
 Each connected world is listed with its name, the start of its key and when it was last seen.
 
 ## Install the app
 
 1. Drag `vlm.hyp` into your Hyperfy world.
-2. Open the app's settings and paste the key into **VLM world key**.
-3. Leave **VLM feed URL** as `https://api.vlm.gg`.
+2. Open the app's settings and paste the key into **Virvi world key**.
+3. Leave **Virvi feed URL** as `https://api.virvi.io`.
 
 The scene appears within a few seconds, and later edits show up in about a second.
 
-Moving or scaling the VLM app in Hyperfy moves or scales the whole scene in that world only. It never changes the scene in VLM.
+Moving or scaling the Virvi app in Hyperfy moves or scales the whole scene in that world only. It never changes the scene in Virvi.
 
 ## What renders
 
@@ -43,15 +43,15 @@ Not yet supported: ad spaces and ad modes, NFTs, widgets and claim points.
 
 ## Editing from inside Hyperfy
 
-Admins and builders in a Hyperfy world get a VLM bar at the top of the screen. It lets you change the scene without leaving the world. Visitors see nothing.
+Admins and builders in a Hyperfy world get a Virvi bar at the top of the screen. It lets you change the scene without leaving the world. Visitors see nothing.
 
-### Link the world to your VLM account
+### Link the world to your Virvi account
 
-1. In the world, press **Link to VLM** in the bar.
-2. The HUD shows a code (like `ABC-123`) and a link and QR code to `vlm.gg/pair/<code>`.
-3. Open the link, sign in on vlm.gg and approve.
+1. In the world, press **Link to Virvi** in the bar.
+2. The HUD shows a code (like `ABC-123`) and a link and QR code to `virvi.io/pair/<code>`.
+3. Open the link, sign in on virvi.io and approve.
 
-Only people with editing access to the world's VLM scene can approve: the scene's owner, an admin, cohost or editor, or a booking host during their booking.
+Only people with editing access to the world's Virvi scene can approve: the scene's owner, an admin, cohost or editor, or a booking host during their booking.
 
 Hosted worlds remember the link for that browser until you revoke it or it goes unused for 90 days. Worlds you run yourself pair on each visit, and a link lasts 12 hours at most.
 
@@ -70,7 +70,7 @@ Press **Edit** to turn on edit mode, then **Save** to keep your changes, **Rever
 - Press **L** to cycle the axis lock (free, X, Y, Z). Shift is Hyperfy's run key, so it isn't used.
 - Press `` ` `` (backquote) or **Esc** to unlock the pointer and click the bar and panels. Click the world to lock the pointer again.
 - To type a value or a catalog search, click the field and type. Digits, `-` and `.` work in value fields. Enter confirms and Esc cancels.
-- To place a model from a GLB link, type `/vlm` and the link in Hyperfy's chat, for example `/vlm https://example.com/chair.glb`. Pressing `/` opens chat with the slash already typed, so then type `vlm` and the link. Pasting works there. The **Link** tab opens with the link, and the message isn't shown in chat. `/vlm` followed by words searches the catalog.
+- To place a model from a GLB link, type `/virvi` and the link in Hyperfy's chat, for example `/virvi https://example.com/chair.glb`. Pressing `/` opens chat with the slash already typed, so then type `virvi` and the link. Pasting works there. The **Link** tab opens with the link, and the message isn't shown in chat. `/virvi` followed by words searches the catalog.
 
 ### Revoking a link
 
@@ -78,15 +78,15 @@ Go to your account settings and find **Linked Hyperfy sessions**. Choose **Revok
 
 ### Who to make a builder
 
-Hyperfy builders can edit app scripts and props in a world, so only give builder rights to people you trust with your VLM scene. The world's VLM secret itself never reaches scripts.
+Hyperfy builders can edit app scripts and props in a world, so only give builder rights to people you trust with your Virvi scene. The world's Virvi secret itself never reaches scripts.
 
 ## Analytics
 
-Visitors show up in [VLM Analytics](/dashboard/analytics) under a **Hyperfy** location for that world. Hyperfy players have no wallets, so they count as unverified guests, and no names are recorded.
+Visitors show up in [Virvi Analytics](/dashboard/analytics) under a **Hyperfy** location for that world. Hyperfy players have no wallets, so they count as unverified guests, and no names are recorded.
 
 ## Hosted worlds
 
-Don't want to run Hyperfy yourself? VLM can host a world for you. Under **Create a hosted world** on the **Deploy** page, give it a name and, if you like, an end date. It is ready within a few minutes, with the VLM app already installed and showing your scene. Hosted worlds appear only where VLM has hosting turned on.
+Don't want to run Hyperfy yourself? Virvi can host a world for you. Under **Create a hosted world** on the **Deploy** page, give it a name and, if you like, an end date. It is ready within a few minutes, with the Virvi app already installed and showing your scene. Hosted worlds appear only where Virvi has hosting turned on.
 
 ### How many you get
 
@@ -98,11 +98,11 @@ Don't want to run Hyperfy yourself? VLM can host a world for you. Under **Create
 | Studio | 10 |
 | Enterprise | Unlimited |
 
-A world counts from the moment you create it, whether or not anyone is in it. Worlds that have ended, worlds that failed to start and worlds you connect yourself don't count. If you downgrade and end up over your limit, your existing worlds keep running, but you can't create new ones until you're back under it. On a VLM install you run yourself with every feature unlocked, there is no limit.
+A world counts from the moment you create it, whether or not anyone is in it. Worlds that have ended, worlds that failed to start and worlds you connect yourself don't count. If you downgrade and end up over your limit, your existing worlds keep running, but you can't create new ones until you're back under it. On a Virvi install you run yourself with every feature unlocked, there is no limit.
 
 ### Addresses
 
-A world's address is fixed for its life. Worlds created on Creator get `vlm-w-<name>.fly.dev`. Worlds created on Pro or higher get `<name>.worlds.vlm.gg`. The name comes from the world's name, in lowercase letters, numbers and dashes, with `-2`, `-3` and so on added if it is taken. Upgrading or downgrading never moves a world.
+A world's address is fixed for its life. Worlds created on Creator get `vlm-w-<name>.fly.dev`. Worlds created on Pro or higher get `<name>.worlds.virvi.io`. The name comes from the world's name, in lowercase letters, numbers and dashes, with `-2`, `-3` and so on added if it is taken. Upgrading or downgrading never moves a world.
 
 ### Admin code
 
@@ -112,7 +112,7 @@ Creating a world shows its **admin code** once. In the world's chat, type `/admi
 
 The end date is optional. Until it passes you can move it with **Edit end date**, or choose **Make permanent** to clear it. On the end date the world stops, its address stops answering and it no longer counts against your limit.
 
-VLM keeps an ended world's data, address and key for 30 days. Choose **Restore** on its row to bring it back, as long as you have a free hosted world. A restored world has no end date, so it stays until you set a new one. After 30 days the world is deleted for good.
+Virvi keeps an ended world's data, address and key for 30 days. Choose **Restore** on its row to bring it back, as long as you have a free hosted world. A restored world has no end date, so it stays until you set a new one. After 30 days the world is deleted for good.
 
 ### Destroying a world
 

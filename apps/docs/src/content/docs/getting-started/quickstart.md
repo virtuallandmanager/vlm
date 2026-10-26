@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: Get VLM running in 5 minutes
+description: Get Virvi running in 5 minutes
 sidebar:
   order: 2
 ---
@@ -8,8 +8,8 @@ sidebar:
 ## Option 1: Docker (Recommended)
 
 ```bash
-git clone https://github.com/virtuallandmanager/vlm.git
-cd vlm
+git clone https://github.com/virvi-xr/virvi.git
+cd virvi
 
 # Copy env file and set your JWT secret
 cp .env.example .env
@@ -26,8 +26,8 @@ Open `http://localhost:3010` — sign up, and you're the admin.
 **Prerequisites:** Node.js 20+, pnpm 9+, Docker (for Postgres)
 
 ```bash
-git clone https://github.com/virtuallandmanager/vlm.git
-cd vlm
+git clone https://github.com/virvi-xr/virvi.git
+cd virvi
 
 # Start database
 docker compose -f docker-compose.dev.yml up -d

@@ -1,6 +1,6 @@
 ---
 title: Widgets
-description: Using widget elements to create custom UI controls within your VLM scenes.
+description: Using widget elements to create custom UI controls within your Virvi scenes.
 ---
 
 Widgets are special elements that let you add custom interactive UI controls to your scenes. They provide a way to build scene-specific interfaces beyond the standard video, image, model, and sound elements.
@@ -40,12 +40,12 @@ Common uses include:
 
 ## Handling Widget Events in Code
 
-Use the VLM SDK to listen for widget interactions:
+Use the Virvi SDK to listen for widget interactions:
 
 ```typescript
-import { vlm } from "@vlm/sdk";
+import { virvi } from "@virvi/sdk";
 
-vlm.onWidgetChange("my-toggle", (value: boolean) => {
+virvi.onWidgetChange("my-toggle", (value: boolean) => {
   // React to the toggle change
   if (value) {
     enableFeature();
@@ -54,7 +54,7 @@ vlm.onWidgetChange("my-toggle", (value: boolean) => {
   }
 });
 
-vlm.onWidgetClick("my-button", () => {
+virvi.onWidgetClick("my-button", () => {
   // React to button press
   triggerAction();
 });

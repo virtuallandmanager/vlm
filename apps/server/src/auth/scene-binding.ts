@@ -11,7 +11,7 @@ const VISITOR: SceneBinding = { locationId: null, sceneId: null }
 
 const isWorld = isWorldRealm
 
-/** Same keys as virvi-shared locationKeyFor, built only from the signed context. */
+/** Same keys as @virvixr/shared locationKeyFor, built only from the signed context. */
 export function locationKeyForContext(ctx: SceneRequestContext, wallet: string, preview: boolean): string {
   const place = isWorld(ctx) ? ctx.realm.serverName.toLowerCase() : ctx.parcel
   if (preview) return `preview:${wallet.toLowerCase()}:${place}`

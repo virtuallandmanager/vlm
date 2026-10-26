@@ -9,7 +9,7 @@ export interface AnalyticsTransport {
   send(url: string, batch: IngestBatch): Promise<TransportResult>
 }
 
-/** Minimal fetch shape; virvi-core compiles without the DOM lib. */
+/** Minimal fetch shape; @virvixr/core compiles without the DOM lib. */
 export type FetchLike = (
   url: string,
   init: { method: string; headers: Record<string, string>; body: string },

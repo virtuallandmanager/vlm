@@ -34,7 +34,7 @@ function bookingValues(venueId: string, renterUserId: string, start: Date, end: 
 describe('venue schema', () => {
   beforeEach(resetDb)
 
-  it('DB enums match virvi-shared constants', () => {
+  it('DB enums match @virvixr/shared constants', () => {
     expect(venueScopeEnum.enumValues).toEqual([...VENUE_SCOPES])
     expect(venueRoleEnum.enumValues).toEqual([...VENUE_ROLES])
   })

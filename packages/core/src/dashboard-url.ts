@@ -1,4 +1,4 @@
-// Parsed by hand: the scene runtime (and virvi-core's lib set) has no global URL
+// Parsed by hand: the scene runtime (and @virvixr/core's lib set) has no global URL
 
 /** The website origin for an API URL, or null when it can't be derived (userinfo, IPv6, garbage). */
 export function dashboardOriginFor(apiUrl: string): string | null {

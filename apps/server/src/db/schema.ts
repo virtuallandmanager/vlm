@@ -1095,7 +1095,7 @@ const tstzrange = customType<{ data: string }>({
 
 export const venueKindEnum = pgEnum('venue_kind', ['permanent', 'popup'])
 export const bookingStatusEnum = pgEnum('booking_status', ['pending', 'confirmed', 'live', 'ended', 'canceled'])
-// Must match VENUE_SCOPES / VENUE_ROLES in virvi-shared (asserted in test/schema-venues.test.ts)
+// Must match VENUE_SCOPES / VENUE_ROLES in @virvixr/shared (asserted in test/schema-venues.test.ts)
 export const venueScopeEnum = pgEnum('venue_scope', [
   'screens',
   'playlist',

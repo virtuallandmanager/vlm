@@ -34,22 +34,22 @@ An **instance** is a placed copy of an element in the scene. One video element c
 
 ## Platform Adapters
 
-A **platform adapter** implements the `VLMPlatformAdapter` interface for a specific metaverse platform. The adapter translates generic VLM commands (create entity, set transform, play video) into platform-native API calls.
+A **platform adapter** implements the `VirviPlatformAdapter` interface for a specific metaverse platform. The adapter translates generic Virvi commands (create entity, set transform, play video) into platform-native API calls.
 
 ```
-vlm-core (business logic) → adapter.createEntity()
+@virvixr/core (business logic) → adapter.createEntity()
                            → adapter.setTransform(entity, position)
                            → adapter.createVideoPlayer(entity, options)
                                     ↓
                            DclAdapter: engine.addEntity(), Transform.create(), VideoPlayer.create()
-                           Hyperfy: the VLM app builds a <video> node from the scene feed
+                           Hyperfy: the Virvi app builds a <video> node from the scene feed
 ```
 
-The adapter never makes decisions about _what_ to render — it only knows _how_ to render what vlm-core tells it to.
+The adapter never makes decisions about _what_ to render — it only knows _how_ to render what @virvixr/core tells it to.
 
 ## Real-Time Sync
 
-VLM uses [Colyseus](https://colyseus.io/) for real-time communication. When you change a video URL in the dashboard, the flow is:
+Virvi uses [Colyseus](https://colyseus.io/) for real-time communication. When you change a video URL in the dashboard, the flow is:
 
 1. Dashboard sends `scene_preset_update` to the Colyseus room
 2. Server persists the change to PostgreSQL

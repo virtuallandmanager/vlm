@@ -1,13 +1,13 @@
 ---
 title: Self-Hosting Overview
-description: Run VLM on your own infrastructure
+description: Run Virvi on your own infrastructure
 ---
 
-VLM is fully open-source. Self-hosters get every feature for free — no billing gates, no feature locks.
+Virvi is fully open-source. Self-hosters get every feature for free — no billing gates, no feature locks.
 
 ## Deployment Modes
 
-| Mode | `VLM_MODE=single` | `VLM_MODE=scalable` |
+| Mode | `VIRVI_MODE=single` | `VIRVI_MODE=scalable` |
 |------|-------------------|---------------------|
 | **Servers** | 1 container | Multiple containers + load balancer |
 | **Colyseus** | In-memory presence | Redis presence (cross-server routing) |
@@ -29,7 +29,7 @@ Requires only `JWT_SECRET` and optionally `POSTGRES_PASSWORD`.
 ### Scalable Mode (30 minutes)
 
 ```bash
-docker compose -f docker-compose.scalable.yml up -d --scale vlm=3
+docker compose -f docker-compose.scalable.yml up -d --scale virvi=3
 ```
 
 Requires `JWT_SECRET`, `POSTGRES_PASSWORD`, and a Redis instance.
@@ -45,7 +45,7 @@ Requires `JWT_SECRET`, `POSTGRES_PASSWORD`, and a Redis instance.
 
 The Docker image contains:
 
-- VLM API server (Fastify + Colyseus)
+- Virvi API server (Fastify + Colyseus)
 - Next.js dashboard (standalone mode)
 - Drizzle auto-migrations (runs on boot)
 - FFmpeg (for optional HLS streaming)

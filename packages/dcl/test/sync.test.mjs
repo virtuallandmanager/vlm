@@ -259,7 +259,7 @@ test('sync installs the HUD icon at the path the HUD loads, and keeps it current
   assert.equal(r.icon, 'installed')
   const dest = path.join(cwd, HUD_ICON_FILE)
   assert.ok(fs.readFileSync(dest).equals(fs.readFileSync(ICON)))
-  // The HUD (virvi-adapter-dcl) textures the launcher from the same scene-relative path
+  // The HUD (@virvixr/adapter-dcl) textures the launcher from the same scene-relative path
   const hud = fs.readFileSync(path.join(import.meta.dirname, '..', '..', 'adapter-dcl', 'src', 'hud', 'icon.ts'), 'utf8')
   assert.ok(hud.includes(`HUD_ICON_SRC = '${HUD_ICON_FILE}'`))
   assert.equal((await run(cwd, stub([model('a', 10)]))).icon, 'unchanged')

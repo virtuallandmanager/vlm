@@ -16,7 +16,7 @@ const TMP_RE = /\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.
 const SIZE_EXCLUDES = new Set(['node_modules', 'bin', '.git', 'dist'])
 export const DEFAULT_SERVER = 'https://api.virvi.io'
 
-/** Scene-relative path of the HUD launcher icon; must match HUD_ICON_SRC in virvi-adapter-dcl (src/hud/icon.ts). */
+/** Scene-relative path of the HUD launcher icon; must match HUD_ICON_SRC in @virvixr/adapter-dcl (src/hud/icon.ts). */
 export const HUD_ICON_FILE = 'images/virvi/hud-v.png'
 const HUD_ICON_ASSET = fileURLToPath(new URL('../assets/hud-v.png', import.meta.url))
 const CREATOR_HUB_SCRIPT = 'assets/scene/Scripts/VirviManager.ts'
