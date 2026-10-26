@@ -1,7 +1,7 @@
 import { and, eq, inArray, max, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { studioDesigns, studioJobs, studioMessages, studioPieces, studioRenders, studioRevisions } from '../db/schema.js'
-import { checkFilePath } from './store.js'
+import { studioDesigns, studioEntitlements, studioJobs, studioMessages, studioPieces, studioRenders, studioRevisions } from '../db/schema.js'
+import { checkFilePath, jobFileKey } from './store.js'
 import { recordCost, refundPrompt, utcDay, type Exec, type PromptSource } from './quota.js'
 import { publishStudio } from './events.js'
 
@@ -29,6 +29,7 @@ export type ContractPiece = {
   checker?: { pass: boolean; failures: number; warnings: number } | null
   files?: string[]
   renders?: Record<string, number>
+  finalize?: Record<string, unknown> | null // a finalize job's check summary for the piece
 }
 
 const OUTCOMES = ['ok', 'needs_input', 'no_change', 'ceiling', 'timeout', 'error'] as const
@@ -64,8 +65,19 @@ export function parseResult(body: unknown): { ok: true; result: ContractResult }
       }
     }
     if (piece.meta != null && (typeof piece.meta !== 'object' || Array.isArray(piece.meta))) return { ok: false, reason: 'meta is not an object' }
+    if (piece.finalize != null && (typeof piece.finalize !== 'object' || Array.isArray(piece.finalize))) return { ok: false, reason: 'finalize is not an object' }
   }
   return { ok: true, result: r as unknown as ContractResult }
+}
+
+export const packagingFailedText = (name: string) => `Packaging ${name} failed. You can try again at no charge.`
+
+/** The entitlements a finalize job was packaging, with their piece names. */
+async function finalizeEntitlements(jobId: string, exec: Exec) {
+  return exec.select({ e: studioEntitlements, name: studioPieces.name }).from(studioEntitlements)
+    .innerJoin(studioRevisions, eq(studioRevisions.id, studioEntitlements.revisionId))
+    .innerJoin(studioPieces, eq(studioPieces.id, studioRevisions.pieceId))
+    .where(eq(studioEntitlements.jobId, jobId))
 }
 
 /** Plain words for the page when an outcome has no reply of its own. */
@@ -142,6 +154,20 @@ export async function applyResult(jobId: string, result: ContractResult, now: Da
       if (refunded) await refundPrompt(design!.ownerId, day, job.countedFrom as PromptSource | null, tx)
       const note = systemNote(result, refunded)
       if (note) await tx.insert(studioMessages).values({ designId: job.designId, role: 'system', text: note, jobId: job.id })
+    } else if (job.type === 'finalize') {
+      // Each paid piece is ready once its package was uploaded; the rest failed and can be retried for free
+      for (const { e, name } of await finalizeEntitlements(job.id, tx)) {
+        const path = `final/${e.category}/package.zip`
+        const piece = result.pieces.find((p) => p.category === e.category && p.files?.includes(path))
+        if (piece) {
+          const checks = piece.finalize && typeof piece.finalize === 'object' && !Array.isArray(piece.finalize) ? piece.finalize : null
+          await tx.update(studioEntitlements).set({ status: 'ready', packageKey: jobFileKey(job.designId, job.id, path), checks })
+            .where(eq(studioEntitlements.id, e.id))
+        } else {
+          await tx.update(studioEntitlements).set({ status: 'failed' }).where(eq(studioEntitlements.id, e.id))
+          await tx.insert(studioMessages).values({ designId: job.designId, role: 'system', text: packagingFailedText(name), jobId: job.id })
+        }
+      }
     } else {
       const rows = await tx.select({ id: studioRenders.id, viewKey: studioRenders.viewKey, category: studioPieces.category })
         .from(studioRenders)
@@ -187,6 +213,11 @@ export async function failJobs(
           designId: job.designId, role: 'system', jobId: job.id,
           text: `${error}${job.counted ? ' Your prompt was not counted.' : ''}`,
         })
+      } else if (job.type === 'finalize') {
+        for (const { e, name } of await finalizeEntitlements(job.id, tx)) {
+          await tx.update(studioEntitlements).set({ status: 'failed' }).where(eq(studioEntitlements.id, e.id))
+          await tx.insert(studioMessages).values({ designId: job.designId, role: 'system', text: packagingFailedText(name), jobId: job.id })
+        }
       } else {
         await tx.update(studioRenders).set({ status: 'failed' }).where(eq(studioRenders.jobId, job.id))
       }

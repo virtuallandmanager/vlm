@@ -7,6 +7,7 @@ import { ensureWorker } from './machines.js'
 import { failJobs } from './results.js'
 import { publishStudio } from './events.js'
 import { signRenderFrame, frameUrlExpiry } from './render-urls.js'
+import { finalizedRevisions } from './payments.js'
 
 /** What the dashboard's studio routes share: limits, view keys, the design detail, and queuing prompts and renders. */
 
@@ -62,6 +63,7 @@ export async function designDetail(d: Design, now: Date) {
   const revs = revIds.length ? await db.select().from(studioRevisions).where(inArray(studioRevisions.id, revIds)) : []
   const renders = revIds.length ? await db.select().from(studioRenders).where(inArray(studioRenders.revisionId, revIds)) : []
   const expires = frameUrlExpiry(now)
+  const finalized = await finalizedRevisions(d.id)
   const messages = await db.select().from(studioMessages).where(eq(studioMessages.designId, d.id))
     .orderBy(asc(studioMessages.createdAt), asc(studioMessages.id))
   const [active] = await db.select({ id: studioJobs.id, type: studioJobs.type, status: studioJobs.status }).from(studioJobs)
@@ -89,6 +91,7 @@ export async function designDetail(d: Design, now: Date) {
         name: p.name,
         revision: rev ? { number: rev.number, changeKind: rev.changeKind, checker: rev.checker, createdAt: rev.createdAt } : null,
         renders: views,
+        finalized: finalized.filter((f) => f.category === p.category).map(({ category: _c, ...f }) => f),
       }
     }),
     messages: messages.map((m) => ({ id: m.id, role: m.role, agent: m.agent, text: m.text, proposal: m.proposal, jobId: m.jobId, createdAt: m.createdAt })),

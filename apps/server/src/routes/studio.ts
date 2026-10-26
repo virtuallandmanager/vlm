@@ -8,7 +8,7 @@ import { getSubscription } from '../integrations/stripe.js'
 import { getStudioStore, jobFileKey } from '../studio/store.js'
 import { verifyRenderFrame, framePath } from '../studio/render-urls.js'
 import { quoteFinalize, QuoteError } from '../studio/pricing.js'
-import { createFinalizeCheckout, createTopupCheckout, reportMistake, PaymentError } from '../studio/payments.js'
+import { createFinalizeCheckout, createTopupCheckout, entitlementFor, queueFinalize, reportMistake, PaymentError } from '../studio/payments.js'
 import {
   BASE_EMOTES, BODY_SHAPES, OUTFITS, WEARABLE_CATEGORIES,
   designDetail, openDesignCount, publicDesign, queuePrompt, requestRender, usage, type Design, type View,
@@ -216,6 +216,43 @@ export default async function studioRoutes(app: FastifyInstance) {
     } catch (err) {
       return checkoutRefusal(reply, err)
     }
+  })
+
+  /** The piece's paid revision from the route params, or the refusal already sent. */
+  async function paidRevision(request: FastifyRequest, reply: FastifyReply) {
+    const d = await ownDesign(request)
+    if (!d) return void notFound(reply)
+    const { category, number } = request.params as { category: string; number: string }
+    if (!/^[a-z_]{1,32}$/.test(category) || !/^[1-9][0-9]{0,5}$/.test(number)) return void reply.status(400).send({ error: 'unknown revision' })
+    const found = await entitlementFor(d.id, category, Number(number))
+    if (!found) return void reply.status(402).send({ error: 'This revision has not been paid for', code: 'not_paid' })
+    return { d, ...found }
+  }
+
+  // The only route a model file leaves by: the paid revision's package, to its owner
+  app.get('/api/studio/designs/:id/pieces/:category/revisions/:number/package', auth, async (request, reply) => {
+    const paid = await paidRevision(request, reply)
+    if (!paid) return reply
+    const { e, name } = paid
+    if (e.status !== 'ready' || !e.packageKey) return reply.status(409).send({ error: e.status, code: e.status })
+    const obj = await getStudioStore().getStream(e.packageKey)
+    if (!obj) return reply.status(404).send({ error: 'package_missing', code: 'package_missing' })
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || e.category
+    const { number } = request.params as { number: string }
+    if (obj.length !== undefined) reply.header('Content-Length', obj.length)
+    return reply
+      .type('application/zip')
+      .header('Content-Disposition', `attachment; filename="${slug}-r${number}.zip"`)
+      .header('Cache-Control', 'private, no-store')
+      .send(obj.body)
+  })
+
+  app.post('/api/studio/designs/:id/pieces/:category/revisions/:number/package/retry', auth, async (request, reply) => {
+    const paid = await paidRevision(request, reply)
+    if (!paid) return reply
+    if (paid.e.status !== 'failed') return reply.status(409).send({ error: 'not_failed', code: 'not_failed' })
+    const jobId = await queueFinalize(paid.d.id, [paid.e.id], new Date())
+    return reply.status(202).send({ jobId })
   })
 
   app.post('/api/studio/topups', auth, async (request, reply) => {

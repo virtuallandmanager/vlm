@@ -275,3 +275,40 @@ export async function reportMistake(
   })
   return { status: 'refunded', refundCents: e.amountCents }
 }
+
+/** A design's paid revision of one piece, by revision number, with the piece's name; null when it wasn't paid for. */
+export async function entitlementFor(designId: string, category: string, revisionNumber: number) {
+  const [row] = await db.select({ e: studioEntitlements, name: studioPieces.name })
+    .from(studioEntitlements)
+    .innerJoin(studioRevisions, eq(studioRevisions.id, studioEntitlements.revisionId))
+    .innerJoin(studioPieces, eq(studioPieces.id, studioRevisions.pieceId))
+    .where(and(eq(studioPieces.designId, designId), eq(studioPieces.category, category), eq(studioRevisions.number, revisionNumber)))
+  return row ?? null
+}
+
+/** Every paid revision of a design, newest first, as the page lists them (never the package's location). */
+export async function finalizedRevisions(designId: string) {
+  const rows = await db.select({
+    e: studioEntitlements, number: studioRevisions.number, paidAt: studioPayments.paidAt,
+    reportStatus: studioMistakeReports.status, reportedAt: studioMistakeReports.createdAt,
+  })
+    .from(studioEntitlements)
+    .innerJoin(studioRevisions, eq(studioRevisions.id, studioEntitlements.revisionId))
+    .innerJoin(studioPayments, eq(studioPayments.id, studioEntitlements.paymentId))
+    .leftJoin(studioMistakeReports, eq(studioMistakeReports.entitlementId, studioEntitlements.id))
+    .where(eq(studioEntitlements.designId, designId))
+  return rows
+    .sort((a, b) => b.number - a.number)
+    .map((r) => ({
+      category: r.e.category,
+      revision: r.number,
+      kind: r.e.kind,
+      status: r.e.status,
+      amountCents: r.e.amountCents,
+      paidAt: r.paidAt,
+      report: r.reportStatus ? { status: r.reportStatus, createdAt: r.reportedAt } : null,
+      reportableUntil: r.e.kind === 'revision' && r.e.amountCents > 0 && !r.reportStatus && r.paidAt
+        ? new Date(r.paidAt.getTime() + REPORT_WINDOW_DAYS * 24 * 3600 * 1000)
+        : null,
+    }))
+}
