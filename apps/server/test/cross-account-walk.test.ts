@@ -374,7 +374,7 @@ describe('cross-account route walk', () => {
     const res = await app.inject({ method: 'POST', url: '/api/keys', headers: { authorization: `Bearer ${tokenFor(f.a)}` }, payload: { name: 'A key' } })
     expect(res.statusCode).toBe(201)
     expect(await walk(res.json().key)).toEqual([])
-  })
+  }, 30_000) // every route, each with a table snapshot: past 15 s on a loaded machine
 
   it("B's own token reads every GET case (the fixtures are real, so A's refusals are not misses)", async () => {
     const failed: string[] = []
