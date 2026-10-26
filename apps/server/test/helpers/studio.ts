@@ -104,3 +104,92 @@ export function okResult(jobId: string, over: Record<string, unknown> = {}) {
     ...over,
   }
 }
+
+/** Gives the design's `category` piece a new latest revision (from a finished prompt job) and returns it. */
+export async function addRevision(
+  design: { id: string },
+  category: string,
+  checker: { pass: boolean; failures: number; warnings: number } = { pass: true, failures: 0, warnings: 0 },
+) {
+  const { studioPieces, studioRevisions } = await import('../../src/db/schema.js')
+  const { eq, max } = await import('drizzle-orm')
+  const [job] = await db.insert(studioJobs).values({ designId: design.id, type: 'prompt', status: 'done', payload: {} }).returning()
+  const [piece] = await db.insert(studioPieces).values({ designId: design.id, category, name: `Neon ${category}` })
+    .onConflictDoUpdate({ target: [studioPieces.designId, studioPieces.category], set: { name: `Neon ${category}` } })
+    .returning()
+  const [{ n }] = await db.select({ n: max(studioRevisions.number) }).from(studioRevisions).where(eq(studioRevisions.pieceId, piece.id))
+  const files = [`pieces/${category}/neon_male.glb`, `pieces/${category}/neon_female.glb`, `pieces/${category}/piece.json`, `checks/${category}.txt`]
+  const [rev] = await db.insert(studioRevisions).values({
+    pieceId: piece.id, number: (n ?? 0) + 1, jobId: job.id, changeKind: n ? 'design' : 'new',
+    meta: { name: `Neon ${category}`, category }, checker, files,
+  }).returning()
+  await db.update(studioPieces).set({ latestRevisionId: rev.id }).where(eq(studioPieces.id, piece.id))
+  return rev
+}
+
+/** Marks a revision paid for, as a granted payment would: a paid payment and a ready entitlement. */
+export async function entitle(
+  design: { id: string; ownerId: string },
+  rev: { id: string; pieceId: string },
+  opts: { amountCents?: number; paidAt?: Date; paymentIntent?: string } = {},
+) {
+  const { studioPieces, studioEntitlements, studioPayments, studioDesigns: designs } = await import('../../src/db/schema.js')
+  const { and, eq } = await import('drizzle-orm')
+  const [piece] = await db.select().from(studioPieces).where(eq(studioPieces.id, rev.pieceId))
+  const earlier = await db.select().from(studioEntitlements)
+    .where(and(eq(studioEntitlements.designId, design.id), eq(studioEntitlements.category, piece.category)))
+  const kind = earlier.length ? 'revision' : 'first'
+  const amountCents = opts.amountCents ?? (kind === 'first' ? 2900 : 1500)
+  const paidAt = opts.paidAt ?? new Date()
+  const [payment] = await db.insert(studioPayments).values({
+    userId: design.ownerId, designId: design.id, kind: 'finalize', status: 'paid', amountCents, paidAt,
+    stripePaymentIntent: opts.paymentIntent ?? `pi_${rev.id.slice(0, 8)}`,
+  }).returning()
+  const [ent] = await db.insert(studioEntitlements).values({
+    revisionId: rev.id, paymentId: payment.id, userId: design.ownerId, designId: design.id, category: piece.category,
+    kind, amountCents, status: 'ready',
+  }).returning()
+  await db.update(designs).set({ finalizedAt: paidAt }).where(eq(designs.id, design.id))
+  return { payment, entitlement: ent }
+}
+
+/** A Stripe client for studio payments that records what it was asked and answers like Stripe's test mode. */
+export function fakeStripe() {
+  let n = 0
+  const calls = {
+    sessions: [] as any[],
+    refunds: [] as { params: any; opts: any }[],
+    customers: [] as any[],
+  }
+  const stripe = {
+    calls,
+    failRefunds: false,
+    failSessions: false,
+    customers: {
+      async create(params: any) { calls.customers.push(params); return { id: `cus_${++n}` } },
+    },
+    checkout: {
+      sessions: {
+        async create(params: any) {
+          if (stripe.failSessions) throw new Error('Stripe is down')
+          calls.sessions.push(params)
+          const id = ++n
+          return { id: `cs_test_${id}`, url: `https://checkout.stripe.test/${id}` }
+        },
+      },
+    },
+    refunds: {
+      async create(params: any, opts: any) {
+        calls.refunds.push({ params, opts })
+        if (stripe.failRefunds) throw new Error('refund refused')
+        return { id: `re_${++n}` }
+      },
+    },
+    subscriptions: {
+      async retrieve(id: string) {
+        return { id, items: { data: [{ price: { id: 'price_creator' } }] }, current_period_start: 1, current_period_end: 2, cancel_at_period_end: false }
+      },
+    },
+  }
+  return stripe
+}

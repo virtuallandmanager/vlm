@@ -7,6 +7,7 @@ import { authenticate } from '../middleware/auth.js'
 import { getSubscription } from '../integrations/stripe.js'
 import { getStudioStore, jobFileKey } from '../studio/store.js'
 import { verifyRenderFrame, framePath } from '../studio/render-urls.js'
+import { quoteFinalize, QuoteError } from '../studio/pricing.js'
 import {
   BASE_EMOTES, BODY_SHAPES, OUTFITS, WEARABLE_CATEGORIES,
   designDetail, openDesignCount, publicDesign, queuePrompt, requestRender, usage, type Design, type View,
@@ -40,6 +41,11 @@ function agentError(agent: unknown): string | null {
   if (agent === 'grok') return 'Grok is coming soon'
   if (!AGENTS.includes(agent as string)) return 'agent must be claude or codex'
   return null
+}
+
+/** A quote refusal as the page sees it: an unknown piece is the caller's mistake, the rest are the design's state. */
+export function quoteRefusal(reply: FastifyReply, err: QuoteError) {
+  return reply.status(err.code === 'unknown_piece' ? 400 : 409).send({ error: err.code, code: err.code, categories: err.categories })
 }
 
 async function openLimit(userId: string) {
@@ -134,6 +140,17 @@ export default async function studioRoutes(app: FastifyInstance) {
     const r = await queuePrompt(d, { text: cont ? null : (b.text as string).trim(), selectedSlots: slots, continue: cont }, new Date())
     if (!r.ok) return reply.status(r.status).send(r.body)
     return reply.status(202).send({ jobId: r.jobId })
+  })
+
+  app.get('/api/studio/designs/:id/finalize', auth, async (request, reply) => {
+    const d = await ownDesign(request)
+    if (!d) return notFound(reply)
+    try {
+      return await quoteFinalize(d, null, [])
+    } catch (err) {
+      if (err instanceof QuoteError) return quoteRefusal(reply, err)
+      throw err
+    }
   })
 
   app.post('/api/studio/designs/:id/renders', auth, async (request, reply) => {
