@@ -39,7 +39,7 @@ export async function sendOrgInviteEmail(to: string, orgName: string, inviterNam
   const inviteUrl = `${config.publicUrl}/auth/invite?token=${token}`
   return sendEmail(to, `You've been invited to ${orgName} on Virvi`, `
     <h2>You've been invited to ${orgName}</h2>
-    <p>${inviterName} invited you to join their organization on Virtual Land Manager.</p>
+    <p>${inviterName} invited you to join their organization on Virvi.</p>
     <p><a href="${inviteUrl}" style="background:#3b82f6;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;display:inline-block">Accept Invite</a></p>
     <p style="color:#666;font-size:12px">If you don't have a Virvi account, you'll be able to create one.</p>
   `)

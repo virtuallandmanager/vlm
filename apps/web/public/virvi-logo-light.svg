@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 550" width="1500" height="550" role="img" aria-label="Virvi wordmark">
+<title>Virvi wordmark — light version</title>
+<g fill="none" stroke="#FFFFFF" stroke-width="102" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M 104 176 L 244 425 L 384 176"/>
+  <path d="M 532 176 L 532 425"/>
+  <path d="M 682 425 L 682 290 C 682 224 729 176 800 176"/>
+  <path d="M 927 176 L 1067 425 L 1207 176"/>
+  <path d="M 1355 176 L 1355 425"/>
+</g>
+<g fill="#08DDEB"><circle cx="532" cy="53" r="51"/><circle cx="1355" cy="53" r="51"/></g>
+</svg>

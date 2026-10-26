@@ -1,7 +1,7 @@
 {
   "name": "@virvixr/dcl",
   "version": "2.4.0",
-  "description": "Virtual Land Manager for Decentraland SDK7 — analytics, in-world HUD and live scene management. Use from code or as a Creator Hub script.",
+  "description": "Virvi for Decentraland SDK7: analytics, in-world HUD and live scene management. Use from code or as a Creator Hub script.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -50,7 +50,6 @@
     "sdk7",
     "analytics",
     "virvi",
-    "virtual land manager",
     "creator hub"
   ]
 }

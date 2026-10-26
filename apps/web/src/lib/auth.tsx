@@ -2,6 +2,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { API_URL } from './config'
 import { readSession, type ScenePass } from './session'
+import { AUTH_KEY, readStoredAuth } from './auth-storage'
 
 interface User {
   id: string
@@ -78,20 +79,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Load from localStorage on mount
   useEffect(() => {
-    const stored = localStorage.getItem('virvi_auth')
-    if (stored) {
-      try {
-        const data = JSON.parse(stored)
-        // Drop expired, kind-less (pre-scene-pass) and visitor sessions: the user signs in again once.
-        const session = readSession(data.token, Date.now())
-        if (session.ok) {
-          setToken(data.token)
-          setUser(data.user)
-          setScenePass(session.scenePass)
-        } else {
-          localStorage.removeItem('virvi_auth')
-        }
-      } catch { localStorage.removeItem('virvi_auth') }
+    const data = readStoredAuth(localStorage)
+    if (data) {
+      // Drop expired, kind-less (pre-scene-pass) and visitor sessions: the user signs in again once.
+      const session = readSession(data.token, Date.now())
+      if (session.ok) {
+        setToken(data.token)
+        setUser(data.user as User)
+        setScenePass(session.scenePass)
+      } else {
+        localStorage.removeItem(AUTH_KEY)
+      }
     }
     setLoading(false)
   }, [])
@@ -110,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(data.accessToken)
     setUser(data.user)
     setScenePass(null)
-    localStorage.setItem('virvi_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
+    localStorage.setItem(AUTH_KEY, JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
   }, [])
 
   const register = useCallback(async (email: string, password: string, displayName: string) => {
@@ -127,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(data.accessToken)
     setUser(data.user)
     setScenePass(null)
-    localStorage.setItem('virvi_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
+    localStorage.setItem(AUTH_KEY, JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
   }, [])
 
   const loginWithWallet = useCallback(async () => {
@@ -142,14 +140,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(data.accessToken)
     setUser(data.user)
     setScenePass(null)
-    localStorage.setItem('virvi_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
+    localStorage.setItem(AUTH_KEY, JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
   }, [])
 
   const logout = useCallback(() => {
     setToken(null)
     setUser(null)
     setScenePass(null)
-    localStorage.removeItem('virvi_auth')
+    localStorage.removeItem(AUTH_KEY)
   }, [])
 
   const updateUser = useCallback((updates: Partial<User>) => {
@@ -157,12 +155,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!prev) return prev
       const updated = { ...prev, ...updates }
       // Sync to localStorage
-      const stored = localStorage.getItem('virvi_auth')
+      const stored = localStorage.getItem(AUTH_KEY)
       if (stored) {
         try {
           const data = JSON.parse(stored)
           data.user = updated
-          localStorage.setItem('virvi_auth', JSON.stringify(data))
+          localStorage.setItem(AUTH_KEY, JSON.stringify(data))
         } catch {}
       }
       return updated

@@ -124,7 +124,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     openapi: {
       info: {
         title: 'Virvi API',
-        description: 'Virtual Land Manager API',
+        description: 'Virvi API',
         version: '2.0.0',
       },
       servers: [{ url: config.publicUrl }],

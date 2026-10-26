@@ -318,7 +318,7 @@ function ConnectingScreen() {
     >
       {/* Virvi Header */}
       <UiEntity uiTransform={{ width: '100%', flexDirection: 'row', alignItems: 'center', margin: { bottom: 12 } }}>
-        <Label value="Virtual Land Manager" fontSize={16} color={C.text} />
+        <Label value="Virvi" fontSize={16} color={C.text} />
       </UiEntity>
 
       {/* Status */}
@@ -382,7 +382,7 @@ function SceneSetupScreen() {
         }}
         uiBackground={{ color: C.bgLight }}
       >
-        <Label value="Virtual Land Manager" fontSize={15} color={C.text} />
+        <Label value="Virvi" fontSize={15} color={C.text} />
         <Label value={state.userName ? `Welcome, ${state.userName}` : 'Scene Setup'} fontSize={10} color={C.textDim} />
       </UiEntity>
 

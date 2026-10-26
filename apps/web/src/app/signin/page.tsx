@@ -73,7 +73,7 @@ function SignIn() {
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
       <a href="/" className="w-full max-w-md text-sm text-gray-400 hover:text-white">← Back to Virvi</a>
       <div className="w-full max-w-md rounded-xl bg-gray-900 p-8">
-        <h1 className="mb-2 text-2xl font-bold">Virtual Land Manager</h1>
+        <h1 className="mb-2 text-2xl font-bold">Virvi</h1>
         <p className="mb-6 text-sm text-gray-400">{mode === 'login' ? 'Sign in to manage your scenes' : 'Create your account'}</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">

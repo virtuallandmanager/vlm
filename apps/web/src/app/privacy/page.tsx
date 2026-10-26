@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Privacy — Virvi',
+  title: 'Privacy',
   description: 'What Virvi collects in Decentraland scenes and from the advertiser early-access form, and how to have it removed.',
 }
 

@@ -2,7 +2,7 @@ import { Entity } from '@dcl/sdk/ecs'
 import { startVirviManager, VirviSmartItem } from '@virvixr/dcl'
 
 /**
- * Connects this scene to Virtual Land Manager.
+ * Connects this scene to Virvi.
  * Leave Scene ID blank to set the scene up from the in-world HUD.
  */
 export class VirviManager {
