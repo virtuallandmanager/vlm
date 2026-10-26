@@ -69,9 +69,6 @@ export function DeployStep({ state, dispatch, options, memory, onRunning }: {
   useEffect(() => {
     if (options && !virviOk && state.mode !== 'sign') dispatch({ type: 'setMode', mode: 'sign' })
   }, [options, virviOk])
-  useEffect(() => {
-    if (!state.name) dispatch({ type: 'setName', name: 'My scene' })
-  }, [])
 
   const atLimit = !memory.sceneId && !!options && options.scenes.limit !== null && options.scenes.used >= options.scenes.limit
   const running = view.status === 'running'
@@ -154,6 +151,7 @@ export function DeployStep({ state, dispatch, options, memory, onRunning }: {
           <label className="block space-y-1">
             <span className="text-gray-300">Scene name</span>
             <input value={state.name} onChange={(e) => dispatch({ type: 'setName', name: e.target.value })} maxLength={120}
+              placeholder="Name your scene" required
               className="w-full rounded-md border border-gray-800 bg-gray-950 px-3 py-2 text-white outline-none focus:border-blue-400" />
           </label>
       )}
