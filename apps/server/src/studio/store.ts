@@ -30,19 +30,20 @@ export const workspaceKey = (designId: string) => `designs/${designId}/workspace
 export const jobFileKey = (designId: string, jobId: string, path: string) => `designs/${designId}/jobs/${jobId}/${path}`
 
 // The worker's file paths, from apps/studio-worker/CONTRACT.md
-const FILE_PATH = /^(pieces\/([a-z_]+)\/[A-Za-z0-9._-]+\.(glb|json)|checks\/([a-z_]+)\.txt|renders\/([a-z_]+)\/[a-z0-9-]+\/[0-9]{3}\.webp)$/
+const FILE_PATH = /^(pieces\/([a-z_]+)\/[A-Za-z0-9._-]+\.(glb|json)|checks\/([a-z_]+)\.txt|renders\/([a-z_]+)\/[a-z0-9-]+\/[0-9]{3}\.webp|final\/([a-z_]+)\/package\.zip)$/
 const MAX_PATH = 200
 
 export function checkFilePath(
   path: string,
-): { ok: true; kind: 'piece' | 'check' | 'render'; category: string } | { ok: false; reason: string } {
+): { ok: true; kind: 'piece' | 'check' | 'render' | 'final'; category: string } | { ok: false; reason: string } {
   if (path.length > MAX_PATH) return { ok: false, reason: `path is longer than ${MAX_PATH} characters` }
   if (path.split('/').some((seg) => seg === '..' || seg === '.')) return { ok: false, reason: 'path has a relative segment' }
   const m = FILE_PATH.exec(path)
-  if (!m) return { ok: false, reason: 'path is not a piece, check or render file' }
+  if (!m) return { ok: false, reason: 'path is not a piece, check, render or package file' }
   if (m[2]) return { ok: true, kind: 'piece', category: m[2] }
   if (m[4]) return { ok: true, kind: 'check', category: m[4] }
-  return { ok: true, kind: 'render', category: m[5] }
+  if (m[5]) return { ok: true, kind: 'render', category: m[5] }
+  return { ok: true, kind: 'final', category: m[6] }
 }
 
 const DELETE_BATCH = 1000

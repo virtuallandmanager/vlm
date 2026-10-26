@@ -30,6 +30,7 @@ design gets 403. Path segments are URL-encoded.
 | `GET /designs/{designId}/jobs/next` | | 200 with a Job, or 204 when there is none. Handing out a job marks it taken. |
 | `POST /jobs/{jobId}/events` | an Event (JSON) | 2xx |
 | `PUT /jobs/{jobId}/files/{path}` | the file's raw bytes, with its content type | 2xx |
+| `GET /jobs/{jobId}/inputs/{path}` | | 200 with the file's bytes. Only for a taken finalize job, and only for the paths it lists. |
 | `POST /jobs/{jobId}/result` | a Result (JSON) | 2xx; the job is finished |
 
 The worker retries a call 3 times on a 5xx or connection error. It retries the result `POST` until it succeeds or
@@ -58,6 +59,7 @@ workspace as an opaque blob, privately.
 | `pieces/<category>/piece.json` | the piece's settings, as below | Virvi only |
 | `checks/<category>.txt` | the skills checker's full report | Virvi only |
 | `renders/<category>/<viewKey>/<nnn>.webp` | render frames, `000` up | the browser |
+| `final/<category>/package.zip` | a paid revision's package (finalize jobs only, and the only file they upload) | paid downloads only |
 
 Render frames are the only files the browser ever receives. A `viewKey` is `<mode>-<bodyShape>-<outfit>`, plus
 `-<emote>` when the view plays a base emote: `spin-male-default`, `spin-female-outfit-2-dance`,
@@ -79,10 +81,12 @@ Render frames are the only files the browser ever receives. A `viewKey` is `<mod
 }
 ```
 
-- `type`: `"prompt"` runs the agent; `"render"` renders a view of the current pieces.
+- `type`: `"prompt"` runs the agent; `"render"` renders a view of the current pieces; `"finalize"` builds the
+  package of a paid revision of each listed piece, from that revision's own files (read with `inputs`, never the
+  workspace), and saves no workspace.
 - `kind`: `"wearable"` or `"emote"`.
 - `agent`: `"claude"` or `"codex"`; `model`: the model id the agent runs (`claude-opus-5-5`, `gpt-6.1-sol`). Both
-  are null on a render job.
+  are null on a render or finalize job.
 - `selectedSlots`: the categories to build, or null when the user hasn't chosen yet. With null, the agent may answer
   with a slot proposal instead of building.
 - `limits`: defaults `timeoutSec` 1500, `maxTurns` 80, `costCeilingUsd` 3.0. Claude is stopped once its running cost
@@ -90,6 +94,11 @@ Render frames are the only files the browser ever receives. A `viewKey` is `<mod
 - `render`, on a render job: `{"categories": ["hat"], "bodyShape": "male"|"female", "outfit": "default"|"outfit-2"|
   "outfit-3", "emote": null|"idle"|"wave"|"dance"|"clap"|"walk"}`. A wearable view is a 36-frame spin; an emote
   design's view is 36 frames through its animation.
+
+- `finalize`, on a finalize job: `{"designName": str, "pieces": [{"category", "name", "revision": n, "files":
+  [contract paths]}]}`. `files` are the paid revision's files (its GLBs, `piece.json` and checker report). Virvi may add
+  fields of its own (such as `sourceJobId`); the worker ignores them. `limits` is `{"timeoutSec": 1800, "maxTurns": 0,
+  "costCeilingUsd": 0}`: no agent runs.
 
 Switching agent between prompts is allowed: the new agent is given the conversation it missed.
 
@@ -159,6 +168,45 @@ effort: one that fails to send is dropped.
 - **The workspace is saved before the result is posted.** If the save fails, the outcome is `error` and `pieces` is
   empty: nothing claims the revision is saved.
 - On a render job, `pieces` holds `{"category", "renders": {viewKey: frames}}` for each requested category.
+
+### Finalize result
+
+On a finalize job `costUsd` and `tokens` are null, and `pieces` holds, for each piece that was packaged:
+
+```json
+{"category": "hat", "files": ["final/hat/package.zip"],
+ "finalize": {"thumbnail": {"pass": true}, "listing": {"pass": true}, "clipping": {"pass": false, "failed": ["Dance"]},
+              "emoteCheck": null}}
+```
+
+`listing` and `clipping` are null for an emote, `emoteCheck` (`{"pass"}`) is null for a wearable. `outcome` is `ok`
+when every listed piece was packaged, else `error` (with `error` saying which and why); the pieces that did package are
+still listed. A check that fails (thumbnail, listing, clipping) is reported in the package, never fatal: the customer
+has paid. A tool that crashes, a failed render or a missing input fails that piece.
+
+### Package
+
+`package.zip` holds, at its top level:
+
+| File | What |
+|---|---|
+| `<name>_male.glb`, `<name>_female.glb` or `<name>.glb` | the GLBs, as built |
+| `thumbnail.png` | 256 px, transparent background (wearables: the item alone, rendered in Blender; emotes: the avatar mid-emote) |
+| `builder.json` | `{"name", "category", "hides", "replaces", "tags"}`: the Builder's settings |
+| `listing.json` | `{"name", "rarity", "description", "tags"}` (wearables) |
+| `item.zip` | the Builder upload, from the skills' `package_item.py` (wearables) |
+| `renders/<bodyShape>-<front|right|back|left>.png` | 1024 px renders in Decentraland's own renderer |
+| `promo.mp4` | a 3-second clip: a wearable spins on the dancing avatar; an emote plays |
+| `REPORT.md` | the curation report |
+
+`REPORT.md` has a section per check: the wearable checker (or the emote checker), the thumbnail, the listing and
+clipping through Decentraland's animations (wearables). It ends with "Not run here", saying what the customer does for
+each gate the studio can't run: upload `item.zip` in the Builder, check the Builder's preview, self-preview in-world
+in the desktop explorer, and Decentraland's `wearable-validator`.
+
+`piece.json` (written by the agent while building) also carries, for a wearable, `"rarity"`: one of the Builder's
+rarities. Its `description` is at most 64 characters, and `name`, `description`, `tags` and `rarity` follow the
+`listing-dcl-wearables` skill.
 
 ### Proposal
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { assertProductionSecrets, validDeployKey } from '../src/config.js'
+import { assertProductionSecrets, validDeployKey, studioPricesFrom } from '../src/config.js'
 
 describe('assertProductionSecrets', () => {
   it('refuses the dev or an empty secret in cloud mode or NODE_ENV=production', () => {
@@ -28,5 +28,19 @@ describe('validDeployKey', () => {
     } finally {
       warn.mockRestore()
     }
+  })
+})
+
+describe('studioPricesFrom', () => {
+  it('studio prices default and refuse bad values', () => {
+    expect(studioPricesFrom({})).toEqual({
+      wearable: 2900, extraPiece: 1900, emote: 3900,
+      revisionWearable: 1500, revisionExtraPiece: 1000, revisionEmote: 2000,
+      topupCents: 500, topupPrompts: 10,
+    })
+    expect(studioPricesFrom({ STUDIO_PRICE_WEARABLE_CENTS: '3500' }).wearable).toBe(3500)
+    expect(() => studioPricesFrom({ STUDIO_PRICE_EMOTE_CENTS: 'abc' })).toThrow(/STUDIO_PRICE_EMOTE_CENTS/)
+    expect(() => studioPricesFrom({ STUDIO_TOPUP_PROMPTS: '-1' })).toThrow(/STUDIO_TOPUP_PROMPTS/)
+    expect(() => studioPricesFrom({ STUDIO_REVISION_EMOTE_CENTS: '1.5' })).toThrow()
   })
 })

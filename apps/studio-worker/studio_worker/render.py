@@ -37,7 +37,8 @@ LOOK_NAMES = ('front', 'right', 'back', 'left')
 def render(pieces: list[dict], view: dict, out: Path, frames: int = 36, size: int = 512,
            watchdog_sec: int = 300) -> dict:
     """pieces: [{'category', 'glbs': {'male'|'female'|'unisex': Path}, 'meta'}];
-    view: {'bodyShape': 'male'|'female', 'outfit', 'emote', 'mode': 'spin'|'emote'|'look'}.
+    view: {'bodyShape': 'male'|'female', 'outfit', 'emote', 'mode': 'spin'|'emote'|'look'|'thumbnail'}.
+    A thumbnail is one 256 px square PNG on a transparent background (an emote paused halfway).
     Returns {'ok', 'frames': [Path], 'error': None|'timeout'|'item_not_loaded'|'blank'|str, 'bootSec'}."""
     out = Path(out).absolute()  # the child process runs in another directory
     out.mkdir(parents=True, exist_ok=True)
@@ -98,7 +99,8 @@ def _clear(out: Path) -> None:
 def _query(view: dict) -> str:
     shape = FEMALE if view.get('bodyShape') == 'female' else MALE
     return '&'.join([f"profile={config.OUTFITS.get(view.get('outfit') or 'default', 'default1')}",
-                     f'bodyShape={shape}', 'disableAutoRotate=true', 'disableBackground=false',
+                     f'bodyShape={shape}', 'disableAutoRotate=true',
+                     f"disableBackground={'true' if view.get('mode') == 'thumbnail' else 'false'}",
                      f"emote={view.get('emote') or 'idle'}"])
 
 
@@ -145,6 +147,19 @@ def _run(spec: dict) -> dict:
 
         shots = []
         mode = view.get('mode', 'spin')
+        if mode == 'thumbnail':
+            if has_emote:
+                page.evaluate("__studio.call('emote', 'pause')")
+                length = page.evaluate("__studio.call('emote', 'getLength')") or 0
+                page.evaluate("([ns, m, p]) => __studio.call(ns, m, p)", ['emote', 'goTo', [length / 2]])
+            page.evaluate('__studio.frames()')
+            image = Image.open(_png(page, transparent=True)).convert('RGBA')
+            if is_blank(image):
+                return _fail('blank', start)
+            path = out / 'thumbnail.png'
+            fit_square(image).save(path)
+            browser.close()
+            return {'ok': True, 'frames': [str(path)], 'error': None, 'bootSec': boot}
         if mode == 'emote':
             page.evaluate("__studio.call('emote', 'pause')")
             length = page.evaluate("__studio.call('emote', 'getLength')") or 0
@@ -172,9 +187,19 @@ def _run(spec: dict) -> dict:
     return {'ok': True, 'frames': shots, 'error': None, 'bootSec': boot}
 
 
-def _png(page):
+def _png(page, transparent: bool = False):
     import io
-    return io.BytesIO(page.screenshot(type='png'))
+    return io.BytesIO(page.screenshot(type='png', omit_background=transparent))
+
+
+def fit_square(image: Image.Image, size: int = 256, margin: float = 0.08) -> Image.Image:
+    """The opaque part of an RGBA image, centred on a transparent square of `size` px."""
+    box = image.getchannel('A').getbbox() or (0, 0, image.width, image.height)
+    item = image.crop(box)
+    side = int(max(item.size) * (1 + 2 * margin)) or 1
+    canvas = Image.new('RGBA', (side, side), (0, 0, 0, 0))
+    canvas.paste(item, ((side - item.width) // 2, (side - item.height) // 2))
+    return canvas.resize((size, size), Image.LANCZOS)
 
 
 def _wait(page, expression: str, seconds: float) -> bool:

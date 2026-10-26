@@ -1389,6 +1389,8 @@ export const studioDesigns = pgTable('studio_designs', {
   machineClaimedAt: timestamp('machine_claimed_at', { withTimezone: true }),
   // SHA-256 of the machine's STUDIO_WORKER_TOKEN; the token itself is never stored
   workerTokenHash: text('worker_token_hash').unique(),
+  // Set by the first paid finalize: a finalized design no longer counts as open, even while it is revised
+  finalizedAt: timestamp('finalized_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   ownerIdx: index('studio_designs_owner_idx').on(t.ownerId),
@@ -1430,6 +1432,7 @@ export const studioJobs = pgTable('studio_jobs', {
   // Whether the prompt used the owner's allowance, and on which UTC day (refunds and cost go to that day)
   counted: boolean('counted').notNull().default(false),
   countedDay: date('counted_day', { mode: 'string' }),
+  countedFrom: text('counted_from'), // allowance | credit: where a counted prompt is given back to
   takenAt: timestamp('taken_at', { withTimezone: true }),
   finishedAt: timestamp('finished_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1474,3 +1477,77 @@ export const studioUsageDays = pgTable('studio_usage_days', {
 }, (t) => ({
   pk: primaryKey({ columns: [t.userId, t.day] }),
 }))
+
+/** One line of a studio checkout: a piece's revision and what it costs (src/studio/pricing.ts). */
+export type PaymentLine = {
+  category: string
+  revisionId: string
+  revisionNumber: number
+  pieceName: string
+  priceKind: 'first' | 'first_extra' | 'revision' | 'revision_extra'
+  amountCents: number
+  waived: boolean
+  reportText?: string // a waived line's mistake report, stored as a report at grant time
+}
+
+// A one-time Stripe Checkout: finalizing pieces, or a prompt top-up. Nothing is charged when every line is waived.
+export const studioPayments = pgTable('studio_payments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  designId: uuid('design_id').references(() => studioDesigns.id, { onDelete: 'cascade' }), // null for a top-up
+  kind: text('kind').notNull(), // finalize | topup
+  status: text('status').notNull().default('pending'), // pending | paid | expired
+  amountCents: integer('amount_cents').notNull(),
+  lines: jsonb('lines').$type<PaymentLine[]>().notNull().default([]),
+  prompts: integer('prompts').notNull().default(0), // a top-up's prompts
+  stripeSessionId: text('stripe_session_id').unique(),
+  stripeSessionUrl: text('stripe_session_url'),
+  stripePaymentIntent: text('stripe_payment_intent'),
+  refundedCents: integer('refunded_cents').notNull().default(0),
+  // Owed back (a duplicate, or an overcharge found at grant time) until Stripe confirms it; the sweep retries
+  refundDueCents: integer('refund_due_cents').notNull().default(0),
+  refundAttempts: integer('refund_attempts').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+}, (t) => ({
+  userIdx: index('studio_payments_user_idx').on(t.userId, t.createdAt),
+}))
+
+// A paid revision: its files can be downloaded as the package the finalize job builds
+export const studioEntitlements = pgTable('studio_entitlements', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  revisionId: uuid('revision_id').notNull().unique().references(() => studioRevisions.id, { onDelete: 'cascade' }),
+  paymentId: uuid('payment_id').notNull().references(() => studioPayments.id),
+  userId: uuid('user_id').notNull(),
+  designId: uuid('design_id').notNull().references(() => studioDesigns.id, { onDelete: 'cascade' }),
+  category: text('category').notNull(),
+  kind: text('kind').notNull(), // first | revision
+  amountCents: integer('amount_cents').notNull(), // 0 when waived
+  status: text('status').notNull(), // packaging | ready | failed
+  jobId: uuid('job_id'), // the finalize job
+  packageKey: text('package_key'),
+  checks: jsonb('checks'), // the finalize job's check summary
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  designIdx: index('studio_entitlements_design_idx').on(t.designId),
+}))
+
+// The customer said a paid revision fixed the agent's mistake: refunded (or waived at checkout), never argued
+export const studioMistakeReports = pgTable('studio_mistake_reports', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  entitlementId: uuid('entitlement_id').notNull().unique().references(() => studioEntitlements.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull(),
+  text: text('text').notNull(),
+  refundCents: integer('refund_cents').notNull(),
+  status: text('status').notNull(), // pending (refund in flight) | refunded | waived
+  stripeRefundId: text('stripe_refund_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// Bought prompts: used after the day's allowance, never expiring
+export const studioPromptCredits = pgTable('studio_prompt_credits', {
+  userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  balance: integer('balance').notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})

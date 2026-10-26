@@ -85,6 +85,10 @@ export default async function studioWorkerRoutes(app: FastifyInstance) {
         if (!checked.ok) return reply.status(400).send({ error: 'bad_path', reason: checked.reason })
         const job = request.studioJob!
         if (job.status !== 'taken') return reply.status(409).send({ error: 'job_not_taken' })
+        // A finalize job uploads only its package, and only a finalize job uploads one
+        if ((checked.kind === 'final') !== (job.type === 'finalize')) {
+          return reply.status(400).send({ error: 'bad_path', reason: job.type === 'finalize' ? 'a finalize job uploads only final/<category>/package.zip' : 'only a finalize job uploads a package' })
+        }
         const body = request.body
         if (!Buffer.isBuffer(body)) return reply.status(400).send({ error: 'not_bytes' })
         const type = (request.headers['content-type'] ?? 'application/octet-stream').split(';')[0].trim().slice(0, 100)
@@ -94,6 +98,21 @@ export default async function studioWorkerRoutes(app: FastifyInstance) {
     })
 
     // The rest take JSON only
+    // A finalize job reads the paid revision's own stored files, and only the ones its payload lists
+    scope.get('/api/studio/worker/jobs/:jobId/inputs/*', opts, async (request, reply) => {
+      const job = request.studioJob!
+      const path = (request.params as { '*': string })['*']
+      const missing = () => reply.status(404).send({ error: 'input_not_found' })
+      if (job.type !== 'finalize' || job.status !== 'taken' || !checkFilePath(path).ok) return missing()
+      const pieces = ((job.payload as { finalize?: { pieces?: { files?: unknown; sourceJobId?: unknown }[] } }).finalize?.pieces) ?? []
+      const piece = pieces.find((p) => Array.isArray(p.files) && p.files.includes(path))
+      if (!piece || typeof piece.sourceJobId !== 'string' || !UUID.test(piece.sourceJobId)) return missing()
+      const obj = await getStudioStore().getStream(jobFileKey(job.designId, piece.sourceJobId, path))
+      if (!obj) return missing()
+      if (obj.length !== undefined) reply.header('Content-Length', obj.length)
+      return reply.type(obj.contentType).send(obj.body)
+    })
+
     scope.get('/api/studio/worker/designs/:designId/jobs/next', opts, async (request, reply) => {
       const designId = request.studioDesign!.id
       const rows = await db.execute<{ id: string; payload: Record<string, unknown> }>(sql`

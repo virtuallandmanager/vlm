@@ -3,7 +3,9 @@
 The image a Design Studio design runs on: one Fly machine per design, started by Virvi's server. It restores the
 design's workspace from Virvi's API, takes its prompt and render jobs, runs Claude Code or Codex with
 `dcl-avatar-skills`, checks and renders the pieces in Decentraland's wearable-preview, and reports back. The browser
-only ever gets render frames.
+only ever gets render frames. Once a revision is paid for, a finalize job builds its package (`studio_worker/finalize.py`:
+thumbnail, curation checks, the Builder zip, renders, promo clip and `REPORT.md`) from Virvi's copy of the paid files,
+with no agent run; the package is the only model file a customer downloads.
 
 - `CONTRACT.md`: how the worker and Virvi's API talk. The source of truth for both sides.
 - `studio_worker/`: the worker (`python3 -m studio_worker`) and `studio-preview`, the command the agent looks at its
@@ -32,6 +34,7 @@ docker run --rm --platform linux/amd64 --entrypoint /opt/smoke.sh vlm-studio-wor
 | `bash e2e/render_real.sh` | the real wearable-preview renders the fixture cap's spin and the wave emote | nothing |
 | `bash e2e/network.sh` | the lockdown: no way out but the allowlist, and `studio-preview` works through it | nothing |
 | `e2e/real_prompt.py` | real agents build then tweak a hat through the whole job loop (see its docstring) | about $1 per agent |
+| `bash e2e/finalize_real.sh` | a finalize job on the fixture cap with real Blender, wearable-preview, ffmpeg and the skills' checks; prints the package and its report | nothing |
 | `bash e2e/fly.sh <image>` | the network checks and a real Codex run on a Fly `performance-4x` machine, which it then destroys | about $1 |
 
 ```bash

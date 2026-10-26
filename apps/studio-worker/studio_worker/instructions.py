@@ -18,7 +18,9 @@ def closing(kind: str, selected_slots: list[str] | None) -> str:
     else:
         what = (f'Build only these slots: {", ".join(selected_slots)}.' if selected_slots else
                 'If the idea is settled enough to build, build it.')
-        layout = LAYOUT % ''
+        layout = (LAYOUT % ', "rarity": "common" | "uncommon" | "rare" | "epic" | "legendary" | "exotic" | "mythic" | "unique"'
+                  + '\nName, describe (at most 64 characters), tag and pick a rarity for each piece with the '
+                  'listing-dcl-wearables skill.')
         look = ('Before you finish, run `studio-preview out/<category>` for each piece and open the four views it '
                 'prints (front, right, back, left) for each body shape. Fix any clipping you see, such as hair '
                 'poking through a hat; if a hat would look better hiding the hair, ask the user rather than guess.')

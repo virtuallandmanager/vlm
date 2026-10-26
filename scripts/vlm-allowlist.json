@@ -29,6 +29,7 @@
     "vlm-hyperfy(?![-\\w])",
     "vlm-studio(?![-\\w])",
     "vlm-dev-postgres-1",
-    "-U vlm\\b"
+    "-U vlm\\b",
+    "vlm_(user_id|studio_payment_id)"
   ]
 }

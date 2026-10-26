@@ -1,5 +1,6 @@
 # Design Studio worker: headless Blender 4.4, Chrome for Decentraland's wearable-preview, the Claude Code and Codex
-# CLIs at the versions the spike measured, dcl-avatar-skills at a pinned commit, and the studio_worker package.
+# CLIs at the versions the spike measured, dcl-avatar-skills at a pinned commit, ffmpeg for promo clips, and the
+# studio_worker package.
 # Build: docker build --platform linux/amd64 -t vlm-studio-worker:dev apps/studio-worker
 FROM debian:bookworm-slim
 
@@ -13,7 +14,7 @@ ARG SKILLS_SHA=3430ce2ef5b7f9d388fcb7c923f50e0dcb505420
 ENV DEBIAN_FRONTEND=noninteractive PIP_BREAK_SYSTEM_PACKAGES=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl git gnupg xz-utils python3 python3-pip tinyproxy nftables \
+      ca-certificates curl git gnupg xz-utils python3 python3-pip tinyproxy nftables ffmpeg \
       libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libxkbcommon0 libsm6 libice6 libx11-6 libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -48,6 +49,9 @@ RUN useradd -r -M -s /usr/sbin/nologin keyproxy
 RUN git clone "$SKILLS_REPO" /opt/skills && git -C /opt/skills checkout --quiet "$SKILLS_SHA" \
     && git config --system --add safe.directory /opt/skills \
     && bash /opt/skills/install.sh claude codex --project /work/design
+# Decentraland's avatar animations, for the clipping check in finalize jobs (fetched at build: the machine can't reach GitHub)
+RUN python3 /opt/skills/skills/curating-dcl-wearables/scripts/fetch_dcl_animations.py /opt/dcl-animations \
+    && chmod -R a+rX /opt/dcl-animations
 
 # The official base avatars (the registry is Fly's private per-app one)
 COPY assets/*.blend /opt/assets/

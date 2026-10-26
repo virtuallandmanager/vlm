@@ -10,6 +10,7 @@ describe('studio store', () => {
     expect(checkFilePath('pieces/hat/piece.json')).toEqual({ ok: true, kind: 'piece', category: 'hat' })
     expect(checkFilePath('checks/hat.txt')).toEqual({ ok: true, kind: 'check', category: 'hat' })
     expect(checkFilePath('renders/hat/spin-male-outfit-2/007.webp')).toEqual({ ok: true, kind: 'render', category: 'hat' })
+    expect(checkFilePath('final/hat/package.zip')).toEqual({ ok: true, kind: 'final', category: 'hat' })
     for (const bad of [
       '../x',
       'pieces/hat/../../workspace.tar.gz',
@@ -19,6 +20,9 @@ describe('studio store', () => {
       'checks/hat.txt/x',
       'pieces/Hat/a.glb',
       'pieces/hat/a b.glb',
+      'final/hat/x.glb',
+      'final/hat/../package.zip',
+      'final/hat/package.zip/x',
       'pieces/hat/' + 'a'.repeat(186) + '.glb',
     ]) {
       const r = checkFilePath(bad)

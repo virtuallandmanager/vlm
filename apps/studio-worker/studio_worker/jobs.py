@@ -2,7 +2,8 @@
 STUDIO_IDLE_EXIT_SEC, then exit so the machine stops. See CONTRACT.md for the API.
 
 A prompt job runs the agent, checks and renders what changed, uploads it, saves the workspace, and only then posts
-its result. A render job renders a view of the workspace's current pieces and saves nothing.
+its result. A render job renders a view of the workspace's current pieces and saves nothing. A finalize job builds
+paid packages from Virvi's copies of the paid files (finalize.py) and saves nothing either.
 """
 import copy
 import mimetypes
@@ -19,6 +20,7 @@ from . import render as renderer
 from .agent import Usage, run_agent
 from .api import Api, ApiError
 from .config import AGENT_USER, DESIGN, skills_sha
+from .finalize import Tools, finalize_job
 from .instructions import closing
 from .pieces import Piece, collect, glbs_by_shape, glbs_outside, new_hashes
 from .workspace import load_state, pack, prompt_with_context, save_state, state_dir, unpack
@@ -29,7 +31,7 @@ DEFAULT_LIMITS = {'timeoutSec': 1500, 'maxTurns': 80, 'costCeilingUsd': 3.0}
 
 
 def run_job(job: dict, client: Api, design: Path, render_fn: Callable = renderer.render,
-            command: list[str] | None = None, as_user: str | None = AGENT_USER) -> dict:
+            command: list[str] | None = None, as_user: str | None = AGENT_USER, tools: Tools | None = None) -> dict:
     """Runs one job and posts its Result, which it also returns."""
     start = time.monotonic()
     result = {'jobId': job['jobId'], 'outcome': 'error', 'agent': job.get('agent'), 'model': job.get('model'),
@@ -38,6 +40,9 @@ def run_job(job: dict, client: Api, design: Path, render_fn: Callable = renderer
     try:
         if job.get('type') == 'render':
             _render_job(job, client, Path(design), render_fn, result)
+        elif job.get('type') == 'finalize':
+            with tempfile.TemporaryDirectory(prefix='studio-final-') as stage:
+                finalize_job(job, client, render_fn, tools or Tools.real(), result, Path(stage))
         else:
             _prompt_job(job, client, Path(design), render_fn, command, as_user, result)
     except Exception as e:  # the result still goes out, so the design isn't left waiting

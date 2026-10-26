@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { studioDesigns, studioJobs, studioMessages, studioPieces, studioRenders, studioRevisions } from '../src/db/schema.js'
+import { studioDesigns, studioJobs, studioMessages, studioPieces, studioPromptCredits, studioRenders, studioRevisions } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { memoryStudioStore, setStudioStore, jobFileKey } from '../src/studio/store.js'
 import { setMachineDeps } from '../src/studio/machines.js'
@@ -76,6 +76,16 @@ describe('studio dashboard routes', () => {
     } finally {
       ;(config as any).studioEnabled = true
     }
+  })
+
+  it('a finalized design is not open', async () => {
+    const u = await createUser()
+    const first = (await create(u)).json()
+    expect(first.finalizedAt).toBeNull()
+    await db.update(studioDesigns).set({ finalizedAt: new Date() }).where(eq(studioDesigns.id, first.id))
+    expect((await create(u, { kind: 'emote', agent: 'codex' })).statusCode).toBe(201)
+    const usage = await app.inject({ method: 'GET', url: `${S}/usage`, headers: as(u) })
+    expect(usage.json().openDesigns).toBe(1)
   })
 
   it('creating designs respects the agent list and the open-design limit', async () => {
@@ -176,6 +186,49 @@ describe('studio dashboard routes', () => {
     expect(job.payload).toMatchObject({ prompt: 'Continue where you stopped.' })
     expect(job.counted).toBe(false)
     expect((await promptStatus(u.id, new Date())).used).toBe(used)
+  })
+
+  it('an error refund returns a credit', async () => {
+    const u = await createUser()
+    await db.insert(studioPromptCredits).values({ userId: u.id, balance: 1 })
+    const d = (await create(u)).json()
+    for (let i = 0; i < 3; i++) {
+      const id = (await prompt(u, d.id)).json().jobId
+      await finish(id, okResult(id, { outcome: 'no_change', pieces: [] }))
+    }
+    const res = await prompt(u, d.id)
+    expect(res.statusCode).toBe(202)
+    const [job] = await db.select().from(studioJobs).where(eq(studioJobs.id, res.json().jobId))
+    expect(job.countedFrom).toBe('credit')
+    expect((await db.select().from(studioPromptCredits))[0].balance).toBe(0)
+    await finish(job.id, okResult(job.id, { outcome: 'error', error: 'boom', pieces: [] }))
+    expect((await db.select().from(studioPromptCredits))[0].balance).toBe(1)
+    const usage = await app.inject({ method: 'GET', url: `${S}/usage`, headers: as(u) })
+    expect(usage.json()).toMatchObject({ promptsLeft: 1, credits: 1 })
+  })
+
+  it('a fix prompt is free and names the failing pieces', async () => {
+    const u = await createUser()
+    const d = (await create(u)).json()
+    const first = (await prompt(u, d.id)).json().jobId
+    const r = okResult(first)
+    r.pieces[0].checker = { pass: false, failures: 2, warnings: 0 }
+    await finish(first, r)
+    const used = (await promptStatus(u.id, new Date())).used
+    const res = await prompt(u, d.id, { fixChecks: true })
+    expect(res.statusCode).toBe(202)
+    const [job] = await db.select().from(studioJobs).where(eq(studioJobs.id, res.json().jobId))
+    expect(job.counted).toBe(false)
+    expect(job.payload).toMatchObject({ prompt: 'Fix every FAIL the checker reported for: hat. Change nothing else.', selectedSlots: null })
+    expect((await promptStatus(u.id, new Date())).used).toBe(used)
+  })
+
+  it('a fix prompt with nothing failing is 409', async () => {
+    const u = await createUser()
+    const { design } = await builtHat(u)
+    const res = await prompt(u, design.id, { fixChecks: true })
+    expect(res.statusCode).toBe(409)
+    expect(res.json().code).toBe('nothing_to_fix')
   })
 
   it('start failure fails the job and refunds', async () => {

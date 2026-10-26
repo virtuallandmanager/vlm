@@ -4,6 +4,7 @@ from pathlib import Path
 
 SKILLS = Path('/opt/skills')
 ASSETS = Path('/opt/assets')  # the official base avatar .blend files
+ANIMATIONS = Path('/opt/dcl-animations')  # Decentraland's avatar animations, for the clipping check
 DESIGN = Path('/work/design')  # the design's workspace, owned by AGENT_USER
 AGENT_USER = 'agent'
 PREVIEW_URL = 'https://wearable-preview.decentraland.org/'

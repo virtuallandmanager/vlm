@@ -81,6 +81,14 @@ def test_closing_names_the_slots_and_forbids_renders():
     assert 'proposal.json' in closing('wearable', None)
 
 
+def test_closing_asks_for_listing_fields_on_wearables_only():
+    wearable = closing('wearable', ['hat'])
+    assert '"rarity": "common" | "uncommon" | "rare" | "epic" | "legendary" | "exotic" | "mythic" | "unique"' in wearable
+    assert 'listing-dcl-wearables' in wearable and 'at most 64 characters' in wearable
+    emote = closing('emote', None)
+    assert '"rarity"' not in emote and '"loop": true | false' in emote
+
+
 def test_pieces_are_read_into_the_stage(tmp_path, skills):
     cap(tmp_path / 'design')
     pieces, _, error = collect(tmp_path / 'design', 'wearable', {}, stage=tmp_path / 'stage')

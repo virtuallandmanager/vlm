@@ -7,6 +7,8 @@ import { authenticate } from '../middleware/auth.js'
 import { getSubscription } from '../integrations/stripe.js'
 import { getStudioStore, jobFileKey } from '../studio/store.js'
 import { verifyRenderFrame, framePath } from '../studio/render-urls.js'
+import { quoteFinalize, QuoteError } from '../studio/pricing.js'
+import { createFinalizeCheckout, createTopupCheckout, entitlementFor, queueFinalize, reportMistake, PaymentError } from '../studio/payments.js'
 import {
   BASE_EMOTES, BODY_SHAPES, OUTFITS, WEARABLE_CATEGORIES,
   designDetail, openDesignCount, publicDesign, queuePrompt, requestRender, usage, type Design, type View,
@@ -21,9 +23,21 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MAX_PROMPT = 4000
 const MAX_NAME = 120
 const AGENTS = ['claude', 'codex']
+const REPORT_MIN = 10
+const REPORT_MAX = 2000
+const MAX_PACKS = 10
 
 async function studioOn(_request: FastifyRequest, reply: FastifyReply) {
   if (!config.studioEnabled) return reply.status(404).send({ error: 'not_found' })
+}
+
+const paymentsOff = (reply: FastifyReply) => reply.status(503).send({ error: 'Payments are not available', code: 'payments_unavailable' })
+
+/** Checkout failures as the page sees them. */
+function checkoutRefusal(reply: FastifyReply, err: unknown) {
+  if (err instanceof QuoteError) return quoteRefusal(reply, err)
+  if (err instanceof PaymentError) return reply.status(err.status).send({ error: err.code, code: err.code })
+  throw err
 }
 
 const notFound = (reply: FastifyReply) => reply.status(404).send({ error: 'design_not_found' })
@@ -40,6 +54,11 @@ function agentError(agent: unknown): string | null {
   if (agent === 'grok') return 'Grok is coming soon'
   if (!AGENTS.includes(agent as string)) return 'agent must be claude or codex'
   return null
+}
+
+/** A quote refusal as the page sees it: an unknown piece is the caller's mistake, the rest are the design's state. */
+export function quoteRefusal(reply: FastifyReply, err: QuoteError) {
+  return reply.status(err.code === 'unknown_piece' ? 400 : 409).send({ error: err.code, code: err.code, categories: err.categories })
 }
 
 async function openLimit(userId: string) {
@@ -117,8 +136,14 @@ export default async function studioRoutes(app: FastifyInstance) {
   app.post('/api/studio/designs/:id/prompts', auth, async (request, reply) => {
     const d = await ownDesign(request)
     if (!d) return notFound(reply)
-    const b = (request.body ?? {}) as { text?: unknown; selectedSlots?: unknown; continue?: unknown }
+    const b = (request.body ?? {}) as { text?: unknown; selectedSlots?: unknown; continue?: unknown; fixChecks?: unknown }
     const cont = b.continue === true
+    const fixChecks = b.fixChecks === true
+    if (fixChecks) {
+      const r = await queuePrompt(d, { text: null, selectedSlots: null, continue: false, fixChecks: true }, new Date())
+      if (!r.ok) return reply.status(r.status).send(r.body)
+      return reply.status(202).send({ jobId: r.jobId })
+    }
     if (!cont && (typeof b.text !== 'string' || !b.text.trim() || b.text.length > MAX_PROMPT)) {
       return reply.status(400).send({ error: `text must be 1-${MAX_PROMPT} characters` })
     }
@@ -134,6 +159,113 @@ export default async function studioRoutes(app: FastifyInstance) {
     const r = await queuePrompt(d, { text: cont ? null : (b.text as string).trim(), selectedSlots: slots, continue: cont }, new Date())
     if (!r.ok) return reply.status(r.status).send(r.body)
     return reply.status(202).send({ jobId: r.jobId })
+  })
+
+  app.get('/api/studio/designs/:id/finalize', auth, async (request, reply) => {
+    const d = await ownDesign(request)
+    if (!d) return notFound(reply)
+    try {
+      return await quoteFinalize(d, null, [])
+    } catch (err) {
+      if (err instanceof QuoteError) return quoteRefusal(reply, err)
+      throw err
+    }
+  })
+
+  app.post('/api/studio/designs/:id/finalize', auth, async (request, reply) => {
+    const d = await ownDesign(request)
+    if (!d) return notFound(reply)
+    if (!config.stripeSecretKey) return paymentsOff(reply)
+    const b = (request.body ?? {}) as { categories?: unknown; reports?: unknown }
+    let categories: string[] | null = null
+    if (b.categories != null) {
+      if (!Array.isArray(b.categories) || !b.categories.length || !b.categories.every((c) => typeof c === 'string' && /^[a-z_]{1,32}$/.test(c))) {
+        return reply.status(400).send({ error: 'categories must be piece categories' })
+      }
+      categories = [...new Set(b.categories as string[])]
+    }
+    const reports: Record<string, string> = {}
+    if (b.reports != null) {
+      if (typeof b.reports !== 'object' || Array.isArray(b.reports)) return reply.status(400).send({ error: 'reports must map a category to what was wrong' })
+      for (const [category, text] of Object.entries(b.reports as Record<string, unknown>)) {
+        if (!/^[a-z_]{1,32}$/.test(category) || typeof text !== 'string' || text.trim().length < REPORT_MIN || text.length > REPORT_MAX) {
+          return reply.status(400).send({ error: `a report must be ${REPORT_MIN}-${REPORT_MAX} characters` })
+        }
+        reports[category] = text.trim()
+      }
+    }
+    try {
+      return await createFinalizeCheckout(d, { id: request.user.id, email: request.user.email ?? null }, categories, reports, new Date())
+    } catch (err) {
+      return checkoutRefusal(reply, err)
+    }
+  })
+
+  app.post('/api/studio/designs/:id/pieces/:category/revisions/:number/report', auth, async (request, reply) => {
+    const d = await ownDesign(request)
+    if (!d) return notFound(reply)
+    if (!config.stripeSecretKey) return paymentsOff(reply)
+    const { category, number } = request.params as { category: string; number: string }
+    if (!/^[a-z_]{1,32}$/.test(category) || !/^[1-9][0-9]{0,5}$/.test(number)) return reply.status(400).send({ error: 'unknown revision' })
+    const text = (request.body as { text?: unknown } | null)?.text
+    if (typeof text !== 'string' || text.trim().length < REPORT_MIN || text.length > REPORT_MAX) {
+      return reply.status(400).send({ error: `a report must be ${REPORT_MIN}-${REPORT_MAX} characters` })
+    }
+    try {
+      return await reportMistake(d, category, Number(number), text.trim(), new Date())
+    } catch (err) {
+      return checkoutRefusal(reply, err)
+    }
+  })
+
+  /** The piece's paid revision from the route params, or the refusal already sent. */
+  async function paidRevision(request: FastifyRequest, reply: FastifyReply) {
+    const d = await ownDesign(request)
+    if (!d) return void notFound(reply)
+    const { category, number } = request.params as { category: string; number: string }
+    if (!/^[a-z_]{1,32}$/.test(category) || !/^[1-9][0-9]{0,5}$/.test(number)) return void reply.status(400).send({ error: 'unknown revision' })
+    const found = await entitlementFor(d.id, category, Number(number))
+    if (!found) return void reply.status(402).send({ error: 'This revision has not been paid for', code: 'not_paid' })
+    return { d, ...found }
+  }
+
+  // The only route a model file leaves by: the paid revision's package, to its owner
+  app.get('/api/studio/designs/:id/pieces/:category/revisions/:number/package', auth, async (request, reply) => {
+    const paid = await paidRevision(request, reply)
+    if (!paid) return reply
+    const { e, name } = paid
+    if (e.status !== 'ready' || !e.packageKey) return reply.status(409).send({ error: e.status, code: e.status })
+    const obj = await getStudioStore().getStream(e.packageKey)
+    if (!obj) return reply.status(404).send({ error: 'package_missing', code: 'package_missing' })
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || e.category
+    const { number } = request.params as { number: string }
+    if (obj.length !== undefined) reply.header('Content-Length', obj.length)
+    return reply
+      .type('application/zip')
+      .header('Content-Disposition', `attachment; filename="${slug}-r${number}.zip"`)
+      .header('Cache-Control', 'private, no-store')
+      .send(obj.body)
+  })
+
+  app.post('/api/studio/designs/:id/pieces/:category/revisions/:number/package/retry', auth, async (request, reply) => {
+    const paid = await paidRevision(request, reply)
+    if (!paid) return reply
+    if (paid.e.status !== 'failed') return reply.status(409).send({ error: 'not_failed', code: 'not_failed' })
+    const [jobId] = await queueFinalize(paid.d.id, [paid.e.id], new Date())
+    return reply.status(202).send({ jobId })
+  })
+
+  app.post('/api/studio/topups', auth, async (request, reply) => {
+    if (!config.stripeSecretKey) return paymentsOff(reply)
+    const packs = (request.body as { packs?: unknown } | null)?.packs ?? 1
+    if (!Number.isInteger(packs) || (packs as number) < 1 || (packs as number) > MAX_PACKS) {
+      return reply.status(400).send({ error: `packs must be 1-${MAX_PACKS}` })
+    }
+    try {
+      return await createTopupCheckout({ id: request.user.id, email: request.user.email ?? null }, packs as number, new Date())
+    } catch (err) {
+      return checkoutRefusal(reply, err)
+    }
   })
 
   app.post('/api/studio/designs/:id/renders', auth, async (request, reply) => {

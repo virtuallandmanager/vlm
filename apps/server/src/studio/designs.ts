@@ -7,6 +7,7 @@ import { ensureWorker } from './machines.js'
 import { failJobs } from './results.js'
 import { publishStudio } from './events.js'
 import { signRenderFrame, frameUrlExpiry } from './render-urls.js'
+import { finalizedRevisions } from './payments.js'
 
 /** What the dashboard's studio routes share: limits, view keys, the design detail, and queuing prompts and renders. */
 
@@ -17,6 +18,8 @@ export const PROMPT_LIMITS = { timeoutSec: 1500, maxTurns: 80, costCeilingUsd: 3
 export const RENDER_LIMITS = { timeoutSec: 300, maxTurns: 80, costCeilingUsd: 3 }
 export const CONTINUE_TEXT = 'Continue where you stopped.'
 export const START_FAILED = 'The studio machine could not start.'
+export const fixChecksText = (categories: string[]) =>
+  `Fix every FAIL the checker reported for: ${categories.join(', ')}. Change nothing else.`
 
 export const WEARABLE_CATEGORIES = [
   'eyebrows', 'eyes', 'facial_hair', 'hair', 'mouth', 'upper_body', 'lower_body', 'feet', 'earring', 'eyewear', 'hat',
@@ -32,12 +35,12 @@ export function viewKey(kind: string, view: View): string {
 }
 
 export function publicDesign(d: Design) {
-  return { id: d.id, name: d.name, kind: d.kind, agent: d.agent, status: d.status, archivedAt: d.archivedAt, lastJobAt: d.lastJobAt, createdAt: d.createdAt }
+  return { id: d.id, name: d.name, kind: d.kind, agent: d.agent, status: d.status, archivedAt: d.archivedAt, lastJobAt: d.lastJobAt, finalizedAt: d.finalizedAt, createdAt: d.createdAt }
 }
 
 export async function openDesignCount(userId: string): Promise<number> {
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(studioDesigns)
-    .where(and(eq(studioDesigns.ownerId, userId), isNull(studioDesigns.archivedAt)))
+    .where(and(eq(studioDesigns.ownerId, userId), isNull(studioDesigns.archivedAt), isNull(studioDesigns.finalizedAt)))
   return n
 }
 
@@ -46,6 +49,7 @@ export async function usage(userId: string, limit: number, now: Date) {
   return {
     plan: s.plan,
     promptsLeft: s.left,
+    credits: s.credits,
     allowance: s.allowance,
     resetsAt: s.resetsAt,
     openDesigns: await openDesignCount(userId),
@@ -59,6 +63,7 @@ export async function designDetail(d: Design, now: Date) {
   const revs = revIds.length ? await db.select().from(studioRevisions).where(inArray(studioRevisions.id, revIds)) : []
   const renders = revIds.length ? await db.select().from(studioRenders).where(inArray(studioRenders.revisionId, revIds)) : []
   const expires = frameUrlExpiry(now)
+  const finalized = await finalizedRevisions(d.id)
   const messages = await db.select().from(studioMessages).where(eq(studioMessages.designId, d.id))
     .orderBy(asc(studioMessages.createdAt), asc(studioMessages.id))
   const [active] = await db.select({ id: studioJobs.id, type: studioJobs.type, status: studioJobs.status }).from(studioJobs)
@@ -86,6 +91,7 @@ export async function designDetail(d: Design, now: Date) {
         name: p.name,
         revision: rev ? { number: rev.number, changeKind: rev.changeKind, checker: rev.checker, createdAt: rev.createdAt } : null,
         renders: views,
+        finalized: finalized.filter((f) => f.category === p.category).map(({ category: _c, ...f }) => f),
       }
     }),
     messages: messages.map((m) => ({ id: m.id, role: m.role, agent: m.agent, text: m.text, proposal: m.proposal, jobId: m.jobId, createdAt: m.createdAt })),
@@ -99,7 +105,7 @@ class Refused extends Error {
 }
 
 /** After a job is committed: make sure a machine will take it, or fail it plainly (refunding a counted prompt). */
-async function startWorker(designId: string, jobId: string, now: Date): Promise<void> {
+export async function startWorker(designId: string, jobId: string, now: Date): Promise<void> {
   try {
     await ensureWorker(designId)
   } catch (err) {
@@ -110,7 +116,7 @@ async function startWorker(designId: string, jobId: string, now: Date): Promise<
 
 export async function queuePrompt(
   design: Design,
-  input: { text: string | null; selectedSlots: string[] | null; continue: boolean },
+  input: { text: string | null; selectedSlots: string[] | null; continue: boolean; fixChecks?: boolean },
   now: Date,
 ): Promise<{ ok: true; jobId: string } | ({ ok: false } & Refusal)> {
   let jobId: string
@@ -130,13 +136,24 @@ export async function queuePrompt(
           throw new Refused({ status: 409, body: { error: 'nothing_to_continue', code: 'nothing_to_continue' } })
         }
       }
-      const counted = !input.continue
+      let fixText: string | null = null
+      if (input.fixChecks) {
+        // Fixing what the checker failed is the agent's job, so it doesn't use the allowance
+        const failing = await tx.select({ category: studioPieces.category, checker: studioRevisions.checker }).from(studioPieces)
+          .innerJoin(studioRevisions, eq(studioRevisions.id, studioPieces.latestRevisionId))
+          .where(eq(studioPieces.designId, d.id))
+          .orderBy(asc(studioPieces.category))
+        const categories = failing.filter((p) => (p.checker as { pass?: boolean } | null)?.pass === false).map((p) => p.category)
+        if (!categories.length) throw new Refused({ status: 409, body: { error: 'nothing_to_fix', code: 'nothing_to_fix' } })
+        fixText = fixChecksText(categories)
+      }
+      const counted = !input.continue && !input.fixChecks
       const r = await reservePrompt(d.ownerId, now, { counted }, tx)
       if (!r.ok) {
         const s = await promptStatus(d.ownerId, now)
         throw new Refused({ status: 429, body: { error: r.reason, code: r.reason, resetsAt: s.resetsAt } })
       }
-      const text = input.continue ? CONTINUE_TEXT : input.text!
+      const text = input.continue ? CONTINUE_TEXT : fixText ?? input.text!
       await tx.insert(studioMessages).values({ designId: d.id, role: 'user', text })
       const [job] = await tx.insert(studioJobs).values({
         designId: d.id,
@@ -153,6 +170,7 @@ export async function queuePrompt(
         },
         counted,
         countedDay: r.day,
+        countedFrom: r.from,
       }).returning({ id: studioJobs.id })
       await tx.update(studioDesigns).set({ status: 'building', lastJobAt: now }).where(eq(studioDesigns.id, d.id))
       return job.id

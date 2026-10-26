@@ -1,13 +1,17 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { studioUsageDays } from '../db/schema.js'
+import { studioPromptCredits, studioUsageDays } from '../db/schema.js'
 import { getSubscription } from '../integrations/stripe.js'
 
 /**
  * The Design Studio's daily prompt allowance and the hidden daily cost ceiling, per user and UTC day. A prompt counts
  * when it is accepted and is given back when its job ends in `error` or is lost. The allowance applies even when
- * config.allFeaturesUnlocked: prompts run on Virvi's paid agent keys.
+ * config.allFeaturesUnlocked: prompts run on Virvi's paid agent keys. Bought prompts (credits) are used once the day's
+ * allowance is spent, never expire, and are still stopped by the cost ceiling; a given-back prompt returns to where
+ * it came from.
  */
+
+export type PromptSource = 'allowance' | 'credit'
 
 /** A database handle or an open transaction. */
 export type Exec = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -29,14 +33,22 @@ async function usage(userId: string, day: string, exec: Exec = db) {
   return { prompts: row?.prompts ?? 0, costUsd: row?.costUsd ?? 0 }
 }
 
+async function creditBalance(userId: string, exec: Exec = db): Promise<number> {
+  const [row] = await exec.select({ balance: studioPromptCredits.balance }).from(studioPromptCredits)
+    .where(eq(studioPromptCredits.userId, userId))
+  return row?.balance ?? 0
+}
+
 export async function promptStatus(userId: string, now: Date) {
   const { plan, allowance, ceiling } = await limitsFor(userId)
   const { prompts, costUsd } = await usage(userId, utcDay(now))
+  const credits = await creditBalance(userId)
   return {
     plan,
     allowance,
     used: prompts,
-    left: Math.max(0, allowance - prompts), // Plan 4 adds top-ups here
+    credits,
+    left: Math.max(0, allowance - prompts) + credits,
     resetsAt: nextUtcMidnight(now),
     overCostCeiling: costUsd >= ceiling,
   }
@@ -44,14 +56,15 @@ export async function promptStatus(userId: string, now: Date) {
 
 /**
  * Takes one prompt from today's allowance (when counted) in a single statement, so concurrent reservations never pass
- * it. Every reservation, counted or not, is refused once today's spend reaches the cost ceiling.
+ * it; once the allowance is spent, one credit, also in a single statement. Every reservation, counted or not, is
+ * refused once today's spend reaches the cost ceiling.
  */
 export async function reservePrompt(
   userId: string,
   now: Date,
   opts: { counted: boolean },
   exec: Exec = db,
-): Promise<{ ok: true; day: string } | { ok: false; reason: 'allowance' | 'cost_ceiling' }> {
+): Promise<{ ok: true; day: string; from: PromptSource | null } | { ok: false; reason: 'allowance' | 'cost_ceiling' }> {
   const { allowance, ceiling } = await limitsFor(userId)
   const day = utcDay(now)
   const inc = opts.counted ? 1 : 0
@@ -62,12 +75,24 @@ export async function reservePrompt(
     WHERE studio_usage_days.cost_usd < ${ceiling}
       AND (EXCLUDED.prompts = 0 OR studio_usage_days.prompts < ${allowance})
     RETURNING prompts`)
-  if ((rows as unknown as unknown[]).length) return { ok: true, day }
+  if ((rows as unknown as unknown[]).length) return { ok: true, day, from: opts.counted ? 'allowance' : null }
   const { costUsd } = await usage(userId, day, exec)
-  return { ok: false, reason: costUsd >= ceiling ? 'cost_ceiling' : 'allowance' }
+  if (costUsd >= ceiling) return { ok: false, reason: 'cost_ceiling' }
+  const credit = await exec.execute(sql`
+    UPDATE studio_prompt_credits SET balance = balance - 1, updated_at = now()
+    WHERE user_id = ${userId} AND balance > 0
+    RETURNING balance`)
+  if ((credit as unknown as unknown[]).length) return { ok: true, day, from: 'credit' }
+  return { ok: false, reason: 'allowance' }
 }
 
-export async function refundPrompt(userId: string, day: string, exec: Exec = db): Promise<void> {
+/** Gives a counted prompt back: to the day's allowance, or as a credit when a credit paid for it. */
+export async function refundPrompt(userId: string, day: string, from: PromptSource | null, exec: Exec = db): Promise<void> {
+  if (from === 'credit') {
+    await exec.insert(studioPromptCredits).values({ userId, balance: 1 })
+      .onConflictDoUpdate({ target: studioPromptCredits.userId, set: { balance: sql`${studioPromptCredits.balance} + 1`, updatedAt: new Date() } })
+    return
+  }
   await exec.update(studioUsageDays)
     .set({ prompts: sql`GREATEST(${studioUsageDays.prompts} - 1, 0)` })
     .where(and(eq(studioUsageDays.userId, userId), eq(studioUsageDays.day, day)))
