@@ -15,8 +15,15 @@ import { config } from '../config.js'
 // ---------------------------------------------------------------------------
 
 let _stripe: any = null
+let _override: any = null
 
-async function getStripe(): Promise<any> {
+/** Tests replace the Stripe client with a fake; null puts the real one back. */
+export function setStripe(client: any): void {
+  _override = client
+}
+
+export async function getStripe(): Promise<any> {
+  if (_override) return _override
   if (!config.stripeSecretKey) {
     throw new Error('Stripe is not configured (STRIPE_SECRET_KEY missing)')
   }
@@ -191,6 +198,34 @@ export function getTierLimits(tier: string): TierLimits {
 // Stripe Checkout
 // ---------------------------------------------------------------------------
 
+/** The user's Stripe customer, created (with their subscription record) the first time they pay for anything. */
+export async function ensureCustomer(userId: string, email: string | null | undefined): Promise<string> {
+  const stripe = await getStripe()
+  const sub = await db.query.subscriptions.findFirst({
+    where: eq(subscriptions.userId, userId),
+  })
+  if (sub?.stripeCustomerId) return sub.stripeCustomerId
+
+  const customer = await stripe.customers.create({
+    email: email || undefined,
+    metadata: { vlm_user_id: userId },
+  })
+  if (!sub) {
+    await db.insert(subscriptions).values({
+      userId,
+      stripeCustomerId: customer.id,
+      tier: 'free',
+      status: 'active',
+    })
+  } else {
+    await db
+      .update(subscriptions)
+      .set({ stripeCustomerId: customer.id })
+      .where(eq(subscriptions.id, sub.id))
+  }
+  return customer.id
+}
+
 /**
  * Create a Stripe Checkout session for upgrading to a paid tier.
  */
@@ -202,36 +237,7 @@ export async function createCheckoutSession(options: {
   cancelUrl: string
 }): Promise<{ url: string }> {
   const stripe = await getStripe()
-
-  // Find or create Stripe customer
-  let sub = await db.query.subscriptions.findFirst({
-    where: eq(subscriptions.userId, options.userId),
-  })
-
-  let customerId = sub?.stripeCustomerId
-
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: options.email,
-      metadata: { vlm_user_id: options.userId },
-    })
-    customerId = customer.id
-
-    // Create subscription record if it doesn't exist
-    if (!sub) {
-      await db.insert(subscriptions).values({
-        userId: options.userId,
-        stripeCustomerId: customerId,
-        tier: 'free',
-        status: 'active',
-      })
-    } else {
-      await db
-        .update(subscriptions)
-        .set({ stripeCustomerId: customerId })
-        .where(eq(subscriptions.id, sub.id))
-    }
-  }
+  const customerId = await ensureCustomer(options.userId, options.email)
 
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
@@ -278,6 +284,10 @@ export async function createPortalSession(options: {
  * Process a Stripe webhook event. Called from the billing webhook route.
  */
 export async function handleWebhookEvent(event: any): Promise<void> {
+  // Design Studio one-time payments (src/studio/payments.ts); imported here to keep the two modules acyclic at load
+  const { handleStudioSession } = await import('../studio/payments.js')
+  if (await handleStudioSession(event)) return
+
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object

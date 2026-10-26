@@ -99,7 +99,7 @@ class Refused extends Error {
 }
 
 /** After a job is committed: make sure a machine will take it, or fail it plainly (refunding a counted prompt). */
-async function startWorker(designId: string, jobId: string, now: Date): Promise<void> {
+export async function startWorker(designId: string, jobId: string, now: Date): Promise<void> {
   try {
     await ensureWorker(designId)
   } catch (err) {

@@ -8,6 +8,7 @@ import { getSubscription } from '../integrations/stripe.js'
 import { getStudioStore, jobFileKey } from '../studio/store.js'
 import { verifyRenderFrame, framePath } from '../studio/render-urls.js'
 import { quoteFinalize, QuoteError } from '../studio/pricing.js'
+import { createFinalizeCheckout, createTopupCheckout, PaymentError } from '../studio/payments.js'
 import {
   BASE_EMOTES, BODY_SHAPES, OUTFITS, WEARABLE_CATEGORIES,
   designDetail, openDesignCount, publicDesign, queuePrompt, requestRender, usage, type Design, type View,
@@ -22,9 +23,21 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MAX_PROMPT = 4000
 const MAX_NAME = 120
 const AGENTS = ['claude', 'codex']
+const REPORT_MIN = 10
+const REPORT_MAX = 2000
+const MAX_PACKS = 10
 
 async function studioOn(_request: FastifyRequest, reply: FastifyReply) {
   if (!config.studioEnabled) return reply.status(404).send({ error: 'not_found' })
+}
+
+const paymentsOff = (reply: FastifyReply) => reply.status(503).send({ error: 'Payments are not available', code: 'payments_unavailable' })
+
+/** Checkout failures as the page sees them. */
+function checkoutRefusal(reply: FastifyReply, err: unknown) {
+  if (err instanceof QuoteError) return quoteRefusal(reply, err)
+  if (err instanceof PaymentError) return reply.status(err.status).send({ error: err.code, code: err.code })
+  throw err
 }
 
 const notFound = (reply: FastifyReply) => reply.status(404).send({ error: 'design_not_found' })
@@ -150,6 +163,48 @@ export default async function studioRoutes(app: FastifyInstance) {
     } catch (err) {
       if (err instanceof QuoteError) return quoteRefusal(reply, err)
       throw err
+    }
+  })
+
+  app.post('/api/studio/designs/:id/finalize', auth, async (request, reply) => {
+    const d = await ownDesign(request)
+    if (!d) return notFound(reply)
+    if (!config.stripeSecretKey) return paymentsOff(reply)
+    const b = (request.body ?? {}) as { categories?: unknown; reports?: unknown }
+    let categories: string[] | null = null
+    if (b.categories != null) {
+      if (!Array.isArray(b.categories) || !b.categories.length || !b.categories.every((c) => typeof c === 'string' && /^[a-z_]{1,32}$/.test(c))) {
+        return reply.status(400).send({ error: 'categories must be piece categories' })
+      }
+      categories = [...new Set(b.categories as string[])]
+    }
+    const reports: Record<string, string> = {}
+    if (b.reports != null) {
+      if (typeof b.reports !== 'object' || Array.isArray(b.reports)) return reply.status(400).send({ error: 'reports must map a category to what was wrong' })
+      for (const [category, text] of Object.entries(b.reports as Record<string, unknown>)) {
+        if (!/^[a-z_]{1,32}$/.test(category) || typeof text !== 'string' || text.trim().length < REPORT_MIN || text.length > REPORT_MAX) {
+          return reply.status(400).send({ error: `a report must be ${REPORT_MIN}-${REPORT_MAX} characters` })
+        }
+        reports[category] = text.trim()
+      }
+    }
+    try {
+      return await createFinalizeCheckout(d, { id: request.user.id, email: request.user.email ?? null }, categories, reports, new Date())
+    } catch (err) {
+      return checkoutRefusal(reply, err)
+    }
+  })
+
+  app.post('/api/studio/topups', auth, async (request, reply) => {
+    if (!config.stripeSecretKey) return paymentsOff(reply)
+    const packs = (request.body as { packs?: unknown } | null)?.packs ?? 1
+    if (!Number.isInteger(packs) || (packs as number) < 1 || (packs as number) > MAX_PACKS) {
+      return reply.status(400).send({ error: `packs must be 1-${MAX_PACKS}` })
+    }
+    try {
+      return await createTopupCheckout({ id: request.user.id, email: request.user.email ?? null }, packs as number, new Date())
+    } catch (err) {
+      return checkoutRefusal(reply, err)
     }
   })
 
