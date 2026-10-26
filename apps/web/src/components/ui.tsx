@@ -19,7 +19,7 @@ export function PrimaryButton({ className = '', children, ...rest }: ButtonHTMLA
 export type Crumb = string | { label: string; href: string }
 
 /** Breadcrumb, title with an optional count badge, subtitle, and the page's actions on the right. Detail pages link their parent crumb instead of a back link. */
-export function PageHeader({ crumbs, title, count, subtitle, actions }: { crumbs?: Crumb[]; title: string; count?: string; subtitle?: ReactNode; actions?: ReactNode }) {
+export function PageHeader({ crumbs, title, count, subtitle, actions }: { crumbs?: Crumb[]; title: ReactNode; count?: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
     <header className="mb-6 border-b border-gray-800 pb-6">
       {crumbs && crumbs.length > 0 && (
