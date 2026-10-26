@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Runs the worker against real agents: the spike's brief 01 (build a hat) then brief 02 (tweak it), each on a fresh
-worker start that restores the workspace, with tests/fake_api.py standing in for VLM's API. Spends about $1 per agent.
+worker start that restores the workspace, with tests/fake_api.py standing in for Virvi's API. Spends about $1 per agent.
 
     python3 /opt/e2e/real_prompt.py --agent claude [--then codex] [--out /out]
 
@@ -49,7 +49,7 @@ def main() -> int:
     token = secrets.token_urlsafe(24)
     with fake_api.serve(token=token, design='real-design') as api:
         api.on_event = lambda job, e: print(f"  [{job}] {e.get('phase') or e.get('text')}", flush=True)
-        env = {'VLM_API_URL': api.url, 'STUDIO_WORKER_TOKEN': token, 'STUDIO_DESIGN_ID': 'real-design',
+        env = {'VIRVI_API_URL': api.url, 'STUDIO_WORKER_TOKEN': token, 'STUDIO_DESIGN_ID': 'real-design',
                'STUDIO_IDLE_EXIT_SEC': '3'}
         for n, (agent, words) in enumerate(zip(agents, BRIEFS), 1):
             job_id = f'job-{n}-{agent}'

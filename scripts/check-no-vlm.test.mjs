@@ -69,3 +69,7 @@ test('flags a file named after vlm', () => {
   assert.equal(r.code, 1)
   assert.match(r.out, /public\/vlm-logo\.svg: file name mentions vlm/)
 })
+
+test('a ** path pattern skips nested folders too', () => {
+  assert.equal(run(repo({ 'docs/superpowers/plans/2026-vlm.md': 'vlm\n' })).code, 0)
+})

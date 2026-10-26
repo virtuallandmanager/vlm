@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Runs the real worker loop (studio_worker.jobs.main) against a real VLM API, with a fake agent CLI and a fake
+"""Runs the real worker loop (studio_worker.jobs.main) against a real Virvi API, with a fake agent CLI and a fake
 renderer: what the server's contract test (apps/server/test/studio-contract.test.ts) drives.
 
-    VLM_API_URL=... STUDIO_WORKER_TOKEN=... STUDIO_DESIGN_ID=... STUDIO_IDLE_EXIT_SEC=2 python3 drive_worker.py
+    VIRVI_API_URL=... STUDIO_WORKER_TOKEN=... STUDIO_DESIGN_ID=... STUDIO_IDLE_EXIT_SEC=2 python3 drive_worker.py
 
 The agent replays tests/fakes/claude_builds_hat.jsonl (STUDIO_FAKE_AGENT names another fixture); each render writes 36
 small webp frames. The skills' checker runs for real: from /opt/skills, or the checkout STUDIO_SKILLS names.

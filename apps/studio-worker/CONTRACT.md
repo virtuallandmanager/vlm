@@ -1,18 +1,18 @@
 # Studio worker contract
 
-How a studio worker machine talks to VLM's API. This file is the source of truth: `studio_worker/api.py` is the
-worker's side, `tests/fake_api.py` implements VLM's side for tests, and the server routes (Plan 3) implement it for
+How a studio worker machine talks to Virvi's API. This file is the source of truth: `studio_worker/api.py` is the
+worker's side, `tests/fake_api.py` implements Virvi's side for tests, and the server routes (Plan 3) implement it for
 real.
 
 One machine works on one design. It restores the design's workspace, takes that design's jobs one at a time, and
-exits after `STUDIO_IDLE_EXIT_SEC` with no job, which stops the machine. The worker always pulls; VLM never calls
+exits after `STUDIO_IDLE_EXIT_SEC` with no job, which stops the machine. The worker always pulls; Virvi never calls
 the machine.
 
 ## Machine environment
 
 | Variable | Meaning |
 |---|---|
-| `VLM_API_URL` | VLM's API origin, such as `https://api.vlm.gg`. Its host is added to the proxy allowlist. |
+| `VIRVI_API_URL` | Virvi's API origin, such as `https://api.virvi.io`. Its host is added to the proxy allowlist. |
 | `STUDIO_WORKER_TOKEN` | Bearer token scoped to this one design. Never handed to an agent, never logged. |
 | `STUDIO_DESIGN_ID` | The design this machine works on. |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | Fly secrets. Each agent gets only its own (Codex as `CODEX_API_KEY`). |
@@ -20,7 +20,7 @@ the machine.
 
 ## Endpoints
 
-All under `$VLM_API_URL/api/studio/worker`, with `Authorization: Bearer $STUDIO_WORKER_TOKEN`. A token for another
+All under `$VIRVI_API_URL/api/studio/worker`, with `Authorization: Bearer $STUDIO_WORKER_TOKEN`. A token for another
 design gets 403. Path segments are URL-encoded.
 
 | Call | Body | Answers |
@@ -33,7 +33,7 @@ design gets 403. Path segments are URL-encoded.
 | `POST /jobs/{jobId}/result` | a Result (JSON) | 2xx; the job is finished |
 
 The worker retries a call 3 times on a 5xx or connection error. It retries the result `POST` until it succeeds or
-10 minutes pass. A 4xx is never retried. VLM should time out a taken job that has no result after the job's
+10 minutes pass. A 4xx is never retried. Virvi should time out a taken job that has no result after the job's
 `limits.timeoutSec` plus 15 minutes.
 
 ### Workspace
@@ -43,11 +43,11 @@ A gzip tar with two top-level folders:
 - `design/`: the agent's working files, `out/`, and the agents' session homes (`.claude-home/`, `.codex-home/`). The
   agent owns this folder and can write anything in it.
 - `state/`: the worker's own records, `state.json` (the conversation, sessions, running usage and the hashes of the
-  pieces VLM has). It lives outside the agent's reach, so an agent can't change what it's charged or what counts as
+  pieces Virvi has). It lives outside the agent's reach, so an agent can't change what it's charged or what counts as
   changed.
 
 Only regular files and folders are stored: a symlink the agent made is left out, and the worker refuses a workspace
-holding links, absolute paths or `..`. The skills come from the image, never from a workspace. VLM stores the
+holding links, absolute paths or `..`. The skills come from the image, never from a workspace. Virvi stores the
 workspace as an opaque blob, privately.
 
 ### Files
@@ -55,8 +55,8 @@ workspace as an opaque blob, privately.
 | Path | What | Who may see it |
 |---|---|---|
 | `pieces/<category>/<name>_male.glb`, `_female.glb` or `<name>.glb` | a piece's GLBs | paid downloads only |
-| `pieces/<category>/piece.json` | the piece's settings, as below | VLM only |
-| `checks/<category>.txt` | the skills checker's full report | VLM only |
+| `pieces/<category>/piece.json` | the piece's settings, as below | Virvi only |
+| `checks/<category>.txt` | the skills checker's full report | Virvi only |
 | `renders/<category>/<viewKey>/<nnn>.webp` | render frames, `000` up | the browser |
 
 Render frames are the only files the browser ever receives. A `viewKey` is `<mode>-<bodyShape>-<outfit>`, plus
@@ -149,7 +149,7 @@ effort: one that fails to send is dropped.
 - **Pieces are keyed by category.** A design holds at most one piece per category, and an emote design has the one
   category `emote`. `pieces` lists every piece in the design (none on `ceiling`, `timeout`, a wrong layout or a failed save).
 - **A piece's `files` and `renders` are set only when this job uploaded it.** An unchanged piece has empty lists, and
-  the files VLM already has for it stand. A changed piece is uploaded only once it has rendered and no proposal is
+  the files Virvi already has for it stand. A changed piece is uploaded only once it has rendered and no proposal is
   pending; until then it stays "changed", so a later prompt uploads it. Files are never uploaded by a job whose
   result is not `ok`, apart from a render failure on another piece of the same job.
 - `changeKind`, from the agent: `"new"`, `"fix"` (a fix to a published piece) or `"design"` (a design change).

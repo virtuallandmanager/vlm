@@ -1,15 +1,15 @@
 # Design Studio worker
 
-The image a Design Studio design runs on: one Fly machine per design, started by VLM's server. It restores the
-design's workspace from VLM's API, takes its prompt and render jobs, runs Claude Code or Codex with
+The image a Design Studio design runs on: one Fly machine per design, started by Virvi's server. It restores the
+design's workspace from Virvi's API, takes its prompt and render jobs, runs Claude Code or Codex with
 `dcl-avatar-skills`, checks and renders the pieces in Decentraland's wearable-preview, and reports back. The browser
 only ever gets render frames.
 
-- `CONTRACT.md`: how the worker and VLM's API talk. The source of truth for both sides.
+- `CONTRACT.md`: how the worker and Virvi's API talk. The source of truth for both sides.
 - `studio_worker/`: the worker (`python3 -m studio_worker`) and `studio-preview`, the command the agent looks at its
   work with.
 - `allowlist.txt`, `tinyproxy.conf`, `entrypoint.sh` (nftables): all outbound traffic goes through a proxy that allows only
-  the agents' APIs, VLM's API and the preview's hosts. The entrypoint fails closed without `NET_ADMIN`.
+  the agents' APIs, Virvi's API and the preview's hosts. The entrypoint fails closed without `NET_ADMIN`.
 - `spike/`: the measurement spike behind `docs/superpowers/specs/2026-10-24-design-studio-spike-findings.md`. Kept as
   the record; nothing imports it.
 
@@ -48,7 +48,7 @@ fly deploy --build-only --push --image-label "$(git rev-parse --short HEAD)"
 bash e2e/fly.sh "registry.fly.io/vlm-studio-worker:$(git rev-parse --short HEAD)"
 ```
 
-VLM's server starts machines from the image label it is configured with, so a new image reaches designs only when
+Virvi's server starts machines from the image label it is configured with, so a new image reaches designs only when
 that setting changes.
 
 **A new skills version:** set `SKILLS_SHA` in the `Dockerfile` to the full commit, rebuild, and run the unit tests

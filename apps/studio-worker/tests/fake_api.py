@@ -1,4 +1,4 @@
-"""A real local HTTP server implementing VLM's side of CONTRACT.md, recording every call. Tests and the e2e scripts
+"""A real local HTTP server implementing Virvi's side of CONTRACT.md, recording every call. Tests and the e2e scripts
 run the worker against it.
 
     with serve(token='t', design='d1') as api:
