@@ -157,7 +157,7 @@ def _run(spec: dict) -> dict:
             if is_blank(image):
                 return _fail('blank', start)
             path = out / 'thumbnail.png'
-            _square(image).save(path)
+            fit_square(image).save(path)
             browser.close()
             return {'ok': True, 'frames': [str(path)], 'error': None, 'bootSec': boot}
         if mode == 'emote':
@@ -192,7 +192,7 @@ def _png(page, transparent: bool = False):
     return io.BytesIO(page.screenshot(type='png', omit_background=transparent))
 
 
-def _square(image: Image.Image, size: int = 256, margin: float = 0.08) -> Image.Image:
+def fit_square(image: Image.Image, size: int = 256, margin: float = 0.08) -> Image.Image:
     """The opaque part of an RGBA image, centred on a transparent square of `size` px."""
     box = image.getchannel('A').getbbox() or (0, 0, image.width, image.height)
     item = image.crop(box)

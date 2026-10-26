@@ -37,14 +37,19 @@ class FakeTools:
         if any('thumbnail_blend' in str(a) for a in args):
             if 'thumbnail' in self.crash:
                 return False, 'Blender crashed'
-            Image.new('RGBA', (256, 256), (0, 0, 0, 0)).save(self._arg(args, '--out'))
+            # an item framed badly: small, in a corner (as when a stray object widens the camera's frame)
+            size = int(self._arg(args, '--size'))
+            image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+            image.paste((200, 30, 120, 255), (10, 10, 10 + size // 10, 10 + size // 20))
+            image.save(self._arg(args, '--out'))
             return True, 'Saved'
         if any('check_clipping' in str(a) for a in args):
             clips = {'Idle': {'status': 'PASS'}, 'Walk': {'status': 'PASS'}}
             clips.update({c: {'status': 'FAIL'} for c in self.clip_fail})
             Path(self._arg(args, '--json')).write_text(json.dumps({'clips': clips}))
             gate = 'FAIL: ' + ', '.join(self.clip_fail) if self.clip_fail else 'PASS'
-            return not self.clip_fail, f'CLIP GATE {gate}'
+            noise = '\n'.join(f'04:00:{i:02d} | INFO: glTF import finished in 0.05s' for i in range(40))
+            return not self.clip_fail, f'{noise}\n  PASS   Idle    0/61 frames clip\nCLIP GATE {gate}'
         return False, 'unknown blender call'
 
     def python(self, script, args, timeout):
@@ -228,3 +233,24 @@ def test_builder_zip_failure_fails_piece_but_odd_names_are_fitted(api, tmp_path)
     piece = give_inputs(api, 'job-g', 'hat', HAT_FILES, HAT_META)
     result = run(api, tmp_path, finalize_job([piece], job_id='job-g'), FakeTools(crash=['package']))
     assert result['outcome'] == 'error' and 'item.zip' in result['error']
+
+
+def test_thumbnail_is_cropped_to_the_item(api, tmp_path):
+    piece = give_inputs(api, 'job-f', 'hat', HAT_FILES, HAT_META)
+    tools = FakeTools()
+    assert run(api, tmp_path, finalize_job([piece]), tools)['outcome'] == 'ok'
+    blender = next(a for k, a in tools.calls if k == 'blender' and any('thumbnail_blend' in str(x) for x in a))
+    assert blender[blender.index('--size') + 1] == '1024'  # rendered large, then fitted
+    thumb = Image.open(io.BytesIO(package(api, 'job-f', 'hat').read('thumbnail.png')))
+    assert thumb.size == (256, 256) and thumb.mode == 'RGBA'
+    left, top, right, bottom = thumb.getchannel('A').getbbox()
+    assert max(right - left, bottom - top) >= 0.8 * 256  # the item fills the frame
+    assert thumb.getpixel((0, 0))[3] == 0 and thumb.getpixel((255, 255))[3] == 0
+
+
+def test_report_leaves_out_blender_noise(api, tmp_path):
+    piece = give_inputs(api, 'job-f', 'hat', HAT_FILES, HAT_META)
+    assert run(api, tmp_path, finalize_job([piece]))['outcome'] == 'ok'
+    report = package(api, 'job-f', 'hat').read('REPORT.md').decode()
+    assert '| INFO:' not in report
+    assert 'CLIP GATE PASS' in report and 'Idle    0/61 frames clip' in report

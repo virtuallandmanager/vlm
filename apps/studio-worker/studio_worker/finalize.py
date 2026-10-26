@@ -15,9 +15,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from PIL import Image
+
 from . import config
 from .api import ApiError
 from .pieces import Piece, glbs_by_shape
+from .render import fit_square
 
 THUMBNAIL_BLEND = Path(__file__).parent / 'thumbnail_blend.py'
 AVATARS = {'male': 'AvatarShape_A.blend', 'female': 'AvatarShape_B.blend'}
@@ -136,8 +139,12 @@ def _check_levels(report: str) -> bool:
     return not any(l.split()[:1] == ['FAIL'] for l in report.splitlines() if l.startswith('  '))
 
 
+# Blender's own log lines (`04:00:43 | INFO: glTF import finished`), which bury a check's output
+BLENDER_NOISE = re.compile(r'^\d\d:\d\d:\d\d \| (INFO|DEBUG|WARNING):')
+
+
 def _clip(text: str) -> str:
-    lines = text.strip().splitlines()
+    lines = [l for l in text.strip().splitlines() if not BLENDER_NOISE.match(l)]
     return '\n'.join(lines[:REPORT_LINES] + ([f'… ({len(lines) - REPORT_LINES} more lines)'] if len(lines) > REPORT_LINES else []))
 
 
@@ -168,10 +175,13 @@ def _package(job, piece, kind, design_name, client, render_fn, tools: Tools, wor
             raise PieceFailed(f"thumbnail render failed: {r['error']}")
         shutil.copy(r['frames'][0], thumb)
     else:
+        # Rendered large, then cropped to what rendered: an invisible stray object can't shrink the item in the frame
+        large = work / 'thumbnail-large.png'
         ok, log = tools.blender(['-b', '--factory-startup', '--python', THUMBNAIL_BLEND, '--', '--glb',
-                                 shaped.get('male') or glbs[0], '--out', thumb, '--size', '256'], 300)
-        if not ok or not thumb.exists():
+                                 shaped.get('male') or glbs[0], '--out', large, '--size', '1024'], 300)
+        if not ok or not large.exists():
             raise PieceFailed(f'thumbnail failed: {log.strip()[-300:]}')
+        fit_square(Image.open(large).convert('RGBA')).save(thumb)
     thumb_ok, thumb_log = tools.python(_skill('curating-dcl-wearables/scripts/check_thumbnail.py'), [thumb], 60)
 
     checker_ok = _check_levels(checker_report)
