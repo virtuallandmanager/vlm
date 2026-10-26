@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Lists every remaining "vlm" in tracked files, outside the names the Virvi rename keeps on purpose
+// Lists every remaining "vlm" or "Virtual Land Manager" in tracked files and file names, outside the names the Virvi rename keeps on purpose
 // (scripts/vlm-allowlist.json, or a line marked `virvi-rename: keep`). Exits 1 when any are left.
 // Usage: node scripts/check-no-vlm.mjs [pathspec...]
 import { execFileSync } from 'node:child_process'
@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 const allow = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'vlm-allowlist.json'), 'utf8'))
 const KEEP = 'virvi-rename: keep'
+const OLD = /vlm|virtual land manager/i
 
 const globToRegex = (glob) =>
   new RegExp(
@@ -31,6 +32,10 @@ const files = execFileSync('git', ['ls-files', '-z', '--', ...process.argv.slice
 
 let hits = 0
 for (const file of files) {
+  if (OLD.test(tokens.reduce((s, re) => s.replace(re, ''), file.split('/').pop()))) {
+    console.log(`${file}: file name mentions vlm`)
+    hits++
+  }
   let buf
   try {
     buf = readFileSync(file)
@@ -38,7 +43,7 @@ for (const file of files) {
     continue // listed but deleted in the working tree
   }
   if (buf.subarray(0, 8000).includes(0)) {
-    if (/vlm/i.test(buf.toString('latin1'))) {
+    if (OLD.test(buf.toString('latin1'))) {
       console.log(`${file}: binary file mentions vlm`)
       hits++
     }
@@ -47,7 +52,7 @@ for (const file of files) {
   buf.toString('utf8').split('\n').forEach((line, i) => {
     if (line.includes(KEEP)) return
     const rest = tokens.reduce((s, re) => s.replace(re, ''), line)
-    if (/vlm/i.test(rest)) {
+    if (OLD.test(rest)) {
       console.log(`${file}:${i + 1}: ${line.trim().slice(0, 200)}`)
       hits++
     }

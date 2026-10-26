@@ -59,3 +59,13 @@ test('counts a binary file once', () => {
   assert.equal(r.code, 1)
   assert.match(r.out, /1 hits/)
 })
+
+test('flags the old full name', () => {
+  assert.equal(run(repo({ 'a.ts': "title: 'Virvi — Virtual Land Manager'\n" })).code, 1)
+})
+
+test('flags a file named after vlm', () => {
+  const r = run(repo({ 'public/vlm-logo.svg': '<svg/>\n' }))
+  assert.equal(r.code, 1)
+  assert.match(r.out, /public\/vlm-logo\.svg: file name mentions vlm/)
+})
