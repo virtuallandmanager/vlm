@@ -32,7 +32,7 @@ const STEPS: Array<{ id: WizardStep; title: string }> = [
 function summary(step: WizardStep, s: WizardState): string {
   switch (step) {
     case 'where':
-      return [s.destinations.dcl?.world, s.destinations.hyperfy && 'Hyperfy', s.destinations.ar && 'Virvi AR'].filter(Boolean).join(' · ')
+      return [s.name.trim(), s.destinations.dcl?.world, s.destinations.hyperfy && 'Hyperfy', s.destinations.ar && 'Virvi AR'].filter(Boolean).join(' · ')
     case 'size':
       return s.plot ? plotLabel(s.plot) : 'Guide plot'
     case 'assets':

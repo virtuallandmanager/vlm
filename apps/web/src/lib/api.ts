@@ -448,6 +448,9 @@ export function useApi() {
       apiFetch<{ world: HyperfyWorldSummary; adminCode: string }>('/api/hyperfy/worlds', { method: 'POST', body: JSON.stringify({ ...data, kind: 'hosted' }) }),
     getHyperfySlots: () =>
       apiFetch<{ used: number; limit: number | null; hostingAvailable: boolean }>('/api/hyperfy/slots'),
+    /** The display name only: a hosted world's address stays as it is. */
+    renameHyperfyWorld: (id: string, name: string) =>
+      apiFetch<{ world: HyperfyWorldSummary }>(`/api/hyperfy/worlds/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
     setHyperfyWorldEndDate: (id: string, endsAt: string | null) =>
       apiFetch<{ world: HyperfyWorldSummary }>(`/api/hyperfy/worlds/${id}`, { method: 'PATCH', body: JSON.stringify({ endsAt }) }),
     restoreHyperfyWorld: (id: string) =>

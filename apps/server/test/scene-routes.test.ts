@@ -99,4 +99,18 @@ describe('scene routes enforce collaborator roles', () => {
     const s = await setup()
     expect((await app.inject({ method: 'DELETE', url: `/api/scenes/${s.scene.id}`, headers: as(s.owner) })).statusCode).toBe(204)
   })
+
+  it('renaming a scene trims the name; a viewer cannot; blank or over 120 characters is 400', async () => {
+    const s = await setup()
+    const put = (u: any, name: unknown) => app.inject({ method: 'PUT', url: `/api/scenes/${s.scene.id}`, headers: as(u), payload: { name } })
+    const ok = await put(s.owner, '  Moon base  ')
+    expect(ok.statusCode).toBe(200)
+    expect(ok.json().scene.name).toBe('Moon base')
+    expect((await put(s.editor, 'Moon base 2')).statusCode).toBe(200)
+    expect((await put(s.viewer, 'Nope')).statusCode).toBe(403)
+    for (const bad of ['   ', '', 'x'.repeat(121), 42, null]) {
+      expect((await put(s.owner, bad)).statusCode, JSON.stringify(bad)).toBe(400)
+    }
+    expect((await put(s.owner, 'x'.repeat(120))).statusCode).toBe(200)
+  })
 })

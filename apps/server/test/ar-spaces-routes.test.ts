@@ -145,4 +145,32 @@ describe('AR spaces setup routes', () => {
     expect((await db.select().from(arFloors)).length).toBe(0)
     expect((await db.select().from(arMarkers)).length).toBe(0)
   })
+
+  it('renames a space: owner and editor may, a viewer gets 403; floors and ring codes stay; blank or too long is 400', async () => {
+    const s = await setup()
+    const editor = await createUser()
+    const viewer = await createUser()
+    await db.insert(sceneCollaborators).values([
+      { sceneId: s.scene.id, userId: editor.id, role: 'editor' },
+      { sceneId: s.scene.id, userId: viewer.id, role: 'viewer' },
+    ])
+    const space = await makeSpace(s.owner, s.scene.id)
+    const marker = (await app.inject({ method: 'POST', url: `/api/ar/floors/${space.floors[0].id}/markers`, headers: as(s.owner), payload: {} })).json()
+    const rename = (u: TestUser, name: unknown) => app.inject({ method: 'PUT', url: `/api/ar/spaces/${space.id}`, headers: as(u), payload: { name } })
+
+    const ok = await rename(s.owner, '  Moon base  ')
+    expect(ok.statusCode).toBe(200)
+    expect(ok.json()).toMatchObject({ id: space.id, name: 'Moon base', place: space.place, published: space.published })
+    expect((await rename(editor, 'Moon base 2')).statusCode).toBe(200)
+    const denied = await rename(viewer, 'Nope')
+    expect(denied.statusCode).toBe(403)
+    for (const bad of ['   ', 'x'.repeat(201), 7]) expect((await rename(s.owner, bad)).statusCode, JSON.stringify(bad)).toBe(400)
+
+    const [row] = await db.select().from(arSpaces).where(eq(arSpaces.id, space.id))
+    expect(row.name).toBe('Moon base 2')
+    const floors = await db.select().from(arFloors).where(eq(arFloors.spaceId, space.id))
+    expect(floors.map((f) => f.id)).toEqual(space.floors.map((f: { id: string }) => f.id))
+    const [m] = await db.select().from(arMarkers).where(eq(arMarkers.id, marker.id))
+    expect({ code: m.code, ringId: m.ringId }).toEqual({ code: marker.code, ringId: marker.ringId })
+  })
 })

@@ -106,7 +106,7 @@ describe('moveItem / rotateItem / setPlot', () => {
 describe('canAdvance', () => {
   it('needs a destination at where', () => {
     expect(canAdvance(initialState)).toBe(false)
-    expect(canAdvance(wizardReducer(initialState, { type: 'setAr', ar: { name: 'x' } }))).toBe(true)
+    expect(canAdvance(wizardReducer({ ...initialState, name: 'S' }, { type: 'setAr', ar: { name: 'x' } }))).toBe(true)
   })
   it('needs a plot at size when dcl is set; hyperfy-only does not', () => {
     const d = wizardReducer({ ...initialState, step: 'size' }, { type: 'setDcl', dcl })
@@ -125,5 +125,67 @@ describe('canAdvance', () => {
     s = wizardReducer(s, { type: 'addAsset', asset: asset('a', 50_000, 20) })
     expect(s.items).toHaveLength(1)
     expect(canAdvance({ ...s, step: 'assets' })).toBe(true)
+  })
+})
+
+describe('scene name', () => {
+  const named = (name: string, s: WizardState = initialState) => wizardReducer(s, { type: 'setName', name })
+
+  it('starts empty: no silent default', () => {
+    expect(initialState.name).toBe('')
+  })
+  it('the first step needs a non-blank name as well as a destination', () => {
+    const withAr = wizardReducer(initialState, { type: 'setAr', ar: { name: 'x' } })
+    expect(canAdvance(withAr)).toBe(false)
+    expect(canAdvance(named('   ', withAr))).toBe(false)
+    expect(canAdvance(named('Moon', withAr))).toBe(true)
+    expect(canAdvance(named('Moon'))).toBe(false)
+  })
+  it('a Hyperfy world and an AR space start with the scene name and follow it while untouched', () => {
+    let s = named('Moo')
+    s = wizardReducer(s, { type: 'setHyperfy', hyperfy: { kind: 'self', name: '' } })
+    s = wizardReducer(s, { type: 'setAr', ar: { name: '' } })
+    expect(s.destinations.hyperfy?.name).toBe('Moo')
+    expect(s.destinations.ar?.name).toBe('Moo')
+    s = named('Moon base', s)
+    expect(s.destinations.hyperfy?.name).toBe('Moon base')
+    expect(s.destinations.ar?.name).toBe('Moon base')
+  })
+  it('a field the user edits keeps its own value; the other still follows', () => {
+    let s = named('Moon')
+    s = wizardReducer(s, { type: 'setHyperfy', hyperfy: { kind: 'self', name: '' } })
+    s = wizardReducer(s, { type: 'setAr', ar: { name: '' } })
+    s = wizardReducer(s, { type: 'setHyperfyName', name: 'My Hyperfy' })
+    s = named('Moon base', s)
+    expect(s.destinations.hyperfy?.name).toBe('My Hyperfy')
+    expect(s.destinations.ar?.name).toBe('Moon base')
+    s = wizardReducer(s, { type: 'setArName', name: 'Lobby' })
+    s = named('Moon base 2', s)
+    expect(s.destinations.ar?.name).toBe('Lobby')
+  })
+  it('changing the Hyperfy kind keeps the name and whether it was edited', () => {
+    let s = named('Moon')
+    s = wizardReducer(s, { type: 'setHyperfy', hyperfy: { kind: 'self', name: '' } })
+    s = wizardReducer(s, { type: 'setHyperfy', hyperfy: { kind: 'hosted', name: 'Moon' } })
+    s = named('Moon 2', s)
+    expect(s.destinations.hyperfy).toEqual({ kind: 'hosted', name: 'Moon 2' })
+  })
+  it('turning a destination off and on again starts it from the scene name', () => {
+    let s = named('Moon')
+    s = wizardReducer(s, { type: 'setAr', ar: { name: '' } })
+    s = wizardReducer(s, { type: 'setArName', name: 'Lobby' })
+    s = wizardReducer(s, { type: 'setAr', ar: null })
+    s = wizardReducer(s, { type: 'setAr', ar: { name: '' } })
+    expect(s.destinations.ar?.name).toBe('Moon')
+    s = named('Moon 2', s)
+    expect(s.destinations.ar?.name).toBe('Moon 2')
+  })
+})
+
+describe('scene name longer than a Hyperfy name may be', () => {
+  it('the following Hyperfy name stops at 100 characters', () => {
+    let s = wizardReducer(initialState, { type: 'setHyperfy', hyperfy: { kind: 'self', name: '' } })
+    s = wizardReducer(s, { type: 'setName', name: 'x'.repeat(120) })
+    expect(s.destinations.hyperfy?.name).toHaveLength(100)
   })
 })
