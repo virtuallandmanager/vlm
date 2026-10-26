@@ -107,9 +107,9 @@ describe('startVirviDeploy (mode A)', () => {
     expect(d.status).toBe('ok')
 
     const as = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, `world:${WORLD}`) })
-    expect(as).toMatchObject({ kind: 'world', worldName: WORLD, realm: WORLD, vlmSceneId: scene.id, activeEntityId: sent.entityId })
+    expect(as).toMatchObject({ kind: 'world', worldName: WORLD, realm: WORLD, virviSceneId: scene.id, activeEntityId: sent.entityId })
     const setupRow = await getActiveSetup(as!.id)
-    expect(setupRow).toMatchObject({ vlmSceneId: scene.id, deploymentEntityId: sent.entityId, hostUserId: user.id })
+    expect(setupRow).toMatchObject({ virviSceneId: scene.id, deploymentEntityId: sent.entityId, hostUserId: user.id })
   })
 
   it('uses the stored spawn point', async () => {
@@ -237,7 +237,7 @@ describe('prepareSignedDeploy / submitSignedDeploy (mode B)', () => {
     expect(chainSigner(fake.deployed[0].authChain)).toBe(owner.address.toLowerCase())
     expect((await destRow(dest.id)).lastEntityId).toBe(prep.payload)
     const as = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, `world:${WORLD}`) })
-    expect((await getActiveSetup(as!.id))?.vlmSceneId).toBe(scene.id)
+    expect((await getActiveSetup(as!.id))?.virviSceneId).toBe(scene.id)
   })
 
   it('is expired 241 s after prepare, with nothing uploaded', async () => {
@@ -377,23 +377,23 @@ describe('linkWorldLocation', () => {
     const u = await createUser()
     const { scene: a } = await createScene(u, 'A')
     const { scene: b } = await createScene(u, 'B')
-    await linkWorldLocation({ world: WORLD, vlmSceneId: a.id, hostUserId: u.id, entityId: 'bafy1', title: 'A' })
-    await linkWorldLocation({ world: WORLD, vlmSceneId: b.id, hostUserId: u.id, entityId: 'bafy2', title: 'B' })
+    await linkWorldLocation({ world: WORLD, virviSceneId: a.id, hostUserId: u.id, entityId: 'bafy1', title: 'A' })
+    await linkWorldLocation({ world: WORLD, virviSceneId: b.id, hostUserId: u.id, entityId: 'bafy2', title: 'B' })
     const rows = await db.select().from(locationSetups)
     expect(rows).toHaveLength(2)
-    expect(rows.find((r) => r.vlmSceneId === a.id)).toMatchObject({ endReason: 'replaced' })
-    expect(rows.find((r) => r.vlmSceneId === a.id)!.endedAt).not.toBeNull()
-    expect(rows.find((r) => r.vlmSceneId === b.id)).toMatchObject({ endedAt: null, deploymentEntityId: 'bafy2' })
+    expect(rows.find((r) => r.virviSceneId === a.id)).toMatchObject({ endReason: 'replaced' })
+    expect(rows.find((r) => r.virviSceneId === a.id)!.endedAt).not.toBeNull()
+    expect(rows.find((r) => r.virviSceneId === b.id)).toMatchObject({ endedAt: null, deploymentEntityId: 'bafy2' })
     const as = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, `world:${WORLD}`) })
-    expect(as!.vlmSceneId).toBe(b.id)
+    expect(as!.virviSceneId).toBe(b.id)
   })
 
   it('linking the same scene twice keeps one active setup and updates its entity', async () => {
     const u = await createUser()
     const { scene } = await createScene(u, 'A')
-    await linkWorldLocation({ world: WORLD, vlmSceneId: scene.id, hostUserId: u.id, entityId: 'bafy1', title: 'A' })
-    await linkWorldLocation({ world: WORLD, vlmSceneId: scene.id, hostUserId: u.id, entityId: 'bafy2', title: 'A' })
-    const active = await db.select().from(locationSetups).where(and(eq(locationSetups.vlmSceneId, scene.id), isNull(locationSetups.endedAt)))
+    await linkWorldLocation({ world: WORLD, virviSceneId: scene.id, hostUserId: u.id, entityId: 'bafy1', title: 'A' })
+    await linkWorldLocation({ world: WORLD, virviSceneId: scene.id, hostUserId: u.id, entityId: 'bafy2', title: 'A' })
+    const active = await db.select().from(locationSetups).where(and(eq(locationSetups.virviSceneId, scene.id), isNull(locationSetups.endedAt)))
     expect(active).toHaveLength(1)
     expect(active[0].deploymentEntityId).toBe('bafy2')
     expect(await db.select().from(locationSetups)).toHaveLength(1)

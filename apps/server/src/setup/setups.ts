@@ -21,13 +21,13 @@ export async function getActiveSetup(analyticsSceneId: string): Promise<Location
 }
 
 /** Host's verified wallets plus active co-hosts' wallets (lowercased). */
-export async function teamWallets(vlmSceneId: string): Promise<string[]> {
-  const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, vlmSceneId) })
+export async function teamWallets(virviSceneId: string): Promise<string[]> {
+  const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, virviSceneId) })
   const host = scene ? await verifiedWalletsOf(scene.ownerId) : []
   const co = await db
     .select({ w: sceneRoles.walletAddress })
     .from(sceneRoles)
-    .where(and(eq(sceneRoles.sceneId, vlmSceneId), eq(sceneRoles.role, 'cohost'), isNull(sceneRoles.revokedAt)))
+    .where(and(eq(sceneRoles.sceneId, virviSceneId), eq(sceneRoles.role, 'cohost'), isNull(sceneRoles.revokedAt)))
   return [...new Set([...host, ...co.map((r) => r.w)].map((w) => w.toLowerCase()))]
 }
 
@@ -58,7 +58,7 @@ export async function releaseIfRedeployed(
 ): Promise<LocationSetupRow | null> {
   const current = await currentDeployment(scene, dir)
   if (!current.entityId || current.entityId === setup.deploymentEntityId) return setup
-  const team = await teamWallets(setup.vlmSceneId)
+  const team = await teamWallets(setup.virviSceneId)
   if (scene.kind === 'world') {
     // The Worlds API doesn't expose the actual deployer, so keep when any team wallet could have deployed.
     const allowed = new Set([(await dir.getWorldOwner(scene.worldName!)) ?? '', ...(await dir.getWorldDeployers(scene.worldName!))])
@@ -88,8 +88,8 @@ async function release(setup: LocationSetupRow, scene: AnalyticsSceneRow, now: D
     await tx.update(analyticsScenes).set({ walletVisibility: false, updatedAt: now }).where(eq(analyticsScenes.id, scene.id))
     await tx
       .update(analyticsScenes)
-      .set({ vlmSceneId: null, updatedAt: now })
-      .where(and(eq(analyticsScenes.id, scene.id), eq(analyticsScenes.vlmSceneId, setup.vlmSceneId)))
+      .set({ virviSceneId: null, updatedAt: now })
+      .where(and(eq(analyticsScenes.id, scene.id), eq(analyticsScenes.virviSceneId, setup.virviSceneId)))
   })
   return null
 }
@@ -101,7 +101,7 @@ async function release(setup: LocationSetupRow, scene: AnalyticsSceneRow, now: D
  */
 export async function linkWorldLocation(input: {
   world: string
-  vlmSceneId: string
+  virviSceneId: string
   hostUserId: string
   entityId: string
   title: string
@@ -124,7 +124,7 @@ export async function linkWorldLocation(input: {
         title: input.title,
         salt: randomBytes(32).toString('hex'),
         isPreview: false,
-        vlmSceneId: input.vlmSceneId,
+        virviSceneId: input.virviSceneId,
         lastEntityCheckAt: now,
       })
       .onConflictDoUpdate({
@@ -135,7 +135,7 @@ export async function linkWorldLocation(input: {
           ...(input.parcels ? { parcels: input.parcels } : {}),
           activeEntityId: input.entityId,
           title: input.title,
-          vlmSceneId: input.vlmSceneId,
+          virviSceneId: input.virviSceneId,
           lastEntityCheckAt: now,
           updatedAt: now,
         },
@@ -146,7 +146,7 @@ export async function linkWorldLocation(input: {
       .from(locationSetups)
       .where(and(eq(locationSetups.analyticsSceneId, loc.id), isNull(locationSetups.endedAt)))
       .for('update')
-    if (active?.vlmSceneId === input.vlmSceneId) {
+    if (active?.virviSceneId === input.virviSceneId) {
       await tx.update(locationSetups).set({ deploymentEntityId: input.entityId }).where(eq(locationSetups.id, active.id))
       return
     }
@@ -154,7 +154,7 @@ export async function linkWorldLocation(input: {
       await tx.update(locationSetups).set({ endedAt: now, endReason: 'replaced' }).where(eq(locationSetups.id, active.id))
     }
     await tx.insert(locationSetups).values({
-      analyticsSceneId: loc.id, vlmSceneId: input.vlmSceneId, hostUserId: input.hostUserId, deploymentEntityId: input.entityId, startedAt: now,
+      analyticsSceneId: loc.id, virviSceneId: input.virviSceneId, hostUserId: input.hostUserId, deploymentEntityId: input.entityId, startedAt: now,
     })
     // A new host starts with wallet visibility off, as in setUpLocation.
     await tx.update(analyticsScenes).set({ walletVisibility: false }).where(eq(analyticsScenes.id, loc.id))
@@ -173,10 +173,10 @@ export async function setUpLocation(scene: AnalyticsSceneRow, wallet: string, no
       await tx.update(scenes).set({ activePresetId: preset.id }).where(eq(scenes.id, created.id))
       const [setup] = await tx
         .insert(locationSetups)
-        .values({ analyticsSceneId: scene.id, vlmSceneId: created.id, hostUserId: user.id, deploymentEntityId: scene.activeEntityId ?? null, startedAt: now })
+        .values({ analyticsSceneId: scene.id, virviSceneId: created.id, hostUserId: user.id, deploymentEntityId: scene.activeEntityId ?? null, startedAt: now })
         .returning()
-      await tx.update(analyticsScenes).set({ vlmSceneId: created.id, walletVisibility: false, updatedAt: now }).where(eq(analyticsScenes.id, scene.id))
-      return { setup, vlmSceneId: created.id, userId: user.id }
+      await tx.update(analyticsScenes).set({ virviSceneId: created.id, walletVisibility: false, updatedAt: now }).where(eq(analyticsScenes.id, scene.id))
+      return { setup, virviSceneId: created.id, userId: user.id }
     })
   } catch (err) {
     // The partial unique index (one active setup per location) loses the race for the second presser.

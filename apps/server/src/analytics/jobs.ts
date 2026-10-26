@@ -222,7 +222,7 @@ export async function retentionDaysFor(scene: AnalyticsSceneRow): Promise<number
   if (scene.isPreview) return 7
   const active = await db.query.locationSetups.findFirst({ where: and(eq(locationSetups.analyticsSceneId, scene.id), isNull(locationSetups.endedAt)) })
   if (!active) return 30
-  const host = await db.query.scenes.findFirst({ where: eq(scenes.id, active.vlmSceneId), columns: { ownerId: true } })
+  const host = await db.query.scenes.findFirst({ where: eq(scenes.id, active.virviSceneId), columns: { ownerId: true } })
   if (!host) return 30
   if (config.allFeaturesUnlocked) return Infinity
   const sub = await getSubscription(host.ownerId)

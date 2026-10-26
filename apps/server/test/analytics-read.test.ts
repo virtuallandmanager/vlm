@@ -157,7 +157,7 @@ describe('analytics read API', () => {
     const s = await createAnalyticsScene({ baseParcel: '10,20', parcels: ['10,20', '11,20'] })
     await createSetup(s.id, scene.id)
     const [row] = (await get(owner, '/api/analytics/locations')).json().scenes
-    expect(row).toMatchObject({ id: s.id, vlmSceneId: scene.id, baseParcel: '10,20', parcels: ['10,20', '11,20'], canManage: true })
+    expect(row).toMatchObject({ id: s.id, virviSceneId: scene.id, baseParcel: '10,20', parcels: ['10,20', '11,20'], canManage: true })
   })
 
   it('a viewer role reads the location but may not manage it', async () => {
@@ -169,7 +169,7 @@ describe('analytics read API', () => {
     const viewer = await createUser({ wallet })
     await db.insert(sceneRoles).values({ sceneId: scene.id, walletAddress: wallet, userId: viewer.id, role: 'viewer', grantedByUserId: owner.id })
     const [row] = (await get(viewer, '/api/analytics/locations')).json().scenes
-    expect(row).toMatchObject({ id: s.id, vlmSceneId: scene.id, canManage: false })
+    expect(row).toMatchObject({ id: s.id, virviSceneId: scene.id, canManage: false })
   })
 
   it("an ended tenure's host only sees data from inside that tenure, and live is empty", async () => {
@@ -210,7 +210,7 @@ describe('analytics read API', () => {
     expect(sessions).toHaveLength(1)
     expect(new Date(sessions[0].startedAt).getTime()).toBe(before.getTime())
     const [row] = (await get(owner, '/api/analytics/locations')).json().scenes
-    expect(row).toMatchObject({ id: s.id, vlmSceneId: scene.id, canManage: false })
+    expect(row).toMatchObject({ id: s.id, virviSceneId: scene.id, canManage: false })
   })
 
   it('delete-my-data removes the visitor everywhere using each scene salt', async () => {

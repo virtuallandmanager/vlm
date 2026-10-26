@@ -326,7 +326,7 @@ export const analyticsScenes = pgTable('analytics_scenes', {
   claimStatus: analyticsClaimStatusEnum('claim_status'),
   claimedAt: timestamp('claimed_at', { withTimezone: true }),
   lapsedAt: timestamp('lapsed_at', { withTimezone: true }),
-  vlmSceneId: uuid('vlm_scene_id').references(() => scenes.id, { onDelete: 'set null' }),
+  virviSceneId: uuid('virvi_scene_id').references(() => scenes.id, { onDelete: 'set null' }),
   walletVisibility: boolean('wallet_visibility').notNull().default(false),
   isPreview: boolean('is_preview').notNull().default(false),
   verifiedSessionShare: real('verified_session_share').notNull().default(0),
@@ -335,7 +335,7 @@ export const analyticsScenes = pgTable('analytics_scenes', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
-  vlmSceneIdx: index('analytics_scenes_vlm_scene_idx').on(t.vlmSceneId),
+  virviSceneIdx: index('analytics_scenes_virvi_scene_idx').on(t.virviSceneId),
   claimerIdx: index('analytics_scenes_claimer_idx').on(t.claimedByUserId),
   lastActivityIdx: index('analytics_scenes_last_activity_idx').on(t.lastActivityAt),
 }))
@@ -1216,7 +1216,7 @@ export const locationSetups = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     analyticsSceneId: uuid('analytics_scene_id').notNull().references(() => analyticsScenes.id, { onDelete: 'cascade' }),
-    vlmSceneId: uuid('vlm_scene_id').notNull().references(() => scenes.id, { onDelete: 'cascade' }),
+    virviSceneId: uuid('virvi_scene_id').notNull().references(() => scenes.id, { onDelete: 'cascade' }),
     hostUserId: uuid('host_user_id').references(() => users.id, { onDelete: 'set null' }),
     deploymentEntityId: text('deployment_entity_id'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1225,7 +1225,7 @@ export const locationSetups = pgTable(
   },
   (t) => ({
     oneActive: uniqueIndex('location_setups_one_active_uq').on(t.analyticsSceneId).where(sql`${t.endedAt} IS NULL`),
-    byScene: index('location_setups_vlm_scene_idx').on(t.vlmSceneId),
+    byScene: index('location_setups_virvi_scene_idx').on(t.virviSceneId),
   }),
 )
 

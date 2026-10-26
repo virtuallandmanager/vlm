@@ -42,17 +42,17 @@ async function ensureLocation(tx: Tx, target: VisitTarget) {
       realm: target.realm,
       title: target.title,
       salt: randomBytes(32).toString('hex'),
-      vlmSceneId: target.sceneId,
+      virviSceneId: target.sceneId,
     })
     .onConflictDoNothing()
   const [scene] = await tx.select().from(analyticsScenes).where(eq(analyticsScenes.locationKey, locationKey))
-  if (scene.title !== target.title || scene.vlmSceneId !== target.sceneId) {
-    await tx.update(analyticsScenes).set({ title: target.title, vlmSceneId: target.sceneId, updatedAt: new Date() }).where(eq(analyticsScenes.id, scene.id))
+  if (scene.title !== target.title || scene.virviSceneId !== target.sceneId) {
+    await tx.update(analyticsScenes).set({ title: target.title, virviSceneId: target.sceneId, updatedAt: new Date() }).where(eq(analyticsScenes.id, scene.id))
   }
   // The setup row is what makes the location readable by the scene's team in the analytics overview.
   await tx
     .insert(locationSetups)
-    .values({ analyticsSceneId: scene.id, vlmSceneId: target.sceneId, hostUserId: target.hostUserId })
+    .values({ analyticsSceneId: scene.id, virviSceneId: target.sceneId, hostUserId: target.hostUserId })
     .onConflictDoNothing()
   return scene
 }

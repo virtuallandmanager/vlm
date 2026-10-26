@@ -48,5 +48,5 @@ export async function bindSceneRequest(ctx: SceneRequestContext, wallet: string,
     // Still not the recorded deployment (unchanged, unknown deployer, nothing live, or another entity than the live one) → visitor.
     if (!setup.deploymentEntityId || setup.deploymentEntityId !== ctx.sceneId) return { locationId: loc.id, sceneId: null }
   }
-  return { locationId: loc.id, sceneId: setup.vlmSceneId }
+  return { locationId: loc.id, sceneId: setup.virviSceneId }
 }

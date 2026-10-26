@@ -1,6 +1,6 @@
 // LOCAL DEV ONLY: seeds a demo analytics location so the dashboard has data to show.
 //
-//   DATABASE_URL=postgresql://…@localhost/… node scripts/seed-analytics-demo.mjs --scene <vlmSceneId> [--reset]
+//   DATABASE_URL=postgresql://…@localhost/… node scripts/seed-analytics-demo.mjs --scene <virviSceneId> [--reset]
 //
 // Refuses to run unless DATABASE_URL points at localhost / 127.0.0.1.
 // Creates (or reuses) the location gc:-150,-150 (2x2 parcels), an active setup pointing at --scene
@@ -15,7 +15,7 @@ const sceneArg = args.indexOf('--scene')
 const sceneId = sceneArg >= 0 ? args[sceneArg + 1] : null
 const reset = args.includes('--reset')
 if (!sceneId) {
-  console.error('usage: node scripts/seed-analytics-demo.mjs --scene <vlmSceneId> [--reset]')
+  console.error('usage: node scripts/seed-analytics-demo.mjs --scene <virviSceneId> [--reset]')
   process.exit(2)
 }
 const url = process.env.DATABASE_URL
@@ -83,8 +83,8 @@ try {
         values ('parcels', ${LOCATION_KEY}, 'main', '-150,-150', ${PARCELS}, ${DEMO_TITLE}, ${randomBytes(32).toString('hex')}, true, ${now})
         returning id, salt`
     }
-    await tx`insert into location_setups (analytics_scene_id, vlm_scene_id, host_user_id, started_at) values (${loc.id}, ${sceneId}, ${scene.owner_id}, ${new Date(now.getTime() - 31 * DAY)})`
-    await tx`update analytics_scenes set vlm_scene_id = ${sceneId} where id = ${loc.id}`
+    await tx`insert into location_setups (analytics_scene_id, virvi_scene_id, host_user_id, started_at) values (${loc.id}, ${sceneId}, ${scene.owner_id}, ${new Date(now.getTime() - 31 * DAY)})`
+    await tx`update analytics_scenes set virvi_scene_id = ${sceneId} where id = ${loc.id}`
 
     const hashOf = (id) => createHash('sha256').update(loc.salt + id).digest('hex')
     const pool = Array.from({ length: 480 }, (_, i) => hashOf(`demo-visitor-${i}`))

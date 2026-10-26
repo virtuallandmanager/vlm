@@ -36,6 +36,19 @@ try {
       END IF;
     END IF;
   END $$`
+  // VLM is now Virvi: rename the scene columns and their indexes before push, so push never asks "renamed or created?"
+  await sql`DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'analytics_scenes' AND column_name = 'vlm_scene_id') -- virvi-rename: keep
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'analytics_scenes' AND column_name = 'virvi_scene_id') THEN
+      ALTER TABLE analytics_scenes RENAME COLUMN vlm_scene_id TO virvi_scene_id; -- virvi-rename: keep
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'location_setups' AND column_name = 'vlm_scene_id') -- virvi-rename: keep
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'location_setups' AND column_name = 'virvi_scene_id') THEN
+      ALTER TABLE location_setups RENAME COLUMN vlm_scene_id TO virvi_scene_id; -- virvi-rename: keep
+    END IF;
+  END $$`
+  await sql`ALTER INDEX IF EXISTS analytics_scenes_vlm_scene_idx RENAME TO analytics_scenes_virvi_scene_idx` // virvi-rename: keep
+  await sql`ALTER INDEX IF EXISTS location_setups_vlm_scene_idx RENAME TO location_setups_virvi_scene_idx` // virvi-rename: keep
   // Add streaming_servers.playback_id ahead of push (plain nullable column; push then has nothing to ask)
   await sql`ALTER TABLE IF EXISTS streaming_servers ADD COLUMN IF NOT EXISTS playback_id text`
   // Streams provisioned before playback ids exposed the stream key in their public URL: give them an id and move the URL off the key
@@ -49,7 +62,7 @@ try {
     }
     if (legacy.length) console.log(`[virvi-server] pre-push upgrade: backfilled playback_id on ${legacy.length} stream(s)`)
   }
-  console.log('[virvi-server] pre-push upgrade: legacy analytics tables cleared, scene_state dropped, deployment_wallets retired, playback_id ensured')
+  console.log('[virvi-server] pre-push upgrade: legacy analytics tables cleared, scene_state dropped, deployment_wallets retired, vlm_scene_id renamed, playback_id ensured') // virvi-rename: keep
 } finally {
   await sql.end()
 }

@@ -45,7 +45,7 @@ describe('POST /api/ar/spaces/:id/analytics', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({ accepted: 2 })
     const [scene] = await db.select().from(analyticsScenes)
-    expect(scene).toMatchObject({ kind: 'ar', locationKey: `ar:${spaceId}`, realm: 'ar', title: 'Arcade', vlmSceneId: sceneId })
+    expect(scene).toMatchObject({ kind: 'ar', locationKey: `ar:${spaceId}`, realm: 'ar', title: 'Arcade', virviSceneId: sceneId })
     const [s] = await db.select().from(analyticsSessions)
     expect(s).toMatchObject({ platform: 'ar-quest', verified: false, isGuest: true, durationSec: 12 })
 

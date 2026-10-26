@@ -308,7 +308,7 @@ export async function afterWorldDeploy(dest: Destination, entityId: string, depl
   })
   const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, dest.sceneId), columns: { name: true } })
   await linkWorldLocation({
-    world: dest.worldName, vlmSceneId: dest.sceneId, hostUserId: dest.ownerUserId, entityId,
+    world: dest.worldName, virviSceneId: dest.sceneId, hostUserId: dest.ownerUserId, entityId,
     title: scene?.name ?? dest.worldName, base: dest.base, parcels: dest.parcels,
   }, now)
 }

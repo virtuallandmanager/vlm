@@ -118,16 +118,16 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
             inArray(scenes.id, db.select({ id: accessGrants.sceneId }).from(accessGrants).where(eq(accessGrants.userId, actor.userId))),
           ),
         )
-      candidate = inArray(analyticsScenes.id, db.select({ id: locationSetups.analyticsSceneId }).from(locationSetups).where(inArray(locationSetups.vlmSceneId, reachable)))
+      candidate = inArray(analyticsScenes.id, db.select({ id: locationSetups.analyticsSceneId }).from(locationSetups).where(inArray(locationSetups.virviSceneId, reachable)))
     }
     const all = await db.select().from(analyticsScenes).where(candidate)
-    const readable: Array<{ s: typeof analyticsScenes.$inferSelect; since?: Date; until?: Date; vlmSceneId?: string; canManage: boolean }> = []
+    const readable: Array<{ s: typeof analyticsScenes.$inferSelect; since?: Date; until?: Date; virviSceneId?: string; canManage: boolean }> = []
     for (const s of all) {
       const access = await getAnalyticsAccess(actor, s.id, undefined, isScenePass(request.user) ? request.user.sceneId ?? null : undefined)
-      if (access.canRead) readable.push({ s, since: access.since, until: access.until, vlmSceneId: access.vlmSceneId, canManage: access.canManage })
+      if (access.canRead) readable.push({ s, since: access.since, until: access.until, virviSceneId: access.virviSceneId, canManage: access.canManage })
     }
     return reply.send({
-      scenes: readable.map(({ s, since, until, vlmSceneId, canManage }) => ({
+      scenes: readable.map(({ s, since, until, virviSceneId, canManage }) => ({
         id: s.id,
         locationKey: s.locationKey,
         kind: s.kind,
@@ -136,7 +136,7 @@ export default async function analyticsReadRoutes(app: FastifyInstance) {
         verifiedSessionShare: s.verifiedSessionShare,
         since: since ?? null,
         until: until ?? null,
-        vlmSceneId: vlmSceneId ?? null,
+        virviSceneId: virviSceneId ?? null,
         baseParcel: s.baseParcel,
         parcels: s.parcels,
         canManage,

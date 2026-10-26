@@ -350,7 +350,7 @@ export default async function dclDestinationRoutes(app: FastifyInstance) {
       if (!entities.length) throw new RouteError(400, 'no_live_scene')
       const loc = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, `world:${world}`) })
       const setup = loc ? await getActiveSetup(loc.id) : null
-      if (!loc || setup?.vlmSceneId !== sceneId) throw new RouteError(400, 'not_connected')
+      if (!loc || setup?.virviSceneId !== sceneId) throw new RouteError(400, 'not_connected')
       const live =
         entities.find((e) => e.id === setup.deploymentEntityId) ??
         entities.find((e) => !!loc.baseParcel && e.pointers.includes(loc.baseParcel)) ??
@@ -491,7 +491,7 @@ export default async function dclDestinationRoutes(app: FastifyInstance) {
       .select({ world: analyticsScenes.worldName })
       .from(locationSetups)
       .innerJoin(analyticsScenes, eq(analyticsScenes.id, locationSetups.analyticsSceneId))
-      .where(and(eq(locationSetups.vlmSceneId, sceneId), isNull(locationSetups.endedAt), eq(analyticsScenes.kind, 'world')))
+      .where(and(eq(locationSetups.virviSceneId, sceneId), isNull(locationSetups.endedAt), eq(analyticsScenes.kind, 'world')))
     const worlds = unique(setUp.map((r) => r.world?.toLowerCase()).filter((w): w is string => !!w))
     const taken = worlds.length
       ? new Set((await db.query.dclWorldDestinations.findMany({ where: inArray(dclWorldDestinations.worldName, worlds), columns: { worldName: true } })).map((d) => d.worldName))
