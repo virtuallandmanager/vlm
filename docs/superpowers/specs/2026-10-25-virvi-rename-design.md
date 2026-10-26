@@ -167,7 +167,7 @@ The plan's first database task finds every column that holds a vlm.gg host. In r
 `apps/server/dcl-runtime/1/bin/index.js` is the vendored scene runtime the server deploys for wizard Worlds. It has the old protocol built in: `vlm_scene`, `vlm_*` messages, `models/vlm/` paths and `api.vlm.gg`.
 - It is **rebuilt** from repo source as runtime version `2` with the new names. Hand-editing the bundle is still an anti-goal.
 - `runtime.ts` then points at v2, and v1 is removed.
-- The build script `runtime.ts` cites (`dcl-runtime/build.sh`) isn't in the repo. Finding or recreating it is the plan's first runtime task.
+- It's rebuilt with the existing `dcl-runtime/build.sh` at the repo root (`VERSION=2`).
 - Wizard Worlds already deployed on v1 get redeployed in rollout step 5. **My call.**
 
 ### Brand assets
