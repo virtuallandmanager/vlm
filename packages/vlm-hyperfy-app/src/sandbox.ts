@@ -92,7 +92,8 @@ export interface VlmVouchRequest {
 export type VlmVouchResult = HyperfyVouchResponse | { status: 'unauthorized' } | { status: 'error' }
 export type VlmVouch = (req: VlmVouchRequest) => Promise<VlmVouchResult>
 export type Matrix4Ctor = new () => Matrix & { copy(m: Matrix): Matrix & { invert(): Matrix } }
-export type AppProps = { feedUrl?: string; worldKey?: string }
+/** `hudIcon` is a file prop the .hyp ships (not configurable): the HUD's Virvi V, served from the world's assets. */
+export type AppProps = { feedUrl?: string; worldKey?: string; hudIcon?: { url?: string } | null }
 export type { ScriptFetch, ScriptSetTimeout }
 
 /** Client asks its server half to link it (and, linked, for a fresh pass); the server half answers that player only. */

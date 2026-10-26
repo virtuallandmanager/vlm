@@ -158,6 +158,7 @@ export function runHud(hooks: ClientEditHooks, sandbox: HudSandbox): void {
         typeField: (field) => setUi({ typing: { target: field, text: ui.query } }),
         place: () => void place(),
       },
+      { iconSrc: typeof props.hudIcon?.url === 'string' ? props.hudIcon.url : null },
     )
 
   // ── alerts and drawing ───────────────────────────────────────────────

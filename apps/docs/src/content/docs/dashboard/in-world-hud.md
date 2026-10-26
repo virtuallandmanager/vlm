@@ -27,7 +27,7 @@ Changes are drafts until you press **Save**. Save stores them to the live preset
 
 While you hold an item, other editors see "being moved by" and your name on it and can't grab it until you save or revert. Visitors only ever see saved changes.
 
-vlm-dcl 2.4.0 needs Decentraland SDK 7.23 or newer (Shift was added in 7.23).
+vlm-dcl needs Decentraland SDK 7.26 or newer (Shift was added in 7.23; the HUD's high-DPI scaling is reliable from 7.26).
 
 ## Uploading from in-world
 

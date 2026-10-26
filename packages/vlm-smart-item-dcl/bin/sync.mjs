@@ -1,8 +1,10 @@
-// Logic for `vlm-dcl sync`. Plain Node >= 18, node: built-ins only.
+// Logic for `vlm-dcl sync` and `vlm-dcl install`. Plain Node >= 18, node: built-ins only.
 // Trusts nothing from the server: file paths are validated and confined to <cwd>/models/vlm.
+// The HUD's launcher icon ships in this package and is copied to one fixed path in the scene.
 import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 
 const MB = 1024 * 1024
 const FILE_RE = /^models\/vlm\/[A-Za-z0-9._-]+\.glb$/i
@@ -13,6 +15,73 @@ const LIST_TIMEOUT_MS = 30000
 const TMP_RE = /\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.vlm-tmp$/
 const SIZE_EXCLUDES = new Set(['node_modules', 'bin', '.git', 'dist'])
 export const DEFAULT_SERVER = 'https://api.vlm.gg'
+
+/** Scene-relative path of the HUD launcher icon; must match HUD_ICON_SRC in vlm-adapter-dcl (src/hud/icon.ts). */
+export const HUD_ICON_FILE = 'images/virvi/hud-v.png'
+const HUD_ICON_ASSET = fileURLToPath(new URL('../assets/hud-v.png', import.meta.url))
+const CREATOR_HUB_SCRIPT = 'assets/scene/Scripts/VLMManager.ts'
+const CREATOR_HUB_SCRIPT_SRC = fileURLToPath(new URL('../creator-hub/VLMManager.ts', import.meta.url))
+
+/**
+ * Copies one packaged file to a fixed scene-relative `rel` path: never through a symlink, never outside cwd,
+ * atomically (tmp file + rename). Returns 'installed', 'unchanged', or 'differs' (exists with other bytes, not
+ * overwritten unless `overwrite`).
+ */
+function copyIntoScene(cwd, rel, src, { dryRun = false, overwrite = true } = {}) {
+  const parts = rel.split('/')
+  for (let i = 1; i <= parts.length; i++) {
+    const sub = parts.slice(0, i).join('/')
+    if (isSymlink(path.join(cwd, sub))) throw new Error(`${sub} is a symlink — refusing to write through it`)
+  }
+  const dest = path.join(cwd, ...parts)
+  const bytes = fs.readFileSync(src)
+  let current = null
+  try {
+    current = fs.readFileSync(dest)
+  } catch {}
+  if (current && current.equals(bytes)) return 'unchanged'
+  if (current && !overwrite) return 'differs'
+  if (dryRun) return 'installed'
+  fs.mkdirSync(path.dirname(dest), { recursive: true })
+  const base = fs.realpathSync(cwd)
+  if (!fs.realpathSync(path.dirname(dest)).startsWith(base + path.sep)) {
+    throw new Error(`${path.dirname(rel)} resolves outside the scene folder — refusing to continue`)
+  }
+  const tmpFile = `${dest}.${randomUUID()}.vlm-tmp`
+  try {
+    fs.writeFileSync(tmpFile, bytes)
+    fs.renameSync(tmpFile, dest)
+  } catch (e) {
+    try {
+      fs.rmSync(tmpFile, { force: true })
+    } catch {}
+    throw e
+  }
+  return 'installed'
+}
+
+/** Puts the HUD launcher icon at images/virvi/hud-v.png (always the packaged version: the path is VLM's own). */
+export function installHudAssets({ cwd = process.cwd(), dryRun = false } = {}) {
+  return copyIntoScene(cwd, HUD_ICON_FILE, HUD_ICON_ASSET, { dryRun })
+}
+
+/**
+ * `vlm-dcl install`: the HUD icon, plus, in a Creator Hub project (it has assets/scene), the VLMManager script
+ * at assets/scene/Scripts/VLMManager.ts. An edited script is left alone unless `force`.
+ */
+export function install({ cwd = process.cwd(), dryRun = false, force = false, log = console.log } = {}) {
+  if (!fs.existsSync(path.join(cwd, 'scene.json'))) throw new Error('Could not read scene.json — run this from your scene folder')
+  const pre = dryRun ? '[dry run] ' : ''
+  const icon = installHudAssets({ cwd, dryRun })
+  log(`${pre}${HUD_ICON_FILE}: ${icon === 'installed' ? 'installed' : 'up to date'}`)
+  let script = null
+  if (fs.existsSync(path.join(cwd, 'assets', 'scene'))) {
+    script = copyIntoScene(cwd, CREATOR_HUB_SCRIPT, CREATOR_HUB_SCRIPT_SRC, { dryRun, overwrite: force })
+    if (script === 'differs') log(`${CREATOR_HUB_SCRIPT} has local changes — left as is (pass --force to replace it)`)
+    else log(`${pre}${CREATOR_HUB_SCRIPT}: ${script === 'installed' ? 'installed' : 'up to date'}`)
+  }
+  return { icon, script }
+}
 
 export function locationFromSceneJson(json) {
   const world = json?.worldConfiguration?.name
@@ -170,6 +239,9 @@ export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, locat
   log(`Location: ${loc}`)
 
   checkDirs(cwd)
+  // Before the model list, so scenes not set up yet (the Set up VLM here launcher) get the icon too
+  const icon = installHudAssets({ cwd, dryRun })
+  if (icon === 'installed') log(`${dryRun ? '[dry run] ' : ''}Installed the HUD icon: ${HUD_ICON_FILE}`)
   const prev = readManifest(cwd).filter((f) => safePath(cwd, f))
   const listed = await fetchModels(fetchFn, server, loc, listTimeoutMs)
   if (!dryRun && fs.existsSync(path.join(cwd, 'models', 'vlm'))) {
@@ -269,5 +341,5 @@ export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, locat
   log(`Scene size: ${(totalBytes / MB).toFixed(1)} MB of ${(limitBytes / MB).toFixed(0)} MB limit`)
   if (over) log('Warning: your scene is over the size limit and will fail to deploy — remove or shrink files.')
 
-  return { downloaded, skipped, removed, totalBytes, limitBytes, over }
+  return { downloaded, skipped, removed, totalBytes, limitBytes, over, icon }
 }
