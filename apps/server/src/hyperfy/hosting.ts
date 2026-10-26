@@ -330,9 +330,9 @@ function worldEnv(w: { slug: string; address: string; dbUri: string; schema: str
     PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: new URL(config.publicUrl).origin.replace(/^http/, 'ws'),
     PUBLIC_MAX_UPLOAD_SIZE: '12', // MB; Hyperfy refuses to boot without it
     VIRVI_FEED_URL: config.publicUrl,
-    VLM_WORLD_KEY: w.worldKey,
+    VIRVI_WORLD_KEY: w.worldKey,
     // Lets the world's server vouch for its players (POST /api/hyperfy/pairings/vouch). Not rotated with the key.
-    VLM_WORLD_SECRET: w.worldSecret,
+    VIRVI_WORLD_SECRET: w.worldSecret,
   }
 }
 
@@ -474,7 +474,7 @@ export async function switchHostedWorldScene(worldId: string, sceneId: string): 
 }
 
 /**
- * New key: stores its hash and swaps only VLM_WORLD_KEY in the machine's env (the update restarts the machine). The
+ * New key: stores its hash and swaps only VIRVI_WORLD_KEY in the machine's env (the update restarts the machine). The
  * update runs under the owner's hosted-world lock with the world re-read as `running`, so a world the sweep ended
  * meanwhile never gets autostart turned back on by it.
  */
@@ -497,7 +497,7 @@ export async function rotateHostedWorldKey(worldId: string, deps?: Partial<Hosti
     // Stored before the update: a machine update that fails may still have applied.
     await tx.update(hyperfyWorlds).set({ keyHash: key.hash, keyPrefix: key.prefix, ...(newSecret ? { worldSecretHash: newSecret.hash } : {}) }).where(eq(hyperfyWorlds.id, worldId))
     try {
-      await d.fly.updateMachine(app, machine.id, { image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'), env: { ...env, VLM_WORLD_KEY: key.raw, ...(newSecret ? { VLM_WORLD_SECRET: newSecret.raw } : {}) } })
+      await d.fly.updateMachine(app, machine.id, { image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'), env: { ...env, VIRVI_WORLD_KEY: key.raw, ...(newSecret ? { VIRVI_WORLD_SECRET: newSecret.raw } : {}) } })
       return null
     } catch (err) {
       // The env may or may not have the new secret; a hash with no matching env would stick forever, so drop it (the next rotate makes another).
@@ -520,7 +520,7 @@ export async function rotateHostedWorldKey(worldId: string, deps?: Partial<Hosti
 
 /** The secrets in a world machine's env, for redact(). */
 function secretEnvValues(env: Record<string, string>): string[] {
-  const values = ['VLM_WORLD_KEY', 'VLM_WORLD_SECRET', 'ADMIN_CODE', 'JWT_SECRET', 'DB_URI', 'ASSETS_S3_URI'].map((k) => env[k] ?? '')
+  const values = ['VIRVI_WORLD_KEY', 'VIRVI_WORLD_SECRET', 'ADMIN_CODE', 'JWT_SECRET', 'DB_URI', 'ASSETS_S3_URI'].map((k) => env[k] ?? '')
   return [...values, safeUrlPassword(env.DB_URI ?? '')]
 }
 
@@ -564,7 +564,7 @@ export async function restoreHostedWorld(worldId: string, deps?: Partial<Hosting
     for (const m of await d.fly.listMachines(app)) {
       // Ending turned autostart off; turn it back on before the machine can serve again.
       const env = await d.fly.getMachineEnv(app, m.id)
-      if (newSecret) env.VLM_WORLD_SECRET = newSecret.raw
+      if (newSecret) env.VIRVI_WORLD_SECRET = newSecret.raw
       await d.fly.updateMachine(app, m.id, { image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'), env, autostart: true })
       await d.fly.startMachine(app, m.id)
     }

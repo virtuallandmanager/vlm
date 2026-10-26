@@ -21,10 +21,10 @@ const MODE_COPY = {
   },
 } as const
 
-/** The Hyperfy app's setup, in Virvi's name (the deploy page's older copy says Virvi). The file is still vlm.hyp. */
+/** The Hyperfy app's setup, in Virvi's name (the deploy page's older copy says Virvi). The file is still virvi.hyp. */
 function hyperfySetupSteps(feedUrl: string): string[] {
   return [
-    'Download the Virvi app and drag vlm.hyp into your Hyperfy world.',
+    'Download the Virvi app and drag virvi.hyp into your Hyperfy world.',
     "Open the app's settings and paste your world key into its world key field.",
     `Leave the feed URL as ${feedUrl} unless Virvi support tells you otherwise.`,
     'Your scene appears within a few seconds and follows your edits.',

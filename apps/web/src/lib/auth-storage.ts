@@ -1,4 +1,4 @@
-/** Browser storage key for the signed-in session. The pre-rename key (vlm_auth) is never read: those visitors sign in again. */
+/** Browser storage key for the signed-in session. The pre-rename key (vlm_auth) is never read: those visitors sign in again. (virvi-rename: keep) */
 export const AUTH_KEY = 'virvi_auth'
 
 export interface StoredAuth { token: string; refresh?: string | null; user: unknown }

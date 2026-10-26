@@ -10,10 +10,10 @@ describe('readStoredAuth', () => {
   it('stores the session under virvi_auth', () => {
     expect(AUTH_KEY).toBe('virvi_auth')
   })
-  it('ignores a legacy vlm_auth entry and leaves it alone', () => {
-    const s = memory({ vlm_auth: JSON.stringify({ token: 't', user: { id: 'u' } }) })
+  it('ignores a legacy vlm_auth entry and leaves it alone', () => { // virvi-rename: keep
+    const s = memory({ vlm_auth: JSON.stringify({ token: 't', user: { id: 'u' } }) }) // virvi-rename: keep
     expect(readStoredAuth(s)).toBeNull()
-    expect(s.has('vlm_auth')).toBe(true)
+    expect(s.has('vlm_auth')).toBe(true) // virvi-rename: keep
   })
   it('reads virvi_auth', () => {
     const s = memory({ virvi_auth: JSON.stringify({ token: 't', refresh: null, user: { id: 'u' } }) })

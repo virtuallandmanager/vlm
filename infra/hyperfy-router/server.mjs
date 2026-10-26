@@ -14,7 +14,7 @@ export function replayTarget(host, domain) {
   return SLUG.test(slug) ? `vlm-w-${slug}` : null
 }
 
-const NOT_FOUND_BODY = '<!doctype html><title>No world here</title><h1>No world here</h1><p>There is no VLM world at this address.</p>'
+const NOT_FOUND_BODY = '<!doctype html><title>No world here</title><h1>No world here</h1><p>There is no Virvi world at this address.</p>'
 const NOT_FOUND_HEAD = `HTTP/1.1 404 Not Found\r\ncontent-type: text/html; charset=utf-8\r\ncontent-length: ${Buffer.byteLength(NOT_FOUND_BODY)}\r\nconnection: close\r\n\r\n`
 
 // fly-replay can't carry request bodies over 1 MB, so bigger (or chunked) ones are proxied over Flycast.
@@ -86,7 +86,7 @@ export function createRouter(domain, opts = {}) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  createRouter(process.env.ROUTER_DOMAIN || 'worlds.vlm.gg', {
+  createRouter(process.env.ROUTER_DOMAIN || 'worlds.virvi.io', {
     upstreamSuffix: process.env.ROUTER_UPSTREAM_SUFFIX || '.flycast',
     upstreamPort: Number(process.env.ROUTER_UPSTREAM_PORT) || 80,
   }).listen(Number(process.env.PORT) || 3000, '0.0.0.0')

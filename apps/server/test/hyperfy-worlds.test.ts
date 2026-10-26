@@ -197,7 +197,7 @@ describe('connect-your-own Hyperfy world', () => {
     const res = await app.inject({ method: 'GET', url: '/api/hyperfy/app.hyp' })
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toBe('application/octet-stream')
-    expect(res.headers['content-disposition']).toBe('attachment; filename="vlm.hyp"')
+    expect(res.headers['content-disposition']).toBe('attachment; filename="virvi.hyp"')
     const body = res.rawPayload
     const headerLen = body.readUInt32LE(0)
     expect(headerLen).toBeGreaterThan(0)

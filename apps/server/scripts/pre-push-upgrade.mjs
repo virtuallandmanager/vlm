@@ -36,7 +36,7 @@ try {
       END IF;
     END IF;
   END $$`
-  // VLM is now Virvi: rename the scene columns and their indexes before push, so push never asks "renamed or created?"
+  // Virvi is now Virvi: rename the scene columns and their indexes before push, so push never asks "renamed or created?"
   await sql`DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'analytics_scenes' AND column_name = 'vlm_scene_id') -- virvi-rename: keep
        AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'analytics_scenes' AND column_name = 'virvi_scene_id') THEN

@@ -17,7 +17,7 @@ export function lastSeenLabel(iso: string | null, now: Date): string {
 
 export function setupSteps(feedUrl: string): string[] {
   return [
-    'Download the Virvi app and drag vlm.hyp into your Hyperfy world.',
+    'Download the Virvi app and drag virvi.hyp into your Hyperfy world.',
     "Open the app's settings and paste your world key into Virvi world key.",
     `Leave Virvi feed URL as ${feedUrl} unless Virvi support tells you otherwise.`,
     'Your scene appears within a few seconds and follows your edits.',

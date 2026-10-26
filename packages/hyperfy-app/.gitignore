@@ -1,4 +1,4 @@
-# dist/vlm.hyp is the shipped app file and is committed
+# dist/virvi.hyp is the shipped app file and is committed
 !dist/
 dist/*
-!dist/vlm.hyp
+!dist/virvi.hyp

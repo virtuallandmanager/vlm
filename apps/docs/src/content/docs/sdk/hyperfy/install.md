@@ -21,7 +21,7 @@ Each connected world is listed with its name, the start of its key and when it w
 
 ## Install the app
 
-1. Drag `vlm.hyp` into your Hyperfy world.
+1. Drag `virvi.hyp` into your Hyperfy world.
 2. Open the app's settings and paste the key into **Virvi world key**.
 3. Leave **Virvi feed URL** as `https://api.virvi.io`.
 

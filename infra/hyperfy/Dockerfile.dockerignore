@@ -1,5 +1,5 @@
-# The image needs only the patches, the worlds DB job and the built VLM app from the repo root context.
+# The image needs only the patches, the worlds DB job and the built Virvi app from the repo root context.
 *
 !infra/hyperfy/patches/
 !infra/hyperfy/db-job.mjs
-!packages/hyperfy-app/dist/vlm.hyp
+!packages/hyperfy-app/dist/virvi.hyp

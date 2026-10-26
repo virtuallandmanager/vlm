@@ -15,7 +15,7 @@ let files: Buffer[]
 
 beforeAll(() => {
   execFileSync('npm', ['run', '--silent', 'build'], { cwd: pkg, stdio: 'pipe' })
-  const buf = readFileSync(join(pkg, 'dist/vlm.hyp'))
+  const buf = readFileSync(join(pkg, 'dist/virvi.hyp'))
   const size = buf.readUInt32LE(0)
   header = JSON.parse(buf.subarray(4, 4 + size).toString('utf8'))
   let pos = 4 + size
@@ -30,7 +30,7 @@ beforeAll(() => {
 const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex')
 const script = () => files[header.assets.findIndex((a) => a.type === 'script')].toString('utf8')
 
-describe('vlm.hyp', () => {
+describe('virvi.hyp', () => {
   it('build output parses back into a blueprint with model, script, the two props and the HUD icon, and every asset url is the sha256 of its bytes', () => {
     const { blueprint, assets } = header
     expect(blueprint).toMatchObject({

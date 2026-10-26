@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the generic Virvi runtime and copies bin/index.js and the HUD icon (images/virvi/hud-v.png, from
-# vlm-dcl's assets) into the server's committed runtime dir; every file there is deployed with the runtime.
+# virvi-dcl's assets) into the server's committed runtime dir; every file there is deployed with the runtime.
 # Usage: VERSION=2 bash dcl-runtime/build.sh   (VERSION defaults to DCL_RUNTIME_VERSION in runtime.ts)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -8,7 +8,7 @@ VERSION="${VERSION:-$(sed -n 's/^export const DCL_RUNTIME_VERSION = \([0-9]*\).*
 [ -n "$VERSION" ] || { echo "could not determine VERSION" >&2; exit 1; }
 
 cd "$ROOT"
-pnpm --filter '@virvixr/dcl^...' build   # vlm-dcl's own dependencies, which bundle needs built
+pnpm --filter '@virvixr/dcl^...' build   # virvi-dcl's own dependencies, which bundle needs built
 pnpm --filter @virvixr/dcl bundle
 cd dcl-runtime
 npm install

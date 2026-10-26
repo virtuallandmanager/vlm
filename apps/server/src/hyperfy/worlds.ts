@@ -24,7 +24,7 @@ export async function findWorldByKey(raw: string): Promise<HyperfyWorldRow | nul
   return row && row.status !== 'ended' && row.status !== 'failed' ? row : null
 }
 
-/** A random 32-byte world secret (hex). A hosted world's server holds it in VLM_WORLD_SECRET; only its hash is stored. */
+/** A random 32-byte world secret (hex). A hosted world's server holds it in VIRVI_WORLD_SECRET; only its hash is stored. */
 export function createWorldSecret(): { raw: string; hash: string } {
   const raw = randomBytes(32).toString('hex')
   return { raw, hash: hashWorldKey(raw) }

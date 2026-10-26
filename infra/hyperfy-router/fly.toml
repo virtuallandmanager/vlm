@@ -2,7 +2,7 @@ app = "vlm-worlds-router"
 primary_region = "iad"
 
 [env]
-  ROUTER_DOMAIN = "worlds.vlm.gg"
+  ROUTER_DOMAIN = "worlds.virvi.io"
 
 [http_service]
   internal_port = 3000

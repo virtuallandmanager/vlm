@@ -27,7 +27,7 @@ describe('lastSeenLabel', () => {
 describe('setupSteps', () => {
   it('gives the four steps with the feed url', () => {
     expect(setupSteps('https://api.virvi.io')).toEqual([
-      'Download the Virvi app and drag vlm.hyp into your Hyperfy world.',
+      'Download the Virvi app and drag virvi.hyp into your Hyperfy world.',
       "Open the app's settings and paste your world key into Virvi world key.",
       'Leave Virvi feed URL as https://api.virvi.io unless Virvi support tells you otherwise.',
       'Your scene appears within a few seconds and follows your edits.',

@@ -1,5 +1,5 @@
 // Bundles src/app.ts into one script and packs it with assets/empty.glb and the HUD's V icon (virvi-dcl's
-// assets/hud-v.png, the same file the Decentraland HUD ships) into dist/vlm.hyp, Hyperfy's app file (see
+// assets/hud-v.png, the same file the Decentraland HUD ships) into dist/virvi.hyp, Hyperfy's app file (see
 // Hyperfy's src/core/extras/appTools.js): a 4-byte little-endian header length, the JSON header
 // { blueprint, assets }, then each asset's bytes in header order. Asset urls are asset://<sha256>.<ext>.
 // The icon is a file prop (hudIcon, not in app.configure): Hyperfy uploads every header asset on import and
@@ -51,5 +51,5 @@ const headerBytes = Buffer.from(JSON.stringify(header))
 const size = Buffer.alloc(4)
 size.writeUInt32LE(headerBytes.length, 0)
 mkdirSync(join(root, 'dist'), { recursive: true })
-writeFileSync(join(root, 'dist/vlm.hyp'), Buffer.concat([size, headerBytes, glb, js, png]))
-console.log(`wrote dist/vlm.hyp (script ${js.length} bytes)`)
+writeFileSync(join(root, 'dist/virvi.hyp'), Buffer.concat([size, headerBytes, glb, js, png]))
+console.log(`wrote dist/virvi.hyp (script ${js.length} bytes)`)

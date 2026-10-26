@@ -39,7 +39,7 @@ import { hostedWorldSlots } from '../hyperfy/slots.js'
 import { hyperfyHosting } from '../services/hyperfy/infrastructure.js'
 
 // Same depth from src/routes (dev, tests) and dist/routes (Docker): apps/server/<src|dist>/routes -> repo root.
-const APP_HYP = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../packages/hyperfy-app/dist/vlm.hyp')
+const APP_HYP = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../packages/hyperfy-app/dist/virvi.hyp')
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MAX_NAME = 100
@@ -101,7 +101,7 @@ export default async function hyperfyWorldRoutes(app: FastifyInstance) {
     }
     return reply
       .header('Content-Type', 'application/octet-stream')
-      .header('Content-Disposition', 'attachment; filename="vlm.hyp"')
+      .header('Content-Disposition', 'attachment; filename="virvi.hyp"')
       .send(file)
   })
 
