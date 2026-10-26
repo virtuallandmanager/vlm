@@ -1,12 +1,14 @@
 import { and, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { studioDesigns, studioJobs } from '../db/schema.js'
+import { studioDesigns, studioEntitlements, studioJobs, studioPayments } from '../db/schema.js'
 import { destroyWorker, ensureWorker, type MachineDeps } from './machines.js'
 import { failJobs } from './results.js'
+import { queueFinalize, settleRefund } from './payments.js'
 
 /**
  * The Design Studio sweep: fails jobs that will never get a result (refunding counted prompts), restarts machines for
- * jobs left waiting, and destroys machines idle for days. Every transition is conditional, so concurrent sweeps on
+ * jobs left waiting, destroys machines idle for days, packages paid pieces left without a job, and pays back refunds
+ * still owed. Every transition is conditional, so concurrent sweeps on
  * several servers fail each job once.
  */
 
@@ -16,6 +18,7 @@ const RENDER_TIMEOUT_SEC = 300
 const QUEUED_LOST_MS = 10 * 60_000
 const QUEUED_RESTART_MS = 60_000 // a worker can exit idle just as a job is queued
 const IDLE_MACHINE_MS = 3 * 24 * 3600_000
+const ORPHAN_PACKAGING_MS = 2 * 60_000
 
 export const MACHINE_STOPPED = 'The studio machine stopped responding.'
 export const MACHINE_NEVER_STARTED = 'The studio machine did not start.'
@@ -59,6 +62,21 @@ export async function sweepStudio(now: Date, deps: Partial<MachineDeps> = {}): P
       console.error('[studio-sweep] destroy failed:', err instanceof Error ? err.message : err)
     }
   }
+
+  // A paid piece still packaging with no live job (a server died mid-grant before jobs were committed with it, or a
+  // job finished without settling it) is queued again; the customer has paid and must get a package
+  const orphans = await db.select({ id: studioEntitlements.id, designId: studioEntitlements.designId }).from(studioEntitlements).where(and(
+    eq(studioEntitlements.status, 'packaging'),
+    lt(studioEntitlements.createdAt, new Date(now.getTime() - ORPHAN_PACKAGING_MS)),
+    sql`NOT EXISTS (SELECT 1 FROM studio_jobs j WHERE j.id = ${studioEntitlements.jobId} AND j.status IN ('queued', 'taken'))`,
+  ))
+  for (const o of orphans) {
+    await queueFinalize(o.designId, [o.id], now).catch((err) => console.error('[studio-sweep] requeue failed:', err instanceof Error ? err.message : err))
+  }
+
+  const owing = await db.select({ id: studioPayments.id }).from(studioPayments)
+    .where(and(sql`${studioPayments.refundDueCents} > 0`, isNotNull(studioPayments.stripePaymentIntent)))
+  for (const { id } of owing) await settleRefund(id)
   return { lost, destroyed }
 }
 

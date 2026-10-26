@@ -32,8 +32,39 @@ export class QuoteError extends Error {
   }
 }
 
-export async function quoteFinalize(design: Design, categories: string[] | null, waived: string[]): Promise<Quote> {
+/**
+ * The price of each piece in one checkout, in order: `kind` is whether the piece has been paid for before, and
+ * `designHasFirst` whether any piece of the design has. Used to quote, and again when a payment is granted, against
+ * what has been paid for by then.
+ */
+export function priceLines(
+  designKind: string,
+  pieces: { kind: 'first' | 'revision' }[],
+  designHasFirst: boolean,
+): { priceKind: PaymentLine['priceKind']; amountCents: number }[] {
   const prices = config.studioPrices
+  const emote = designKind === 'emote'
+  let hasFirst = designHasFirst
+  let hasRevision = false
+  return pieces.map((p) => {
+    if (p.kind === 'first') {
+      const line = {
+        priceKind: emote || !hasFirst ? 'first' as const : 'first_extra' as const,
+        amountCents: emote ? prices.emote : hasFirst ? prices.extraPiece : prices.wearable,
+      }
+      hasFirst = true
+      return line
+    }
+    const line = {
+      priceKind: emote || !hasRevision ? 'revision' as const : 'revision_extra' as const,
+      amountCents: emote ? prices.revisionEmote : hasRevision ? prices.revisionExtraPiece : prices.revisionWearable,
+    }
+    hasRevision = true
+    return line
+  })
+}
+
+export async function quoteFinalize(design: Design, categories: string[] | null, waived: string[]): Promise<Quote> {
   const pieceRows = await db.select().from(studioPieces).where(eq(studioPieces.designId, design.id)).orderBy(asc(studioPieces.category))
   const revIds = pieceRows.map((p) => p.latestRevisionId).filter((x): x is string => !!x)
   const revs = revIds.length ? await db.select().from(studioRevisions).where(inArray(studioRevisions.id, revIds)) : []
@@ -63,26 +94,11 @@ export async function quoteFinalize(design: Design, categories: string[] | null,
   const notWaivable = waived.filter((c) => !chosen.some((p) => p.category === c && p.kind === 'revision'))
   if (notWaivable.length) throw new QuoteError('not_waivable', notWaivable)
 
-  const emote = design.kind === 'emote'
-  let designHasFirst = ents.length > 0
-  let checkoutHasRevision = false
-  const lines: PaymentLine[] = chosen.map((p) => {
-    let priceKind: PaymentLine['priceKind']
-    let amountCents: number
-    if (p.kind === 'first') {
-      priceKind = emote || !designHasFirst ? 'first' : 'first_extra'
-      amountCents = emote ? prices.emote : designHasFirst ? prices.extraPiece : prices.wearable
-      designHasFirst = true
-    } else {
-      priceKind = emote || !checkoutHasRevision ? 'revision' : 'revision_extra'
-      amountCents = emote ? prices.revisionEmote : checkoutHasRevision ? prices.revisionExtraPiece : prices.revisionWearable
-      checkoutHasRevision = true
-    }
-    return {
-      category: p.category, revisionId: p.revisionId, revisionNumber: p.revisionNumber, pieceName: p.name,
-      priceKind, amountCents, waived: waived.includes(p.category),
-    }
-  })
+  const prices = priceLines(design.kind, chosen, ents.length > 0)
+  const lines: PaymentLine[] = chosen.map((p, i) => ({
+    category: p.category, revisionId: p.revisionId, revisionNumber: p.revisionNumber, pieceName: p.name,
+    ...prices[i], waived: waived.includes(p.category),
+  }))
   return {
     pieces,
     lines,

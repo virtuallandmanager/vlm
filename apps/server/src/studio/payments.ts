@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   studioDesigns, studioEntitlements, studioJobs, studioMistakeReports, studioPayments, studioPieces, studioPromptCredits,
@@ -6,8 +6,9 @@ import {
 } from '../db/schema.js'
 import { config } from '../config.js'
 import { ensureCustomer, getStripe } from '../integrations/stripe.js'
-import { quoteFinalize, QuoteError } from './pricing.js'
+import { priceLines, quoteFinalize, QuoteError } from './pricing.js'
 import { startWorker, type Design } from './designs.js'
+import type { Exec } from './quota.js'
 import { publishStudio } from './events.js'
 
 /**
@@ -20,6 +21,7 @@ import { publishStudio } from './events.js'
 const CHECKOUT_TTL_MS = 31 * 60 * 1000
 export const FINALIZE_LIMITS = { timeoutSec: 1800, maxTurns: 0, costCeilingUsd: 0 }
 export const REPORT_WINDOW_DAYS = 30
+const PENDING_REPORT_MS = 10 * 60_000
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export class PaymentError extends Error {
@@ -27,8 +29,10 @@ export class PaymentError extends Error {
 }
 
 const appUrl = (path: string) => `${config.publicUrl.replace(/\/+$/, '')}${path}`
-const sameRevisions = (a: PaymentLine[], b: PaymentLine[]) =>
-  a.map((l) => l.revisionId).sort().join(',') === b.map((l) => l.revisionId).sort().join(',')
+// An open session is reused only for exactly the same lines: revisions, what each costs, and which are waived
+const lineKey = (lines: PaymentLine[]) =>
+  lines.map((l) => `${l.revisionId}:${l.amountCents}:${l.waived ? 'w' : 'c'}`).sort().join(',')
+const sameLines = (a: PaymentLine[], b: PaymentLine[]) => lineKey(a) === lineKey(b)
 
 function lineName(l: PaymentLine): string {
   return l.priceKind.startsWith('revision') ? `${l.pieceName}: revision ${l.revisionNumber}` : `${l.pieceName}: finalize`
@@ -64,7 +68,7 @@ export async function createFinalizeCheckout(
   const open = await db.select().from(studioPayments).where(and(
     eq(studioPayments.designId, design.id), eq(studioPayments.status, 'pending'), gt(studioPayments.expiresAt, now),
   ))
-  const same = open.find((p) => p.stripeSessionUrl && sameRevisions(p.lines, lines))
+  const same = open.find((p) => p.stripeSessionUrl && sameLines(p.lines, lines))
   if (same) return { url: same.stripeSessionUrl! }
 
   const expiresAt = new Date(now.getTime() + CHECKOUT_TTL_MS)
@@ -125,8 +129,11 @@ export async function createTopupCheckout(user: { id: string; email: string | nu
 }
 
 /**
- * Applies a paid payment once (a conditional update claims it): entitlements for a finalize, credits for a top-up. A
- * line whose revision was already paid for is refunded; the new entitlements are queued for packaging.
+ * Applies a paid payment once (a conditional update claims it): entitlements and their finalize jobs for a finalize,
+ * credits for a top-up, all in one transaction, so a paid revision is never left without a job. Each line is priced
+ * again against what is paid for by then (another checkout may have been paid first): an overcharge, and a line whose
+ * revision was already paid for, are owed back, refunded after the commit and retried by the sweep until Stripe
+ * confirms.
  */
 export async function grantPayment(paymentId: string, paymentIntent: string | null, now: Date): Promise<'granted' | 'already'> {
   const out = await db.transaction(async (tx) => {
@@ -138,19 +145,26 @@ export async function grantPayment(paymentId: string, paymentIntent: string | nu
     if (pay.kind === 'topup') {
       await tx.insert(studioPromptCredits).values({ userId: pay.userId, balance: pay.prompts })
         .onConflictDoUpdate({ target: studioPromptCredits.userId, set: { balance: sql`${studioPromptCredits.balance} + ${pay.prompts}`, updatedAt: now } })
-      return { pay, entitlementIds: [] as string[], duplicateCents: 0 }
+      return { pay, jobIds: [] as string[] }
     }
+    // Grants for one design run one at a time, so each prices against the others
+    const [design] = await tx.select().from(studioDesigns).where(eq(studioDesigns.id, pay.designId!)).for('update')
+    const earlier = await tx.select({ category: studioEntitlements.category, revisionId: studioEntitlements.revisionId })
+      .from(studioEntitlements).where(eq(studioEntitlements.designId, design.id))
+    const fresh = pay.lines.filter((l) => !earlier.some((e) => e.revisionId === l.revisionId))
+    const repriced = priceLines(design.kind, fresh.map((l) => ({
+      kind: earlier.some((e) => e.category === l.category) ? 'revision' as const : 'first' as const,
+    })), earlier.length > 0)
+    let owed = pay.lines.filter((l) => !fresh.includes(l) && !l.waived).reduce((sum, l) => sum + l.amountCents, 0)
     const entitlementIds: string[] = []
-    let duplicateCents = 0
-    for (const l of pay.lines) {
+    for (const [i, l] of fresh.entries()) {
+      const price = repriced[i]
+      const charged = l.waived ? 0 : Math.min(l.amountCents, price.amountCents)
+      if (!l.waived) owed += l.amountCents - charged
       const [e] = await tx.insert(studioEntitlements).values({
-        revisionId: l.revisionId, paymentId: pay.id, userId: pay.userId, designId: pay.designId!, category: l.category,
-        kind: l.priceKind.startsWith('revision') ? 'revision' : 'first', amountCents: l.waived ? 0 : l.amountCents, status: 'packaging',
-      }).onConflictDoNothing().returning()
-      if (!e) {
-        if (!l.waived) duplicateCents += l.amountCents
-        continue
-      }
+        revisionId: l.revisionId, paymentId: pay.id, userId: pay.userId, designId: design.id, category: l.category,
+        kind: price.priceKind.startsWith('revision') ? 'revision' : 'first', amountCents: charged, status: 'packaging',
+      }).returning()
       entitlementIds.push(e.id)
       if (l.waived) {
         await tx.insert(studioMistakeReports).values({
@@ -158,57 +172,93 @@ export async function grantPayment(paymentId: string, paymentIntent: string | nu
         })
       }
     }
+    if (owed > 0) await tx.update(studioPayments).set({ refundDueCents: owed }).where(eq(studioPayments.id, pay.id))
     if (entitlementIds.length) {
       await tx.update(studioDesigns).set({ finalizedAt: now })
-        .where(and(eq(studioDesigns.id, pay.designId!), isNull(studioDesigns.finalizedAt)))
+        .where(and(eq(studioDesigns.id, design.id), isNull(studioDesigns.finalizedAt)))
     }
-    return { pay, entitlementIds, duplicateCents }
+    return { pay, jobIds: await insertFinalizeJobs(tx, design, entitlementIds, now) }
   })
   if (!out) return 'already'
-  if (out.duplicateCents > 0 && out.pay.stripePaymentIntent) {
-    try {
-      await (await getStripe()).refunds.create(
-        { payment_intent: out.pay.stripePaymentIntent, amount: out.duplicateCents, metadata: { vlm_studio_payment_id: out.pay.id, reason: 'duplicate' } },
-        { idempotencyKey: `studio-dup-${out.pay.id}` },
-      )
-      await db.update(studioPayments).set({ refundedCents: sql`${studioPayments.refundedCents} + ${out.duplicateCents}` })
-        .where(eq(studioPayments.id, out.pay.id))
-    } catch (err) {
-      console.error(`[studio] duplicate payment ${out.pay.id} was not refunded:`, err instanceof Error ? err.message : err)
-    }
-  }
-  if (out.entitlementIds.length) await queueFinalize(out.pay.designId!, out.entitlementIds, now)
+  await settleRefund(out.pay.id)
+  await startFinalizeJobs(out.pay.designId, out.jobIds, now)
   return 'granted'
 }
 
-/** Queues one finalize job for these entitlements: the package is built from each paid revision's own files. */
-export async function queueFinalize(designId: string, entitlementIds: string[], now: Date): Promise<string> {
-  const jobId = await db.transaction(async (tx) => {
-    const [d] = await tx.select().from(studioDesigns).where(eq(studioDesigns.id, designId)).for('update')
-    const rows = await tx.select({ e: studioEntitlements, r: studioRevisions, name: studioPieces.name })
-      .from(studioEntitlements)
-      .innerJoin(studioRevisions, eq(studioRevisions.id, studioEntitlements.revisionId))
-      .innerJoin(studioPieces, eq(studioPieces.id, studioRevisions.pieceId))
-      .where(inArray(studioEntitlements.id, entitlementIds))
+/** One finalize job per entitlement, each building one paid revision's package from that revision's own files. */
+async function insertFinalizeJobs(tx: Exec, design: Design, entitlementIds: string[], now: Date): Promise<string[]> {
+  if (!entitlementIds.length) return []
+  const rows = await tx.select({ e: studioEntitlements, r: studioRevisions, name: studioPieces.name })
+    .from(studioEntitlements)
+    .innerJoin(studioRevisions, eq(studioRevisions.id, studioEntitlements.revisionId))
+    .innerJoin(studioPieces, eq(studioPieces.id, studioRevisions.pieceId))
+    .where(inArray(studioEntitlements.id, entitlementIds))
+  const jobIds: string[] = []
+  for (const { e, r, name } of rows) {
     const [job] = await tx.insert(studioJobs).values({
-      designId,
+      designId: design.id,
       type: 'finalize',
       payload: {
-        type: 'finalize', kind: d.kind, agent: null, model: null, prompt: null, selectedSlots: null,
+        type: 'finalize', kind: design.kind, agent: null, model: null, prompt: null, selectedSlots: null,
         limits: FINALIZE_LIMITS, render: null,
         finalize: {
-          designName: d.name,
-          pieces: rows.map(({ e, r, name }) => ({ category: e.category, name, revision: r.number, files: r.files, sourceJobId: r.jobId })),
+          designName: design.name,
+          pieces: [{ category: e.category, name, revision: r.number, files: r.files, sourceJobId: r.jobId }],
         },
       },
     }).returning({ id: studioJobs.id })
-    await tx.update(studioEntitlements).set({ status: 'packaging', jobId: job.id }).where(inArray(studioEntitlements.id, entitlementIds))
-    await tx.update(studioDesigns).set({ lastJobAt: now }).where(eq(studioDesigns.id, designId))
-    return job.id
+    await tx.update(studioEntitlements).set({ status: 'packaging', jobId: job.id }).where(eq(studioEntitlements.id, e.id))
+    jobIds.push(job.id)
+  }
+  await tx.update(studioDesigns).set({ lastJobAt: now }).where(eq(studioDesigns.id, design.id))
+  return jobIds
+}
+
+async function startFinalizeJobs(designId: string | null, jobIds: string[], now: Date): Promise<void> {
+  if (!designId || !jobIds.length) return
+  for (const jobId of jobIds) await publishStudio(designId, { type: 'job', jobId, status: 'queued' })
+  await startWorker(designId, jobIds[0], now)
+}
+
+/** Queues packaging again for these entitlements (a free retry, or the sweep finding one with no live job). */
+export async function queueFinalize(designId: string, entitlementIds: string[], now: Date): Promise<string[]> {
+  const jobIds = await db.transaction(async (tx) => {
+    const [design] = await tx.select().from(studioDesigns).where(eq(studioDesigns.id, designId)).for('update')
+    return insertFinalizeJobs(tx, design, entitlementIds, now)
   })
-  await publishStudio(designId, { type: 'job', jobId, status: 'queued' })
-  await startWorker(designId, jobId, now)
-  return jobId
+  await startFinalizeJobs(designId, jobIds, now)
+  return jobIds
+}
+
+/**
+ * Pays back what a payment owes (refundDueCents) through Stripe. A refund Stripe already made for it (an answer that
+ * was lost) is recorded rather than repeated; a failed attempt counts up, and its key with it, because Stripe replays
+ * a key's first answer, errors included.
+ */
+export async function settleRefund(paymentId: string): Promise<void> {
+  const [pay] = await db.select().from(studioPayments).where(eq(studioPayments.id, paymentId))
+  if (!pay || !(pay.refundDueCents > 0)) return
+  if (!pay.stripePaymentIntent) {
+    console.error(`[studio] payment ${pay.id} owes ${pay.refundDueCents} cents but has no payment intent to refund`)
+    return
+  }
+  const due = pay.refundDueCents
+  try {
+    const stripe = await getStripe()
+    const made = (await stripe.refunds.list({ payment_intent: pay.stripePaymentIntent, limit: 100 })).data as { metadata?: Record<string, string> }[]
+    if (!made.some((r) => r.metadata?.vlm_studio_owed_by === pay.id)) {
+      await stripe.refunds.create(
+        { payment_intent: pay.stripePaymentIntent, amount: due, metadata: { vlm_studio_payment_id: pay.id, vlm_studio_owed_by: pay.id } },
+        { idempotencyKey: `studio-refund-${pay.id}-${pay.refundAttempts}` },
+      )
+    }
+    await db.update(studioPayments)
+      .set({ refundDueCents: 0, refundedCents: sql`${studioPayments.refundedCents} + ${due}` })
+      .where(and(eq(studioPayments.id, pay.id), eq(studioPayments.refundDueCents, due)))
+  } catch (err) {
+    console.error(`[studio] refund of ${due} cents for payment ${pay.id} failed:`, err instanceof Error ? err.message : err)
+    await db.update(studioPayments).set({ refundAttempts: sql`${studioPayments.refundAttempts} + 1` }).where(eq(studioPayments.id, pay.id))
+  }
 }
 
 /** A Stripe Checkout event for a studio payment; false when the event isn't one. */
@@ -227,8 +277,10 @@ export async function handleStudioSession(event: { type: string; data?: { object
 
 /**
  * The customer says a paid revision fixed the agent's own mistake: its line is refunded in full through Stripe, at
- * once and without review (VLM reviews the log afterwards). Stripe is called first, with a key tied to the
- * entitlement, so a refused refund stores nothing and a retry can't refund twice.
+ * once and without review (VLM reviews the log afterwards). A pending report row is the lock, so two clicks refund
+ * once; a refund Stripe already made for this entitlement (an answer that was lost) is recorded, not repeated; a
+ * refused refund removes the row so the customer can try again, under a new key (Stripe replays a key's first
+ * answer, errors included).
  */
 export async function reportMistake(
   design: Design,
@@ -246,32 +298,37 @@ export async function reportMistake(
   if (!row) throw new PaymentError(402, 'not_paid')
   const { e, pay } = row
   if (e.kind !== 'revision') throw new PaymentError(409, 'not_a_revision')
-  if (!(e.amountCents > 0)) throw new PaymentError(409, 'nothing_charged')
-  const [existing] = await db.select({ id: studioMistakeReports.id }).from(studioMistakeReports).where(eq(studioMistakeReports.entitlementId, e.id))
-  if (existing) throw new PaymentError(409, 'already_reported')
+  if (!(e.amountCents > 0) || !pay.stripePaymentIntent) throw new PaymentError(409, 'nothing_charged')
   if (!pay.paidAt || now.getTime() - pay.paidAt.getTime() > REPORT_WINDOW_DAYS * 24 * 3600 * 1000) {
     throw new PaymentError(409, 'report_window_closed')
   }
-  if (!pay.stripePaymentIntent) throw new PaymentError(409, 'nothing_charged')
+  // A pending row left by a request that died mid-refund stops being a lock after a while
+  await db.delete(studioMistakeReports).where(and(
+    eq(studioMistakeReports.entitlementId, e.id), eq(studioMistakeReports.status, 'pending'),
+    lt(studioMistakeReports.createdAt, new Date(now.getTime() - PENDING_REPORT_MS)),
+  ))
+  const [lock] = await db.insert(studioMistakeReports).values({
+    entitlementId: e.id, userId: e.userId, text, refundCents: e.amountCents, status: 'pending', createdAt: now,
+  }).onConflictDoNothing().returning()
+  if (!lock) throw new PaymentError(409, 'already_reported')
   let refundId: string
   try {
-    const refund = await (await getStripe()).refunds.create(
+    const stripe = await getStripe()
+    const made = (await stripe.refunds.list({ payment_intent: pay.stripePaymentIntent, limit: 100 })).data as { id: string; metadata?: Record<string, string> }[]
+    const earlier = made.find((r) => r.metadata?.vlm_studio_entitlement_id === e.id)
+    refundId = earlier?.id ?? (await stripe.refunds.create(
       { payment_intent: pay.stripePaymentIntent, amount: e.amountCents, metadata: { vlm_studio_entitlement_id: e.id, reason: 'agent_mistake' } },
-      { idempotencyKey: `studio-report-${e.id}` },
-    )
-    refundId = refund.id
+      { idempotencyKey: `studio-report-${e.id}-${lock.id}` },
+    )).id
   } catch (err) {
     console.error('[studio] mistake refund failed:', err instanceof Error ? err.message : err)
+    await db.delete(studioMistakeReports).where(eq(studioMistakeReports.id, lock.id))
     throw new PaymentError(502, 'stripe_error')
   }
   await db.transaction(async (tx) => {
-    const [inserted] = await tx.insert(studioMistakeReports).values({
-      entitlementId: e.id, userId: e.userId, text, refundCents: e.amountCents, status: 'refunded', stripeRefundId: refundId,
-    }).onConflictDoNothing().returning()
-    if (inserted) {
-      await tx.update(studioPayments).set({ refundedCents: sql`${studioPayments.refundedCents} + ${e.amountCents}` })
-        .where(eq(studioPayments.id, pay.id))
-    }
+    await tx.update(studioMistakeReports).set({ status: 'refunded', stripeRefundId: refundId }).where(eq(studioMistakeReports.id, lock.id))
+    await tx.update(studioPayments).set({ refundedCents: sql`${studioPayments.refundedCents} + ${e.amountCents}` })
+      .where(eq(studioPayments.id, pay.id))
   })
   return { status: 'refunded', refundCents: e.amountCents }
 }

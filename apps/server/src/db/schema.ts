@@ -1504,6 +1504,9 @@ export const studioPayments = pgTable('studio_payments', {
   stripeSessionUrl: text('stripe_session_url'),
   stripePaymentIntent: text('stripe_payment_intent'),
   refundedCents: integer('refunded_cents').notNull().default(0),
+  // Owed back (a duplicate, or an overcharge found at grant time) until Stripe confirms it; the sweep retries
+  refundDueCents: integer('refund_due_cents').notNull().default(0),
+  refundAttempts: integer('refund_attempts').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   paidAt: timestamp('paid_at', { withTimezone: true }),
@@ -1537,7 +1540,7 @@ export const studioMistakeReports = pgTable('studio_mistake_reports', {
   userId: uuid('user_id').notNull(),
   text: text('text').notNull(),
   refundCents: integer('refund_cents').notNull(),
-  status: text('status').notNull(), // refunded | waived
+  status: text('status').notNull(), // pending (refund in flight) | refunded | waived
   stripeRefundId: text('stripe_refund_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })

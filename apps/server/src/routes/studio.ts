@@ -251,7 +251,7 @@ export default async function studioRoutes(app: FastifyInstance) {
     const paid = await paidRevision(request, reply)
     if (!paid) return reply
     if (paid.e.status !== 'failed') return reply.status(409).send({ error: 'not_failed', code: 'not_failed' })
-    const jobId = await queueFinalize(paid.d.id, [paid.e.id], new Date())
+    const [jobId] = await queueFinalize(paid.d.id, [paid.e.id], new Date())
     return reply.status(202).send({ jobId })
   })
 

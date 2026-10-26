@@ -154,7 +154,7 @@ describe('studio payments', () => {
     expect(await db.select().from(studioEntitlements)).toHaveLength(1)
     expect(stripe.calls.refunds).toEqual([{
       params: expect.objectContaining({ payment_intent: 'pi_second', amount: 2900 }),
-      opts: { idempotencyKey: `studio-dup-${second.id}` },
+      opts: { idempotencyKey: expect.stringMatching(new RegExp(`^studio-refund-${second.id}-`)) },
     }])
     const [after] = await db.select().from(studioPayments).where(eq(studioPayments.id, second.id))
     expect(after.refundedCents).toBe(2900)
@@ -271,7 +271,7 @@ describe('studio payments', () => {
       expect(res.json()).toEqual({ status: 'refunded', refundCents: 1000 })
       expect(stripe.calls.refunds).toEqual([{
         params: expect.objectContaining({ payment_intent: 'pi_rev', amount: 1000 }),
-        opts: { idempotencyKey: `studio-report-${entitlement.id}` },
+        opts: { idempotencyKey: expect.stringMatching(new RegExp(`^studio-report-${entitlement.id}-`)) },
       }])
       const [row] = await db.select().from(studioMistakeReports)
       expect(row).toMatchObject({ entitlementId: entitlement.id, status: 'refunded', refundCents: 1000, text: 'the sleeve clips through the arm when waving' })
@@ -315,8 +315,24 @@ describe('studio payments', () => {
       expect(res.json().code).toBe('stripe_error')
       expect(await db.select().from(studioMistakeReports)).toHaveLength(0)
       stripe.failRefunds = false
+      // Stripe replays a key's first answer for a day, errors included: the retry must use a new key
       expect((await report(u, d.id, 'hat', 2)).statusCode).toBe(200)
-      expect(stripe.calls.refunds.map((r) => r.opts.idempotencyKey)).toEqual([`studio-report-${entitlement.id}`, `studio-report-${entitlement.id}`])
+      const keys = stripe.calls.refunds.map((r) => r.opts.idempotencyKey)
+      expect(keys).toHaveLength(2)
+      expect(keys[0]).not.toBe(keys[1])
+      expect(stripe.made).toHaveLength(1)
+    })
+
+    it('a refund Stripe already made is recorded, not repeated', async () => {
+      const u = await createUser()
+      const { d, entitlement } = await revised(u)
+      // an earlier attempt reached Stripe but its answer was lost
+      stripe.made.push({ id: 're_earlier', payment_intent: 'pi_rev', amount: 1000, metadata: { vlm_studio_entitlement_id: entitlement.id } })
+      const res = await report(u, d.id, 'hat', 2)
+      expect(res.statusCode).toBe(200)
+      expect(stripe.calls.refunds).toHaveLength(0)
+      const [row] = await db.select().from(studioMistakeReports)
+      expect(row).toMatchObject({ status: 'refunded', stripeRefundId: 're_earlier' })
     })
 
     it('the customer keeps the files after a refund', async () => {
@@ -344,6 +360,151 @@ describe('studio payments', () => {
       const res = await report(u, d.id, 'hat', 2)
       expect(res.statusCode).toBe(409)
       expect(res.json().code).toBe('nothing_charged')
+    })
+  })
+
+  describe('review fixes', () => {
+    const grantOf = async (designId: string) => (await paymentOf(designId)).sort((a, b) => +a.createdAt - +b.createdAt)
+
+    it('the finalize jobs commit with the grant', async () => {
+      const u = await createUser()
+      const d = await createDesign(u)
+      await addRevision(d, 'hat')
+      await finalize(u, d.id)
+      const [first] = await paymentOf(d.id)
+      await db.update(studioPayments).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(studioPayments.id, first.id))
+      await finalize(u, d.id)
+      await paid(first.id, 'pi_first')
+      await db.update(studioEntitlements).set({ status: 'failed' })
+      // the next grant must refund a duplicate; Stripe never answers (as when the server dies mid-webhook)
+      const { addRevision: add } = await import('./helpers/studio.js')
+      await add(d, 'mask')
+      stripe.hangRefunds = true
+      const { quoteFinalize } = await import('../src/studio/pricing.js')
+      const { grantPayment } = await import('../src/studio/payments.js')
+      const q = await quoteFinalize(d, ['mask'], [])
+      const second = (await paymentOf(d.id)).find((p) => p.id !== first.id)!
+      await db.update(studioPayments).set({ lines: [...second.lines, ...q.lines] }).where(eq(studioPayments.id, second.id))
+      void grantPayment(second.id, 'pi_second', new Date())
+      const deadline = Date.now() + 5000
+      let mask: any
+      while (Date.now() < deadline) {
+        ;[mask] = await db.select().from(studioEntitlements).where(eq(studioEntitlements.category, 'mask'))
+        if (mask) break
+        await new Promise((r) => setTimeout(r, 25))
+      }
+      expect(mask).toBeTruthy()
+      expect(mask.jobId).not.toBeNull()
+      const [job] = await db.select().from(studioJobs).where(eq(studioJobs.id, mask.jobId))
+      expect(job).toMatchObject({ type: 'finalize', status: 'queued' })
+    })
+
+    it('a paid piece left without a job is packaged by the sweep', async () => {
+      const { sweepStudio } = await import('../src/studio/sweep.js')
+      const u = await createUser()
+      const d = await createDesign(u)
+      const { entitlement } = await entitle(d, await addRevision(d, 'hat'))
+      await db.update(studioEntitlements).set({ status: 'packaging', jobId: null, createdAt: new Date(Date.now() - 10 * 60_000) })
+        .where(eq(studioEntitlements.id, entitlement.id))
+      await sweepStudio(new Date(), { fly })
+      const [e] = await db.select().from(studioEntitlements).where(eq(studioEntitlements.id, entitlement.id))
+      expect(e.status).toBe('packaging')
+      expect(e.jobId).not.toBeNull()
+      const [job] = await db.select().from(studioJobs).where(eq(studioJobs.id, e.jobId!))
+      expect(job).toMatchObject({ type: 'finalize', status: 'queued' })
+    })
+
+    it('a reused session must match the waivers', async () => {
+      const u = await createUser()
+      const d = await createDesign(u)
+      await entitle(d, await addRevision(d, 'hat'))
+      await entitle(d, await addRevision(d, 'mask'))
+      await addRevision(d, 'hat')
+      await addRevision(d, 'mask')
+      const plain = (await finalize(u, d.id)).json().url
+      const reported = await finalize(u, d.id, { reports: { hat: 'the brim clips through the hair' } })
+      expect(reported.statusCode).toBe(200)
+      expect(reported.json().url).not.toBe(plain)
+      expect(stripe.calls.sessions).toHaveLength(2)
+      expect(stripe.calls.sessions[1].line_items.map((l: any) => l.price_data.unit_amount)).toEqual([1000])
+    })
+
+    it('two open checkouts for a new set are re-priced when paid', async () => {
+      const u = await createUser()
+      const d = await createDesign(u)
+      await addRevision(d, 'hat')
+      await addRevision(d, 'mask')
+      await finalize(u, d.id, { categories: ['hat'] })
+      await finalize(u, d.id, { categories: ['mask'] })
+      const [a, b] = await grantOf(d.id)
+      expect([a.amountCents, b.amountCents]).toEqual([2900, 2900])
+      await paid(a.id, 'pi_a')
+      await paid(b.id, 'pi_b')
+      const [mask] = await db.select().from(studioEntitlements).where(eq(studioEntitlements.category, 'mask'))
+      expect(mask).toMatchObject({ kind: 'first', amountCents: 1900 })
+      expect(stripe.calls.refunds).toEqual([{ params: expect.objectContaining({ payment_intent: 'pi_b', amount: 1000 }), opts: expect.anything() }])
+      const [after] = await db.select().from(studioPayments).where(eq(studioPayments.id, b.id))
+      expect(after).toMatchObject({ refundedCents: 1000, refundDueCents: 0 })
+    })
+
+    it('a revision bought as a first finalize is re-priced', async () => {
+      const u = await createUser()
+      const d = await createDesign(u)
+      await addRevision(d, 'hat')
+      await finalize(u, d.id)
+      await addRevision(d, 'hat')
+      const [first] = await grantOf(d.id)
+      await db.update(studioPayments).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(studioPayments.id, first.id))
+      // revision 1's checkout is still open in another tab when revision 2 is quoted
+      const { quoteFinalize } = await import('../src/studio/pricing.js')
+      const q = await quoteFinalize(d, null, [])
+      expect(q.lines[0]).toMatchObject({ priceKind: 'first', amountCents: 2900, revisionNumber: 2 })
+      await finalize(u, d.id)
+      const second = (await grantOf(d.id))[1]
+      await paid(first.id, 'pi_r1')
+      await paid(second.id, 'pi_r2')
+      const ents = await db.select().from(studioEntitlements)
+      expect(ents.map((e) => [e.kind, e.amountCents]).sort()).toEqual([['first', 2900], ['revision', 1500]])
+      expect(stripe.calls.refunds.map((r) => [r.params.payment_intent, r.params.amount])).toEqual([['pi_r2', 1400]])
+    })
+
+    it('a duplicate refund that fails is owed and retried by the sweep', async () => {
+      const { sweepStudio } = await import('../src/studio/sweep.js')
+      const u = await createUser()
+      const d = await createDesign(u)
+      await addRevision(d, 'hat')
+      await finalize(u, d.id)
+      const [first] = await paymentOf(d.id)
+      await db.update(studioPayments).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(studioPayments.id, first.id))
+      await finalize(u, d.id)
+      const second = (await paymentOf(d.id)).find((p) => p.id !== first.id)!
+      await paid(first.id, 'pi_first')
+      stripe.failRefunds = true
+      await paid(second.id, 'pi_second')
+      const [owed] = await db.select().from(studioPayments).where(eq(studioPayments.id, second.id))
+      expect(owed).toMatchObject({ refundDueCents: 2900, refundedCents: 0 })
+      stripe.failRefunds = false
+      await sweepStudio(new Date(), { fly })
+      const [settled] = await db.select().from(studioPayments).where(eq(studioPayments.id, second.id))
+      expect(settled).toMatchObject({ refundDueCents: 0, refundedCents: 2900 })
+      expect(stripe.made).toHaveLength(1)
+      await sweepStudio(new Date(), { fly })
+      expect(stripe.made).toHaveLength(1)
+    })
+
+    it('each paid piece gets its own finalize job', async () => {
+      const u = await createUser()
+      const d = await createDesign(u)
+      await addRevision(d, 'hat')
+      await addRevision(d, 'mask')
+      await finalize(u, d.id)
+      const [pay] = await paymentOf(d.id)
+      await paid(pay.id)
+      const ents = await db.select().from(studioEntitlements)
+      expect(ents).toHaveLength(2)
+      expect(new Set(ents.map((e) => e.jobId)).size).toBe(2)
+      const jobs = await db.select().from(studioJobs).where(eq(studioJobs.type, 'finalize'))
+      expect(jobs.map((j) => (j.payload as any).finalize.pieces.length)).toEqual([1, 1])
     })
   })
 })

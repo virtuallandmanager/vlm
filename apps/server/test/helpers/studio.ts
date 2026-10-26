@@ -178,11 +178,20 @@ export function fakeStripe() {
         },
       },
     },
+    // Refunds Stripe holds, as refunds.list returns them; a test can add one made "earlier"
+    made: [] as { id: string; payment_intent: string; amount: number; metadata: Record<string, string> }[],
+    hangRefunds: false,
     refunds: {
       async create(params: any, opts: any) {
         calls.refunds.push({ params, opts })
+        if (stripe.hangRefunds) await new Promise(() => {})
         if (stripe.failRefunds) throw new Error('refund refused')
-        return { id: `re_${++n}` }
+        const refund = { id: `re_${++n}`, payment_intent: params.payment_intent, amount: params.amount, metadata: params.metadata ?? {} }
+        stripe.made.push(refund)
+        return refund
+      },
+      async list(params: any) {
+        return { data: stripe.made.filter((r) => r.payment_intent === params.payment_intent), has_more: false }
       },
     },
     subscriptions: {
