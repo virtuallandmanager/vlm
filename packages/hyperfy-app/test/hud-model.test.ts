@@ -1,6 +1,6 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
-import type { SerializedScene } from 'vlm-shared'
+import type { SerializedScene } from '@virvixr/shared'
 import type { EditState, HudAlert } from '../src/edit/controller.js'
 import {
   ALERT_LINK_EXPIRED,

@@ -1,6 +1,6 @@
 // Platform-free edit session for in-world HUD transform tools. The DCL adapter feeds it pointer rays every
 // frame and forwards its throttled drafts over the network; nothing here touches a platform API.
-import type { TransformData, Vec3 } from 'vlm-shared'
+import type { TransformData, Vec3 } from '@virvixr/shared'
 import {
   AXIS_VECTORS,
   add,

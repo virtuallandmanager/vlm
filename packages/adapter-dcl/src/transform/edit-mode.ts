@@ -3,9 +3,9 @@
 // is on CL_POINTER (never CL_PHYSICS) and exit() removes all of it.
 import { engine, Entity, Transform, TextShape, Billboard } from '@dcl/sdk/ecs'
 import { Color3, Color4 } from '@dcl/sdk/math'
-import { TransformSession } from 'vlm-core'
-import type { Axis, VLM, DraftPayload, Handle, MoveLock, Ray, Selected, TransformMode } from 'vlm-core'
-import type { TransformData, Vec3 } from 'vlm-shared'
+import { TransformSession } from '@virvixr/core'
+import type { Axis, VLM, DraftPayload, Handle, MoveLock, Ray, Selected, TransformMode } from '@virvixr/core'
+import type { TransformData, Vec3 } from '@virvixr/shared'
 import type { DclAdapter } from '../DclAdapter'
 import { Gizmo } from './gizmo.js'
 import { EditInput, type EditHost } from './input.js'

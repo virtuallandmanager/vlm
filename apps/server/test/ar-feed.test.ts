@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createRequire } from 'node:module'
 import { eq } from 'drizzle-orm'
-import { AR_FEED } from 'vlm-shared'
+import { AR_FEED } from '@virvixr/shared'
 import { db } from '../src/db/connection.js'
 import { arMarkers } from '../src/db/schema.js'
 import { initBus, publishSceneTouched } from '../src/realtime/bus.js'

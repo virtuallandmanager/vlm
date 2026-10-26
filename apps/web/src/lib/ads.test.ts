@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { LevelCounts } from 'vlm-shared'
+import type { LevelCounts } from '@virvixr/shared'
 import { shapeLabel, isHttpsUrl, clickRate, offImageLabel, adModeHint } from './ads'
 
 const zero = { scene: 0, screen: 0, look: 0, click: 0 }

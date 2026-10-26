@@ -13,10 +13,10 @@
   },
   "dependencies": {
     "colyseus.js": "^0.15.26",
-    "vlm-adapter-dcl": "file:../../packages/vlm-adapter-dcl",
-    "vlm-client": "file:../../packages/vlm-client",
-    "vlm-core": "file:../../packages/vlm-core",
-    "vlm-shared": "file:../../packages/vlm-shared",
-    "vlm-smart-item-dcl": "file:../../packages/vlm-smart-item-dcl/vlm-smart-item-dcl-2.0.0.tgz"
+    "@virvixr/adapter-dcl": "file:../../packages/adapter-dcl",
+    "@virvixr/client": "file:../../packages/client",
+    "@virvixr/core": "file:../../packages/core",
+    "@virvixr/shared": "file:../../packages/shared",
+    "vlm-smart-item-dcl": "file:../../packages/dcl/vlm-smart-item-dcl-2.0.0.tgz"
   }
 }

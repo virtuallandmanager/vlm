@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AD_LIMITS, AD_SHAPES, checkAdEventBatch, VideoSourceType } from 'vlm-shared'
+import { AD_LIMITS, AD_SHAPES, checkAdEventBatch, VideoSourceType } from '@virvixr/shared'
 
 const ev = (over: Record<string, unknown> = {}) => ({ adId: 'ad1', elementId: 'el1', level: 'scene', t: 1000, ...over })
 const batch = (over: Record<string, unknown> = {}) => ({ v: 1, sessionId: 's1', events: [ev()], ...over })

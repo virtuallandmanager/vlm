@@ -3,9 +3,9 @@
  * vlm-core's TransformSession in VLM coordinates, shows the draft through `preview`, and saves with VlmApi. Drafts
  * and saves stay in VLM coordinates; only rays are mapped (rays.ts) and the app maps drafts back for display.
  */
-import type { Vec3 } from 'vlm-shared'
-import type { Axis, Ray } from 'vlm-core/transform/math'
-import type { ElementKind, Handle, MoveLock, TransformMode, TransformSession } from 'vlm-core/transform/session'
+import type { Vec3 } from '@virvixr/shared'
+import type { Axis, Ray } from '@virvixr/core/transform/math'
+import type { ElementKind, Handle, MoveLock, TransformMode, TransformSession } from '@virvixr/core/transform/session'
 import type { RenderItem } from '../plan.js'
 import type { ApiResult, VlmTransform } from '../vlm-api.js'
 import { toVlmRay } from './rays.js'

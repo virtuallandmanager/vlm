@@ -1,4 +1,4 @@
-import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData } from 'vlm-shared'
+import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData } from '@virvixr/shared'
 import type { Selected } from './transform/session.js'
 import type { ListedInstance } from './managers/transform-ops.js'
 import { VideoManager } from './managers/VideoManager.js'

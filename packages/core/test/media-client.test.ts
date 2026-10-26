@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { VLMHttpClient } from 'vlm-client'
+import { VLMHttpClient } from '@virvixr/client'
 
 const call = (fetchMock: any, i = 0) => fetchMock.mock.calls[i] as [string, RequestInit]
 

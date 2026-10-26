@@ -27,7 +27,7 @@ import { authorizeSceneMessage, propertiesOf, type GuardResult, type GuardTarget
 import { getSceneLibraryItem } from '../library/scene-library.js'
 import { venueTopic, publishSceneTouched, STREAMS_TOPIC, type VenueEvent, type StreamStatusEvent } from '../realtime/bus.js'
 import { normalizeUrl, withLiveStatus, withLiveVideo } from '../streaming/live-status.js'
-import type { VenueAccessMessage } from 'vlm-shared'
+import type { VenueAccessMessage } from '@virvixr/shared'
 import { hold, holderOf, release, releaseAll, sweepExpired } from './draft-holds.js'
 
 interface JoinOptions {

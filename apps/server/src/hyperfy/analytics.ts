@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { and, desc, eq, isNull, lte, ne, sql } from 'drizzle-orm'
-import type { HyperfyAnalyticsBatch } from 'vlm-shared'
+import type { HyperfyAnalyticsBatch } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { analyticsDirtyHours, analyticsEvents, analyticsPositions, analyticsScenes, analyticsSessions, locationSetups } from '../db/schema.js'
 import { visitorHash } from '../analytics/hash.js'

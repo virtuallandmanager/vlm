@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { HYPERFY_PAIRING, normalizePairingCode, DEFAULT_VENUE_RULES } from 'vlm-shared'
+import { HYPERFY_PAIRING, normalizePairingCode, DEFAULT_VENUE_RULES } from '@virvixr/shared'
 import { db } from '../src/db/connection.js'
 import { hyperfyPairings, hyperfyWorlds, venues, bookings, accessGrants } from '../src/db/schema.js'
 import { createWorldKey } from '../src/hyperfy/worlds.js'

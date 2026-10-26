@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { randomInt } from 'node:crypto'
 import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm'
-import { HYPERFY_PAIRING, type HyperfyPairingSummary, type HyperfyVouchLinked, type PairClaimResponse, type PairRenewResponse } from 'vlm-shared'
+import { HYPERFY_PAIRING, type HyperfyPairingSummary, type HyperfyVouchLinked, type PairClaimResponse, type PairRenewResponse } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { hyperfyPairings, hyperfyWorlds, scenes, users } from '../db/schema.js'
 import { getSceneAccess, type SceneAccess } from '../auth/permissions.js'

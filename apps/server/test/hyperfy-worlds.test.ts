@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { HYPERFY_FEED } from 'vlm-shared'
+import { HYPERFY_FEED } from '@virvixr/shared'
 import { db } from '../src/db/connection.js'
 import bcrypt from 'bcryptjs'
 import { hyperfyWorlds, subscriptions, sceneCollaborators, scenes, users, userAuthMethods, organizations } from '../src/db/schema.js'

@@ -1,5 +1,5 @@
-import { parseRingCode, ringCodeOf } from 'vlm-shared'
-import type { ArMarkerView, ArSpaceView } from 'vlm-shared'
+import { parseRingCode, ringCodeOf } from '@virvixr/shared'
+import type { ArMarkerView, ArSpaceView } from '@virvixr/shared'
 
 export const AR_MIN_DIAMETER_MM = 60
 export const AR_MAX_DIAMETER_MM = 256

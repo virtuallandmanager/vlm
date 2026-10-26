@@ -1,4 +1,4 @@
-import { HYPERFY_FEED, HYPERFY_PAIRING, type PairClaimResponse, type PairRenewResponse, type PairStartResponse } from 'vlm-shared'
+import { HYPERFY_FEED, HYPERFY_PAIRING, type PairClaimResponse, type PairRenewResponse, type PairStartResponse } from '@virvixr/shared'
 import type { ScriptFetch, ScriptSetTimeout } from './poller.js'
 import { parseIsoTime } from './iso-time.js'
 import { sha256Hex } from './sha256.js'

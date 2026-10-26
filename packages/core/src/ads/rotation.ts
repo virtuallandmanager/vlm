@@ -1,5 +1,5 @@
-import { AD_LIMITS } from 'vlm-shared'
-import type { AdItem, Quat, Vec3 } from 'vlm-shared'
+import { AD_LIMITS } from '@virvixr/shared'
+import type { AdItem, Quat, Vec3 } from '@virvixr/shared'
 
 const HOUR_MS = 60 * 60 * 1000
 

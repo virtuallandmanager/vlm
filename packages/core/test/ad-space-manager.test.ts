@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { AD_LIMITS } from 'vlm-shared'
-import type { AdItem, AdServeResponse } from 'vlm-shared'
+import { AD_LIMITS } from '@virvixr/shared'
+import type { AdItem, AdServeResponse } from '@virvixr/shared'
 import { SceneManager } from '../src/SceneManager.js'
 import { VLMStorageImpl } from '../src/storage.js'
 import { EventBus } from '../src/events/EventBus.js'

@@ -38,12 +38,12 @@ In-World SDKs + HUD  ──Colyseus WSS──────────┘
 | `apps/web` | Next.js dashboard (static export) |
 | `apps/streaming` | RTMP ingest + HLS transcoding server |
 | `apps/docs` | Documentation site (Astro/Starlight) |
-| `packages/vlm-shared` | Shared types, enums, platform adapter interface |
-| `packages/vlm-core` | Platform-agnostic scene management, element managers |
-| `packages/vlm-client` | HTTP + WebSocket client SDK |
-| `packages/vlm-hud` | In-world management HUD (spatial UI overlay) |
-| `packages/vlm-adapter-dcl` | Decentraland adapter |
-| `packages/vlm-hyperfy-app` | VLM app (`.hyp`) for self-run Hyperfy worlds |
+| `packages/shared` | Shared types, enums, platform adapter interface |
+| `packages/core` | Platform-agnostic scene management, element managers |
+| `packages/client` | HTTP + WebSocket client SDK |
+| `packages/hud` | In-world management HUD (spatial UI overlay) |
+| `packages/adapter-dcl` | Decentraland adapter |
+| `packages/hyperfy-app` | VLM app (`.hyp`) for self-run Hyperfy worlds |
 
 ## Quick Start
 
@@ -154,7 +154,7 @@ When the server is running, Swagger UI is available at `/api/docs`.
 
 nvm use 20
 pnpm docker:dev          # Postgres on :5432
-pnpm --filter vlm-server test
+pnpm --filter @virvixr/server test
 
 ## Tech Stack
 

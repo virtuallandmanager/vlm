@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { AR_FEED, checkHyperfyAnalyticsBatch, type ArFeedResponse, type ArMarkerLookup } from 'vlm-shared'
+import { AR_FEED, checkHyperfyAnalyticsBatch, type ArFeedResponse, type ArMarkerLookup } from '@virvixr/shared'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess } from '../auth/permissions.js'

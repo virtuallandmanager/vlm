@@ -38,7 +38,7 @@ describe('production bundling of the pure modules', () => {
       ...opts,
       stdin: {
         contents: [
-          "export { TransformSession } from 'vlm-core/transform/session'",
+          "export { TransformSession } from '@virvixr/core/transform/session'",
           "export * from './src/edit/controller.ts'",
           "export * from './src/edit/rays.ts'",
           "export * from './src/edit/gizmo.ts'",
@@ -49,8 +49,8 @@ describe('production bundling of the pure modules', () => {
       globalName: 'M',
       metafile: true,
     })
-    const fromCore = Object.keys(out.metafile!.inputs).filter((p) => p.includes('vlm-core/')).map((p) => p.slice(p.indexOf('vlm-core/'))).sort()
-    expect(fromCore).toEqual(['vlm-core/src/transform/math.ts', 'vlm-core/src/transform/session.ts'])
+    const fromCore = Object.keys(out.metafile!.inputs).filter((p) => p.includes('core/src/')).map((p) => p.slice(p.indexOf('core/src/'))).sort()
+    expect(fromCore).toEqual(['core/src/transform/math.ts', 'core/src/transform/session.ts'])
     const js = Buffer.from(out.outputFiles![0].contents).toString('utf8')
     expect(js).toMatch(/\bTransformSession = class\b|class TransformSession\b/)
   })

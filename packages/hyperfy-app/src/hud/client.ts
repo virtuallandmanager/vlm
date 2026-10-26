@@ -1,5 +1,5 @@
-import type { SerializedScene } from 'vlm-shared'
-import { TransformSession } from 'vlm-core/transform/session'
+import type { SerializedScene } from '@virvixr/shared'
+import { TransformSession } from '@virvixr/core/transform/session'
 import { EditController, type HudAlert } from '../edit/controller.js'
 import { Gizmo, type GizmoNode } from '../edit/gizmo.js'
 import { pointerRay } from '../edit/rays.js'

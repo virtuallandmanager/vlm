@@ -18,7 +18,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/package.json /app/package-lock.json ./
-COPY packages/vlm-hyperfy-app/dist/vlm.hyp /app/vlm/vlm.hyp
+COPY packages/hyperfy-app/dist/vlm.hyp /app/vlm/vlm.hyp
 # The worlds DB job the VLM server runs as one-shot machines; it uses Hyperfy's own `pg` (a dependency at b4081eb).
 COPY infra/hyperfy/db-job.mjs /app/vlm/db-job.mjs
 ENV NODE_ENV=production PORT=3000 WORLD=world

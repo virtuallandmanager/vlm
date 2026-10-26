@@ -3,7 +3,7 @@
  * calls one HudActions method. Three screen canvases: the bar (top centre), the open panel (right) and the alert
  * stack (bottom centre, click-through). Screen UI takes clicks only while the pointer is unlocked.
  */
-import type { TransformMode } from 'vlm-core/transform/session'
+import type { TransformMode } from '@virvixr/core/transform/session'
 import type { AssetTab, Axis, HudViewModel, Panel } from './model.js'
 
 export interface UiNode {

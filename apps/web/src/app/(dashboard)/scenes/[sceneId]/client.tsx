@@ -1,7 +1,7 @@
 'use client'
 import { useApi, fileToBase64, mediaContentType, uploadErrorMessage, isGlbAsset } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
-import { AD_SHAPES, type AdFormats } from 'vlm-shared'
+import { AD_SHAPES, type AdFormats } from '@virvixr/shared'
 import { shapeLabel, offImageLabel, adModeHint } from '@/lib/ads'
 import { useSceneRoom } from '@/lib/colyseus'
 import { SceneRoles } from './SceneRoles'

@@ -6,7 +6,7 @@ import {
   type VenueRole,
   type VenueRules,
   type VenueScope,
-} from 'vlm-shared'
+} from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { accessGrants, bookings, sceneCollaborators, sceneRoles, scenes, venues } from '../db/schema.js'
 import type { Actor } from './actor.js'

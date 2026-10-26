@@ -1,5 +1,5 @@
 // Copy and helpers for "Your Hyperfy worlds" (self-run and hosted) on the deploy page.
-import type { HyperfyWorldSummary } from 'vlm-shared'
+import type { HyperfyWorldSummary } from '@virvixr/shared'
 
 const MIN = 60_000
 const HOUR = 60 * MIN

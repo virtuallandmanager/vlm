@@ -1,5 +1,5 @@
 {
-  "name": "vlm-hyperfy-app",
+  "name": "@virvixr/hyperfy-app",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "vlm-shared": "workspace:*"
+    "@virvixr/shared": "workspace:*"
   },
   "devDependencies": {
     "esbuild": "^0.27.4",

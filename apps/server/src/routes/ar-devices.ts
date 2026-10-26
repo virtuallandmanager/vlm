@@ -17,7 +17,7 @@
  */
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { normalizePairingCode, type ArPairApprovalInfo, type ArPairStartResponse, type ArPassResponse } from 'vlm-shared'
+import { normalizePairingCode, type ArPairApprovalInfo, type ArPairStartResponse, type ArPassResponse } from '@virvixr/shared'
 import { config } from '../config.js'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'

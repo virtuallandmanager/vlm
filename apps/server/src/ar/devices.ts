@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { randomInt } from 'node:crypto'
 import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm'
-import { AR_PAIRING, HYPERFY_PAIRING, type ArDeviceKind, type ArDeviceSpace, type ArDeviceStatus, type ArDeviceSummary, type ArPairClaimResponse } from 'vlm-shared'
+import { AR_PAIRING, HYPERFY_PAIRING, type ArDeviceKind, type ArDeviceSpace, type ArDeviceStatus, type ArDeviceSummary, type ArPairClaimResponse } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { arDevices, arFloors, arMarkers, arSpaces, sceneCollaborators, sceneRoles, scenes, users } from '../db/schema.js'
 import { getSceneAccess } from '../auth/permissions.js'

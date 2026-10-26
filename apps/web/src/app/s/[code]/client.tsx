@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { ArMarkerLookup } from 'vlm-shared'
+import type { ArMarkerLookup } from '@virvixr/shared'
 import { API_URL } from '@/lib/config'
 import { shareUrl, spaceCodeFromPath } from '@/lib/ar'
 

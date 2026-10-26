@@ -17,7 +17,7 @@
 
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import QRCode from 'qrcode'
-import { normalizePairingCode, type PairStartResponse } from 'vlm-shared'
+import { normalizePairingCode, type PairStartResponse } from '@virvixr/shared'
 import { config } from '../config.js'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'

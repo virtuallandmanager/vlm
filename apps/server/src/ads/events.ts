@@ -1,7 +1,7 @@
 import { and, eq, inArray, or } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { adEvents, sceneElements, scenes } from '../db/schema.js'
-import type { AdEvent } from 'vlm-shared'
+import type { AdEvent } from '@virvixr/shared'
 import { selectAdsForElements } from './select.js'
 
 // dwell_ms is an int column

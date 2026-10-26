@@ -3,8 +3,8 @@
 import { engine, Entity, Transform, MeshRenderer, MeshCollider, Material, GltfContainer, ColliderLayer } from '@dcl/sdk/ecs'
 import type { PBMeshCollider } from '@dcl/sdk/ecs'
 import { Color4, Vector3 } from '@dcl/sdk/math'
-import type { ElementKind } from 'vlm-core'
-import type { EntityHandle, Vec3 } from 'vlm-shared'
+import type { ElementKind } from '@virvixr/core'
+import type { EntityHandle, Vec3 } from '@virvixr/shared'
 
 export const MARKER_SIZE = 0.3
 const MARKER_COLOR = Color4.create(1, 0.6, 0.1, 1)

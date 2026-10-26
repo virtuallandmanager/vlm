@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { checkBatch, locationKeyFor, isHighPriority, ANALYTICS_LIMITS, type IngestBatch } from 'vlm-shared'
+import { checkBatch, locationKeyFor, isHighPriority, ANALYTICS_LIMITS, type IngestBatch } from '@virvixr/shared'
 
 const NOW = Date.parse('2026-10-04T12:00:00Z')
 const SID = '11111111-1111-4111-8111-111111111111'

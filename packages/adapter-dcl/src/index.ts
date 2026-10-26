@@ -1,15 +1,15 @@
-import { VLM, resolveApiUrl, analyticsUrlFor, handoffUrlFor, dashboardOriginFor, hudStatus, applyLibraryChange, placedMessage } from 'vlm-core'
-import { VLMHttpClient } from 'vlm-client'
-import type { SetupStatus, SceneLibraryItem } from 'vlm-client'
-import type { VLMConnectionState } from 'vlm-core'
+import { VLM, resolveApiUrl, analyticsUrlFor, handoffUrlFor, dashboardOriginFor, hudStatus, applyLibraryChange, placedMessage } from '@virvixr/core'
+import { VLMHttpClient } from '@virvixr/client'
+import type { SetupStatus, SceneLibraryItem } from '@virvixr/client'
+import type { VLMConnectionState } from '@virvixr/core'
 import { engine, Transform } from '@dcl/sdk/ecs'
 import { DclAdapter } from './DclAdapter'
 import { startVLMAnalytics, getAnalyticsSceneRef } from './analytics.js'
 import { DclHUDRenderer, setSceneActionHandler } from './DclHUDRenderer.js'
 import { DclEditMode } from './transform/edit-mode.js'
 import type { HUDMediaItem, HUDLayoutItem } from './DclHUDRenderer.js'
-import { locationKeyFor } from 'vlm-shared'
-import type { VLMInitConfig, VLMStorage } from 'vlm-shared'
+import { locationKeyFor } from '@virvixr/shared'
+import type { VLMInitConfig, VLMStorage } from '@virvixr/shared'
 
 // Setup-status re-checks while Decentraland's directory is unavailable (~2.5 min).
 const OWNER_CHECK_BACKOFF_MS = [10_000, 20_000, 40_000, 80_000]

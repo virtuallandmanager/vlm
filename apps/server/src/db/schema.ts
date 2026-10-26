@@ -20,7 +20,7 @@ import {
   bigint,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
-import type { VenueRules, Vec3 } from 'vlm-shared'
+import type { VenueRules, Vec3 } from '@virvixr/shared'
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { DCL_MAX_FILE_BYTES } from 'vlm-shared'
+import { DCL_MAX_FILE_BYTES } from '@virvixr/shared'
 import { config } from '../src/config.js'
 import { db } from '../src/db/connection.js'
 import { assetLibraryItems } from '../src/db/schema.js'

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { RING_MAX_DIAMETER_MM, ringMarkerSvg, ringPlaqueSizeMm, ringShapes } from 'vlm-shared'
-import { sha256 } from '../../../packages/vlm-shared/src/ring-marker/sha256'
+import { RING_MAX_DIAMETER_MM, ringMarkerSvg, ringPlaqueSizeMm, ringShapes } from '@virvixr/shared'
+import { sha256 } from '../../../packages/shared/src/ring-marker/sha256'
 
 const vectors = JSON.parse(readFileSync(new URL('../../ring-marker/vectors/layout.json', import.meta.url), 'utf8'))
 const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')

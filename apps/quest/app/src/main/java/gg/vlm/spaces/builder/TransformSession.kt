@@ -59,7 +59,7 @@ const val UNIFORM_SNAP_STEP = 0.1
 const val STRETCH_SNAP_STEP = 0.25
 
 /**
- * Port of packages/vlm-core/src/transform/session.ts: the platform-free edit session behind the builder's Move /
+ * Port of packages/core/src/transform/session.ts: the platform-free edit session behind the builder's Move /
  * Rotate / Resize bar. The headset feeds it pointer rays in scene coordinates every frame; it hands out drafts through
  * [onDraft] at most every [draftIntervalMs] while dragging (and once more when a drag ends). Scale never goes below
  * [MIN_SCALE]. Kotlin's [ItemTransform] is immutable, so the copies session.ts makes aren't needed.

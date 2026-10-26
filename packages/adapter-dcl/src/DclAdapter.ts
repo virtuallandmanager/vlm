@@ -37,8 +37,8 @@ import type {
   PointerCallback,
   Vec3,
   Quat,
-} from 'vlm-shared'
-import { localModelFile } from 'vlm-shared'
+} from '@virvixr/shared'
+import { localModelFile } from '@virvixr/shared'
 
 export class DclAdapter implements VLMPlatformAdapter {
   // Video player entities -- DCL uses a separate entity for the VideoPlayer component

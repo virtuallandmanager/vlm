@@ -4,7 +4,7 @@
 set -euo pipefail
 root="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 cd "$root"
-if [ -n "$(git status --porcelain -- infra/hyperfy packages/vlm-hyperfy-app/dist)" ]; then
+if [ -n "$(git status --porcelain -- infra/hyperfy packages/hyperfy-app/dist)" ]; then
   echo "infra/hyperfy or the built VLM app has uncommitted changes; commit them so the tag matches the image" >&2
   exit 1
 fi

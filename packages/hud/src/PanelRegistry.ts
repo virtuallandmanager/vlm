@@ -6,8 +6,8 @@
  * except for the notification feed which overlays on top.
  */
 
-import type { HUDPanelState } from 'vlm-shared'
-import { HUDPanelType } from 'vlm-shared'
+import type { HUDPanelState } from '@virvixr/shared'
+import { HUDPanelType } from '@virvixr/shared'
 
 export class PanelRegistry {
   private panels: Map<HUDPanelType, HUDPanelState> = new Map()

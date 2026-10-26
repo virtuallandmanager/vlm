@@ -118,4 +118,4 @@ export interface HUDNotification {
 }
 
 // WorldStatus is defined in protocol.ts and re-exported from the package index.
-// HUD components should import it from 'vlm-shared' directly.
+// HUD components should import it from '@virvixr/shared' directly.

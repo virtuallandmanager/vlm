@@ -1,4 +1,4 @@
-import { HYPERFY_FEED, HYPERFY_PAIRING } from 'vlm-shared'
+import { HYPERFY_FEED, HYPERFY_PAIRING } from '@virvixr/shared'
 import {
   LINK,
   type HApp,

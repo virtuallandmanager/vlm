@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { ensureNetworkPolyfills, ColyseusManager } from 'vlm-client'
+import { ensureNetworkPolyfills, ColyseusManager } from '@virvixr/client'
 import { VLM } from '../src/VLM.js'
 
 const g = globalThis as any

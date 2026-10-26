@@ -16,7 +16,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const bundled = await build(bundleOptions(root, join(root, 'src/app.ts')))
 const js = Buffer.from(bundled.outputFiles[0].contents)
 const glb = readFileSync(join(root, 'assets/empty.glb'))
-const png = readFileSync(join(root, '../vlm-smart-item-dcl/assets/hud-v.png'))
+const png = readFileSync(join(root, '../dcl/assets/hud-v.png'))
 
 const sha = (b) => createHash('sha256').update(b).digest('hex')
 const model = `asset://${sha(glb)}.glb`

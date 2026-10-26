@@ -1,6 +1,7 @@
 {
-  "name": "vlm-docs",
+  "name": "@virvixr/docs",
   "version": "2.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "astro dev",

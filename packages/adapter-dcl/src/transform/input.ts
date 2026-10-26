@@ -18,8 +18,8 @@ import type { LastWriteWinElementSetComponentDefinition } from '@dcl/sdk/ecs'
 import * as ecs from '@dcl/sdk/ecs'
 import { Vector3 } from '@dcl/sdk/math'
 import { clearHudPress, hudPress } from '../hud/press.js'
-import type { Handle, Ray, TransformMode } from 'vlm-core'
-import type { Vec3 } from 'vlm-shared'
+import type { Handle, Ray, TransformMode } from '@virvixr/core'
+import type { Vec3 } from '@virvixr/shared'
 
 /**
  * IA_MODIFIER: Shift on desktop, present from @dcl/ecs / @dcl/sdk 7.23 (the workspace's typings predate it).

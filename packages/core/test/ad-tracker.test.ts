@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { AD_LIMITS } from 'vlm-shared'
-import type { AdEvent } from 'vlm-shared'
+import { AD_LIMITS } from '@virvixr/shared'
+import type { AdEvent } from '@virvixr/shared'
 import { AdTracker } from '../src/ads/tracker.js'
 
 const identity = { x: 0, y: 0, z: 0, w: 1 }

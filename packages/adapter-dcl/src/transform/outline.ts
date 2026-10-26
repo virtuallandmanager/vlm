@@ -3,8 +3,8 @@
 // a surface hit.
 import { engine, Entity, Transform, MeshRenderer, Material } from '@dcl/sdk/ecs'
 import { Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
-import type { ElementKind } from 'vlm-core'
-import type { TransformData, Vec3 } from 'vlm-shared'
+import type { ElementKind } from '@virvixr/core'
+import type { TransformData, Vec3 } from '@virvixr/shared'
 import { MARKER_SIZE } from './picks.js'
 
 const COLOR = Color4.create(1, 0.85, 0.2, 1)

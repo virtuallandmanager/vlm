@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { AD_LIMITS } from 'vlm-shared'
-import type { AdItem } from 'vlm-shared'
+import { AD_LIMITS } from '@virvixr/shared'
+import type { AdItem } from '@virvixr/shared'
 import { AdRotation, durationMs, isOnScreen } from '../src/ads/rotation.js'
 
 const item = (adId: string, kind: 'image' | 'video' = 'image'): AdItem => ({

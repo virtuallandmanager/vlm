@@ -1,6 +1,6 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
-import type { ArDeviceSummary } from 'vlm-shared'
+import type { ArDeviceSummary } from '@virvixr/shared'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/lib/api'
 import { Skeleton } from '@/components/ui'

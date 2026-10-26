@@ -3,7 +3,7 @@
  *
  * The image ships inside each scene (no CDN): `vlm-dcl sync` / `vlm-dcl install` copy it from the
  * vlm-dcl package (assets/hud-v.png, made by assets/make-hud-v.py) to this scene-relative path, and the
- * generic World runtime deploys it with its bundle. Keep the path in step with packages/vlm-smart-item-dcl/bin/sync.mjs.
+ * generic World runtime deploys it with its bundle. Keep the path in step with packages/dcl/bin/sync.mjs.
  */
 export const HUD_ICON_SRC = 'images/virvi/hud-v.png'
 

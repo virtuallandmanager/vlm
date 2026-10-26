@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { and, eq, inArray } from 'drizzle-orm'
-import { localModelFile, validateSceneRef, type AnalyticsSceneRef } from 'vlm-shared'
+import { localModelFile, validateSceneRef, type AnalyticsSceneRef } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { analyticsScenes, mediaAssets, sceneElements, scenes } from '../db/schema.js'
 import { hasDclAuthHeaders, verifyDclSignedFetch } from '../middleware/dcl-auth.js'

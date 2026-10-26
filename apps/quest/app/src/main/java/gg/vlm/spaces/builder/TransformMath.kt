@@ -43,7 +43,7 @@ fun Vec3.with(axis: Axis, value: Double): Vec3 =
 data class Ray(val origin: Vec3, val direction: Vec3)
 
 /**
- * Port of packages/vlm-core/src/transform/math.ts: vector and quaternion math for in-world editing, in the
+ * Port of packages/core/src/transform/math.ts: vector and quaternion math for in-world editing, in the
  * Decentraland convention (left-handed, Euler degrees applied yaw(Y) / pitch(X) / roll(Z) like
  * `Quaternion.fromEulerDegrees`). Spatial SDK shares that frame (see Mapping.kt), so scene coordinates go in unchanged.
  */

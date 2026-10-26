@@ -1,7 +1,7 @@
 import Foundation
 import simd
 
-/// Port of packages/vlm-hyperfy-app/src/transform.ts.
+/// Port of packages/hyperfy-app/src/transform.ts.
 ///
 /// VLM (Decentraland, left-handed, Y-up, +Z forward) to RealityKit (right-handed, Y-up, -Z forward), which is
 /// the same frame as three.js/Hyperfy. Position z is mirrored; rotation goes degrees to radians with x and y

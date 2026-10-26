@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { VLMHttpClient } from 'vlm-client'
+import { VLMHttpClient } from '@virvixr/client'
 
 const REF = { realm: 'main', isWorld: false, isPreview: false, baseParcel: '1,1', parcels: ['1,1'] }
 

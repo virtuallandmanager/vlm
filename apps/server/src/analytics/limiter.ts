@@ -1,4 +1,4 @@
-import { ANALYTICS_LIMITS } from 'vlm-shared'
+import { ANALYTICS_LIMITS } from '@virvixr/shared'
 
 interface Bucket {
   tokens: number

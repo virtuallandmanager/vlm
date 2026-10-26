@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const out = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'empty.glb')
 
 export function emptyGlb() {
-  const gltf = { asset: { version: '2.0', generator: 'vlm-hyperfy-app' }, scene: 0, scenes: [{}] }
+  const gltf = { asset: { version: '2.0', generator: '@virvixr/hyperfy-app' }, scene: 0, scenes: [{}] }
   let json = Buffer.from(JSON.stringify(gltf))
   json = Buffer.concat([json, Buffer.alloc((4 - (json.length % 4)) % 4, 0x20)]) // chunks are 4-byte aligned
   const header = Buffer.alloc(12)

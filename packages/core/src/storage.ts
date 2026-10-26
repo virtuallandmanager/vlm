@@ -1,4 +1,4 @@
-import type { VLMStorage } from 'vlm-shared'
+import type { VLMStorage } from '@virvixr/shared'
 
 export class VLMStorageImpl {
   static create(): VLMStorage {

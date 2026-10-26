@@ -13,16 +13,16 @@
  *   Drag "VLM Manager" from the asset catalog, set sceneId, deploy.
  *
  * Usage from code:
- *   import { VLMSmartItem } from 'vlm-dcl'
+ *   import { VLMSmartItem } from '@virvixr/dcl'
  *   const item = new VLMSmartItem()
  *   item.init({ inventory })
  *   item.spawn(entity, { sceneId: 'your-scene-id' }, channel)
  */
 
 import { VisibilityComponent } from '@dcl/sdk/ecs'
-import { createVLM } from 'vlm-adapter-dcl'
-import type { VLM } from 'vlm-core'
-import type { VLMInitConfig } from 'vlm-shared'
+import { createVLM } from '@virvixr/adapter-dcl'
+import type { VLM } from '@virvixr/core'
+import type { VLMInitConfig } from '@virvixr/shared'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -274,6 +274,6 @@ export function startVLMManager(entity: Entity, options: VLMManagerOptions = {})
 export default new VLMSmartItem()
 
 // Named exports for code-based usage
-export { createVLM, startVLMAnalytics, stopVLMAnalytics } from 'vlm-adapter-dcl'
-export type { VLM } from 'vlm-core'
-export type { VLMInitConfig, VLMStorage } from 'vlm-shared'
+export { createVLM, startVLMAnalytics, stopVLMAnalytics } from '@virvixr/adapter-dcl'
+export type { VLM } from '@virvixr/core'
+export type { VLMInitConfig, VLMStorage } from '@virvixr/shared'

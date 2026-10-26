@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { VENUE_SCOPES, VENUE_ROLES, DEFAULT_VENUE_RULES } from 'vlm-shared'
+import { VENUE_SCOPES, VENUE_ROLES, DEFAULT_VENUE_RULES } from '@virvixr/shared'
 import { db } from '../src/db/connection.js'
 import { venues, bookings, accessGrants, venueScopeEnum, venueRoleEnum } from '../src/db/schema.js'
 import { resetDb } from './helpers/db.js'

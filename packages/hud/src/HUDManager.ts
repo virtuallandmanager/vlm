@@ -13,9 +13,9 @@ import type {
   BudgetLimits,
   VLMStorage,
   WorldStatus,
-} from 'vlm-shared'
-import { HUDPanelType } from 'vlm-shared'
-import type { VLMHttpClient, ColyseusManager } from 'vlm-client'
+} from '@virvixr/shared'
+import { HUDPanelType } from '@virvixr/shared'
+import type { VLMHttpClient, ColyseusManager } from '@virvixr/client'
 import { PanelRegistry } from './PanelRegistry.js'
 import { AssetBrowserPanel } from './panels/AssetBrowserPanel.js'
 import { SceneLayoutPanel } from './panels/SceneLayoutPanel.js'

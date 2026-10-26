@@ -1,4 +1,4 @@
-import type { Vec3 } from 'vlm-shared'
+import type { Vec3 } from '@virvixr/shared'
 import type { ScriptFetch } from './poller.js'
 
 export type ApiFailure = 'lost' | 'no_access' | 'auth' | 'invalid' | 'server'

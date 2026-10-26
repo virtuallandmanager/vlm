@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { EventQueue } from '../src/analytics/queue.js'
 import { Uploader } from '../src/analytics/uploader.js'
 import type { AnalyticsTransport } from '../src/analytics/transport.js'
-import type { AnalyticsEvent } from 'vlm-shared'
+import type { AnalyticsEvent } from '@virvixr/shared'
 
 const ev = (type: AnalyticsEvent['type'], seq: number, data?: Record<string, unknown>): AnalyticsEvent => ({ t: 0, type, seq, data })
 

@@ -2,4 +2,4 @@
 *
 !infra/hyperfy/patches/
 !infra/hyperfy/db-job.mjs
-!packages/vlm-hyperfy-app/dist/vlm.hyp
+!packages/hyperfy-app/dist/vlm.hyp

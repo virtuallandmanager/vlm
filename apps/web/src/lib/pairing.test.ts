@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { HyperfyPairingSummary } from 'vlm-shared'
+import type { HyperfyPairingSummary } from '@virvixr/shared'
 import { approvalPrompt, pairingErrorMessage, pairingRowLabel, pairingCodeFromPath, headsetPairingCodeFromPath, headsetErrorMessage } from './pairing'
 
 const apiErr = (message: string, status: number, body: Record<string, unknown>) => Object.assign(new Error(message), { status, body })

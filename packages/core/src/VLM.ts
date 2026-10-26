@@ -1,5 +1,5 @@
-import type { SceneLibraryChangeData, TransformData, TransformDraftData, VLMPlatformAdapter, VLMInitConfig, VLMStorage as VLMStorageType, HUDRenderer, BudgetLimits, Scene } from 'vlm-shared'
-import { VLMHttpClient, ColyseusManager } from 'vlm-client'
+import type { SceneLibraryChangeData, TransformData, TransformDraftData, VLMPlatformAdapter, VLMInitConfig, VLMStorage as VLMStorageType, HUDRenderer, BudgetLimits, Scene } from '@virvixr/shared'
+import { VLMHttpClient, ColyseusManager } from '@virvixr/client'
 import { SceneManager } from './SceneManager.js'
 import { VLMStorageImpl } from './storage.js'
 import type { Selected } from './transform/session.js'
@@ -407,7 +407,7 @@ export class VLM {
     }
 
     try {
-      const { HUDManager } = await import('vlm-hud')
+      const { HUDManager } = await import('@virvixr/hud')
       const limits: BudgetLimits = budgetLimits || {
         maxFileSizeBytes: 50 * 1024 * 1024,
         maxTriangleCount: 100_000,

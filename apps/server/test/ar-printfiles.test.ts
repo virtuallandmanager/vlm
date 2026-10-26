@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { inflateRawSync } from 'node:zlib'
-import { ringCodeOf, ringPlaqueSizeMm, ringShapes } from 'vlm-shared'
+import { ringCodeOf, ringPlaqueSizeMm, ringShapes } from '@virvixr/shared'
 import { buildMarkerMeshes, distanceToShape, paperPdf, screwSpots, stl, threeMf, type Mesh, type Mounting } from '../src/ar/printfiles.js'
 import { crc32 } from '../src/ar/zip.js'
 import { eq } from 'drizzle-orm'

@@ -1,4 +1,4 @@
-import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData, AdShape, AdFormats } from 'vlm-shared'
+import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData, AdShape, AdFormats } from '@virvixr/shared'
 import { listTransformable } from './transform-ops.js'
 import type { ListedInstance } from './transform-ops.js'
 import { AdSlot } from '../ads/slot.js'

@@ -17,7 +17,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Port of packages/vlm-core/test/transform-math.test.ts, case for case. */
+/** Port of packages/core/test/transform-math.test.ts, case for case. */
 class TransformMathTest {
   private fun v(x: Double, y: Double, z: Double) = Vec3(x, y, z)
 

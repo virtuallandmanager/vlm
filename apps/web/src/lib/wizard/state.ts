@@ -1,4 +1,4 @@
-import { plotSizeM, type Plot } from 'vlm-shared'
+import { plotSizeM, type Plot } from '@virvixr/shared'
 import type { DclWorld, WizardAsset } from '../api'
 import { budgetStatus, fitToBudget } from './budget'
 import { clampToPlot, layoutTheme, suggestPosition, type PlacedItem } from './placement'

@@ -1,4 +1,4 @@
-import { HYPERFY_FEED, type HyperfyFeedResponse } from 'vlm-shared'
+import { HYPERFY_FEED, type HyperfyFeedResponse } from '@virvixr/shared'
 
 /** Hyperfy's script fetch: resolves undefined (instead of rejecting) when the request fails. */
 export type ScriptFetch = (

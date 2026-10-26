@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
-import { checkAdEventBatch } from 'vlm-shared'
-import type { AdServeResponse } from 'vlm-shared'
+import { checkAdEventBatch } from '@virvixr/shared'
+import type { AdServeResponse } from '@virvixr/shared'
 import { config } from '../config.js'
 import { verifyDclSceneRequest, type SceneRequestContext } from '../middleware/dcl-auth.js'
 import { bindSceneRequest } from '../auth/scene-binding.js'

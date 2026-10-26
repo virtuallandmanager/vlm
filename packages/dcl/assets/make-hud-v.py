@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerates hud-v.png, the white V of the Virvi symbol used by the in-world HUD launcher.
 
-    python3 packages/vlm-smart-item-dcl/assets/make-hud-v.py      (needs Pillow)
+    python3 packages/dcl/assets/make-hud-v.py      (needs Pillow)
 
 Geometry is the Virvi symbol (Branding/virvi-symbol-light-clean.svg): viewBox 0 0 1254 1254,
 V = M 327 554.5 L 627 980 L 927 554.5, stroke-width 215, round caps and joins. The dot

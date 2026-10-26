@@ -12,7 +12,7 @@ import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-// Sizes from packages/vlm-adapter-dcl/src/transform/gizmo.ts and outline.ts.
+// Sizes from packages/adapter-dcl/src/transform/gizmo.ts and outline.ts.
 const val HANDLE_SIZE = 0.12
 const val RING_THICKNESS = 0.04
 const val RING_MIN_RADIUS = 0.5

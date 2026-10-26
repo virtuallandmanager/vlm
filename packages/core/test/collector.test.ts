@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { Collector } from '../src/analytics/collector.js'
-import type { AnalyticsProbe, IngestBatch } from 'vlm-shared'
+import type { AnalyticsProbe, IngestBatch } from '@virvixr/shared'
 
 function rig(opts: { insideAt?: (x: number) => boolean } = {}) {
   let now = 0

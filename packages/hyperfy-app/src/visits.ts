@@ -1,4 +1,4 @@
-import { HYPERFY_ANALYTICS_LIMITS, HYPERFY_FEED, type HyperfyVisitEvent } from 'vlm-shared'
+import { HYPERFY_ANALYTICS_LIMITS, HYPERFY_FEED, type HyperfyVisitEvent } from '@virvixr/shared'
 import type { ScriptFetch, ScriptSetTimeout } from './poller.js'
 
 export interface VisitRecorderOptions {

@@ -6,7 +6,7 @@ A one-time runbook for the Fly, Cloudflare, DNS and Railway pieces behind hosted
 token, password or key into a repo, a ticket or a chat.
 
 Every world runs in `iad`, in the Fly org `vlm-worlds`, in an app named `vlm-w-<slug>`. The Fly org is separate from
-`vlm-streaming`, and the server's token must not reach that one.
+`@virvixr/streaming`, and the server's token must not reach that one.
 
 You need: `flyctl`, `docker`, `railway`, a Cloudflare account, and access to your DNS provider for `vlm.gg`.
 
@@ -117,7 +117,7 @@ fly auth docker
 infra/hyperfy/build.sh
 ```
 
-Build the VLM app first so `packages/vlm-hyperfy-app/dist/vlm.hyp` exists and is committed (the script refuses to run with uncommitted changes in `infra/hyperfy` or that `dist`, so the tag matches what is in the image). It builds for `linux/amd64`, pushes `registry.fly.io/vlm-hyperfy-image:<git-sha>` and prints that tag. That tag is `HYPERFY_IMAGE`.
+Build the VLM app first so `packages/hyperfy-app/dist/vlm.hyp` exists and is committed (the script refuses to run with uncommitted changes in `infra/hyperfy` or that `dist`, so the tag matches what is in the image). It builds for `linux/amd64`, pushes `registry.fly.io/vlm-hyperfy-image:<git-sha>` and prints that tag. That tag is `HYPERFY_IMAGE`.
 
 New worlds use the current `HYPERFY_IMAGE`. Existing worlds keep their image until their next key rotation or restore, either of which moves them to the current one.
 
@@ -125,7 +125,7 @@ Hosted worlds get `VLM_WORLD_SECRET` automatically when they are created. It let
 
 ## 7. Railway variables
 
-Set these on the `vlm-server` service:
+Set these on the `@virvixr/server` service:
 
 | Variable | Value |
 |---|---|
@@ -147,7 +147,7 @@ railway variables -s vlm-server --set "HYPERFY_INFRA_PROVIDER=fly" --set "FLY_WO
 
 Enter the secret values in the Railway dashboard instead if you don't want them in your shell history.
 
-Also add every one of these names (and `HYPERFY_WORLDS_DATABASE_URL`, which stays unset in production) to the `env` of `vlm-server` in `.railway/railway.ts`, each as `NAME: preserve()`. `railway config apply` deletes any variable that file doesn't list, so unlisted ones would vanish on the next apply. Run `railway config plan` before any apply.
+Also add every one of these names (and `HYPERFY_WORLDS_DATABASE_URL`, which stays unset in production) to the `env` of `@virvixr/server` in `.railway/railway.ts`, each as `NAME: preserve()`. `railway config apply` deletes any variable that file doesn't list, so unlisted ones would vanish on the next apply. Run `railway config plan` before any apply.
 
 Deploy the server (and only this way):
 

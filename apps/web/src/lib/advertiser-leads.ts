@@ -1,4 +1,4 @@
-import type { AdvertiserLeadInput } from 'vlm-shared'
+import type { AdvertiserLeadInput } from '@virvixr/shared'
 import { API_URL } from './config'
 
 const CODE_MESSAGES: Record<string, string> = {

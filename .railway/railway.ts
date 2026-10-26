@@ -4,10 +4,10 @@ import { defineRailway, preserve, project, service } from "railway/iac";
 // It owns only vlm-server; Postgres and its volume stay managed in the dashboard.
 // Every variable must be listed here (preserve() keeps the value set in Railway), or the next apply deletes it:
 // after adding a variable in the dashboard, add it below, and always run `railway config plan` before applying.
-export const partial = "vlm-server";
+export const partial = "@virvixr/server";
 
 export default defineRailway(() => {
-  const vlmServer = service("vlm-server", {
+  const vlmServer = service("@virvixr/server", {
     start: "apps/server/entrypoint.sh",
     healthcheck: "/api/health",
     healthcheckTimeout: 120,

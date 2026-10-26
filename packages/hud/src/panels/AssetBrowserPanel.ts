@@ -10,9 +10,9 @@ import type {
   AssetThumbnail,
   BudgetUsage,
   BudgetLimits,
-} from 'vlm-shared'
-import { HUDPanelType } from 'vlm-shared'
-import type { VLMHttpClient } from 'vlm-client'
+} from '@virvixr/shared'
+import { HUDPanelType } from '@virvixr/shared'
+import type { VLMHttpClient } from '@virvixr/client'
 
 export class AssetBrowserPanel {
   private renderer: HUDRenderer

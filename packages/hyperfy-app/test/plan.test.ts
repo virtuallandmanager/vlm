@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { SerializedScene } from 'vlm-shared'
+import type { SerializedScene } from '@virvixr/shared'
 import { diffPlans, planScene } from '../src/plan.js'
 
 const v = (x: number, y: number, z: number) => ({ x, y, z })

@@ -24,7 +24,7 @@ Generate one shared secret: `openssl rand -hex 32`.
 fly secrets set VLM_WEBHOOK_KEY=<secret> --app vlm-streaming
 ```
 
-On the Railway `vlm-server` service set:
+On the Railway `@virvixr/server` service set:
 
 | Variable | Value |
 |---|---|

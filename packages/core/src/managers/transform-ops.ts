@@ -1,4 +1,4 @@
-import type { VLMPlatformAdapter, EntityHandle, TransformData, Vec3 } from 'vlm-shared'
+import type { VLMPlatformAdapter, EntityHandle, TransformData, Vec3 } from '@virvixr/shared'
 
 /** What every manager's instance record has in common for in-place transform editing. */
 export interface TransformableInstance {

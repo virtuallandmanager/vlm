@@ -7,16 +7,16 @@ The VLM SDK is split into layered packages:
 
 | Package | Purpose |
 |---------|---------|
-| `vlm-shared` | Types, enums, `VLMPlatformAdapter` interface, protocol types |
-| `vlm-client` | HTTP client + Colyseus WebSocket manager |
-| `vlm-core` | `VLM` class, `SceneManager`, element managers (Video, Image, Mesh, Sound) |
-| `vlm-hud` | In-world management HUD (optional) |
-| `vlm-adapter-dcl` | Decentraland SDK 7 adapter |
-| `vlm-hyperfy-app` | VLM app for self-run Hyperfy worlds (see [Hyperfy Setup](/sdk/hyperfy/install)) |
+| `@virvixr/shared` | Types, enums, `VLMPlatformAdapter` interface, protocol types |
+| `@virvixr/client` | HTTP client + Colyseus WebSocket manager |
+| `@virvixr/core` | `VLM` class, `SceneManager`, element managers (Video, Image, Mesh, Sound) |
+| `@virvixr/hud` | In-world management HUD (optional) |
+| `@virvixr/adapter-dcl` | Decentraland SDK 7 adapter |
+| `@virvixr/hyperfy-app` | VLM app for self-run Hyperfy worlds (see [Hyperfy Setup](/sdk/hyperfy/install)) |
 
 ## How It Works
 
-1. Your scene imports the platform-specific adapter (e.g., `vlm-adapter-dcl`)
+1. Your scene imports the platform-specific adapter (e.g., `@virvixr/adapter-dcl`)
 2. The adapter creates a `VLM` instance with itself as the platform implementation
 3. `VLM.init()` authenticates with the server, joins the Colyseus room, and receives the scene data
 4. vlm-core's element managers call adapter methods to render everything
@@ -24,7 +24,7 @@ The VLM SDK is split into layered packages:
 
 ```typescript
 // Decentraland scene
-import { createVLM } from 'vlm-adapter-dcl'
+import { createVLM } from '@virvixr/adapter-dcl'
 
 const vlm = await createVLM()
 

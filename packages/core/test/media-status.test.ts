@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { SceneLibraryItemData } from 'vlm-shared'
+import type { SceneLibraryItemData } from '@virvixr/shared'
 import { applyLibraryChange, hudStatus } from '../src/media-status.js'
 import { VLM } from '../src/VLM.js'
 

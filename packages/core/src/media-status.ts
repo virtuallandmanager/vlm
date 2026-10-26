@@ -1,4 +1,4 @@
-import type { SceneLibraryChangeData, SceneLibraryItemData } from 'vlm-shared'
+import type { SceneLibraryChangeData, SceneLibraryItemData } from '@virvixr/shared'
 
 /** What the HUD Media Library shows for an item. */
 export type HUDMediaStatus = 'uploading' | 'processing' | 'available' | 'needs_sync' | 'failed'

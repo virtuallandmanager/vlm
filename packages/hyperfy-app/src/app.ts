@@ -9,7 +9,7 @@
  *   Hosted worlds link through the server half, which asks the image to vouch for its players (`app.vlmVouch`,
  *   server only; the world secret stays in Node); self-run worlds pair from the browser with a code.
  */
-import type { HyperfyFeedResponse, SerializedScene } from 'vlm-shared'
+import type { HyperfyFeedResponse, SerializedScene } from '@virvixr/shared'
 import { clickHandler, renderedItem } from './edit/controller.js'
 import { runHud } from './hud/client.js'
 import { runLinkRelay } from './link-relay.js'

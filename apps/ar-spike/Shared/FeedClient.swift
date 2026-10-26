@@ -8,7 +8,7 @@ struct FeedStatus: Equatable {
     var lastError: String?
 }
 
-/// Long-polls `GET {feedUrl}/api/hyperfy/feed?since=<version>` (see packages/vlm-hyperfy-app/src/poller.ts).
+/// Long-polls `GET {feedUrl}/api/hyperfy/feed?since=<version>` (see packages/hyperfy-app/src/poller.ts).
 /// Each answer is a whole snapshot; `onSnapshot` fires only when the version changes. Failures back off
 /// (doubling, 1 s to 30 s) and keep the last snapshot, except a 404 (scene gone), which clears it once.
 /// The world key is only ever put in the Authorization header; it is never logged or shown.

@@ -46,12 +46,12 @@ The import itself:
 
 ```sh
 # Validate only (no database needed)
-pnpm --filter vlm-server catalog:import catalog/tags/decentraland.json --check
+pnpm --filter @virvixr/server catalog:import catalog/tags/decentraland.json --check
 
 # Import into the configured database and storage
-pnpm --filter vlm-server catalog:import catalog/tags/decentraland.json <repos-dir>
-pnpm --filter vlm-server catalog:import catalog/tags/dhingia.json <repos-dir>
-pnpm --filter vlm-server catalog:import catalog/tags/last-slice.json <repos-dir>
+pnpm --filter @virvixr/server catalog:import catalog/tags/decentraland.json <repos-dir>
+pnpm --filter @virvixr/server catalog:import catalog/tags/dhingia.json <repos-dir>
+pnpm --filter @virvixr/server catalog:import catalog/tags/last-slice.json <repos-dir>
 ```
 
 Import Decentraland first. When two packs carry the same file, the first import keeps it, and later duplicates are skipped and reported.

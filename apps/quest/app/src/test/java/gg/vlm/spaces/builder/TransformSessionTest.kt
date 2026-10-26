@@ -12,7 +12,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Port of packages/vlm-core/test/transform-session.test.ts, case for case (plus [TransformSession.setLock]). */
+/** Port of packages/core/test/transform-session.test.ts, case for case (plus [TransformSession.setLock]). */
 class TransformSessionTest {
   private fun v(x: Double, y: Double, z: Double) = Vec3(x, y, z)
 

@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState, type Dispatch } from 'react'
 import Link from 'next/link'
-import { plotParcels } from 'vlm-shared'
+import { plotParcels } from '@virvixr/shared'
 import { useApi, type DclDeployment, type WizardOptions } from '@/lib/api'
 import { getBrowserWallet } from '@/lib/auth'
 import { API_URL } from '@/lib/config'

@@ -1,6 +1,7 @@
 {
-  "name": "vlm-client",
+  "name": "@virvixr/client",
   "version": "2.0.0",
+  "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -12,10 +13,10 @@
     "colyseus.js": "^0.15.26"
   },
   "devDependencies": {
-    "vlm-shared": "workspace:*",
+    "@virvixr/shared": "workspace:*",
     "typescript": "^5.7.0"
   },
   "peerDependencies": {
-    "vlm-shared": "workspace:*"
+    "@virvixr/shared": "workspace:*"
   }
 }

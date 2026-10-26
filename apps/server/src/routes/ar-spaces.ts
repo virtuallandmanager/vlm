@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { RING_MAX_DIAMETER_MM, ringMarkerSvg } from 'vlm-shared'
+import { RING_MAX_DIAMETER_MM, ringMarkerSvg } from '@virvixr/shared'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess } from '../auth/permissions.js'

@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { AD_SHAPES } from 'vlm-shared'
-import type { AdminAd, AdReport, AdShape, LevelCounts } from 'vlm-shared'
+import { AD_SHAPES } from '@virvixr/shared'
+import type { AdminAd, AdReport, AdShape, LevelCounts } from '@virvixr/shared'
 import { useAuth } from '@/lib/auth'
 import { useApi, fileToBase64, mediaContentType, uploadErrorMessage } from '@/lib/api'
 import type { AdminAdSpace } from '@/lib/api'

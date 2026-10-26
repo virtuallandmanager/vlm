@@ -14,7 +14,7 @@ What it does:
 
 Code:
 
-- `ScenePlan.kt` ports `packages/vlm-hyperfy-app/src/plan.ts` (via the Swift spike). `Mapping.kt` is the transform. Spatial SDK is left-handed, Y up, +Z forward, the same frame as Decentraland, so positions and scales carry over unchanged and rotations are Decentraland's Euler degrees in YXZ order. `MappingTest` checks that Spatial SDK's own `Quaternion` agrees.
+- `ScenePlan.kt` ports `packages/hyperfy-app/src/plan.ts` (via the Swift spike). `Mapping.kt` is the transform. Spatial SDK is left-handed, Y up, +Z forward, the same frame as Decentraland, so positions and scales carry over unchanged and rotations are Decentraland's Euler degrees in YXZ order. `MappingTest` checks that Spatial SDK's own `Quaternion` agrees.
 - `api/` (`ArApi`, `ArFeed`), `space/SpaceAlignment.kt` (scene root from a ring's saved pose), `SceneRenderer.kt`, `MainActivity.kt` (lifecycle, camera, room scan, panels), `AppPrefs.kt`, `ControlPanel.kt` (the Developer panel), `MarkerReadings.kt`.
 - `ring/`: `RingCodec.kt` and `RingDetector.kt` port `../ring-marker/ringmarker/codec.py` and `detect.py`, and their tests run against that folder's vectors and synthetic test set. `RingTracker.kt` trusts an ID after 3 frames in a row. `PassthroughCamera.kt` is the camera. `RingPose.kt` turns a detection into a position and finds the wall heading.
 
@@ -254,7 +254,7 @@ Not yet run (no headset was connected). The ring panel shows while building when
 
 ### Owner checks (builder HUD, picking and the transform bar, plan 3 Task 7)
 
-Not yet run (no headset was connected). The HUD (`R.id.builder_hud`, `BuilderHud`), `Picking`, `Gizmo`, `PickOutline` and `BuilderEditor` are wired into builder mode (`BuilderController`, `HeadsetBuilderTools`). The transform math is a port of `packages/vlm-core/src/transform/session.ts` and its tests; what follows is what only the headset can show.
+Not yet run (no headset was connected). The HUD (`R.id.builder_hud`, `BuilderHud`), `Picking`, `Gizmo`, `PickOutline` and `BuilderEditor` are wired into builder mode (`BuilderController`, `HeadsetBuilderTools`). The transform math is a port of `packages/core/src/transform/session.ts` and its tests; what follows is what only the headset can show.
 
 Unverified from the 0.14.0 jars and docs (confirmed there: `SemanticType.X.id` and `PointerEventType.X.id` are `getId()`, so `.id` is right; `IsdkSystem.registerObserver`, `PointerEvent.source / hitInfo.entity`, `Pose.forward()`, `ButtonBits.ButtonSqueezeL/R`):
 

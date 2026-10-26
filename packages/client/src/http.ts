@@ -1,4 +1,4 @@
-import type { Scene, AuthProof, VLMPlatformAdapter, AnalyticsSceneRef, SceneLibraryItemData, AdServeRequest, AdServeResponse, AdEventBatch } from 'vlm-shared'
+import type { Scene, AuthProof, VLMPlatformAdapter, AnalyticsSceneRef, SceneLibraryItemData, AdServeRequest, AdServeResponse, AdEventBatch } from '@virvixr/shared'
 import type { AuthResponse, MediaAsset } from './types.js'
 import { VLMAuth } from './auth.js'
 

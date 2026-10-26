@@ -1,5 +1,5 @@
-import { AD_LIMITS } from 'vlm-shared'
-import type { AdFormats, AdItem, AdShape, EntityHandle, TransformData, VLMPlatformAdapter } from 'vlm-shared'
+import { AD_LIMITS } from '@virvixr/shared'
+import type { AdFormats, AdItem, AdShape, EntityHandle, TransformData, VLMPlatformAdapter } from '@virvixr/shared'
 import { add, eulerDegreesToQuat, rotateVector } from '../transform/math.js'
 import { durationMs } from './rotation.js'
 import type { AdHost } from './host.js'

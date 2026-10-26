@@ -12,10 +12,10 @@ export function bundleOptions(root, entry) {
     legalComments: 'none',
     // Only the Hyperfy feed and pairing constants are needed; this dependency-free entry keeps the rest of vlm-shared out.
     alias: {
-      'vlm-shared': join(root, '../vlm-shared/src/hyperfy-entry.ts'),
+      '@virvixr/shared': join(root, '../shared/src/hyperfy-entry.ts'),
       // Edit mode reuses vlm-core's transform session; aliasing its two source files keeps the rest of vlm-core out.
-      'vlm-core/transform/session': join(root, '../vlm-core/src/transform/session.ts'),
-      'vlm-core/transform/math': join(root, '../vlm-core/src/transform/math.ts'),
+      '@virvixr/core/transform/session': join(root, '../core/src/transform/session.ts'),
+      '@virvixr/core/transform/math': join(root, '../core/src/transform/math.ts'),
     },
   }
 }

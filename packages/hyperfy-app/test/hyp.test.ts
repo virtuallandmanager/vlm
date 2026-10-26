@@ -45,7 +45,7 @@ describe('vlm.hyp', () => {
     // A file prop, as Hyperfy stores them: exported and uploaded with the app, read by the script as props.hudIcon.url
     expect(blueprint.props.hudIcon).toEqual({ type: 'texture', name: 'hud-v.png', url: assets[2].url })
     expect(assets[2].mime).toBe('image/png')
-    expect(files[2].equals(readFileSync(join(pkg, '../vlm-smart-item-dcl/assets/hud-v.png')))).toBe(true)
+    expect(files[2].equals(readFileSync(join(pkg, '../dcl/assets/hud-v.png')))).toBe(true)
     assets.forEach((a, i) => {
       const ext = { model: 'glb', script: 'js', texture: 'png' }[a.type]
       expect(a.url).toBe(`asset://${sha(files[i])}.${ext}`)

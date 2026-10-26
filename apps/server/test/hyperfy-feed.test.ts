@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import { eq } from 'drizzle-orm'
-import { HYPERFY_FEED } from 'vlm-shared'
+import { HYPERFY_FEED } from '@virvixr/shared'
 import { db } from '../src/db/connection.js'
 import { hyperfyWorlds, scenes } from '../src/db/schema.js'
 import { initBus, sceneFeedTopic } from '../src/realtime/bus.js'

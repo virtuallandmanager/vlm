@@ -16,7 +16,7 @@ it with the scene. `npx vlm-dcl sync` also keeps it up to date.
 ## From code
 
 ```ts
-import { createVLM } from 'vlm-dcl'
+import { createVLM } from '@virvixr/dcl'
 
 export async function main() {
   const vlm = await createVLM()
@@ -30,7 +30,7 @@ get the management HUD (top right) and can claim the scene's analytics on vlm.gg
 Analytics only (no HUD, no live content):
 
 ```ts
-import { startVLMAnalytics } from 'vlm-dcl'
+import { startVLMAnalytics } from '@virvixr/dcl'
 
 export function main() {
   startVLMAnalytics()

@@ -7,8 +7,8 @@ const here = dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   resolve: {
     alias: {
-      'vlm-shared': resolve(here, '../vlm-shared/src/index.ts'),
-      'vlm-client': resolve(here, '../vlm-client/src/index.ts'),
+      '@virvixr/shared': resolve(here, '../shared/src/index.ts'),
+      '@virvixr/client': resolve(here, '../client/src/index.ts'),
     },
   },
   test: { include: ['test/**/*.test.ts'] },

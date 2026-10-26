@@ -3,7 +3,7 @@ title: Building an Adapter
 description: How to add VLM support to a new metaverse platform
 ---
 
-To support a new platform, create a package that implements `VLMPlatformAdapter` from `vlm-shared`.
+To support a new platform, create a package that implements `VLMPlatformAdapter` from `@virvixr/shared`.
 
 ## Steps
 
@@ -16,8 +16,8 @@ To support a new platform, create a package that implements `VLMPlatformAdapter`
 ## Minimal Example
 
 ```typescript
-import { VLM } from 'vlm-core'
-import type { VLMPlatformAdapter } from 'vlm-shared'
+import { VLM } from '@virvixr/core'
+import type { VLMPlatformAdapter } from '@virvixr/shared'
 
 class MyAdapter implements VLMPlatformAdapter {
   capabilities = {

@@ -3,8 +3,8 @@
 import ReactEcs, { UiEntity, Label, Input } from '@dcl/sdk/react-ecs'
 import { Color4 } from '@dcl/sdk/math'
 import { markHudPress } from './press.js'
-import type { Axis, MoveLock, TransformMode } from 'vlm-core'
-import type { Vec3 } from 'vlm-shared'
+import type { Axis, MoveLock, TransformMode } from '@virvixr/core'
+import type { Vec3 } from '@virvixr/shared'
 
 export interface EditModeHUDState {
   active: boolean

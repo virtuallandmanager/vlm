@@ -1,6 +1,6 @@
 import Foundation
 
-/// Port of packages/vlm-hyperfy-app/src/plan.ts: which nodes to show for a VLM scene snapshot.
+/// Port of packages/hyperfy-app/src/plan.ts: which nodes to show for a VLM scene snapshot.
 /// The scene is untyped JSON (from JSONSerialization), so the JS `typeof` checks are mirrored by hand.
 struct RenderItem: Equatable {
     enum Kind: String { case video, image, model, audio }

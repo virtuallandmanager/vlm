@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { localModelFile } from 'vlm-shared'
+import { localModelFile } from '@virvixr/shared'
 
 describe('localModelFile', () => {
   it('maps https glb urls to models/vlm/<basename>', () => {

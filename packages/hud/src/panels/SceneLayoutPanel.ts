@@ -6,9 +6,9 @@
  * Changes sync via Colyseus — same as editing from the dashboard.
  */
 
-import type { HUDRenderer, VLMStorage, EntityHandle } from 'vlm-shared'
-import { HUDPanelType } from 'vlm-shared'
-import type { ColyseusManager } from 'vlm-client'
+import type { HUDRenderer, VLMStorage, EntityHandle } from '@virvixr/shared'
+import { HUDPanelType } from '@virvixr/shared'
+import type { ColyseusManager } from '@virvixr/client'
 
 interface ElementEntry {
   sk: string

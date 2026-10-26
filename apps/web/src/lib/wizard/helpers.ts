@@ -1,5 +1,5 @@
 // Small pure helpers for the wizard page's steps.
-import type { Plot } from 'vlm-shared'
+import type { Plot } from '@virvixr/shared'
 import type { WizardAsset } from '../api'
 
 const isNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)

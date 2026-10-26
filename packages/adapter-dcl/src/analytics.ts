@@ -17,8 +17,8 @@ import {
   Billboard,
 } from '@dcl/sdk/ecs'
 import { Vector3, Color4 } from '@dcl/sdk/math'
-import { Collector, createTransport, resolveApiUrl } from 'vlm-core'
-import { PARCEL_RE, type AnalyticsProbe, type AnalyticsSceneRef, type Vec3 } from 'vlm-shared'
+import { Collector, createTransport, resolveApiUrl } from '@virvixr/core'
+import { PARCEL_RE, type AnalyticsProbe, type AnalyticsSceneRef, type Vec3 } from '@virvixr/shared'
 import { DclAdapter } from './DclAdapter'
 
 const SDK_VERSION = '2.0.0'

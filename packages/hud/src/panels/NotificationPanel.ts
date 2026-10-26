@@ -5,8 +5,8 @@
  * deployment completions, etc. Overlays on top of other panels.
  */
 
-import type { HUDRenderer, HUDNotification } from 'vlm-shared'
-import { HUDPanelType } from 'vlm-shared'
+import type { HUDRenderer, HUDNotification } from '@virvixr/shared'
+import { HUDPanelType } from '@virvixr/shared'
 
 const MAX_NOTIFICATIONS = 50
 

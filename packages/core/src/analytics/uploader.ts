@@ -1,4 +1,4 @@
-import { ANALYTICS_LIMITS, type IngestBatch, type IngestResponse } from 'vlm-shared'
+import { ANALYTICS_LIMITS, type IngestBatch, type IngestResponse } from '@virvixr/shared'
 import type { EventQueue } from './queue.js'
 import type { AnalyticsTransport } from './transport.js'
 

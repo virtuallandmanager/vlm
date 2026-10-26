@@ -6,7 +6,7 @@ import {
   type AnalyticsSceneRef,
   type IngestResponse,
   type Vec3,
-} from 'vlm-shared'
+} from '@virvixr/shared'
 import { EventQueue } from './queue.js'
 import { Uploader } from './uploader.js'
 import type { AnalyticsTransport } from './transport.js'

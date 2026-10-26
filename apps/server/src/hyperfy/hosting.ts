@@ -7,7 +7,7 @@
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { and, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm'
-import type { HyperfyWorldSummary } from 'vlm-shared'
+import type { HyperfyWorldSummary } from '@virvixr/shared'
 import { config } from '../config.js'
 import { db } from '../db/connection.js'
 import { hyperfyWorlds, scenes } from '../db/schema.js'

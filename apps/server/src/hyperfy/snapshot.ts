@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import type { SerializedScene } from 'vlm-shared'
+import type { SerializedScene } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { scenes, scenePresets } from '../db/schema.js'
 import { serializePreset } from '../services/scene-serializer.js'

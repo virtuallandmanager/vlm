@@ -14,7 +14,7 @@ import {
 import { runSessionCloseSweep, rollupHour, rollupDay, runRollups, runRetention, registerDailyJob, runDailyJobs } from '../src/analytics/jobs.js'
 import { writeBatch } from '../src/analytics/writer.js'
 import type { AnalyticsSceneRow } from '../src/analytics/registry.js'
-import type { IngestBatch } from 'vlm-shared'
+import type { IngestBatch } from '@virvixr/shared'
 import { randomUUID } from 'node:crypto'
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene } from './helpers/factories.js'

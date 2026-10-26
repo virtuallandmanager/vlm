@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { HYPERFY_ANALYTICS_LIMITS, HYPERFY_FEED, checkHyperfyAnalyticsBatch } from 'vlm-shared'
+import { HYPERFY_ANALYTICS_LIMITS, HYPERFY_FEED, checkHyperfyAnalyticsBatch } from '@virvixr/shared'
 
 const pos = { type: 'pos', playerId: 'p1', t: 1000, x: 1, y: 2, z: 3 }
 /** Every fixture's t is within the last 24 h of this. */

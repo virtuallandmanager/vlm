@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { Adjustment, SerializedScene } from 'vlm-shared'
+import type { Adjustment, SerializedScene } from '@virvixr/shared'
 import { applyAdjustments } from '../src/ar/adjustments.js'
 
 const scene = (): SerializedScene => ({

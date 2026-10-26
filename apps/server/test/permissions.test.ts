@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { DEFAULT_VENUE_RULES, VENUE_ROLE_SCOPES } from 'vlm-shared'
+import { DEFAULT_VENUE_RULES, VENUE_ROLE_SCOPES } from '@virvixr/shared'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import { venues, bookings, accessGrants, sceneCollaborators, organizations, orgMembers, scenes } from '../src/db/schema.js'

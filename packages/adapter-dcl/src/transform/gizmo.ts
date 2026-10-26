@@ -4,8 +4,8 @@
 // land on its own faces and corners (stretching follows the item's local axes, see TransformSession).
 import { engine, Entity, Transform, MeshRenderer, MeshCollider, Material, ColliderLayer } from '@dcl/sdk/ecs'
 import { Color4, Quaternion, Vector3 } from '@dcl/sdk/math'
-import type { Axis, ElementKind, Handle, MoveLock, TransformMode } from 'vlm-core'
-import type { TransformData, Vec3 } from 'vlm-shared'
+import type { Axis, ElementKind, Handle, MoveLock, TransformMode } from '@virvixr/core'
+import type { TransformData, Vec3 } from '@virvixr/shared'
 
 const AXES: Axis[] = ['x', 'y', 'z']
 const AXIS_VEC: Record<Axis, Vec3> = { x: { x: 1, y: 0, z: 0 }, y: { x: 0, y: 1, z: 0 }, z: { x: 0, y: 0, z: 1 } }

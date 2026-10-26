@@ -1,4 +1,4 @@
-import { ANALYTICS_LIMITS, isHighPriority, type AnalyticsEvent } from 'vlm-shared'
+import { ANALYTICS_LIMITS, isHighPriority, type AnalyticsEvent } from '@virvixr/shared'
 
 interface Entry {
   sessionId: string

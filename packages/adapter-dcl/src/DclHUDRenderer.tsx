@@ -19,11 +19,11 @@ import type {
   BudgetUsage,
   BudgetLimits,
   Scene,
-} from 'vlm-shared'
-import { HUDPanelType } from 'vlm-shared'
-import type { EntityHandle, WorldStatus } from 'vlm-shared'
-import type { VLMConnectionState, HUDMediaStatus } from 'vlm-core'
-import type { UploadToken } from 'vlm-client'
+} from '@virvixr/shared'
+import { HUDPanelType } from '@virvixr/shared'
+import type { EntityHandle, WorldStatus } from '@virvixr/shared'
+import type { VLMConnectionState, HUDMediaStatus } from '@virvixr/core'
+import type { UploadToken } from '@virvixr/client'
 import { nearbyPlayers } from './players.js'
 import { markHudPress } from './hud/press.js'
 import { EditModeBar, NO_EDIT_MODE, type EditModeHUDState } from './hud/EditModeBar.js'

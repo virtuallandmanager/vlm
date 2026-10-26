@@ -3,7 +3,7 @@
  *
  * Contract: the runtime reads `scene.json`'s `virvi.{apiUrl,wssUrl}` through
  * `getSceneInformation().metadataJson` and calls `createVLM({ apiUrl, wssUrl })` with no `sceneId`.
- * The scene is found through the location setup (created in Task 7), the same path every `vlm-dcl`
+ * The scene is found through the location setup (created in Task 7), the same path every `@virvixr/dcl`
  * scene uses; that setup is also what grants in-world edit rights, so no separate scene-id file exists.
  * Models load from `models/vlm/<basename>.glb`, as `DclAdapter.resolveModelSrc` does.
  *

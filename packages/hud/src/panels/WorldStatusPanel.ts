@@ -6,9 +6,9 @@
  * Tap a world to send a quick action to just that world.
  */
 
-import type { HUDRenderer, WorldStatus } from 'vlm-shared'
-import { HUDPanelType } from 'vlm-shared'
-import type { ColyseusManager } from 'vlm-client'
+import type { HUDRenderer, WorldStatus } from '@virvixr/shared'
+import { HUDPanelType } from '@virvixr/shared'
+import type { ColyseusManager } from '@virvixr/client'
 
 export class WorldStatusPanel {
   private renderer: HUDRenderer

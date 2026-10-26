@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { ANALYTICS_LIMITS, checkBatch } from 'vlm-shared'
+import { ANALYTICS_LIMITS, checkBatch } from '@virvixr/shared'
 import { hasDclAuthHeaders, verifyDclSignedFetch } from '../middleware/dcl-auth.js'
 import { resolveAnalyticsScene } from '../analytics/registry.js'
 import { INGEST_LIMITS, TokenBucketLimiter, checkIpLimits, checkRequesterLimits, checkSceneLimits } from '../analytics/limiter.js'

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { and, eq, isNull } from 'drizzle-orm'
-import { locationKeyFor } from 'vlm-shared'
+import { locationKeyFor } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { analyticsScenes, locationSetups, sceneRoles, scenePresets, scenes } from '../db/schema.js'
 import { getDclDirectory, type DclDirectory } from '../analytics/dcl-directory.js'

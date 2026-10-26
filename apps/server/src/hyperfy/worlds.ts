@@ -1,6 +1,6 @@
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { HYPERFY_FEED, type HyperfyWorldSummary } from 'vlm-shared'
+import { HYPERFY_FEED, type HyperfyWorldSummary } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { hyperfyWorlds } from '../db/schema.js'
 

@@ -1,5 +1,5 @@
 import { Entity } from '@dcl/sdk/ecs'
-import { startVLMManager, VLMSmartItem } from 'vlm-dcl'
+import { startVLMManager, VLMSmartItem } from '@virvixr/dcl'
 
 /**
  * Connects this scene to Virtual Land Manager.

@@ -1,4 +1,4 @@
-import type { SerializedScene, SerializedSceneElement, Vec3 } from 'vlm-shared'
+import type { SerializedScene, SerializedSceneElement, Vec3 } from '@virvixr/shared'
 import { toHyperfyTransform } from './transform.js'
 
 export type RenderItem = {

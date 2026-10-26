@@ -11,7 +11,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 
-// The wire shapes of packages/vlm-shared/src/ar.ts (ArFeedResponse, ArMarkerLookup).
+// The wire shapes of packages/shared/src/ar.ts (ArFeedResponse, ArMarkerLookup).
 
 data class MarkerPose(val x: Double, val y: Double, val z: Double, val headingDeg: Double)
 

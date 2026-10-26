@@ -8,7 +8,7 @@
   },
   "include": ["src"],
   "references": [
-    { "path": "../vlm-shared" },
-    { "path": "../vlm-client" }
+    { "path": "../shared" },
+    { "path": "../client" }
   ]
 }

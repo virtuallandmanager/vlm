@@ -1,11 +1,11 @@
 {
-  "name": "vlm-dcl",
+  "name": "@virvixr/dcl",
   "version": "2.4.0",
   "description": "Virtual Land Manager for Decentraland SDK7 — analytics, in-world HUD and live scene management. Use from code or as a Creator Hub script.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "vlm-dcl": "bin/vlm-dcl.mjs"
+    "virvi-dcl": "bin/virvi-dcl.mjs"
   },
   "scripts": {
     "build": "echo 'vlm-dcl: skip in CI, build locally with pnpm run bundle'",
@@ -25,11 +25,11 @@
     "colyseus.js": "^0.15.26",
     "esbuild": "^0.27.4",
     "typescript": "^5.7.0",
-    "vlm-adapter-dcl": "workspace:*",
-    "vlm-client": "workspace:*",
-    "vlm-core": "workspace:*",
-    "vlm-hud": "workspace:*",
-    "vlm-shared": "workspace:*"
+    "@virvixr/adapter-dcl": "workspace:*",
+    "@virvixr/client": "workspace:*",
+    "@virvixr/core": "workspace:*",
+    "@virvixr/hud": "workspace:*",
+    "@virvixr/shared": "workspace:*"
   },
   "files": [
     "dist",
@@ -42,7 +42,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/virtuallandmanager/vlm.git",
-    "directory": "packages/vlm-smart-item-dcl"
+    "directory": "packages/dcl"
   },
   "homepage": "https://vlm.gg",
   "keywords": [

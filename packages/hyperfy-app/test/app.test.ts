@@ -4,7 +4,7 @@ import { build } from 'esbuild'
 import { createContext, runInContext } from 'node:vm'
 import { Euler, Matrix4, Object3D, Quaternion, Vector3 } from 'three'
 import { beforeAll, describe, expect, it } from 'vitest'
-import type { HyperfyFeedResponse } from 'vlm-shared'
+import type { HyperfyFeedResponse } from '@virvixr/shared'
 // @ts-expect-error plain .mjs shared with the build script
 import { bundleOptions } from '../scripts/bundle-options.mjs'
 

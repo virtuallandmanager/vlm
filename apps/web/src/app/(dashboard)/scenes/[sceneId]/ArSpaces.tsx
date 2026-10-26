@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ringMarkerSvg, type ArFloorView, type ArMarkerView, type ArSpaceView } from 'vlm-shared'
+import { ringMarkerSvg, type ArFloorView, type ArMarkerView, type ArSpaceView } from '@virvixr/shared'
 import { useApi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import {

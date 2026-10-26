@@ -1,4 +1,4 @@
-import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData } from 'vlm-shared'
+import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData } from '@virvixr/shared'
 import { listTransformable, previewOn, restoreOn } from './transform-ops.js'
 import type { ListedInstance } from './transform-ops.js'
 

@@ -1,5 +1,5 @@
 import { asc, count, eq, inArray } from 'drizzle-orm'
-import { RING_DEFAULT_DIAMETER_MM, randomRingId, ringCodeOf, type ArFloorView, type ArMarkerView, type ArSpaceView } from 'vlm-shared'
+import { RING_DEFAULT_DIAMETER_MM, randomRingId, ringCodeOf, type ArFloorView, type ArMarkerView, type ArSpaceView } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { arFloors, arMarkers, arSpaces } from '../db/schema.js'
 import { publishSceneTouched } from '../realtime/bus.js'

@@ -1,5 +1,5 @@
-import { AD_LIMITS } from 'vlm-shared'
-import type { AdEvent, AdLevel, Quat, Vec3 } from 'vlm-shared'
+import { AD_LIMITS } from '@virvixr/shared'
+import type { AdEvent, AdLevel, Quat, Vec3 } from '@virvixr/shared'
 import { isOnScreen } from './rotation.js'
 
 const MAX_QUEUED = 200

@@ -48,7 +48,7 @@
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
-import { plotParcels, validPlot, type Plot } from 'vlm-shared'
+import { plotParcels, validPlot, type Plot } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { analyticsScenes, dclWorldDestinations, locationSetups, sceneDeployments } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
@@ -476,7 +476,7 @@ export default async function dclDestinationRoutes(app: FastifyInstance) {
     return reply.send({ destination: await reload(dest.id) })
   }))
 
-  // `adoptable`: Worlds whose active location setup is this scene (a Creator Hub `vlm-dcl` scene) and that no
+  // `adoptable`: Worlds whose active location setup is this scene (a Creator Hub `@virvixr/dcl` scene) and that no
   // destination uses yet. Adopting one is POST /api/dcl/destinations without a plot.
   app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId/dcl/destinations', async (request, reply) => handle(reply, async () => {
     const { sceneId } = request.params

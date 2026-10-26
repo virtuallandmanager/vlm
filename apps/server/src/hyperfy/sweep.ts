@@ -5,7 +5,7 @@
  */
 
 import { and, eq, isNotNull, isNull, lte, or, sql } from 'drizzle-orm'
-import { HOSTED_WORLD_RETENTION_DAYS } from 'vlm-shared'
+import { HOSTED_WORLD_RETENTION_DAYS } from '@virvixr/shared'
 import { config } from '../config.js'
 import { db } from '../db/connection.js'
 import { hyperfyWorlds } from '../db/schema.js'

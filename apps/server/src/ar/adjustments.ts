@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm'
-import type { Adjustment, SerializedScene, Vec3 } from 'vlm-shared'
+import type { Adjustment, SerializedScene, Vec3 } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { arAdjustments, sceneElementInstances, sceneElements, scenes } from '../db/schema.js'
 import { publishSceneTouched } from '../realtime/bus.js'

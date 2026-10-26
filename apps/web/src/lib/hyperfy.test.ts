@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { HyperfyWorldSummary } from 'vlm-shared'
+import type { HyperfyWorldSummary } from '@virvixr/shared'
 import { lastSeenLabel, setupSteps, hyperfyErrorMessage, removeWorldPrompt, worldStatusLabel, slotLine, noSlotsLine, destroyWorldPrompt } from './hyperfy'
 
 const now = new Date('2026-10-20T12:00:00Z')

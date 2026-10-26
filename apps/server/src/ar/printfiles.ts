@@ -1,4 +1,4 @@
-import { ringCodeOf, ringPlaqueSizeMm, ringShapes, type RingShape } from 'vlm-shared'
+import { ringCodeOf, ringPlaqueSizeMm, ringShapes, type RingShape } from '@virvixr/shared'
 import { zip } from './zip.js'
 
 /**

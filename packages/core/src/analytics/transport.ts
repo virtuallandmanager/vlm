@@ -1,4 +1,4 @@
-import type { IngestBatch, VLMPlatformAdapter } from 'vlm-shared'
+import type { IngestBatch, VLMPlatformAdapter } from '@virvixr/shared'
 
 export interface TransportResult {
   status: number

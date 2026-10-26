@@ -8,8 +8,8 @@ const here = dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   resolve: {
     alias: {
-      'vlm-core/transform/session': join(here, '../vlm-core/src/transform/session.ts'),
-      'vlm-core/transform/math': join(here, '../vlm-core/src/transform/math.ts'),
+      '@virvixr/core/transform/session': join(here, '../core/src/transform/session.ts'),
+      '@virvixr/core/transform/math': join(here, '../core/src/transform/math.ts'),
     },
   },
 })

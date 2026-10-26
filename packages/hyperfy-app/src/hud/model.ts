@@ -7,8 +7,8 @@ import {
   type SerializedScene,
   type SerializedSceneElement,
   type Vec3,
-} from 'vlm-shared'
-import type { MoveLock, TransformMode } from 'vlm-core/transform/session'
+} from '@virvixr/shared'
+import type { MoveLock, TransformMode } from '@virvixr/core/transform/session'
 import {
   ALERT_LOST,
   ALERT_NO_ACCESS,

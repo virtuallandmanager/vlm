@@ -10,7 +10,7 @@ export const TEST_DATABASE_URL =
 export default defineConfig({
   resolve: {
     alias: {
-      'vlm-shared': resolve(here, '../../packages/vlm-shared/src/index.ts'),
+      '@virvixr/shared': resolve(here, '../../packages/shared/src/index.ts'),
     },
   },
   test: {

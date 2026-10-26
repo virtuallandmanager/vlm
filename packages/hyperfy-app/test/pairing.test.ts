@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HYPERFY_PAIRING } from 'vlm-shared'
+import { HYPERFY_PAIRING } from '@virvixr/shared'
 import { Pairing, type PairingState } from '../src/pairing.js'
 import { sha256Hex } from '../src/sha256.js'
 import { VlmApi } from '../src/vlm-api.js'

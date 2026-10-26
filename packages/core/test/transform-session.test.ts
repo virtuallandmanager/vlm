@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { TransformData, Vec3 } from 'vlm-shared'
+import type { TransformData, Vec3 } from '@virvixr/shared'
 import { TransformSession, type Selected } from '../src/transform/session.js'
 import {
   AXIS_VECTORS,

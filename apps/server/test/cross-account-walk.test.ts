@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { ringCodeOf } from 'vlm-shared'
+import { ringCodeOf } from '@virvixr/shared'
 import { db } from '../src/db/connection.js'
 import {
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,

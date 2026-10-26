@@ -1,7 +1,7 @@
 import simd
 import XCTest
 
-/// Ports of the numeric cases in packages/vlm-hyperfy-app/test/transform.test.ts.
+/// Ports of the numeric cases in packages/hyperfy-app/test/transform.test.ts.
 final class MappingTests: XCTestCase {
     private func v(_ x: Double, _ y: Double, _ z: Double) -> Vec3 { Vec3(x: x, y: y, z: z) }
     private func rad(_ d: Double) -> Double { d * .pi / 180 }

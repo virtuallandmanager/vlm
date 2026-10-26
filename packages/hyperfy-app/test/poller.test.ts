@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { HyperfyFeedResponse } from 'vlm-shared'
+import type { HyperfyFeedResponse } from '@virvixr/shared'
 import { FeedPoller } from '../src/poller.js'
 import { VisitRecorder } from '../src/visits.js'
 

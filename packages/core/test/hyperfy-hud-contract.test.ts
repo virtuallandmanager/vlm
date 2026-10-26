@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { HYPERFY_PAIRING, formatPairingCode, normalizePairingCode } from 'vlm-shared'
+import { HYPERFY_PAIRING, formatPairingCode, normalizePairingCode } from '@virvixr/shared'
 
 describe('pairing constants', () => {
   it('holds the fixed pairing values', () => {

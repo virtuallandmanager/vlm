@@ -7,7 +7,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 
-// The wire shapes of packages/vlm-shared/src/ar.ts for headset pairing (ArPairStartResponse, ArPairClaimResponse,
+// The wire shapes of packages/shared/src/ar.ts for headset pairing (ArPairStartResponse, ArPairClaimResponse,
 // ArPassResponse, ArDeviceSpace).
 
 enum class DeviceKind { PERSONAL, SHARED }

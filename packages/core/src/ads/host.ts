@@ -1,5 +1,5 @@
-import { AD_LIMITS } from 'vlm-shared'
-import type { AdEventBatch, AdFormats, AdItem, AdServeResponse, AdShape, EntityHandle, Quat, Vec3, VLMPlatformAdapter } from 'vlm-shared'
+import { AD_LIMITS } from '@virvixr/shared'
+import type { AdEventBatch, AdFormats, AdItem, AdServeResponse, AdShape, EntityHandle, Quat, Vec3, VLMPlatformAdapter } from '@virvixr/shared'
 import { AdRotation } from './rotation.js'
 import { AdTracker } from './tracker.js'
 

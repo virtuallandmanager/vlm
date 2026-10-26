@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { DEFAULT_VENUE_RULES, VENUE_ROLE_SCOPES, parseRingCode } from 'vlm-shared'
+import { DEFAULT_VENUE_RULES, VENUE_ROLE_SCOPES, parseRingCode } from '@virvixr/shared'
 import { db } from '../src/db/connection.js'
 import { hyperfyPairings, hyperfyWorlds, accessGrants, arFloors, arMarkers, arSpaces, bookings, sceneCollaborators, venues } from '../src/db/schema.js'
 import { issueHyperfyPass } from '../src/auth/scene-pass.js'

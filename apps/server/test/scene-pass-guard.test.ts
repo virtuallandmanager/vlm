@@ -284,7 +284,7 @@ describe('scene pass guard', () => {
   })
 
   describe('Hyperfy passes (refused unless the route opts in)', () => {
-    // The HUD's routes (packages/vlm-hyperfy-app/src/vlm-api.ts); nothing else accepts a Hyperfy pass.
+    // The HUD's routes (packages/hyperfy-app/src/vlm-api.ts); nothing else accepts a Hyperfy pass.
     const HUD_ROUTES = [
       'GET /api/scenes/:sceneId',
       'PUT /api/scenes/:sceneId',

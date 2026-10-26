@@ -9,7 +9,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 
 /**
- * Port of packages/vlm-hyperfy-app/src/plan.ts (by way of the Swift spike's ScenePlan.swift): which nodes to show
+ * Port of packages/hyperfy-app/src/plan.ts (by way of the Swift spike's ScenePlan.swift): which nodes to show
  * for a VLM scene snapshot. The scene is untyped JSON, so the JS `typeof` checks are mirrored by hand.
  */
 data class RenderItem(

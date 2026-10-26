@@ -5,9 +5,9 @@
  * that broadcast to all worlds linked to the event.
  */
 
-import type { HUDRenderer } from 'vlm-shared'
-import { HUDPanelType } from 'vlm-shared'
-import type { ColyseusManager } from 'vlm-client'
+import type { HUDRenderer } from '@virvixr/shared'
+import { HUDPanelType } from '@virvixr/shared'
+import type { ColyseusManager } from '@virvixr/client'
 
 interface EventInfo {
   id: string

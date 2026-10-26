@@ -19,7 +19,7 @@ describe('dcl runtime', () => {
     const files = await runtimeFiles()
     expect([...files.keys()].sort()).toEqual(['bin/index.js', 'images/virvi/hud-v.png'])
     const icon = files.get('images/virvi/hud-v.png')!
-    const asset = readFileSync(new URL('../../../packages/vlm-smart-item-dcl/assets/hud-v.png', import.meta.url))
+    const asset = readFileSync(new URL('../../../packages/dcl/assets/hud-v.png', import.meta.url))
     expect(Buffer.from(icon).equals(asset)).toBe(true)
   })
 

@@ -1,4 +1,4 @@
-// Usage: pnpm --filter vlm-server catalog:import <tag-file.json> <repo-root> [--check]
+// Usage: pnpm --filter @virvixr/server catalog:import <tag-file.json> <repo-root> [--check]
 // Validates the tag file against catalog/packs.json, then imports into the configured database and storage.
 // --check validates only. Nothing is uploaded when the tag file has errors.
 import { readFileSync } from 'node:fs'

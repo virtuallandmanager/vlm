@@ -1,6 +1,6 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
-import type { HyperfyPairingSummary } from 'vlm-shared'
+import type { HyperfyPairingSummary } from '@virvixr/shared'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/lib/api'
 import { pairingRowLabel } from '@/lib/pairing'

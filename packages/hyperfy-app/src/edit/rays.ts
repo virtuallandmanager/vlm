@@ -2,8 +2,8 @@
  * Pointer rays for edit mode. Hyperfy gives scripts the camera rig's pose (`control.camera`: position, quaternion,
  * zoom) and the pointer's screen coordinates, but not the field of view, so unlocked rays assume Hyperfy's default.
  */
-import type { Ray } from 'vlm-core/transform/math'
-import { normalize, rotateVector } from 'vlm-core/transform/math'
+import type { Ray } from '@virvixr/core/transform/math'
+import { normalize, rotateVector } from '@virvixr/core/transform/math'
 
 type XYZ = { x: number; y: number; z: number }
 type Quat = { x: number; y: number; z: number; w: number }

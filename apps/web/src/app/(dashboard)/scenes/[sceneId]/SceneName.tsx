@@ -3,7 +3,7 @@
 // scene's Decentraland Worlds (a redeploy), Hyperfy worlds and AR spaces.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import type { ArSpaceView, HyperfyWorldSummary } from 'vlm-shared'
+import type { ArSpaceView, HyperfyWorldSummary } from '@virvixr/shared'
 import { useApi, type DclDestination } from '@/lib/api'
 import { defaultTicked, namesDiffer, renameError, sceneNameError, SCENE_NAME_MAX } from '@/lib/scene-rename'
 import { PencilIcon } from '@/components/icons'

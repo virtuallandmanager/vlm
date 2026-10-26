@@ -6,7 +6,7 @@ import kotlin.math.abs
 /** An item's place in the scene: scene coordinates, rotation in degrees. */
 data class ItemTransform(val position: Vec3, val rotation: Vec3, val scale: Vec3)
 
-/** packages/vlm-shared `Adjustment`: this place's offset from the shared transform. */
+/** packages/shared `Adjustment`: this place's offset from the shared transform. */
 data class Adjustment(val dPosition: Vec3, val dRotation: Vec3, val scaleFactor: Vec3)
 
 enum class Scope {

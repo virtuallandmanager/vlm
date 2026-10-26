@@ -1,4 +1,4 @@
-import type { Vec3 } from 'vlm-shared'
+import type { Vec3 } from '@virvixr/shared'
 
 type Triple = [number, number, number]
 

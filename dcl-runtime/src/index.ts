@@ -5,7 +5,7 @@
  * (parcels, base, and a `virvi` block with apiUrl/wssUrl); nothing else is scene-specific. The scene
  * itself is found through the location setup, like any other vlm-dcl scene, so no sceneId is passed.
  */
-import { createVLM } from 'vlm-dcl'
+import { createVLM } from '@virvixr/dcl'
 // @ts-ignore provided by the Decentraland runtime
 import { getSceneInformation } from '~system/Runtime'
 

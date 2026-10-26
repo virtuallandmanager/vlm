@@ -1,5 +1,5 @@
 // Copy and helpers for approving a Hyperfy pairing and listing linked sessions.
-import { normalizePairingCode, type HyperfyPairingSummary } from 'vlm-shared'
+import { normalizePairingCode, type HyperfyPairingSummary } from '@virvixr/shared'
 
 type ApiError = Error & { status?: number; body?: { error?: string; result?: string } }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { VLMHttpClient } from 'vlm-client'
+import { VLMHttpClient } from '@virvixr/client'
 
 const REQ = { elementIds: ['e1'] } as any
 const BATCH = { v: 1, sessionId: 's', events: [{ adId: 'a1', elementId: 'e1', level: 'screen', t: 1 }] } as any

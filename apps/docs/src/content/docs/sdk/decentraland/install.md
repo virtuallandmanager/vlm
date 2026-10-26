@@ -6,7 +6,7 @@ description: Install and configure VLM in a Decentraland SDK 7 scene
 ## Analytics only (one line)
 
 ```ts
-import { startVLMAnalytics } from 'vlm-adapter-dcl/analytics'
+import { startVLMAnalytics } from '@virvixr/adapter-dcl/analytics'
 startVLMAnalytics()
 ```
 
@@ -27,7 +27,7 @@ The HUD's launcher icon loads from `images/virvi/hud-v.png` in your scene. Run `
 ## Basic Usage
 
 ```typescript
-import { createVLM } from 'vlm-adapter-dcl'
+import { createVLM } from '@virvixr/adapter-dcl'
 
 const vlm = await createVLM()
 ```
@@ -66,11 +66,11 @@ If migrating from VLM V1:
 
 ```typescript
 // V1:
-import VLM from 'vlm-dcl'
+import VLM from '@virvixr/dcl'
 await VLM.init()
 
 // V2 (compatible wrapper):
-import VLM from 'vlm-adapter-dcl'
+import VLM from '@virvixr/adapter-dcl'
 const storage = await VLM.init()
 ```
 

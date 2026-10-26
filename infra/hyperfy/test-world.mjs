@@ -22,7 +22,7 @@ if (!process.argv[2] || !existsSync(path.join(srcDir, 'build/index.js'))) {
   console.error('usage: node infra/hyperfy/test-world.mjs <built hyperfy src dir>')
   process.exit(2)
 }
-const hypPath = path.join(repoRoot, 'packages/vlm-hyperfy-app/dist/vlm.hyp')
+const hypPath = path.join(repoRoot, 'packages/hyperfy-app/dist/vlm.hyp')
 const PORT = 3211
 const base = `http://localhost:${PORT}`
 const FEED_URL = 'http://127.0.0.1:9/vlm-feed'

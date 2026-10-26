@@ -2,7 +2,7 @@
  * The Hyperfy 0.16 script globals as the VLM app uses them, and the messages its two halves exchange. Only types:
  * the modules that need a global take it as an argument, so app.ts stays the one place that reads the sandbox.
  */
-import type { HyperfyVouchResponse, SerializedScene } from 'vlm-shared'
+import type { HyperfyVouchResponse, SerializedScene } from '@virvixr/shared'
 import type { RenderedItem } from './edit/controller.js'
 import type { GizmoNode } from './edit/gizmo.js'
 import type { RenderItem } from './plan.js'

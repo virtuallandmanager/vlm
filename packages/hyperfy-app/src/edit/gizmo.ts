@@ -4,8 +4,8 @@
  * and places itself; all editing logic lives in controller.ts. Hyperfy fires node pointer events from its render
  * raycast, so the parts need no colliders (prims have no physics unless asked).
  */
-import type { Axis } from 'vlm-core/transform/math'
-import type { TransformMode } from 'vlm-core/transform/session'
+import type { Axis } from '@virvixr/core/transform/math'
+import type { TransformMode } from '@virvixr/core/transform/session'
 import type { GizmoHandle } from './controller.js'
 
 type Triple = [number, number, number]

@@ -14,7 +14,7 @@ Both apps long-poll `GET {feedUrl}/api/hyperfy/feed` with a world key, the same 
 
 The code is organised like this:
 
-- `Shared/ScenePlan.swift` is a port of `packages/vlm-hyperfy-app/src/plan.ts`.
+- `Shared/ScenePlan.swift` is a port of `packages/hyperfy-app/src/plan.ts`.
 - `Shared/Mapping.swift` is a port of `src/transform.ts`. It handles the left-handed to right-handed axes, YXZ Euler order and `MODEL_TURN`.
 - `Tests/` holds the transform test cases ported from `test/transform.test.ts`, plus two plan tests.
 

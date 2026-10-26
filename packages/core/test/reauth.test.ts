@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { VLMHttpClient } from 'vlm-client'
+import { VLMHttpClient } from '@virvixr/client'
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 const bearer = (init: RequestInit | undefined) => (init?.headers as Record<string, string> | undefined)?.Authorization

@@ -7,7 +7,7 @@
  * live scene without Virvi's `virvi` block (not made by the wizard), never have their code or metadata touched.
  */
 import { and, count, eq, inArray } from 'drizzle-orm'
-import { DCL_MAX_FILE_BYTES, localModelFile } from 'vlm-shared'
+import { DCL_MAX_FILE_BYTES, localModelFile } from '@virvixr/shared'
 import { config } from '../../config.js'
 import { db } from '../../db/connection.js'
 import { assetLibraryItems, mediaAssets, sceneElementInstances, sceneElements, scenes } from '../../db/schema.js'

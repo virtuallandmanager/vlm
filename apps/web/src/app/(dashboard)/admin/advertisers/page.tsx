@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { AdminAdvertiserLead } from 'vlm-shared'
+import type { AdminAdvertiserLead } from '@virvixr/shared'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/lib/api'
 import { PageHeader, PrimaryButton, Skeleton, tableHeadBand } from '@/components/ui'

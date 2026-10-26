@@ -12,7 +12,7 @@
  * (`assertDeployable`), and never signs or uploads a deployment that would change nothing.
  */
 import { and, eq, inArray, lt, sql } from 'drizzle-orm'
-import { DCL_MAX_FILE_BYTES, DCL_PARCEL_M, dclBudget, parseParcel } from 'vlm-shared'
+import { DCL_MAX_FILE_BYTES, DCL_PARCEL_M, dclBudget, parseParcel } from '@virvixr/shared'
 import { db } from '../../db/connection.js'
 import { dclWorldDestinations, sceneDeployments, scenes } from '../../db/schema.js'
 import { linkWorldLocation } from '../../setup/setups.js'

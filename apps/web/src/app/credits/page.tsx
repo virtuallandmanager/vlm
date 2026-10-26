@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { CatalogPack } from 'vlm-shared'
+import type { CatalogPack } from '@virvixr/shared'
 import { useApi } from '@/lib/api'
 import { licenseLabel } from '@/lib/catalog'
 

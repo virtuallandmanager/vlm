@@ -1,4 +1,4 @@
-import { parseRingCode } from 'vlm-shared'
+import { parseRingCode } from '@virvixr/shared'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { arFloors, arMarkers, arSpaces } from '../db/schema.js'
