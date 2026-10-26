@@ -11,7 +11,7 @@ Run every command from the **repo root**.
 
 ```bash
 fly apps create vlm-streaming
-fly volumes create virvi_streams --app vlm-streaming --region iad --size 10
+fly volumes create vlm_streams --app vlm-streaming --region iad --size 10
 fly ips allocate-v4 --app vlm-streaming   # dedicated IPv4 (billed monthly) — required for RTMP on 1935
 fly ips allocate-v6 --app vlm-streaming
 ```

@@ -447,7 +447,7 @@ Package names and their imports are the only things that change here. Code ident
 ## Rollout tasks (each needs the owner's go-ahead at the time)
 
 **Prerequisites from the owner:**
-- The three domains are active and are zones in Cloudflare.
+- The four domains (virvi.io, virvi.org, virvi.net, virvixr.com) are active and are zones in Cloudflare. (Done 2026-10-26, nameservers set through the Namecheap API.)
 - virvi.io is in Google Workspace, with `noreply@` and `support@`.
 - npm is logged in as a `virvixr` member that can also deprecate `vlm-dcl`.
 - An empty `virtuallandmanager` org exists on GitHub to hold the name.
@@ -462,9 +462,19 @@ Package names and their imports are the only things that change here. Code ident
   - Create the matching DNS records.
 - **Check:** every new host answers over HTTPS (RTMP only on `ingest`) with a valid certificate, before R2 starts.
 
-### R2: Settings and deploy
+### R2: Images
 
-**Railway settings to set:**
+Build and push the two images the server starts. Both now read `VIRVI_*` settings, so the old images won't work with the new server.
+- **Hyperfy world image:** `bash infra/hyperfy/build.sh` (from a clean checkout of `main`; the patches install the app as blueprint `virvi` and delete the old `vlm` blueprint and its entities). It prints a `registry.fly.io/vlm-hyperfy-image:<sha>` tag.
+- **Studio worker image:** in `apps/studio-worker`, `fly deploy --build-only --push --image-label "$(git rev-parse --short HEAD)"`.
+- Check: both tags exist in the registry. Nothing is deployed yet.
+
+### R3: Cutover deploy
+
+Pause the Decentraland redeploy sweep first: until the stored URLs are rewritten, it would redeploy every granted World with all its models refused (they still point at the old CDN host) and park it.
+
+**Railway settings to set, in one change:**
+- `DCL_REDEPLOY_SWEEP_MS=0` (sweep off until the end of this step)
 - `WEB_APP_URL=https://virvi.io`
 - `PUBLIC_URL=https://api.virvi.io`
 - `NEXT_PUBLIC_API_URL=https://api.virvi.io`
@@ -475,48 +485,48 @@ Package names and their imports are the only things that change here. Code ident
 - `RTMP_INGEST_URL=rtmp://ingest.virvi.io/live`
 - `HYPERFY_ROUTER_DOMAIN=worlds.virvi.io`
 - `HYPERFY_ASSETS_BASE_URL=https://worlds-cdn.virvi.io`
+- `HYPERFY_IMAGE` and `STUDIO_WORKER_IMAGE` = the R2 tags
+- `VIRVI_MODE=cloud`, and remove `VLM_MODE`
 
-**Renamed settings:** add `VIRVI_MODE=cloud` and remove `VLM_MODE`. Rename any other `VLM_*` the server reads, as listed in Task 3.
-
-**Hyperfy worlds:** set `VIRVI_WORLD_KEY` and `VIRVI_WORLD_SECRET` on each existing world app, copying the values from the `VLM_*` secrets, so no secret is printed.
-
-**Deploy:**
-- Deploy the router (`fly deploy` in `infra/hyperfy-router`) and streaming with the new env.
-- Update the release-deploy checkout to `main`.
-- Run `railway up <release-deploy worktree> --path-as-root -s vlm-server --ci`.
+**Deploy, in this order:**
+1. Update the release-deploy checkout to `main`, then `railway up <release-deploy worktree> --path-as-root -s vlm-server --ci`. The boot log must show `vlm_scene_id renamed`, and the push must succeed.
+2. Rewrite stored URLs: `node apps/server/scripts/rewrite-legacy-urls.mjs` (dry run) inside the server container; show the owner the counts (about 5,549 + 5,547 + 2 + 1 + 9 + 3 + RTMP rows); then run it with `--apply`.
+3. Deploy the router (`fly deploy` in `infra/hyperfy-router`, `ROUTER_DOMAIN=worlds.virvi.io`) and streaming (`fly deploy` in `apps/streaming`; its volume stays `vlm_streams`).
+4. **Hosted Hyperfy worlds** (3 in production): for each running world, rotate its key from the dashboard (or `rotateHostedWorldKey`). That moves the machine to the new image and to Virvi settings: `VLM_*` names become `VIRVI_*` (the world secret is kept), hosts move to virvi.io, and the key gets the `virviw_` prefix. Give the owner the new key for any world connected to the Virvi app by hand. An ended world is migrated the same way when it's restored.
+5. Remove `DCL_REDEPLOY_SWEEP_MS` (back to the default). The sweep's next run redeploys granted Worlds on runtime v3, pointed at `api.virvi.io` (an upgrade replaces a pre-rename API address and drops the old `models/vlm/` files).
 
 **Check:**
-- The boot log has `vlm_scene_id renamed`, and the push succeeds.
 - `https://api.virvi.io/api/health` returns 200.
 - Login on virvi.io works, and so does the WebSocket.
 - One catalog thumbnail loads from `cdn.virvi.io`.
-
-### R3: Stored-URL rewrite
-
-Run `node apps/server/scripts/rewrite-vlm-urls.mjs` (dry run) inside the server container and show the owner the counts. Then run it with `--apply`. The expected affected rows are about 5,549 + 5,547 + 2 + 1 + 9 + 3.
+- One hosted world answers on `<slug>.worlds.virvi.io`.
+- A wizard World redeploys with no refused models.
 
 ### R4: Redirects
 
 - Detach `vlm.gg` and `api.vlm.gg` from Railway.
 - In Cloudflare, add 301 Single Redirect rules that keep path and query:
   - `vlm.gg/*` and `www.vlm.gg/*` → `https://virvi.io/$1`
-  - `cdn.vlm.gg/*` → `cdn.virvi.io`
+  - `cdn.vlm.gg/*` → `https://cdn.virvi.io/$1`, `live.vlm.gg/*` → `https://live.virvi.io/$1`, `worlds-cdn.vlm.gg/*` → `https://worlds-cdn.virvi.io/$1`
   - `virvi.org/*`, `www.virvi.org/*`, `virvi.net/*`, `www.virvi.net/*`, `virvixr.com/*` and `www.virvixr.com/*` → `https://virvi.io/$1`
   - `www.virvi.io/*` → `https://virvi.io/$1`
+- `api.vlm.gg`, `ingest.vlm.gg` and `*.worlds.vlm.gg` get no redirect: WebSocket and RTMP can't follow one, and the clean break accepts that scenes on the published vlm-dcl 2.4.0 stop connecting.
 - Check: `curl -sI` on each shows a 301 to the right location.
 
 ### R5: Publish and redeploy
 
-- `pnpm --filter @virvixr/dcl bundle && cd packages/dcl && npm publish --access public`.
+- `pnpm --filter @virvixr/dcl bundle && cd packages/dcl && npm publish --access public` (as metaverseunknower). Creators run its CLI as `npx @virvixr/dcl sync`.
+- Optionally reserve the unscoped `virvi-dcl` name on npm, so nobody else can publish under it.
 - `npm deprecate vlm-dcl "Renamed to @virvixr/dcl"`.
 - Rename the GitHub repos with `gh repo rename`: `virvi-xr/vlm` → `virvi`, `vlm-dcl` → `virvi-dcl`, and `vlm-docs` → `virvi-docs`. Update the local remotes.
-- Redeploy the Decentraland test scenes and the wizard Worlds with `@virvixr/dcl` and runtime v2.
+- Redeploy the Decentraland test scenes and any wizard Worlds the sweep didn't reach, with `@virvixr/dcl` and runtime v3.
 - Redeploy the docs site wherever it's hosted.
 
 ### R6: Railway names and Quest
 
-- Rename the Railway project to "Virvi" and the service to `virvi-server`.
+- Rename the Railway project to "Virvi" and the service to `virvi-server`. Only after this does `.railway/railway.ts` (which names `virvi-server` and `VIRVI_MODE`) match Railway, so `railway config plan` must be clean before any `railway config apply`.
 - Update the deploy command (`-s virvi-server`) in the memory notes.
+- In `~/.gradle/gradle.properties` on this machine, rename the four `VLM_QUEST_*` signing properties to `VIRVI_QUEST_*` (values unchanged), or release builds come out unsigned.
 - Build Virvi AR (`./gradlew :app:assembleRelease`) and sideload it on the headset.
 - Check that pairing works and that a `https://virvi.io/s/<code>` link opens the app.
 - Update the memory notes `virvi-rebrand.md` and `vlm-venues-project.md`.

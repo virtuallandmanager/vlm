@@ -45,7 +45,7 @@ Uploads appear in the Media Library straight away, newest first, with a status:
 
 - **• Uploading / • Processing:** the file is on its way.
 - **✓ Available:** ready to **Place**.
-- **⟳ Needs sync:** a model you've placed that won't show until you run `npx virvi-dcl sync` and redeploy the scene. Models only render once they're deployed with the scene.
+- **⟳ Needs sync:** a model you've placed that won't show until you run `npx @virvixr/dcl sync` and redeploy the scene. Models only render once they're deployed with the scene.
 - **✕ Failed:** the reason is shown, for example when a file is too big. Press **Dismiss** to clear it.
 
 Images can be up to 10 MB and models up to 50 MB. An editor's uploads count against the scene owner's storage. iPhone HEIC photos are usually converted to JPEG automatically; if one isn't, choose a JPEG or PNG instead.

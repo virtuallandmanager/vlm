@@ -22,10 +22,10 @@ Routes: `src/routes/studio.ts` (the dashboard, `/api/studio`) and `src/routes/st
 
 The studio is on when `VIRVI_MODE=cloud` and both `STUDIO_WORKER_IMAGE` and `STUDIO_S3_URI` are set.
 
-1. **A private R2 bucket.** In Cloudflare, create a bucket `virvi-studio` with no public access and no custom domain,
+1. **A private R2 bucket.** In Cloudflare, create a bucket `vlm-studio` with no public access and no custom domain,
    and an R2 API token with Object Read & Write on that bucket only. It must not be the public uploads bucket.
 2. **Railway variables** on the server service:
-   - `STUDIO_S3_URI=s3://<access key id>:<secret>@<account id>.r2.cloudflarestorage.com/virvi-studio`
+   - `STUDIO_S3_URI=s3://<access key id>:<secret>@<account id>.r2.cloudflarestorage.com/vlm-studio`
    - `STUDIO_WORKER_IMAGE=registry.fly.io/vlm-studio-worker:<tag>`, the image deployed from `apps/studio-worker`
    - `STUDIO_FLY_APP` only if the worker app isn't `vlm-studio-worker`
    - optional: `STUDIO_CLAUDE_MODEL` (default `claude-opus-5-5`), `STUDIO_CODEX_MODEL` (default `gpt-6.1-sol`)

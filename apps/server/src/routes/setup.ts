@@ -153,7 +153,7 @@ export default async function setupRoutes(app: FastifyInstance) {
     return reply.send({ sceneId: setup.virviSceneId })
   })
 
-  /** Public: the hosted (.glb) models a set-up location's active preset uses, for `npx virvi-dcl sync`. */
+  /** Public: the hosted (.glb) models a set-up location's active preset uses, for `npx @virvixr/dcl sync`. */
   app.get<{ Querystring: { location?: string } }>('/api/setup/models', async (request, reply) => {
     const setup = await publicSetupFor(request, reply)
     if (!setup) return reply

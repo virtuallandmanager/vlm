@@ -112,6 +112,24 @@ describe('assembleRedeploy', () => {
     expect(r.metadata.virvi?.runtime).toBe(DCL_RUNTIME_VERSION)
   })
 
+  it('upgrading a World built before the rename points it at the current API and drops the old model folder', async () => {
+    const old = ['vlm', 'gg'].join('.') // virvi-rename: keep
+    const l = await live({}, 1)
+    l.metadata.virvi = { ...l.metadata.virvi!, apiUrl: `https://api.${old}`, wssUrl: `wss://api.${old}` }
+    l.content.push({ file: 'models/vlm/old.glb', hash: await dclHash(enc('old')) }) // virvi-rename: keep
+    const r = await assembleRedeploy({ live: l, adopted: false, models: [need('a')], timestamp: 1, fetch: fetcher() })
+    expect(r.metadata.virvi?.apiUrl).toBe(config.publicUrl)
+    expect(r.metadata.virvi?.wssUrl).toBe(config.publicUrl.replace(/^http/i, 'ws'))
+    expect(r.deployedFiles.some((f) => f.startsWith('models/vlm/'))).toBe(false) // virvi-rename: keep
+  })
+
+  it('upgrading keeps a self-hosted API address', async () => {
+    const l = await live({}, 1)
+    l.metadata.virvi = { ...l.metadata.virvi!, apiUrl: 'https://virvi.example.org', wssUrl: 'wss://virvi.example.org' }
+    const r = await assembleRedeploy({ live: l, adopted: false, models: [need('a')], timestamp: 1, fetch: fetcher() })
+    expect(r.metadata.virvi?.apiUrl).toBe('https://virvi.example.org')
+  })
+
   it('refuses foreign and private model hosts without fetching them', async () => {
     const f = fetcher()
     const r = await assembleRedeploy({

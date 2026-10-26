@@ -982,7 +982,7 @@ function SyncNotice() {
   return (
     <UiEntity uiTransform={{ width: '100%', padding: { left: 10, right: 10, top: 4, bottom: 4 } }}
       uiBackground={{ color: C.bgCard }}>
-      <Label value={`${n} model(s) need sync + redeploy — run npx virvi-dcl sync`} fontSize={10} color={C.warning}
+      <Label value={`${n} model(s) need sync + redeploy — run npx @virvixr/dcl sync`} fontSize={10} color={C.warning}
         textAlign="middle-left" uiTransform={{ width: '100%', height: 20 }} />
     </UiEntity>
   )

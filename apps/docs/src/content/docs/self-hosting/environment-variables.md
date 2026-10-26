@@ -63,7 +63,7 @@ description: Complete reference for all Virvi environment variables
 |----------|-------------|
 | `HYPERFY_INFRA_PROVIDER` | `fly` \| `docker` \| `local` (default: `local`) |
 | `FLY_API_TOKEN` | Fly.io API token |
-| `FLY_HYPERFY_APP` | Fly.io app name (default: `virvi-hyperfy`) |
+| `FLY_HYPERFY_APP` | Fly.io app name (default: `vlm-hyperfy`) |
 | `HYPERFY_IMAGE` | Docker image for Hyperfy worlds |
 | `DOCKER_SOCKET` | Docker socket path (default: `/var/run/docker.sock`) |
 

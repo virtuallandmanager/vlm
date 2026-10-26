@@ -766,7 +766,7 @@ function ModelElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
           </button>
         </div>
         {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
-        <p className="text-xs text-gray-500">GLBs need <code className="text-gray-400">npx virvi-dcl sync</code> + a redeploy before they appear in-world.</p>
+        <p className="text-xs text-gray-500">GLBs need <code className="text-gray-400">npx @virvixr/dcl sync</code> + a redeploy before they appear in-world.</p>
       </div>
 
       {showPicker && (

@@ -208,6 +208,37 @@ describe('hosted Hyperfy worlds', () => {
     expect((await row(world.id)).worldSecretHash).toBe(stored.worldSecretHash)
   })
 
+  it('rotating the key moves a pre-rename machine onto Virvi settings and hosts, keeping its secret', async () => {
+    await setTier(owner.id, 'pro')
+    const f = fakes()
+    const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Old World', endsAt: null }, f.deps)
+    await hostedWorldSettled(world.id)
+    const m = f.machines.get('vlm-w-old-world')!
+    const old = ['vlm', 'gg'].join('.') // virvi-rename: keep
+    const { VIRVI_WORLD_KEY, VIRVI_WORLD_SECRET, VIRVI_FEED_URL, ...rest } = m.env
+    m.env = {
+      ...rest,
+      PUBLIC_WS_URL: `wss://old-world.worlds.${old}/ws`,
+      PUBLIC_API_URL: `https://old-world.worlds.${old}/api`,
+      ASSETS_BASE_URL: `https://worlds-cdn.${old}/old-world`,
+      PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: `wss://api.${old}`,
+      ['VLM_FEED_URL']: `https://api.${old}`, // virvi-rename: keep
+      ['VLM_WORLD_KEY']: VIRVI_WORLD_KEY, // virvi-rename: keep
+      ['VLM_WORLD_SECRET']: VIRVI_WORLD_SECRET, // virvi-rename: keep
+    }
+    await rotateHostedWorldKey(world.id, f.deps)
+    const env = f.machines.get('vlm-w-old-world')!.env
+    expect(Object.keys(env).filter((k) => k.startsWith('VLM_'))).toEqual([]) // virvi-rename: keep
+    expect(env.VIRVI_WORLD_SECRET).toBe(VIRVI_WORLD_SECRET)
+    expect(env.VIRVI_FEED_URL).toBe('https://api.virvi.io')
+    expect(env.VIRVI_WORLD_KEY).toMatch(/^virviw_/)
+    expect(env.PUBLIC_WS_URL).toBe('wss://old-world.worlds.virvi.io/ws')
+    expect(env.PUBLIC_API_URL).toBe('https://old-world.worlds.virvi.io/api')
+    expect(env.ASSETS_BASE_URL).toBe('https://worlds-cdn.virvi.io/old-world')
+    expect(env.PUBLIC_SCRIPT_WEBSOCKET_ORIGINS).toBe('wss://api.virvi.io')
+    void VIRVI_FEED_URL
+  })
+
   it('creator gets a fly.dev address and public IPs; pro gets a worlds.virvi.io address and no IPs', async () => {
     await setTier(owner.id, 'creator')
     const c = fakes()

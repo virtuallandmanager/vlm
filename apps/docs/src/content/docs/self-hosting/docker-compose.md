@@ -12,8 +12,8 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: virvi
-      POSTGRES_USER: virvi
+      POSTGRES_DB: vlm  # virvi-rename: keep (local database name)
+      POSTGRES_USER: vlm  # virvi-rename: keep (local database name)
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vlm_prod}
     volumes:
       - pgdata:/var/lib/postgresql/data

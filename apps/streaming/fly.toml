@@ -14,7 +14,7 @@ primary_region = "iad"
   MAX_STREAMS = "4"
 
 [mounts]
-  source = "virvi_streams"
+  source = "vlm_streams"
   destination = "/data"
 
 # HLS playback: https://live.virvi.io (Fly TLS)

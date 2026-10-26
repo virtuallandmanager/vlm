@@ -6,7 +6,7 @@ agents' calls to Anthropic or OpenAI, which spend real money (about $0.15 for on
 1. **A database.** With the dev Postgres running:
 
    ```bash
-   docker exec virvi-dev-postgres-1 psql -U virvi -d postgres -c 'CREATE DATABASE virvi_studio_local'
+   docker exec vlm-dev-postgres-1 psql -U vlm -d postgres -c 'CREATE DATABASE virvi_studio_local'
    cd apps/server && DATABASE_URL=postgres://vlm:vlm_dev@localhost:5432/virvi_studio_local pnpm exec drizzle-kit push --force
    ```
 

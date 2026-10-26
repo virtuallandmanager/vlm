@@ -24,6 +24,11 @@
     "postgres(ql)?://vlm:",
     "@[\\w.-]+:\\d+/vlm\\b",
     "virvi-xr/vlm-(api|ui|jobs|scenes|dcl-qc|proxy|dcl-sdk6|dcl-sdk7|hyperfy-sdk2)",
-    "VLM_V2_\\w+"
+    "VLM_V2_\\w+",
+    "vlm_streams",
+    "vlm-hyperfy(?![-\\w])",
+    "vlm-studio(?![-\\w])",
+    "vlm-dev-postgres-1",
+    "-U vlm\\b"
   ]
 }

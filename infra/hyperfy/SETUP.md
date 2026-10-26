@@ -58,11 +58,11 @@ is unknown. After exit 2 (or a Fly error or timeout) Virvi drops the world's rol
 
 World files (models, images, uploads) live in R2 under the prefix `<slug>/`, and players load them from a CDN domain.
 
-1. Create a bucket named `virvi-hyperfy`.
+1. Create a bucket named `vlm-hyperfy`.
 2. Create an R2 API token scoped to **only** that bucket with **Object Read & Write**. Keep the access key ID, the secret and your account ID. They make up `HYPERFY_ASSETS_S3_URI`:
 
    ```
-   s3://<access-key-id>:<secret>@<account-id>.r2.cloudflarestorage.com/virvi-hyperfy
+   s3://<access-key-id>:<secret>@<account-id>.r2.cloudflarestorage.com/vlm-hyperfy
    ```
 
    Give it without a trailing slash and without a world name. The server appends `/<slug>` for each world. R2 access key IDs and secrets are hex, so paste them as they are: don't URL-encode anything (Hyperfy reads the key and secret out of the URI without decoding them).
@@ -134,7 +134,7 @@ Set these on the `virvi-server` service:
 | `FLY_WORLDS_ORG` | `vlm-worlds` |
 | `HYPERFY_IMAGE` | the tag printed in step 6 |
 | `HYPERFY_WORLDS_DB_URL_TEMPLATE` | the pooled URL with `{user}` and `{password}` |
-| `HYPERFY_ASSETS_S3_URI` | `s3://<key>:<secret>@<account-id>.r2.cloudflarestorage.com/virvi-hyperfy` |
+| `HYPERFY_ASSETS_S3_URI` | `s3://<key>:<secret>@<account-id>.r2.cloudflarestorage.com/vlm-hyperfy` |
 | `HYPERFY_ASSETS_BASE_URL` | `https://worlds-cdn.virvi.io` |
 | `HYPERFY_ROUTER_DOMAIN` | `worlds.virvi.io` |
 | `HYPERFY_SECRET_KEY` | 32 random bytes as 64 hex characters (`openssl rand -hex 32`); it encrypts the worlds' admin codes. Don't lose or change it, or stored admin codes become unreadable. |

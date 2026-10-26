@@ -54,7 +54,7 @@ function friendlyRenameError(err: unknown): string {
 const PLACEABLE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 const LAYOUT_TYPES = new Set(['image', 'video', 'model', 'sound', 'ad_space'])
 
-/** Images (rendered live) and GLBs (rendered after `npx virvi-dcl sync` + redeploy) can be placed from the HUD. */
+/** Images (rendered live) and GLBs (rendered after `npx @virvixr/dcl sync` + redeploy) can be placed from the HUD. */
 function mediaKind(a: SceneLibraryItem): 'image' | 'model' | null {
   // In-flight and failed uploads have no url yet but still show (with their status)
   if (!a.url && a.status === 'ready') return null

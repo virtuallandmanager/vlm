@@ -51,7 +51,7 @@ new file mode 100644
 index 0000000..efad187
 --- /dev/null
 +++ b/src/server/virvi.js
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,69 @@
 +import moment from 'moment'
 +import fs from 'fs-extra'
 +import { isEqual } from 'lodash-es'
@@ -80,6 +80,10 @@ index 0000000..efad187
 +  const props = { ...app.blueprint.props }
 +  if (process.env.VIRVI_FEED_URL !== undefined) props.feedUrl = process.env.VIRVI_FEED_URL
 +  if (process.env.VIRVI_WORLD_KEY !== undefined) props.worldKey = process.env.VIRVI_WORLD_KEY
++  // Before the rename the app was blueprint `vlm`: drop it and its entities so a world runs one copy. (virvi-rename: keep)
++  const legacy = (await db('entities')).filter(e => JSON.parse(e.data).blueprint === 'vlm').map(e => e.id) // virvi-rename: keep
++  if (legacy.length) await db('entities').whereIn('id', legacy).delete()
++  await db('blueprints').where('id', 'vlm').delete() // virvi-rename: keep
 +  const row = await db('blueprints').where('id', BLUEPRINT_ID).first()
 +  if (!row) {
 +    const data = { ...app.blueprint, id: BLUEPRINT_ID, version: 0, props }

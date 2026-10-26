@@ -7,11 +7,11 @@ Version 2 is a rewrite. It is not compatible with the 0.x (SDK6-era) API.
 
 ```sh
 npm install @virvixr/dcl
-npx virvi-dcl install
+npx @virvixr/dcl install
 ```
 
-`npx virvi-dcl install` copies the HUD's launcher icon into your scene (`images/virvi/hud-v.png`); deploy
-it with the scene. `npx virvi-dcl sync` also keeps it up to date.
+`npx @virvixr/dcl install` copies the HUD's launcher icon into your scene (`images/virvi/hud-v.png`); deploy
+it with the scene. `npx @virvixr/dcl sync` also keeps it up to date.
 
 ## From code
 
@@ -52,15 +52,15 @@ editors or viewers by wallet address.
 - Decentraland only loads 3D models that are deployed with your scene. By default Virvi deploys them
   to your World for you (set it up at virvi.io/deploy); if you publish yourself, the HUD's Publish
   button opens the publish page. After that, moving, scaling and showing/hiding models is live.
-- `npx virvi-dcl sync` is optional, if you want the files locally: run it in your scene folder and it
+- `npx @virvixr/dcl sync` is optional, if you want the files locally: run it in your scene folder and it
   downloads your Virvi models into `models/virvi/`, then deploy as usual. The HUD tells you when models
   need a sync.
-- `npx virvi-dcl sync --dry-run` shows what would change; `--server <url>` for self-hosted Virvi.
+- `npx @virvixr/dcl sync --dry-run` shows what would change; `--server <url>` for self-hosted Virvi.
 
 ## Creator Hub
 
 1. In a terminal in your scene folder, run `npm install @virvixr/dcl`.
-2. Run `npx virvi-dcl install`. It copies the VirviManager script to `assets/scene/Scripts/VirviManager.ts`
+2. Run `npx @virvixr/dcl install`. It copies the VirviManager script to `assets/scene/Scripts/VirviManager.ts`
    and the HUD's launcher icon to `images/virvi/hud-v.png` (an edited VirviManager.ts is left alone
    unless you pass `--force`).
 3. In Creator Hub, add an entity (e.g. "Virvi Manager"), add a **Script** component, and pick
