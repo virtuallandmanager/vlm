@@ -4,7 +4,7 @@
  * POST   /api/hyperfy/worlds                — Connect a world (kind 'self', default; returns its key once) or host one
  *                                             (kind 'hosted'; 202 with the admin code once)
  * GET    /api/hyperfy/worlds?sceneId=       — List a scene's worlds
- * PATCH  /api/hyperfy/worlds/:id            — Change a world's end date (hosted) or switch its scene
+ * PATCH  /api/hyperfy/worlds/:id            — Rename a world (name only: its slug and address stay), change its end date (hosted) or switch its scene
  * POST   /api/hyperfy/worlds/:id/restore    — Bring an ended hosted world back (within retention, if a slot is free)
  * POST   /api/hyperfy/worlds/:id/admin-code — Reveal a hosted world's admin code
  * POST   /api/hyperfy/worlds/:id/rotate-key — Replace the key; returns the new one once
@@ -145,14 +145,24 @@ export default async function hyperfyWorldRoutes(app: FastifyInstance) {
     hostingAvailable: hyperfyHosting().available,
   }))
 
-  app.patch<{ Params: { id: string }; Body: { endsAt?: string | null; sceneId?: string } }>(
+  app.patch<{ Params: { id: string }; Body: { name?: unknown; endsAt?: string | null; sceneId?: string } }>(
     '/api/hyperfy/worlds/:id',
     { preHandler },
     async (request, reply) => {
       const found = await worldForCaller(request, request.params.id)
       if (!found) return reply.status(404).send({ error: 'World not found' })
       const body = request.body ?? {}
-      if (body.endsAt === undefined && body.sceneId === undefined) return reply.status(400).send({ error: 'endsAt or sceneId is required' })
+      if (body.name === undefined && body.endsAt === undefined && body.sceneId === undefined) {
+        return reply.status(400).send({ error: 'name, endsAt or sceneId is required' })
+      }
+
+      let name: string | undefined
+      if (body.name !== undefined) {
+        name = typeof body.name === 'string' ? body.name.trim() : ''
+        if (!name || name.length > MAX_NAME) {
+          return reply.status(400).send({ error: 'bad_name', message: `A Hyperfy world name is required (up to ${MAX_NAME} characters)` })
+        }
+      }
 
       let endsAt: Date | null | undefined
       if (body.endsAt !== undefined) {
@@ -182,6 +192,8 @@ export default async function hyperfyWorldRoutes(app: FastifyInstance) {
           .returning({ id: hyperfyWorlds.id })
         if (!updated.length) return reply.status(409).send({ error: 'already_ended', message: 'This world has ended; restore it instead' })
       }
+      // The display name only: a hosted world's slug, address and Fly app were fixed when it was made.
+      if (name !== undefined && name !== found.name) await db.update(hyperfyWorlds).set({ name }).where(eq(hyperfyWorlds.id, found.id))
       const [world] = await db.select().from(hyperfyWorlds).where(eq(hyperfyWorlds.id, found.id))
       return { world: worldSummary(world) }
     },

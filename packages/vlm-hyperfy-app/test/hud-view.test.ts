@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { planScene } from '../src/plan.js'
 import { hudModel } from '../src/hud/model.js'
-import { HudView, type HudActions, type UiNode } from '../src/hud/view.js'
+import { HudView, linkDotColor, type HudActions, type UiNode } from '../src/hud/view.js'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Fake = Record<string, any>
@@ -90,6 +90,44 @@ describe('HudView', () => {
       ['backspace', 'Backspace'],
       ['enter', 'Enter'],
     ])
+  })
+})
+
+describe('HudView brand', () => {
+  const brandOf = (h: ReturnType<typeof host>) => {
+    const bar = h.created.find((n) => n.type === 'ui')!
+    const firstRow = bar.children[0]
+    return firstRow.children[0] as Fake
+  }
+
+  it('shows the Virvi V with a round status dot at the symbol position instead of a VLM label', () => {
+    const h = host()
+    new HudView(h, noop, { iconSrc: 'asset://abc.png' }).render(vm(1))
+    const bar = h.created.find((n) => n.type === 'ui')!
+    expect(texts(bar)).not.toContain('VLM')
+    const brand = brandOf(h)
+    expect(brand).toMatchObject({ type: 'uiview', width: 28, height: 28 })
+    const [img, dot] = brand.children
+    expect(img).toMatchObject({ type: 'uiimage', src: 'asset://abc.png', width: 28, height: 28 })
+    const k = 28 / 1254
+    expect(dot).toMatchObject({ type: 'uiview', absolute: true, backgroundColor: '#08ddeb' })
+    expect(dot.left).toBeCloseTo((627 - 132) * k)
+    expect(dot.top).toBeCloseTo((373 - 132) * k)
+    expect(dot.width).toBeCloseTo(264 * k)
+    expect(dot.borderRadius).toBeCloseTo(dot.width / 2)
+  })
+
+  it('the dot follows the link state; without an icon only the dot is drawn', () => {
+    expect(linkDotColor('linked')).toBe('#08ddeb')
+    expect(linkDotColor('idle')).toBe('#e0ad14')
+    expect(linkDotColor('waiting')).toBe('#e0ad14')
+    for (const s of ['error', 'lost', 'expired'] as const) expect(linkDotColor(s)).toBe('#e5484d')
+    const h = host()
+    new HudView(h, noop).render(hudModel({ ...vmState(), pairing: { status: 'idle' } }))
+    const brand = brandOf(h)
+    expect(brand.children).toHaveLength(1)
+    expect(brand.children[0]).toMatchObject({ absolute: true, backgroundColor: '#e0ad14' })
+    expect(h.created.some((n) => n.type === 'uiimage')).toBe(false)
   })
 })
 

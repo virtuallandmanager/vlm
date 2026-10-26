@@ -107,7 +107,13 @@ export function WhereStep({ state, dispatch, names, reloadNames, options, replac
 
   return (
     <div className="space-y-5">
-      <section className="space-y-3">
+      <label className="block space-y-1">
+        <span className="text-sm font-medium text-gray-200">Scene name</span>
+        <input value={state.name} onChange={(e) => dispatch({ type: 'setName', name: e.target.value })}
+          placeholder="Name your scene" aria-label="Scene name" required maxLength={120} autoFocus className={inputClass} />
+      </label>
+
+      <section className="space-y-3 border-t border-gray-800 pt-4">
         <h3 className="text-sm font-medium text-gray-200">Your Decentraland World</h3>
         {names.status === 'loading' && <p className="text-sm text-gray-500">Looking up your names…</p>}
         {names.status === 'error' && (
@@ -206,7 +212,7 @@ export function WhereStep({ state, dispatch, names, reloadNames, options, replac
                   {slots.hostingAvailable ? "You've used all your hosted worlds." : "Hosted worlds aren't available right now."}
                 </p>
               )}
-              <input value={hyperfy.name} onChange={(e) => dispatch({ type: 'setHyperfy', hyperfy: { ...hyperfy, name: e.target.value } })}
+              <input value={hyperfy.name} onChange={(e) => dispatch({ type: 'setHyperfyName', name: e.target.value })}
                 placeholder="Name for the Hyperfy world" aria-label="Hyperfy world name" maxLength={100} className={inputClass} />
             </div>
           )}
@@ -218,7 +224,7 @@ export function WhereStep({ state, dispatch, names, reloadNames, options, replac
           </label>
           {ar && (
             <div className="ml-6 space-y-1">
-              <input value={ar.name} onChange={(e) => dispatch({ type: 'setAr', ar: { name: e.target.value } })}
+              <input value={ar.name} onChange={(e) => dispatch({ type: 'setArName', name: e.target.value })}
                 placeholder="Name for the AR space" aria-label="AR space name" maxLength={100} className={inputClass} />
               <p className="text-xs text-gray-500">Printing and aligning its rings happens later, in the scene&apos;s AR tab.</p>
             </div>

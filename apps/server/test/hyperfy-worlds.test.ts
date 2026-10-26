@@ -435,6 +435,34 @@ describe('hosted Hyperfy world routes', () => {
     expect((await row(world.id)).sceneId).toBe(sceneId)
   })
 
+  it('PATCH name renames a hosted world and leaves its slug, address and Fly app alone', async () => {
+    const { world } = (await create()).json()
+    await settled(world.id)
+    const before = await row(world.id)
+    const res = await call(owner, 'PATCH', `/api/hyperfy/worlds/${world.id}`, { name: '  Moon Colony  ' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().world).toMatchObject({ id: world.id, name: 'Moon Colony', address: before.address })
+    const after = await row(world.id)
+    expect(after.name).toBe('Moon Colony')
+    expect({ slug: after.slug, address: after.address, flyApp: after.flyApp, keyHash: after.keyHash, status: after.status })
+      .toEqual({ slug: before.slug, address: before.address, flyApp: before.flyApp, keyHash: before.keyHash, status: before.status })
+  })
+
+  it('PATCH name: blank or over 100 characters is 400 and writes nothing; not the scene owner is 404', async () => {
+    const self = (await call(owner, 'POST', '/api/hyperfy/worlds', { sceneId, name: 'Mine' })).json().world
+    const url = `/api/hyperfy/worlds/${self.id}`
+    for (const bad of ['', '   ', 'x'.repeat(101), 5, null]) {
+      expect((await call(owner, 'PATCH', url, { name: bad })).statusCode, JSON.stringify(bad)).toBe(400)
+    }
+    expect((await call(owner, 'PATCH', url, { name: 'x'.repeat(100) })).statusCode).toBe(200)
+    // Hyperfy world routes need full access to the scene: an editor collaborator or a stranger gets 404, as on every other :id route.
+    const editor = await createUser()
+    await db.insert(sceneCollaborators).values({ sceneId, userId: editor.id, role: 'editor' })
+    const stranger = await createUser()
+    for (const u of [editor, stranger]) expect((await call(u, 'PATCH', url, { name: 'Hijacked' })).statusCode).toBe(404)
+    expect((await row(self.id)).name).toBe('x'.repeat(100))
+  })
+
   it('another user gets 404 on every :id route', async () => {
     const { world } = (await create()).json()
     await settled(world.id)

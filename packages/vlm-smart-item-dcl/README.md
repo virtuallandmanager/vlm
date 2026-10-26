@@ -7,7 +7,11 @@ Version 2 is a rewrite. It is not compatible with the 0.x (SDK6-era) API.
 
 ```sh
 npm install vlm-dcl
+npx vlm-dcl install
 ```
+
+`npx vlm-dcl install` copies the HUD's launcher icon into your scene (`images/virvi/hud-v.png`); deploy
+it with the scene. `npx vlm-dcl sync` also keeps it up to date.
 
 ## From code
 
@@ -56,7 +60,9 @@ editors or viewers by wallet address.
 ## Creator Hub
 
 1. In a terminal in your scene folder, run `npm install vlm-dcl`.
-2. Copy `node_modules/vlm-dcl/creator-hub/VLMManager.ts` to `assets/scene/Scripts/VLMManager.ts`.
+2. Run `npx vlm-dcl install`. It copies the VLMManager script to `assets/scene/Scripts/VLMManager.ts`
+   and the HUD's launcher icon to `images/virvi/hud-v.png` (an edited VLMManager.ts is left alone
+   unless you pass `--force`).
 3. In Creator Hub, add an entity (e.g. "VLM Manager"), add a **Script** component, and pick
    `VLMManager.ts`.
 4. Fill in the fields, or leave them as they are:
@@ -72,4 +78,6 @@ editors or viewers by wallet address.
 
 ## Requirements
 
-vlm-dcl 2.4.0 needs `@dcl/sdk` 7.23 or newer (Shift, used by the in-world transform tools, was added in 7.23).
+vlm-dcl needs `@dcl/sdk` 7.26 or newer: the HUD scales with the SDK's virtual canvas (reliable from 7.26), so it
+isn't tiny on high-DPI screens. The HUD is added alongside your scene's own UI (`addUiRenderer`); if your
+main UI sets its own virtual size, that size is used for both.

@@ -8,6 +8,7 @@ import { db } from '../src/db/connection.js'
 import { analyticsScenes, assetLibraryItems, dclWorldDestinations, locationSetups, sceneDeployments, scenes } from '../src/db/schema.js'
 import { chainSigner, verifyChain, virviSigner } from '../src/services/dcl/entity.js'
 import { setWorldsClient, WorldsError, type LiveEntity } from '../src/services/dcl/worlds-client.js'
+import { DCL_RUNTIME_VERSION } from '../src/services/dcl/runtime.js'
 import {
   DEPLOY_WINDOW_MS, DeployerError, liveBaseFor, prepareSignedDeploy, startVirviDeploy, submitSignedDeploy, whenSettled,
 } from '../src/services/dcl/world-deployer.js'
@@ -102,7 +103,7 @@ describe('startVirviDeploy (mode A)', () => {
 
     const d = await destRow(dest.id)
     expect(d.lastEntityId).toBe(sent.entityId)
-    expect(d.deployedFiles).toEqual(['bin/index.js', 'models/vlm/a.glb', 'scene.json'])
+    expect(d.deployedFiles).toEqual(['bin/index.js', 'images/virvi/hud-v.png', 'models/vlm/a.glb', 'scene.json'])
     expect(d.status).toBe('ok')
 
     const as = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, `world:${WORLD}`) })
@@ -225,7 +226,8 @@ describe('prepareSignedDeploy / submitSignedDeploy (mode B)', () => {
     // Enough to rebuild, never the model bytes.
     expect(JSON.stringify(bundle)).not.toContain(Buffer.from(`bytes of ${CDN}/m/a.glb`).toString('base64'))
     expect(bundle.newFiles).toContainEqual(expect.objectContaining({ file: 'models/vlm/a.glb', url: `${CDN}/m/a.glb` }))
-    expect(bundle.newFiles).toContainEqual(expect.objectContaining({ file: 'bin/index.js', runtimeVersion: 1 }))
+    expect(bundle.newFiles).toContainEqual(expect.objectContaining({ file: 'bin/index.js', runtimeVersion: DCL_RUNTIME_VERSION }))
+    expect(bundle.newFiles).toContainEqual(expect.objectContaining({ file: 'images/virvi/hud-v.png', runtimeVersion: DCL_RUNTIME_VERSION }))
     expect(fake.deployed).toHaveLength(0)
 
     const done = await submitSignedDeploy(prep.deployment.id, await ownerChain(owner, prep.payload), { fetch: fetcher })

@@ -77,12 +77,27 @@ export async function verifyDclSceneRequest(
   if (!sceneId || !parcel || !serverName) throw new Error('scene metadata incomplete')
   if (rawBody !== null && rawBody.length > 0) {
     const want = createHash('sha256').update(rawBody, 'utf8').digest('hex')
-    if (str(m, 'hashPayload') !== want) throw new Error('body does not match signed hash')
+    const signed = str(m, 'hashPayload')
+    if (signed !== want) throw new Error(`body does not match signed hash (${bodyHashDiagnosis(rawBody, signed)})`)
   }
   return {
     wallet: r.auth.toLowerCase(),
     scene: { sceneId, parcel, realm: { hostname, serverName }, isGuest: own(m, 'isGuest') && m.isGuest === true },
   }
+}
+
+const sha256 = (s: string, enc: BufferEncoding = 'utf8') => createHash('sha256').update(s, enc).digest('hex')
+
+/** Temporary diagnosis for a body-hash mismatch: sizes, hash prefixes, and which plausible encoding of the body the signer hashed, if any. */
+function bodyHashDiagnosis(rawBody: string, signed: string | null): string {
+  const variants: Record<string, () => string> = {
+    latin1: () => sha256(rawBody, 'latin1'),
+    trimmed: () => sha256(rawBody.trim()),
+    reserialized: () => sha256(JSON.stringify(JSON.parse(rawBody))),
+    empty: () => sha256(''),
+  }
+  const matched = signed ? Object.keys(variants).filter((k) => { try { return variants[k]() === signed } catch { return false } }) : []
+  return `chars ${rawBody.length}, bytes ${Buffer.byteLength(rawBody, 'utf8')}, signed ${signed ? signed.slice(0, 8) : 'none'}, got ${sha256(rawBody).slice(0, 8)}, matches ${matched.join('+') || 'none'}`
 }
 
 /**

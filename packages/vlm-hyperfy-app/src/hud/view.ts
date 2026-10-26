@@ -52,6 +52,19 @@ const C = {
   dim: 'rgba(255, 255, 255, 0.6)',
   error: '#e5484d',
   info: '#46a758',
+  /** The launcher dot: Virvi cyan when linked, amber while linking, red when the link failed or lapsed */
+  virvi: '#08ddeb',
+  warning: '#e0ad14',
+}
+/** The Virvi symbol's frame (viewBox 0 0 1254 1254) and dot; the icon PNG is the whole frame without the dot. */
+const SYMBOL = { frame: 1254, cx: 627, cy: 373, r: 132 }
+const ICON = 28
+
+/** The launcher dot's colour for a pairing status. */
+export function linkDotColor(status: HudViewModel['link']['status']): string {
+  if (status === 'linked') return C.virvi
+  if (status === 'idle' || status === 'waiting') return C.warning
+  return C.error
 }
 const ROW = 34
 const MODES: Array<[TransformMode, string]> = [
@@ -79,6 +92,8 @@ export class HudView {
   constructor(
     private readonly host: UiHost,
     private readonly act: HudActions,
+    /** The V image (the .hyp's hudIcon asset); without it only the status dot is drawn. */
+    private readonly opts: { iconSrc?: string | null } = {},
   ) {
     const base = {
       space: 'screen',
@@ -184,7 +199,7 @@ export class HudView {
     if (!vm.bar) {
       const rows = [
         this.row([
-          this.label('VLM', C.dim),
+          this.brand(l.status),
           l.canLink ? this.button(l.label, () => a.link()) : this.label(l.label),
         ]),
       ]
@@ -210,7 +225,7 @@ export class HudView {
     const rows: UiNode[] = [
       ...relink,
       this.row([
-        this.label('VLM', C.dim),
+        this.brand(l.status),
         this.button(b.editing ? 'Editing' : 'Edit', () => a.toggleEditing(), b.editing),
         ...PANELS.map(([p, text]) => this.button(text, () => a.openPanel(p), vm.panel === p)),
       ]),
@@ -328,6 +343,28 @@ export class HudView {
     this.heights.set(n, height)
     for (const c of children) n.add(c)
     return n
+  }
+
+  /** The Virvi symbol: the white V with its dot as the link status. */
+  private brand(status: HudViewModel['link']['status']): UiNode {
+    const box = this.host.create('uiview', { width: ICON, height: ICON })
+    if (this.opts.iconSrc) {
+      box.add(this.host.create('uiimage', { src: this.opts.iconSrc, width: ICON, height: ICON, objectFit: 'contain' }))
+    }
+    const k = ICON / SYMBOL.frame
+    const d = SYMBOL.r * 2 * k
+    box.add(
+      this.host.create('uiview', {
+        absolute: true,
+        left: (SYMBOL.cx - SYMBOL.r) * k,
+        top: (SYMBOL.cy - SYMBOL.r) * k,
+        width: d,
+        height: d,
+        borderRadius: d / 2,
+        backgroundColor: linkDotColor(status),
+      }),
+    )
+    return box
   }
 
   private label(value: string, color = C.text, fontSize = 14, bold = false): UiNode {

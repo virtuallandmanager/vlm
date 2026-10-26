@@ -21,6 +21,8 @@ export interface WizardState {
   spawn: { x: number; z: number }
   mode: 'virvi' | 'sign'
   name: string
+  /** Whether the user typed their own Hyperfy world / AR space name; until then each follows the scene name. */
+  touched: { hyperfy: boolean; ar: boolean }
   /** Items the last theme or plot change dropped to fit the budget. */
   lastDropped: number
   /** Plain-language message for the last action that could not happen. */
@@ -42,7 +44,14 @@ export type WizardAction =
   | { type: 'moveSpawn'; x: number; z: number }
   | { type: 'setMode'; mode: 'virvi' | 'sign' }
   | { type: 'setName'; name: string }
+  /** The user typing a Hyperfy world / AR space name: it stops following the scene name. */
+  | { type: 'setHyperfyName'; name: string }
+  | { type: 'setArName'; name: string }
   | { type: 'goTo'; step: WizardStep }
+
+/** The server's limit on a Hyperfy world name (a scene name may be up to 120). */
+export const HYPERFY_NAME_MAX = 100
+const hyperfyName = (name: string) => name.slice(0, HYPERFY_NAME_MAX)
 
 /** Default arrival point: centre along x, 1 m in from the south edge (matches the server). */
 export function defaultSpawn(plot: Plot): { x: number; z: number } {
@@ -58,6 +67,7 @@ export const initialState: WizardState = {
   spawn: defaultSpawn(GUIDE_PLOT),
   mode: 'virvi',
   name: '',
+  touched: { hyperfy: false, ar: false },
   lastDropped: 0,
   notice: null,
   seq: 0,
@@ -88,10 +98,29 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
   switch (action.type) {
     case 'setDcl':
       return { ...state, destinations: { ...state.destinations, dcl: action.dcl }, notice: null }
-    case 'setHyperfy':
-      return { ...state, destinations: { ...state.destinations, hyperfy: action.hyperfy }, notice: null }
-    case 'setAr':
-      return { ...state, destinations: { ...state.destinations, ar: action.ar }, notice: null }
+    case 'setHyperfy': {
+      // Turned on (again): it starts from the scene name and follows it until the user types their own.
+      const fresh = !state.destinations.hyperfy && !!action.hyperfy
+      const hyperfy = fresh && action.hyperfy ? { ...action.hyperfy, name: hyperfyName(state.name) } : action.hyperfy
+      const touched = fresh || !action.hyperfy ? { ...state.touched, hyperfy: false } : state.touched
+      return { ...state, destinations: { ...state.destinations, hyperfy }, touched, notice: null }
+    }
+    case 'setAr': {
+      const fresh = !state.destinations.ar && !!action.ar
+      const ar = fresh && action.ar ? { ...action.ar, name: state.name } : action.ar
+      const touched = fresh || !action.ar ? { ...state.touched, ar: false } : state.touched
+      return { ...state, destinations: { ...state.destinations, ar }, touched, notice: null }
+    }
+    case 'setHyperfyName': {
+      const h = state.destinations.hyperfy
+      if (!h) return state
+      return { ...state, destinations: { ...state.destinations, hyperfy: { ...h, name: action.name } }, touched: { ...state.touched, hyperfy: true } }
+    }
+    case 'setArName': {
+      const a = state.destinations.ar
+      if (!a) return state
+      return { ...state, destinations: { ...state.destinations, ar: { ...a, name: action.name } }, touched: { ...state.touched, ar: true } }
+    }
     case 'setPlot': {
       const plot = action.plot
       const clamped = state.items.map((i) => clampToPlot(plot, i))
@@ -140,8 +169,18 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
       return { ...state, spawn: clampSpawn(effectivePlot(state), { x: action.x, z: action.z }) }
     case 'setMode':
       return { ...state, mode: action.mode }
-    case 'setName':
-      return { ...state, name: action.name }
+    case 'setName': {
+      const { hyperfy, ar } = state.destinations
+      return {
+        ...state,
+        name: action.name,
+        destinations: {
+          ...state.destinations,
+          hyperfy: hyperfy && !state.touched.hyperfy ? { ...hyperfy, name: hyperfyName(action.name) } : hyperfy,
+          ar: ar && !state.touched.ar ? { ...ar, name: action.name } : ar,
+        },
+      }
+    }
     case 'goTo':
       return { ...state, step: action.step, notice: null }
   }
@@ -151,7 +190,7 @@ export function canAdvance(state: WizardState): boolean {
   const { dcl, hyperfy, ar } = state.destinations
   switch (state.step) {
     case 'where':
-      return !!(dcl || hyperfy || ar)
+      return !!state.name.trim() && !!(dcl || hyperfy || ar)
     case 'size':
       return dcl ? state.plot !== null : true
     case 'assets':

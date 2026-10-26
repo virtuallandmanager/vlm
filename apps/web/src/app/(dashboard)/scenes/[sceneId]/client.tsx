@@ -6,6 +6,7 @@ import { shapeLabel, offImageLabel, adModeHint } from '@/lib/ads'
 import { useSceneRoom } from '@/lib/colyseus'
 import { SceneRoles } from './SceneRoles'
 import { ArSpaces } from './ArSpaces'
+import { EditableSceneTitle, UseNameEverywhere, connectedNamesDiffer, hasConnected, useConnected } from './SceneName'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Badge, PageHeader, Skeleton, type Tone } from '@/components/ui'
@@ -1251,6 +1252,10 @@ export default function SceneEditorPage() {
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState<TabKey>('video')
   const [copied, setCopied] = useState(false)
+  const { connected: linked, reload: reloadConnected } = useConnected(sceneId)
+  /** The name before this visit's last rename, while "Use the new name everywhere?" can still compare against it. */
+  const [renamedFrom, setRenamedFrom] = useState<string | null>(null)
+  const [namePanel, setNamePanel] = useState(false)
 
   // -----------------------------------------------------------------------
   // Load scene
@@ -1530,6 +1535,16 @@ export default function SceneEditorPage() {
   // Copy scene ID
   // -----------------------------------------------------------------------
 
+  const renameScene = async (name: string) => {
+    const old = scene?.name ?? ''
+    const { scene: updated } = await api.updateScene(sceneId, { name })
+    setScene((prev) => (prev ? { ...prev, name: updated.name } : prev))
+    if (updated.name === old) return
+    setRenamedFrom(old)
+    await reloadConnected()
+    setNamePanel(true)
+  }
+
   const copySceneId = () => {
     navigator.clipboard.writeText(sceneId)
     setCopied(true)
@@ -1548,9 +1563,14 @@ export default function SceneEditorPage() {
     <div className="space-y-6">
       <PageHeader
         crumbs={['Workspace', { label: 'Scenes', href: '/scenes' }, scene.name]}
-        title={scene.name}
+        title={<EditableSceneTitle name={scene.name} onSave={renameScene} />}
         subtitle={
           <>
+            {!namePanel && hasConnected(linked) && (
+              <button type="button" onClick={() => setNamePanel(true)} className="mb-1 text-xs text-blue-400 hover:text-blue-300">
+                {connectedNamesDiffer(linked, scene.name) ? 'Names differ — update?' : 'Use name everywhere'}
+              </button>
+            )}
             <div className="flex items-center gap-2">
               <code className="text-sm text-gray-500 font-mono">{sceneId}</code>
               <button onClick={copySceneId} className="text-xs text-blue-400 hover:text-blue-300">
@@ -1567,6 +1587,11 @@ export default function SceneEditorPage() {
           </Badge>
         }
       />
+
+      {namePanel && linked && hasConnected(linked) && (
+        <UseNameEverywhere key={`${scene.name}:${renamedFrom ?? ''}`} sceneName={scene.name} oldName={renamedFrom} connected={linked}
+          onDone={reloadConnected} onClose={() => setNamePanel(false)} />
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-800 pb-px">
