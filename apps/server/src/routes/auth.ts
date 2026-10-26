@@ -238,6 +238,7 @@ export default async function authRoutes(app: FastifyInstance) {
               config.mode !== 'cloud' && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(signed.scene.realm.hostname)
             try {
               binding = await bindSceneRequest(signed.scene, verifiedWallet, { preview: localPreview })
+              request.log.info({ ctx: { sceneId: signed.scene.sceneId, parcel: signed.scene.parcel, realm: signed.scene.realm }, binding }, 'scene binding')
             } catch (err) {
               // Binding trouble degrades to a visitor pass, never a 500 or an account token.
               request.log.warn({ err: (err as Error).message }, 'scene binding failed; issuing visitor pass')
