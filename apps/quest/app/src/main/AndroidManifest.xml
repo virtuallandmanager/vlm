@@ -23,9 +23,11 @@
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-permission android:name="horizonos.permission.HEADSET_CAMERA" />
   <application
+    android:icon="@mipmap/ic_launcher"
+    android:roundIcon="@mipmap/ic_launcher_round"
     android:allowBackup="false"
     android:usesCleartextTraffic="false"
-    android:label="VLM Spaces"
+    android:label="Virvi AR"
   >
     <meta-data android:name="com.oculus.supportedDevices" android:value="quest3|quest3s" />
     <meta-data android:name="com.oculus.handtracking.version" android:value="V2.0" />
@@ -48,7 +50,7 @@
         <action android:name="android.intent.action.VIEW" />
         <category android:name="android.intent.category.DEFAULT" />
         <category android:name="android.intent.category.BROWSABLE" />
-        <data android:scheme="https" android:host="vlm.gg" android:pathPrefix="/s/" />
+        <data android:scheme="https" android:host="virvi.io" android:pathPrefix="/s/" />
       </intent-filter>
     </activity>
   </application>

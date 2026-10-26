@@ -1,6 +1,6 @@
-# VLM Spaces: Meta Horizon Store notes
+# Virvi AR: Meta Horizon Store notes
 
-Package `gg.vlm.spaces`, Quest 3 and 3S only (`com.oculus.supportedDevices`). Uploading to the Store is the owner's step, with their Meta developer account.
+Package `io.virvi.ar`, Quest 3 and 3S only (`com.oculus.supportedDevices`). Uploading to the Store is the owner's step, with their Meta developer account.
 
 ## 1. Release key (owner, in your own Terminal)
 
@@ -14,10 +14,10 @@ keytool -genkeypair -v -keystore ~/.android/vlm-quest-release.jks -alias vlm-que
 `keytool` asks for the keystore password and key password. Then add these four lines to `~/.gradle/gradle.properties` (not the repo's `gradle.properties`), with your own passwords:
 
 ```properties
-VLM_QUEST_KEYSTORE=~/.android/vlm-quest-release.jks
-VLM_QUEST_KEYSTORE_PASSWORD=<keystore password>
-VLM_QUEST_KEY_ALIAS=vlm-quest
-VLM_QUEST_KEY_PASSWORD=<key password>
+VIRVI_QUEST_KEYSTORE=~/.android/vlm-quest-release.jks
+VIRVI_QUEST_KEYSTORE_PASSWORD=<keystore password>
+VIRVI_QUEST_KEY_ALIAS=vlm-quest
+VIRVI_QUEST_KEY_PASSWORD=<key password>
 ```
 
 Back the `.jks` file and both passwords up somewhere safe. A Store app can't be updated if the key is lost (unless Meta's key-reset applies).
@@ -43,7 +43,7 @@ With a signed APK:
 $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
 ```
 
-Copy the `Signer #1 certificate SHA-256 digest` line, and the server accepts it with or without colons, in any case, and writes it as `AA:BB:...` in `assetlinks.json` (an entry that isn't 64 hex digits is dropped with a warning that names its position, not its value). Set it in the server environment as `ANDROID_CERT_SHA256` (comma-separated for several keys; plan 1 Task 12; `apps/server/src/config.ts`). Until it's set, `https://vlm.gg/s/<code>` links don't verify and open in the browser. If Meta re-signs the app on upload (Play-style app signing doesn't apply to Horizon; check the Developer Dashboard), add that certificate's fingerprint too.
+Copy the `Signer #1 certificate SHA-256 digest` line, and the server accepts it with or without colons, in any case, and writes it as `AA:BB:...` in `assetlinks.json` (an entry that isn't 64 hex digits is dropped with a warning that names its position, not its value). Set it in the server environment as `ANDROID_CERT_SHA256` (comma-separated for several keys; plan 1 Task 12; `apps/server/src/config.ts`). Until it's set, `https://virvi.io/s/<code>` links don't verify and open in the browser. If Meta re-signs the app on upload (Play-style app signing doesn't apply to Horizon; check the Developer Dashboard), add that certificate's fingerprint too.
 
 ## 3. VRC checklist (owner)
 
@@ -83,13 +83,13 @@ From Meta's published list, https://developers.meta.com/horizon/distribute/publi
 - [ ] r Input.2 Grip for pickup.
 
 **Privacy**
-- [ ] R Privacy.1 to .4 Privacy policy URL is https://vlm.gg/privacy (section "VLM Spaces on Quest"); it explains what is collected and how it is used. Privacy.4 asks how users request deletion: the page says visit events carry no identity, a builder revokes a headset on vlm.gg, and anyone can email support@vlm.gg to ask for their data to be deleted or for help.
+- [ ] R Privacy.1 to .4 Privacy policy URL is https://virvi.io/privacy (section "Virvi AR on Quest"); it explains what is collected and how it is used. Privacy.4 asks how users request deletion: the page says visit events carry no identity, a builder revokes a headset on virvi.io, and anyone can email support@virvi.io to ask for their data to be deleted or for help.
 - [ ] R Privacy.5 Data protection checks (Developer Dashboard, Data use; answers below).
 
 **Content and publishing**
 - [ ] R Content.2 Metadata matches the app.
-- [ ] R Content.3 User-generated content needs a way to report Code of Conduct violations. Spaces are made by their owners on vlm.gg, and visitors see only published spaces, but visitors can see owner-chosen media. Built the report route anyway: the menu has **Report this space** (Offensive, Unsafe, Spam, Something else); reports land on the vlm.gg admin page ("Space reports") and are emailed to support@vlm.gg once the server has SMTP set (until then the admin page is the only place they show).
-- [ ] R Publishing.1 to .3 Website URL (https://vlm.gg), support link, terms URL (if given) all load.
+- [ ] R Content.3 User-generated content needs a way to report Code of Conduct violations. Spaces are made by their owners on virvi.io, and visitors see only published spaces, but visitors can see owner-chosen media. Built the report route anyway: the menu has **Report this space** (Offensive, Unsafe, Spam, Something else); reports land on the virvi.io admin page ("Space reports") and are emailed to support@virvi.io once the server has SMTP set (until then the admin page is the only place they show).
+- [ ] R Publishing.1 to .3 Website URL (https://virvi.io), support link, terms URL (if given) all load.
 - [ ] R Publishing.4 to .8 Name, descriptions and keywords meet content guidelines; Meta brand use follows the brand guidelines ("Meta Quest", not "Oculus"; no other headsets named).
 - [ ] R Asset.1, .2, .5, .6, .7 Logo transparent; cover art branded with no extra text; screenshots free of overlays; no other platforms' hardware in text or images; trailer 2 minutes or less.
 
@@ -97,25 +97,25 @@ From Meta's published list, https://developers.meta.com/horizon/distribute/publi
 
 ## 4. Store listing
 
-**Name:** VLM Spaces
+**Name:** Virvi AR
 
-**Short description:** See a VLM scene in a real room. Look at a ring and the space lines up around you.
+**Short description:** See a Virvi scene in a real room. Look at a ring and the space lines up around you.
 
 **Long description:**
 
-VLM Spaces shows a VLM scene life-size in your real surroundings, in passthrough on Meta Quest 3 and 3S.
+Virvi AR shows a Virvi scene life-size in your real surroundings, in passthrough on Meta Quest 3 and 3S.
 
-Walk into a place that has a space, look at its VLM ring at eye level near the entrance, and the scene appears lined up with the room. Virtual things hide behind real walls and furniture. There's nothing to sign in to and nothing to set up.
+Walk into a place that has a space, look at its Virvi ring at eye level near the entrance, and the scene appears lined up with the room. Virtual things hide behind real walls and furniture. There's nothing to sign in to and nothing to set up.
 
 If something moves your headset's tracking, the scene fades out rather than show up in the wrong place, and the app asks you to look at a ring again.
 
-For owners and editors: sign in once by approving a pairing code on vlm.gg, then move things around and place items from your asset library while standing in the room. Your changes are the same ones you'd make in Decentraland, so they show there too.
+For owners and editors: sign in once by approving a pairing code on virvi.io, then move things around and place items from your asset library while standing in the room. Your changes are the same ones you'd make in Decentraland, so they show there too.
 
-Camera images and room scans never leave the headset. See the privacy policy at vlm.gg/privacy.
+Camera images and room scans never leave the headset. See the privacy policy at virvi.io/privacy.
 
 Needs a Meta Quest 3 or 3S and an internet connection.
 
-**Keywords (suggested):** mixed reality, passthrough, AR, spaces, venues, events, VLM.
+**Keywords (suggested):** mixed reality, passthrough, AR, spaces, venues, events, Virvi.
 
 **Category (suggested):** Entertainment or Productivity (owner's choice in the dashboard).
 
@@ -123,7 +123,7 @@ Needs a Meta Quest 3 or 3S and an internet connection.
 
 - Violence, sexual content, nudity, profanity, drugs, gambling, horror: none made by the app. A space's content is whatever its owner publishes; the app has none of its own.
 - User-to-user communication: none (no chat, voice or avatars of other visitors).
-- User-generated content: spaces authored by owners on vlm.gg and shown to visitors. Answer "yes" if the questionnaire counts owner-published scenes.
+- User-generated content: spaces authored by owners on virvi.io and shown to visitors. Answer "yes" if the questionnaire counts owner-published scenes.
 - Real-money purchases and ads: none in the app.
 - Location: none (the Quest has no GPS; the app doesn't ask for location).
 - Expected rating: all ages as far as the app goes, subject to the UGC answer.
@@ -140,7 +140,7 @@ Based on `docs/superpowers/specs/2026-10-22-ar-builder-and-visitor-modes-design.
 - **Collected from builders only:** pairing (`/api/ar/pair...`, the headset model as the device name, and a SHA-256 hash of the device secret; the headset proves who it is with a secret kept in its encrypted storage, sent over HTTPS to the pairing, pass and spaces calls, and the server stores only a hash of it), edits to the scene, ring alignments, and draft previews.
 - **Not collected:** camera images, room scans or room geometry, microphone, location, contacts, name, email, Meta account id, advertising id.
 - **Camera and spatial data** are processed on the headset only: rings are found from the passthrough camera, and walls and surfaces are used for occlusion and snapping.
-- **Media hosts:** Pictures, videos and 3D models in a space load from wherever its owner hosts them, which may be outside vlm.gg; those hosts see the headset's network address like any website would. The app sends them no account, token or visit data.
+- **Media hosts:** Pictures, videos and 3D models in a space load from wherever its owner hosts them, which may be outside virvi.io; those hosts see the headset's network address like any website would. The app sends them no account, token or visit data.
 - **Shared with third parties:** no user data. The media hosts above get the headset's network address with each request, as any website does.
 - **Encrypted in transit:** yes (release builds have no cleartext).
-- **Deletion:** visit events carry no identity; builders can revoke a paired headset on vlm.gg.
+- **Deletion:** visit events carry no identity; builders can revoke a paired headset on virvi.io.

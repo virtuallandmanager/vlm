@@ -79,7 +79,7 @@ for _j in range(NSYM):
     GEN = pmul(GEN, [EXP[_j], 1])
 
 # --- layout and mask -----------------------------------------------------
-_digest = hashlib.sha256(b"VLM ring marker v0").digest()
+_digest = hashlib.sha256(b"VLM ring marker v0").digest()  # virvi-rename: keep (the printed rings depend on this seed)
 MASK = [(_digest[i // 8] >> (7 - i % 8)) & 1 == 1 for i in range(CELLS)]
 
 
