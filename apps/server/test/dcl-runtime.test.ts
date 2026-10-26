@@ -12,7 +12,13 @@ describe('dcl runtime', () => {
     // The HUD registers with a virtual canvas (scales on high-DPI screens) and textures its launcher from the icon
     expect(src).toContain('virtualWidth')
     expect(src).toContain('images/virvi/hud-v.png')
-    expect(DCL_RUNTIME_VERSION).toBe(2)
+    expect(DCL_RUNTIME_VERSION).toBe(3)
+  })
+
+  it('speaks the Virvi protocol only', async () => {
+    const src = Buffer.from((await runtimeFiles()).get('bin/index.js')!).toString('utf8')
+    expect(src).toContain('virvi_scene')
+    expect(src).not.toMatch(/vlm_scene|vlm\.gg|models\/vlm\//) // virvi-rename: keep
   })
 
   it('deploys the HUD icon with the runtime', async () => {
@@ -23,9 +29,9 @@ describe('dcl runtime', () => {
     expect(Buffer.from(icon).equals(asset)).toBe(true)
   })
 
-  it('keeps v1 (deployments waiting to be signed rebuild their runtime files by version)', async () => {
-    const files = await runtimeFiles(1)
-    expect([...files.keys()]).toEqual(['bin/index.js'])
+  it('ships no pre-Virvi runtime (clean break: v1 and v2 used the old protocol)', async () => {
+    await expect(runtimeFiles(1)).rejects.toThrow()
+    await expect(runtimeFiles(2)).rejects.toThrow()
   })
 
   it('rejects an unknown version', async () => {

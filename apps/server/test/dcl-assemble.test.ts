@@ -24,9 +24,12 @@ afterEach(() => { (config as { cdnUrl: string | null }).cdnUrl = savedCdn })
 
 const fetcher = () => vi.fn(async (url: string) => enc(`bytes of ${url}`))
 
-/** A live wizard World on runtime `runtime` (default: the current one), with that version's runtime files. */
+/**
+ * A live wizard World on runtime `runtime` (default: the current one). The current version carries its real runtime
+ * files; an older one (no longer shipped) carries a stand-in bin/index.js only, as v1 Worlds did.
+ */
 async function live(over: Partial<LiveEntity['metadata']> = {}, runtime = DCL_RUNTIME_VERSION): Promise<LiveEntity> {
-  const rt = await runtimeFiles(Math.max(1, runtime))
+  const rt = runtime === DCL_RUNTIME_VERSION ? await runtimeFiles() : new Map([['bin/index.js', enc(`runtime v${runtime}`)]])
   const meta = { ...wizardSceneJson({ title: 'T', world: 'w.dcl.eth', base: '0,0', parcels: ['0,0'], spawn: { x: 8, y: 0, z: 8 } }), ...over }
   if (meta.virvi) meta.virvi = { ...meta.virvi, runtime }
   return {
@@ -106,7 +109,7 @@ describe('assembleRedeploy', () => {
     expect(r.deployedFiles).toEqual(['bin/index.js', 'images/virvi/hud-v.png', 'models/virvi/a.glb', 'scene.json'])
     for (const [, bytes] of await runtimeFiles()) expect(r.files.has(await dclHash(bytes))).toBe(true)
     expect(r.existing.map((c) => c.file).sort()).toEqual(['models/virvi/a.glb', 'scene.json'])
-    expect(r.metadata.virvi?.runtime).toBe(2)
+    expect(r.metadata.virvi?.runtime).toBe(DCL_RUNTIME_VERSION)
   })
 
   it('refuses foreign and private model hosts without fetching them', async () => {

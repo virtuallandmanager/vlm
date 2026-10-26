@@ -8,16 +8,17 @@
  * Models load from `models/virvi/<basename>.glb`, as `DclAdapter.resolveModelSrc` does.
  *
  * Built output is committed under apps/server/dcl-runtime/<version>/ (rebuild with `bash dcl-runtime/build.sh`):
- * bin/index.js and, from v2, the HUD icon images/virvi/hud-v.png. Every file in the version's directory is a
- * runtime file, deployed at the same scene-relative path. Older versions stay: a deployment waiting to be signed
- * rebuilds its runtime files by version (world-deployer rebuildNewFiles).
+ * bin/index.js and the HUD icon images/virvi/hud-v.png. Every file in the version's directory is a
+ * runtime file, deployed at the same scene-relative path. Versions before 3 spoke the pre-Virvi protocol and were
+ * removed; a deployment waiting to be signed rebuilds its runtime files by version (world-deployer rebuildNewFiles),
+ * so one left over from those versions fails and is started again.
  * Resolved relative to this module, so it works from src/ and dist/services/dcl/.
  */
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const DCL_RUNTIME_VERSION = 2
+export const DCL_RUNTIME_VERSION = 3
 
 const RUNTIME_ROOT = fileURLToPath(new URL('../../../dcl-runtime/', import.meta.url))
 
