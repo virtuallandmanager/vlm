@@ -1,5 +1,5 @@
 /**
- * VLMStudioRoom — live progress for one Design Studio design.
+ * VirviStudioRoom — live progress for one Design Studio design.
  *
  * Clients join filtered by designId; only the design's owner, on a verified account session, may join. The room
  * relays the design's bus topic (studio/events.ts) as `studio_event` messages. Clients send nothing.
@@ -23,7 +23,7 @@ interface JoinOptions {
   designId?: string
 }
 
-export class VLMStudioRoom extends Room {
+export class VirviStudioRoom extends Room {
   private designId = ''
   private relay: ((e: StudioEvent) => void) | null = null
 

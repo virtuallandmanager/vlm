@@ -10,7 +10,7 @@ import { countLabel, formatBytes, plural } from '@/lib/format'
 import { CubeIcon, GridIcon, LayersIcon, ListIcon, PlusIcon } from '@/components/icons'
 import { Badge, ConfirmAction, EmptyState, PageHeader, PrimaryButton, RowMenu, SearchField, SelectField, useStoredView, ViewToggle, Skeleton } from '@/components/ui'
 
-const VIEW_KEY = 'vlm.assets.view'
+const VIEW_KEY = 'virvi.assets.view'
 const fieldClass = 'w-full rounded-md border border-gray-800 bg-gray-950 px-3 py-2 text-sm outline-none focus:border-blue-400'
 const assetHref = (id: string) => `/assets?id=${id}`
 
@@ -268,7 +268,7 @@ function AssetDetail({ assetId, onDeleted }: { assetId: string; onDeleted: (id: 
         title={asset.name}
         subtitle={asset.description || undefined}
         actions={!asset.packId && !editing && (
-          // Catalog models are VLM's, not yours: view and add only
+          // Catalog models are Virvi's, not yours: view and add only
           <div className="flex items-center gap-2">
             <button onClick={startEditing} className="rounded-md bg-gray-800 px-3 py-1.5 text-xs hover:bg-gray-700">Edit</button>
             <ConfirmAction prompt="Delete this asset?" confirmLabel="Delete" onConfirm={handleDelete}
@@ -731,7 +731,7 @@ function assetMenu(asset: any, onDelete: () => void, open: () => void) {
   return [
     { label: 'Open asset', onSelect: open },
     ...(asset.cdnUrl ? [{ label: 'Copy URL', onSelect: () => { navigator.clipboard.writeText(asset.cdnUrl).catch(() => {}) } }] : []),
-    // Catalog models are VLM's, not yours: view and add only
+    // Catalog models are Virvi's, not yours: view and add only
     ...(!asset.packId ? [{ label: 'Delete asset', onSelect: onDelete, danger: true, confirm: 'Click again to delete' }] : []),
   ]
 }

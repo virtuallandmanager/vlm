@@ -1,5 +1,5 @@
 import { AD_LIMITS } from '@virvixr/shared'
-import type { AdEventBatch, AdFormats, AdItem, AdServeResponse, AdShape, EntityHandle, Quat, Vec3, VLMPlatformAdapter } from '@virvixr/shared'
+import type { AdEventBatch, AdFormats, AdItem, AdServeResponse, AdShape, EntityHandle, Quat, Vec3, VirviPlatformAdapter } from '@virvixr/shared'
 import { AdRotation } from './rotation.js'
 import { AdTracker } from './tracker.js'
 
@@ -19,10 +19,10 @@ interface Attached {
 }
 
 export interface AdHostOptions {
-  adapter: VLMPlatformAdapter
-  /** The serve call (VLMHttpClient.getAds); null on any failure. */
+  adapter: VirviPlatformAdapter
+  /** The serve call (VirviHttpClient.getAds); null on any failure. */
   getAds: (elementIds: string[]) => Promise<AdServeResponse | null>
-  /** The events call (VLMHttpClient.sendAdEvents); status 0 when there was no response. */
+  /** The events call (VirviHttpClient.sendAdEvents); status 0 when there was no response. */
   postEvents: (batch: AdEventBatch) => Promise<{ ok: boolean; status: number }>
   now?: () => number
 }
@@ -48,7 +48,7 @@ function forFormats(ads: AdItem[], formats: AdFormats): AdItem[] {
 export class AdHost {
   readonly tracker: AdTracker
   readonly now: () => number
-  private readonly adapter: VLMPlatformAdapter
+  private readonly adapter: VirviPlatformAdapter
   private readonly getAds: AdHostOptions['getAds']
   private readonly history = new Map<string, number[]>()
   private readonly attached = new Map<string, Attached>()

@@ -184,7 +184,7 @@ export function startHostedWorldSweep(intervalMs: number): () => void {
     try {
       await sweepHostedWorlds(new Date())
     } catch (err) {
-      console.error('[vlm-server] Hosted world sweep failed:', errText(err))
+      console.error('[virvi-server] Hosted world sweep failed:', errText(err))
     } finally {
       running = false
     }

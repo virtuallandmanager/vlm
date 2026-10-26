@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { AD_LIMITS } from '@virvixr/shared'
 import type { AdItem, AdServeResponse } from '@virvixr/shared'
 import { SceneManager } from '../src/SceneManager.js'
-import { VLMStorageImpl } from '../src/storage.js'
+import { VirviStorageImpl } from '../src/storage.js'
 import { EventBus } from '../src/events/EventBus.js'
 import { AdHost } from '../src/ads/host.js'
 
@@ -42,7 +42,7 @@ function setup(serves: Serve[] = [], opts: { noVideoEnded?: boolean; post?: () =
   const getAds = vi.fn(async (_ids: string[]) => (queue.length > 1 ? queue.shift()! : queue[0] ?? null))
   const postEvents = vi.fn(opts.post ?? (async () => ({ ok: true, status: 200 })))
   const host = new AdHost({ adapter, getAds, postEvents, now: () => t })
-  const storage = VLMStorageImpl.create()
+  const storage = VirviStorageImpl.create()
   const sm = new SceneManager(adapter, storage, new EventBus(), host)
 
   const frame = () => [...systems].forEach((s) => s(0.016))

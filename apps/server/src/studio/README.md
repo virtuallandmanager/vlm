@@ -12,7 +12,7 @@ own Fly worker machine (`apps/studio-worker`), which talks to the routes here th
 | `results.ts` | applying a worker's Result once, and failing lost jobs |
 | `designs.ts` | prompts, renders, view keys and the design detail the dashboard reads |
 | `render-urls.ts` | signed, hour-long URLs for render frames: the only files a browser receives |
-| `events.ts` | progress on the bus, relayed to the page by the `vlm_studio` room (`src/ws/VLMStudioRoom.ts`) |
+| `events.ts` | progress on the bus, relayed to the page by the `virvi_studio` room (`src/ws/VirviStudioRoom.ts`) |
 | `sweep.ts` | every minute: fails lost jobs and refunds them, restarts machines for waiting jobs, destroys idle machines |
 
 Routes: `src/routes/studio.ts` (the dashboard, `/api/studio`) and `src/routes/studio-worker.ts` (the workers,
@@ -20,12 +20,12 @@ Routes: `src/routes/studio.ts` (the dashboard, `/api/studio`) and `src/routes/st
 
 ## Deploying (the owner's steps)
 
-The studio is on when `VLM_MODE=cloud` and both `STUDIO_WORKER_IMAGE` and `STUDIO_S3_URI` are set.
+The studio is on when `VIRVI_MODE=cloud` and both `STUDIO_WORKER_IMAGE` and `STUDIO_S3_URI` are set.
 
-1. **A private R2 bucket.** In Cloudflare, create a bucket `vlm-studio` with no public access and no custom domain,
+1. **A private R2 bucket.** In Cloudflare, create a bucket `virvi-studio` with no public access and no custom domain,
    and an R2 API token with Object Read & Write on that bucket only. It must not be the public uploads bucket.
 2. **Railway variables** on the server service:
-   - `STUDIO_S3_URI=s3://<access key id>:<secret>@<account id>.r2.cloudflarestorage.com/vlm-studio`
+   - `STUDIO_S3_URI=s3://<access key id>:<secret>@<account id>.r2.cloudflarestorage.com/virvi-studio`
    - `STUDIO_WORKER_IMAGE=registry.fly.io/vlm-studio-worker:<tag>`, the image deployed from `apps/studio-worker`
    - `STUDIO_FLY_APP` only if the worker app isn't `vlm-studio-worker`
    - optional: `STUDIO_CLAUDE_MODEL` (default `claude-opus-5-5`), `STUDIO_CODEX_MODEL` (default `gpt-6.1-sol`)

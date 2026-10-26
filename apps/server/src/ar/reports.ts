@@ -23,13 +23,13 @@ export async function createArReport(
     .then(() =>
       sendEmail(
         config.arReportsEmail,
-        `VLM Spaces report: ${reason} — ${space.name.replace(/[\r\n]+/g, ' ')}`,
+        `Virvi Spaces report: ${reason} — ${space.name.replace(/[\r\n]+/g, ' ')}`,
         `
-    <h2>A VLM Spaces visitor reported a space</h2>
+    <h2>A Virvi Spaces visitor reported a space</h2>
     <p>Space: <b>${name}</b><br>Space id: ${space.id}<br>Scene id: ${space.sceneId}<br>Reason: ${reason}<br>Platform: ${platform}<br>Time: ${row.createdAt.toISOString()}</p>
     <p><a href="${config.publicUrl}/admin">Open the admin page</a></p>
   `,
       ),
     )
-    .catch((err) => console.error('[vlm-ar-reports] report email failed:', err instanceof Error ? err.message : err))
+    .catch((err) => console.error('[virvi-ar-reports] report email failed:', err instanceof Error ? err.message : err))
 }

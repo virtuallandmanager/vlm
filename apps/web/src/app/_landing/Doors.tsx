@@ -61,7 +61,7 @@ export function Doors({ onAdvertise }: { onAdvertise: () => void }) {
           onClick={onAdvertise}
           className="clip-corner mt-8 bg-accent px-7 py-4 text-base font-semibold text-accent-ink hover:bg-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-300"
         >
-          Advertise with VLM →
+          Advertise with Virvi →
         </button>
         <BillboardScene />
       </div>

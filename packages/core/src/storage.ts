@@ -1,7 +1,7 @@
-import type { VLMStorage } from '@virvixr/shared'
+import type { VirviStorage } from '@virvixr/shared'
 
-export class VLMStorageImpl {
-  static create(): VLMStorage {
+export class VirviStorageImpl {
+  static create(): VirviStorage {
     return {
       videos: { configs: {}, instances: {} },
       images: { configs: {}, instances: {} },

@@ -196,7 +196,7 @@ export async function runRollups(now = new Date()): Promise<{ hours: number; day
     try {
       await rollupHour(d.sceneId, d.hour)
     } catch (err) {
-      console.error(`[vlm-server] rollup failed for ${d.sceneId} ${d.hour.toISOString()}:`, err)
+      console.error(`[virvi-server] rollup failed for ${d.sceneId} ${d.hour.toISOString()}:`, err)
       await db.insert(analyticsDirtyHours).values({ sceneId: d.sceneId, hour: d.hour }).onConflictDoNothing()
       continue
     }
@@ -211,7 +211,7 @@ export async function runRollups(now = new Date()): Promise<{ hours: number; day
         await rollupDay(sceneId, day, now)
         dayCount++
       } catch (err) {
-        console.error(`[vlm-server] rollup failed for ${sceneId} ${day}:`, err)
+        console.error(`[virvi-server] rollup failed for ${sceneId} ${day}:`, err)
       }
     }
   }
@@ -257,7 +257,7 @@ export async function runRetention(now = new Date()): Promise<{ deleted: number 
       deleted += await deleteOlder('analytics_positions', scene.id, cutoff)
       deleted += await deleteOlder('analytics_sessions', scene.id, cutoff)
     } catch (err) {
-      console.error(`[vlm-server] retention failed for ${scene.id}:`, err)
+      console.error(`[virvi-server] retention failed for ${scene.id}:`, err)
     }
   }
   return { deleted }
@@ -285,7 +285,7 @@ export function startAnalyticsJobs(): () => void {
       try {
         await withJobLock(key, fn)
       } catch (err) {
-        console.error(`[vlm-server] analytics job ${name} failed:`, err)
+        console.error(`[virvi-server] analytics job ${name} failed:`, err)
       } finally {
         running = false
       }

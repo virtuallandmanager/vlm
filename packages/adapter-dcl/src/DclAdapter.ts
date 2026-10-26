@@ -19,7 +19,7 @@ import {
 } from '@dcl/sdk/ecs'
 import { Vector3, Quaternion, Color3, Color4 } from '@dcl/sdk/math'
 import type {
-  VLMPlatformAdapter,
+  VirviPlatformAdapter,
   PlatformCapabilities,
   PlatformUser,
   AuthProof,
@@ -40,7 +40,7 @@ import type {
 } from '@virvixr/shared'
 import { localModelFile } from '@virvixr/shared'
 
-export class DclAdapter implements VLMPlatformAdapter {
+export class DclAdapter implements VirviPlatformAdapter {
   // Video player entities -- DCL uses a separate entity for the VideoPlayer component
   private videoPlayerEntities: Map<number, Entity> = new Map()
 
@@ -52,8 +52,8 @@ export class DclAdapter implements VLMPlatformAdapter {
   private hoverEntities: Set<number> = new Set()
 
   // Files deployed with this scene (lowercased path -> path as deployed), from getSceneInformation().content.
-  // Decentraland can't load GLBs from URLs, so VLM-hosted models must be synced into models/vlm/.
-  // Loaded once; getSceneInfo() awaits it, and VLM.authenticate() awaits getSceneInfo() before
+  // Decentraland can't load GLBs from URLs, so Virvi-hosted models must be synced into models/virvi/.
+  // Loaded once; getSceneInfo() awaits it, and Virvi.authenticate() awaits getSceneInfo() before
   // joining the scene room, so the set is ready before any model element is created.
   private sceneFiles: Map<string, string> = new Map()
   private sceneFilesReady: Promise<void>
@@ -186,7 +186,7 @@ export class DclAdapter implements VLMPlatformAdapter {
       const info = await getSceneInformation({})
       const metadata = JSON.parse(info.metadataJson)
       return {
-        sceneId: metadata.vlm?.sceneId || '',
+        sceneId: metadata.virvi?.sceneId || '',
         platformSceneId: info.urn,
         location: metadata.scene?.base,
         metadata: {
@@ -289,7 +289,7 @@ export class DclAdapter implements VLMPlatformAdapter {
   }
 
   /**
-   * VLM-hosted GLB URL -> its synced `models/vlm/<basename>` file, or null when that file isn't
+   * Virvi-hosted GLB URL -> its synced `models/virvi/<basename>` file, or null when that file isn't
    * deployed with the scene. Decentraland can't load models from URLs, so any other http(s) URL
    * (.gltf, extensionless, …) is null too (reported missing, never a broken GltfContainer).
    * Non-URL srcs (scene-relative paths) are passed through unchanged.
@@ -417,7 +417,7 @@ export class DclAdapter implements VLMPlatformAdapter {
           try {
             watcher.cb()
           } catch (err) {
-            console.error('[VLM] video end callback failed', err)
+            console.error('[Virvi] video end callback failed', err)
           }
         }
       }

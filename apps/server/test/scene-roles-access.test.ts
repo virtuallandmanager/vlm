@@ -48,7 +48,7 @@ describe('getSceneAccess with scene roles', () => {
     expect((await getSceneAccess(actorOf(u), scene.id)).level).toBe('none')
   })
 
-  it('a role assigned to a wallet before it used VLM attaches on first wallet sign-in', async () => {
+  it('a role assigned to a wallet before it used Virvi attaches on first wallet sign-in', async () => {
     const host = await createUser()
     const { scene } = await createScene(host)
     const wallet = randomWallet()

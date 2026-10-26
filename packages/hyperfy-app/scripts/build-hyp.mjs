@@ -1,4 +1,4 @@
-// Bundles src/app.ts into one script and packs it with assets/empty.glb and the HUD's V icon (vlm-dcl's
+// Bundles src/app.ts into one script and packs it with assets/empty.glb and the HUD's V icon (virvi-dcl's
 // assets/hud-v.png, the same file the Decentraland HUD ships) into dist/vlm.hyp, Hyperfy's app file (see
 // Hyperfy's src/core/extras/appTools.js): a 4-byte little-endian header length, the JSON header
 // { blueprint, assets }, then each asset's bytes in header order. Asset urls are asset://<sha256>.<ext>.
@@ -24,13 +24,13 @@ const script = `asset://${sha(js)}.js`
 const icon = `asset://${sha(png)}.png`
 const header = {
   blueprint: {
-    id: 'vlm',
+    id: 'virvi',
     version: 0,
-    name: 'VLM',
+    name: 'Virvi',
     image: null,
-    author: 'VLM',
+    author: 'Virvi',
     url: 'https://vlm.gg',
-    desc: 'Shows a VLM scene in this world. Set the world key from VLM.',
+    desc: 'Shows a Virvi scene in this world. Set the world key from Virvi.',
     model,
     script,
     props: { feedUrl: 'https://api.vlm.gg', worldKey: '', hudIcon: { type: 'texture', name: 'hud-v.png', url: icon } },

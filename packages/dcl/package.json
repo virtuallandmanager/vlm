@@ -8,7 +8,7 @@
     "virvi-dcl": "bin/virvi-dcl.mjs"
   },
   "scripts": {
-    "build": "echo 'vlm-dcl: skip in CI, build locally with pnpm run bundle'",
+    "build": "echo 'virvi-dcl: skip in CI, build locally with pnpm run bundle'",
     "bundle": "tsc && node build.mjs",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo",
@@ -41,7 +41,7 @@
   "license": "AGPL-3.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/virtuallandmanager/vlm.git",
+    "url": "https://github.com/virtuallandmanager/virvi.git",
     "directory": "packages/dcl"
   },
   "homepage": "https://vlm.gg",
@@ -49,7 +49,7 @@
     "decentraland",
     "sdk7",
     "analytics",
-    "vlm",
+    "virvi",
     "virtual land manager",
     "creator hub"
   ]

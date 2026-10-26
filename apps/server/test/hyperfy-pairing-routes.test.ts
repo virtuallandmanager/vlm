@@ -82,7 +82,7 @@ describe('Hyperfy pairing routes', () => {
 
   it('bad input: unknown world key 401, bad code 404, no access 403, a pass cannot approve', async () => {
     const s = await seed()
-    expect((await app.inject({ method: 'POST', url: '/api/hyperfy/pair', payload: { worldKey: 'vlmw_nope', secretHash: sha256(SECRET) } })).statusCode).toBe(401)
+    expect((await app.inject({ method: 'POST', url: '/api/hyperfy/pair', payload: { worldKey: 'virviw_nope', secretHash: sha256(SECRET) } })).statusCode).toBe(401)
     expect((await app.inject({ method: 'POST', url: '/api/hyperfy/pair', payload: { worldKey: s.key, secretHash: 'short' } })).statusCode).toBe(400)
     expect((await app.inject({ method: 'GET', url: '/api/hyperfy/pair/OOO-111/qr.png' })).statusCode).toBe(404)
     expect((await app.inject({ method: 'POST', url: '/api/hyperfy/pair/OOO-111/claim', payload: { secret: SECRET } })).statusCode).toBe(404)
@@ -105,7 +105,7 @@ describe('Hyperfy pairing routes', () => {
 
   it("vouch with a wrong secret is 401; self-run worlds can't vouch", async () => {
     const hosted = await seed(true)
-    for (const over of [{ worldSecret: 'x'.repeat(64) }, { worldSecret: undefined }, { worldKey: undefined }, { worldKey: 'vlmw_nope' }, { worldKey: 'nope' }]) {
+    for (const over of [{ worldSecret: 'x'.repeat(64) }, { worldSecret: undefined }, { worldKey: undefined }, { worldKey: 'virviw_nope' }, { worldKey: 'nope' }]) {
       expect((await vouch(hosted, over)).statusCode).toBe(401)
     }
     const self = await seed(false)
@@ -246,7 +246,7 @@ describe('Hyperfy pairing routes', () => {
   })
 
   it('approval page links (/pair/<code>) and unmatched urls never put a code in the request log or a metric label', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'vlm-dash-'))
+    const dir = mkdtempSync(join(tmpdir(), 'virvi-dash-'))
     mkdirSync(join(dir, 'pair', '_'), { recursive: true })
     writeFileSync(join(dir, 'pair', '_', 'index.html'), '<p>pair</p>')
     writeFileSync(join(dir, 'index.html'), '<p>spa</p>')

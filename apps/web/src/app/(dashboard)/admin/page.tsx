@@ -49,7 +49,7 @@ export default function AdminPage() {
   const [orgsLoading, setOrgsLoading] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  // Space reports (VLM Spaces visitors)
+  // Space reports (Virvi Spaces visitors)
   const [reports, setReports] = useState<AdminArReport[]>([])
   const [reportsResolved, setReportsResolved] = useState(false)
   const [reportsLoading, setReportsLoading] = useState(true)

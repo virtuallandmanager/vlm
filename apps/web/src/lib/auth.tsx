@@ -78,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Load from localStorage on mount
   useEffect(() => {
-    const stored = localStorage.getItem('vlm_auth')
+    const stored = localStorage.getItem('virvi_auth')
     if (stored) {
       try {
         const data = JSON.parse(stored)
@@ -89,9 +89,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(data.user)
           setScenePass(session.scenePass)
         } else {
-          localStorage.removeItem('vlm_auth')
+          localStorage.removeItem('virvi_auth')
         }
-      } catch { localStorage.removeItem('vlm_auth') }
+      } catch { localStorage.removeItem('virvi_auth') }
     }
     setLoading(false)
   }, [])
@@ -110,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(data.accessToken)
     setUser(data.user)
     setScenePass(null)
-    localStorage.setItem('vlm_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
+    localStorage.setItem('virvi_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
   }, [])
 
   const register = useCallback(async (email: string, password: string, displayName: string) => {
@@ -127,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(data.accessToken)
     setUser(data.user)
     setScenePass(null)
-    localStorage.setItem('vlm_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
+    localStorage.setItem('virvi_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
   }, [])
 
   const loginWithWallet = useCallback(async () => {
@@ -142,14 +142,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(data.accessToken)
     setUser(data.user)
     setScenePass(null)
-    localStorage.setItem('vlm_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
+    localStorage.setItem('virvi_auth', JSON.stringify({ token: data.accessToken, refresh: data.refreshToken, user: data.user }))
   }, [])
 
   const logout = useCallback(() => {
     setToken(null)
     setUser(null)
     setScenePass(null)
-    localStorage.removeItem('vlm_auth')
+    localStorage.removeItem('virvi_auth')
   }, [])
 
   const updateUser = useCallback((updates: Partial<User>) => {
@@ -157,12 +157,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!prev) return prev
       const updated = { ...prev, ...updates }
       // Sync to localStorage
-      const stored = localStorage.getItem('vlm_auth')
+      const stored = localStorage.getItem('virvi_auth')
       if (stored) {
         try {
           const data = JSON.parse(stored)
           data.user = updated
-          localStorage.setItem('vlm_auth', JSON.stringify(data))
+          localStorage.setItem('virvi_auth', JSON.stringify(data))
         } catch {}
       }
       return updated

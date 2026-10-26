@@ -1,5 +1,5 @@
 /**
- * Where a VLM-hosted model lives inside a scene folder: `models/vlm/<basename>`.
+ * Where a Virvi-hosted model lives inside a scene folder: `models/virvi/<basename>`.
  * Only http(s) URLs ending in `.glb` (query/fragment ignored) qualify; anything else is null.
  */
 export function localModelFile(url: string): string | null {
@@ -7,5 +7,5 @@ export function localModelFile(url: string): string | null {
   if (!m) return null
   const base = m[1].split('/').pop() ?? ''
   if (!/\.glb$/i.test(base)) return null
-  return `models/vlm/${base}`
+  return `models/virvi/${base}`
 }

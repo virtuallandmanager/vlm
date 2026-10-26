@@ -24,7 +24,7 @@ export function Measurement({ onAdvertise }: { onAdvertise: () => void }) {
       </ol>
       <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3">
         <button type="button" onClick={onAdvertise} className="clip-corner bg-accent px-6 py-3 font-semibold text-accent-ink hover:bg-accent-hover">
-          Advertise with VLM →
+          Advertise with Virvi →
         </button>
         <p className="text-sm text-gray-500">Counted from verified wallets only, once per day.</p>
       </div>

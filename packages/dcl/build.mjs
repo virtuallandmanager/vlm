@@ -8,7 +8,7 @@ await build({
   platform: 'browser',
   target: 'es2022',
   // ~system/* modules are provided by the Decentraland runtime; URL/XMLHttpRequest
-  // polyfills live in vlm-client (ensureNetworkPolyfills) and are bundled in
+  // polyfills live in virvi-client (ensureNetworkPolyfills) and are bundled in
   external: ['@dcl/sdk', '@dcl/sdk/*', '@dcl/ecs', '@dcl/ecs/*', '~system/*'],
   minify: false,
   sourcemap: true,

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { SceneManager } from '../src/SceneManager.js'
-import { VLMStorageImpl } from '../src/storage.js'
+import { VirviStorageImpl } from '../src/storage.js'
 import { EventBus } from '../src/events/EventBus.js'
-import { VLM } from '../src/VLM.js'
+import { Virvi } from '../src/Virvi.js'
 
 function fakeAdapter() {
   let next = 1
@@ -27,22 +27,22 @@ const preset = { images: [{ sk: 'img1', name: 'Pic', enabled: true, textureSrc: 
 
 function setupScene() {
   const { adapter, live } = fakeAdapter()
-  const storage = VLMStorageImpl.create()
+  const storage = VirviStorageImpl.create()
   const sm = new SceneManager(adapter, storage, new EventBus())
   sm.handlePresetUpdate({ action: 'init', scenePreset: preset })
   return { adapter, live, storage, sm }
 }
 
-function setupVlm(room: any | null) {
+function setupVirvi(room: any | null) {
   const { adapter } = fakeAdapter()
-  const vlm = new VLM(adapter)
-  const colyseus: any = (vlm as any).colyseus
-  ;(vlm as any).registerMessageHandlers()
+  const virvi = new Virvi(adapter)
+  const colyseus: any = (virvi as any).colyseus
+  ;(virvi as any).registerMessageHandlers()
   colyseus.room = room
   const fire = (type: string, msg: unknown) => { for (const h of colyseus.messageHandlers.get(type) ?? []) h(msg) }
-  ;(vlm as any).sceneManager.handlePresetUpdate({ action: 'init', scenePreset: preset })
+  ;(virvi as any).sceneManager.handlePresetUpdate({ action: 'init', scenePreset: preset })
   const tick = () => { for (const fn of [...adapter.systems]) fn(0.016) }
-  return { vlm, adapter, fire, tick, colyseus }
+  return { virvi, adapter, fire, tick, colyseus }
 }
 
 describe('SceneManager transform wiring', () => {
@@ -86,13 +86,13 @@ const instanceSave = (x: number) => ({
   instanceData: { sk: 'i1', position: T(x).position, rotation: T(x).rotation, scale: T(x).scale },
 })
 
-describe('VLM.editing', () => {
+describe('Virvi.editing', () => {
   afterEach(() => { vi.useRealTimers() })
 
   it('an incoming transform_draft previews and emits; draft_end saved:false restores', () => {
-    const { vlm, adapter, fire } = setupVlm(openRoom())
+    const { virvi, adapter, fire } = setupVirvi(openRoom())
     const seen = vi.fn()
-    vlm.events.on('transform_draft', seen)
+    virvi.events.on('transform_draft', seen)
     adapter.setTransform.mockClear()
     fire('transform_draft', { element: 'image', sk: 'i1', ...T(9), holderName: 'Bob', holderSessionId: 'other' })
     expect(adapter.setTransform).toHaveBeenCalledWith(expect.anything(), T(9))
@@ -103,9 +103,9 @@ describe('VLM.editing', () => {
   })
 
   it('ignores a draft held by our own session', () => {
-    const { vlm, adapter, fire } = setupVlm(openRoom())
+    const { virvi, adapter, fire } = setupVirvi(openRoom())
     const seen = vi.fn()
-    vlm.events.on('transform_draft', seen)
+    virvi.events.on('transform_draft', seen)
     adapter.setTransform.mockClear()
     fire('transform_draft', { element: 'image', sk: 'i1', ...T(9), holderName: 'Me', holderSessionId: 'me' })
     expect(adapter.setTransform).not.toHaveBeenCalled()
@@ -113,10 +113,10 @@ describe('VLM.editing', () => {
   })
 
   it('transform_held is emitted; saved draft_end does not restore', () => {
-    const { vlm, adapter, fire } = setupVlm(openRoom())
+    const { virvi, adapter, fire } = setupVirvi(openRoom())
     const held = vi.fn(); const ended = vi.fn()
-    vlm.events.on('transform_held', held)
-    vlm.events.on('transform_draft_end', ended)
+    virvi.events.on('transform_held', held)
+    virvi.events.on('transform_draft_end', ended)
     fire('transform_held', { sk: 'i1', holderName: 'Bob' })
     adapter.setTransform.mockClear()
     fire('transform_draft_end', { sk: 'i1', saved: true })
@@ -126,34 +126,34 @@ describe('VLM.editing', () => {
   })
 
   it('save with no room rejects not_connected and changes nothing', async () => {
-    const { vlm, adapter } = setupVlm(null)
+    const { virvi, adapter } = setupVirvi(null)
     adapter.setTransform.mockClear()
-    await expect(vlm.editing.save('image', 'i1', T(9))).rejects.toThrow('not_connected')
+    await expect(virvi.editing.save('image', 'i1', T(9))).rejects.toThrow('not_connected')
     expect(adapter.setTransform).not.toHaveBeenCalled()
-    expect(vlm.storage.images.instances.i1.position.x).toBe(3)
+    expect(virvi.storage.images.instances.i1.position.x).toBe(3)
   })
 
   it('a room whose connection is closed counts as not connected: save rejects, sendDraft drops silently', async () => {
     const send = vi.fn()
-    const { vlm, adapter } = setupVlm({ sessionId: 'me', send, connection: { isOpen: false } })
+    const { virvi, adapter } = setupVirvi({ sessionId: 'me', send, connection: { isOpen: false } })
     adapter.setTransform.mockClear()
-    await expect(vlm.editing.save('image', 'i1', T(9))).rejects.toThrow('not_connected')
-    expect(() => vlm.editing.sendDraft({ element: 'image', sk: 'i1', ...T(5) })).not.toThrow()
+    await expect(virvi.editing.save('image', 'i1', T(9))).rejects.toThrow('not_connected')
+    expect(() => virvi.editing.sendDraft({ element: 'image', sk: 'i1', ...T(5) })).not.toThrow()
     expect(send).not.toHaveBeenCalled()
     expect(adapter.setTransform).not.toHaveBeenCalled()
-    expect(vlm.storage.images.instances.i1.position.x).toBe(3)
+    expect(virvi.storage.images.instances.i1.position.x).toBe(3)
   })
 
   it('save sends scene_preset_update and applies locally only on the ack for this instance', async () => {
     const send = vi.fn()
-    const { vlm, adapter, fire } = setupVlm(openRoom(send))
+    const { virvi, adapter, fire } = setupVirvi(openRoom(send))
     adapter.setTransform.mockClear()
     const saved = vi.fn()
-    const p = vlm.editing.save('image', 'i1', T(9)).then(saved)
+    const p = virvi.editing.save('image', 'i1', T(9)).then(saved)
     expect(send).toHaveBeenCalledWith('scene_preset_update', instanceSave(9))
     await Promise.resolve()
     expect(saved).not.toHaveBeenCalled()
-    expect(vlm.storage.images.instances.i1.position.x).toBe(3)
+    expect(virvi.storage.images.instances.i1.position.x).toBe(3)
     fire('scene_preset_update_ack', { action: 'update', sk: 'other' })
     fire('scene_preset_update_ack', { action: 'update', id: 'img1' }) // an element ack, not ours
     await Promise.resolve()
@@ -162,26 +162,26 @@ describe('VLM.editing', () => {
     await p
     expect(saved).toHaveBeenCalledOnce()
     expect(adapter.setTransform).toHaveBeenCalledWith(expect.anything(), T(9))
-    expect(vlm.storage.images.instances.i1.position.x).toBe(9)
+    expect(virvi.storage.images.instances.i1.position.x).toBe(9)
   })
 
-  it('a vlm_error for scene_preset_update rejects the save with its code and leaves storage unchanged', async () => {
-    const { vlm, adapter, fire } = setupVlm(openRoom())
+  it('a virvi_error for scene_preset_update rejects the save with its code and leaves storage unchanged', async () => {
+    const { virvi, adapter, fire } = setupVirvi(openRoom())
     adapter.setTransform.mockClear()
-    const p = vlm.editing.save('image', 'i1', T(9))
-    fire('vlm_error', { code: 'rate_limited', messageType: 'transform_draft' }) // not ours
-    fire('vlm_error', { code: 'forbidden', messageType: 'scene_preset_update' })
+    const p = virvi.editing.save('image', 'i1', T(9))
+    fire('virvi_error', { code: 'rate_limited', messageType: 'transform_draft' }) // not ours
+    fire('virvi_error', { code: 'forbidden', messageType: 'scene_preset_update' })
     await expect(p).rejects.toThrow('forbidden')
     fire('scene_preset_update_ack', { action: 'update', sk: 'i1' }) // a late ack applies nothing
     expect(adapter.setTransform).not.toHaveBeenCalled()
-    expect(vlm.storage.images.instances.i1.position.x).toBe(3)
+    expect(virvi.storage.images.instances.i1.position.x).toBe(3)
   })
 
   it('a save with no ack rejects save_timeout after 5 s and leaves storage unchanged', async () => {
     vi.useFakeTimers()
-    const { vlm, adapter, tick } = setupVlm(openRoom())
+    const { virvi, adapter, tick } = setupVirvi(openRoom())
     const rejected = vi.fn()
-    const p = vlm.editing.save('image', 'i1', T(9)).catch(rejected)
+    const p = virvi.editing.save('image', 'i1', T(9)).catch(rejected)
     vi.advanceTimersByTime(4900)
     tick()
     await Promise.resolve()
@@ -190,43 +190,43 @@ describe('VLM.editing', () => {
     tick()
     await p
     expect(rejected).toHaveBeenCalledWith(new Error('save_timeout'))
-    expect(vlm.storage.images.instances.i1.position.x).toBe(3)
+    expect(virvi.storage.images.instances.i1.position.x).toBe(3)
     expect(adapter.systems.size).toBe(0) // the timeout check stops once nothing is pending
   })
 
   it('a dropped connection clears the room, rejects a pending save and emits connection_lost', async () => {
     const { adapter } = fakeAdapter()
-    const vlm = new VLM(adapter)
-    const colyseus: any = (vlm as any).colyseus
-    ;(vlm as any).registerMessageHandlers()
-    ;(vlm as any).sceneManager.handlePresetUpdate({ action: 'init', scenePreset: preset })
+    const virvi = new Virvi(adapter)
+    const colyseus: any = (virvi as any).colyseus
+    ;(virvi as any).registerMessageHandlers()
+    ;(virvi as any).sceneManager.handlePresetUpdate({ action: 'init', scenePreset: preset })
     let leave: (code: number) => void = () => {}
     const room = { sessionId: 'me', send: vi.fn(), connection: { isOpen: true }, onMessage: vi.fn(), onLeave: (cb: any) => { leave = cb } }
     colyseus.client = { joinOrCreate: vi.fn(async () => room) }
     await colyseus.joinSceneRoom('scene1')
     const lost = vi.fn()
-    vlm.events.on('connection_lost', lost)
-    const p = vlm.editing.save('image', 'i1', T(9))
+    virvi.events.on('connection_lost', lost)
+    const p = virvi.editing.save('image', 'i1', T(9))
     room.connection.isOpen = false
     leave(1006)
     await expect(p).rejects.toThrow('not_connected')
     expect(colyseus.getRoom()).toBeNull()
     expect(lost).toHaveBeenCalledWith({ code: 1006 })
-    await expect(vlm.editing.save('image', 'i1', T(9))).rejects.toThrow('not_connected')
-    expect(vlm.storage.images.instances.i1.position.x).toBe(3)
+    await expect(virvi.editing.save('image', 'i1', T(9))).rejects.toThrow('not_connected')
+    expect(virvi.storage.images.instances.i1.position.x).toBe(3)
   })
 
   it('an intentional leave does not emit connection_lost', async () => {
     const { adapter } = fakeAdapter()
-    const vlm = new VLM(adapter)
-    const colyseus: any = (vlm as any).colyseus
-    ;(vlm as any).registerMessageHandlers()
+    const virvi = new Virvi(adapter)
+    const colyseus: any = (virvi as any).colyseus
+    ;(virvi as any).registerMessageHandlers()
     let leave: (code: number) => void = () => {}
     const room = { sessionId: 'me', send: vi.fn(), connection: { isOpen: true }, onMessage: vi.fn(), onLeave: (cb: any) => { leave = cb }, leave: vi.fn() }
     colyseus.client = { joinOrCreate: vi.fn(async () => room) }
     await colyseus.joinSceneRoom('scene1')
     const lost = vi.fn()
-    vlm.events.on('connection_lost', lost)
+    virvi.events.on('connection_lost', lost)
     colyseus.leaveRoom()
     leave(1000)
     expect(lost).not.toHaveBeenCalled()
@@ -234,10 +234,10 @@ describe('VLM.editing', () => {
 
   it('sendDraft and endDraft send the protocol messages', () => {
     const send = vi.fn()
-    const { vlm } = setupVlm(openRoom(send))
+    const { virvi } = setupVirvi(openRoom(send))
     const d = { element: 'image' as const, sk: 'i1', ...T(5) }
-    vlm.editing.sendDraft(d)
-    vlm.editing.endDraft('i1', false)
+    virvi.editing.sendDraft(d)
+    virvi.editing.endDraft('i1', false)
     expect(send).toHaveBeenNthCalledWith(1, 'transform_draft', d)
     expect(send).toHaveBeenNthCalledWith(2, 'transform_end', { sk: 'i1', saved: false })
   })

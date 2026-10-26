@@ -57,9 +57,9 @@ export enum UserRole {
   ADVANCED = 2,
   SCENE_ADMIN = 3,
   ORG_ADMIN = 4,
-  VLM_CONTRACTOR = 5,
-  VLM_EMPLOYEE = 6,
-  VLM_ADMIN = 7,
+  VIRVI_CONTRACTOR = 5,
+  VIRVI_EMPLOYEE = 6,
+  VIRVI_ADMIN = 7,
   GOD_MODE = 10,
 }
 
@@ -67,9 +67,9 @@ export enum AnalyticsSessionRole {
   VISITOR = 0,
   SCENE_ADMIN = 1,
   ORG_ADMIN = 2,
-  VLM_CONTRACTOR = 3,
-  VLM_EMPLOYEE = 4,
-  VLM_ADMIN = 5,
+  VIRVI_CONTRACTOR = 3,
+  VIRVI_EMPLOYEE = 4,
+  VIRVI_ADMIN = 5,
 }
 
 export enum AnalyticsSegmentType {

@@ -13,7 +13,7 @@ import { createUser, createScene, type TestUser } from './helpers/factories.js'
 
 const CONFIG = {
   hyperfyImage: 'registry.fly.io/vlm-hyperfy-image:abc123',
-  hyperfyAssetsS3Uri: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/vlm-hyperfy',
+  hyperfyAssetsS3Uri: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/virvi-hyperfy',
   hyperfyAssetsBaseUrl: 'https://worlds-cdn.vlm.gg',
   hyperfyRouterDomain: 'worlds.vlm.gg',
   hyperfySecretKey: 'ab'.repeat(32),

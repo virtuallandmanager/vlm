@@ -7,7 +7,7 @@ const EMPTY = { email: '', name: '', company: '', website: '', message: '', nick
 
 const inputClass = 'w-full rounded-lg bg-gray-800 px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500'
 
-/** Advertiser early-access sign-up, shown as a modal from "Advertise with VLM". */
+/** Advertiser early-access sign-up, shown as a modal from "Advertise with Virvi". */
 export function EarlyAccessForm({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [form, setForm] = useState(EMPTY)
   const [error, setError] = useState('')
@@ -56,7 +56,7 @@ export function EarlyAccessForm({ open, onClose }: { open: boolean; onClose: () 
       >
         <button type="button" onClick={onClose} aria-label="Close" className="absolute right-4 top-4 text-gray-500 hover:text-white">✕</button>
         <p className="mb-2 text-sm font-medium text-blue-300">Early access</p>
-        <h2 id="early-access-title" className="mb-2 text-2xl font-bold">Advertise with VLM</h2>
+        <h2 id="early-access-title" className="mb-2 text-2xl font-bold">Advertise with Virvi</h2>
         {done ? (
           <>
             <p className="mb-6 text-gray-300">Thanks — we'll be in touch soon.</p>
@@ -100,7 +100,7 @@ export function EarlyAccessForm({ open, onClose }: { open: boolean; onClose: () 
                 className="absolute -left-[9999px] h-px w-px opacity-0"
               />
               <p className="text-xs text-gray-500">
-                We'll only use this to contact you about advertising on VLM.
+                We'll only use this to contact you about advertising on Virvi.
                 {privacy && <> <a href={privacy} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Privacy</a></>}
               </p>
               {error && <p role="alert" className="text-sm text-red-400">{error}</p>}

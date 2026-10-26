@@ -10,7 +10,7 @@ describe('dashboardUrlFor', () => {
     expect(dashboardUrlFor('http://127.0.0.1:3010')).toBe('http://localhost:3000')
   })
   it('self-hosted servers serve their own dashboard', () => {
-    expect(dashboardUrlFor('https://vlm.example.com:8443/base')).toBe('https://vlm.example.com:8443')
+    expect(dashboardUrlFor('https://virvi.example.com:8443/base')).toBe('https://virvi.example.com:8443')
   })
   it('falls back to vlm.gg for garbage', () => {
     expect(dashboardUrlFor('not a url')).toBe('https://vlm.gg')
@@ -23,19 +23,19 @@ describe('dashboardUrlFor', () => {
   })
   it('builds no hand-off link when the dashboard origin cannot be derived (a code must never go to vlm.gg by fallback)', () => {
     expect(handoffUrlFor('http://[::1]:3010', 'c', '/analytics/')).toBeNull()
-    expect(handoffUrlFor('https://user:pw@vlm.example.com', 'c', '/analytics/')).toBeNull()
+    expect(handoffUrlFor('https://user:pw@virvi.example.com', 'c', '/analytics/')).toBeNull()
   })
 })
 
 describe('dashboardOriginFor', () => {
   it('returns the derived origin for parseable API URLs', () => {
     expect(dashboardOriginFor('https://api.vlm.gg')).toBe('https://vlm.gg')
-    expect(dashboardOriginFor('https://vlm.example.com:8443/base')).toBe('https://vlm.example.com:8443')
+    expect(dashboardOriginFor('https://virvi.example.com:8443/base')).toBe('https://virvi.example.com:8443')
   })
   it('returns null instead of falling back to vlm.gg', () => {
     expect(dashboardOriginFor('not a url')).toBeNull()
     expect(dashboardOriginFor('http://[::1]:3010')).toBeNull()
-    expect(dashboardOriginFor('https://user:pw@vlm.example.com')).toBeNull()
+    expect(dashboardOriginFor('https://user:pw@virvi.example.com')).toBeNull()
     expect(dashboardOriginFor('')).toBeNull()
   })
   it('dashboardUrlFor keeps its vlm.gg fallback for those', () => {

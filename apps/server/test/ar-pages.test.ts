@@ -16,7 +16,7 @@ describe('AR static pages', () => {
   })
 
   it('serves the headset approval page for /pair/headset/:code, apart from the Hyperfy page', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'vlm-dash-'))
+    const dir = mkdtempSync(join(tmpdir(), 'virvi-dash-'))
     writeFileSync(join(dir, 'index.html'), 'HOME')
     for (const [sub, body] of [['pair/_', 'PAIR'], ['pair/headset/_', 'HEADSET']]) {
       mkdirSync(join(dir, sub), { recursive: true })
@@ -34,7 +34,7 @@ describe('AR static pages', () => {
   })
 
   it('serves the space page for /s/:code with and without a trailing slash, and scrubs the code from logs', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'vlm-dash-'))
+    const dir = mkdtempSync(join(tmpdir(), 'virvi-dash-'))
     writeFileSync(join(dir, 'index.html'), 'HOME')
     mkdirSync(join(dir, 's/_'), { recursive: true })
     writeFileSync(join(dir, 's/_/index.html'), 'SPACE')
@@ -59,7 +59,7 @@ describe('AR static pages', () => {
 
     // A dashboard with a catch-all index.html and a real file at the same path proves the route wins over both.
     async function appWithDashboard() {
-      const dir = mkdtempSync(join(tmpdir(), 'vlm-dash-'))
+      const dir = mkdtempSync(join(tmpdir(), 'virvi-dash-'))
       writeFileSync(join(dir, 'index.html'), 'HOME')
       mkdirSync(join(dir, '.well-known'), { recursive: true })
       writeFileSync(join(dir, '.well-known/assetlinks.json'), 'STATIC')
@@ -69,7 +69,7 @@ describe('AR static pages', () => {
     }
 
     it('lists the package and certificate fingerprints', async () => {
-      ;(config as any).androidAppPackage = 'gg.vlm.spaces'
+      ;(config as any).androidAppPackage = 'gg.virvi.spaces'
       ;(config as any).androidCertSha256 = ['AA:BB', 'CC:DD']
       await appWithDashboard()
       const res = await app.inject({ method: 'GET', url: '/.well-known/assetlinks.json' })
@@ -77,7 +77,7 @@ describe('AR static pages', () => {
       expect(res.headers['content-type']).toMatch(/^application\/json/)
       expect(res.json()).toEqual([{
         relation: ['delegate_permission/common.handle_all_urls'],
-        target: { namespace: 'android_app', package_name: 'gg.vlm.spaces', sha256_cert_fingerprints: ['AA:BB', 'CC:DD'] },
+        target: { namespace: 'android_app', package_name: 'gg.virvi.spaces', sha256_cert_fingerprints: ['AA:BB', 'CC:DD'] },
       }])
     })
 

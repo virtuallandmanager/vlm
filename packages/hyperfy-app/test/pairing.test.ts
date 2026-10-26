@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { HYPERFY_PAIRING } from '@virvixr/shared'
 import { Pairing, type PairingState } from '../src/pairing.js'
 import { sha256Hex } from '../src/sha256.js'
-import { VlmApi } from '../src/vlm-api.js'
+import { VirviApi } from '../src/virvi-api.js'
 
 type Res = { ok: boolean; status: number; json(): Promise<unknown> } | undefined
 type Call = { url: string; init: { method?: string; headers?: Record<string, string>; body?: string } }
@@ -55,7 +55,7 @@ function make(routes: Record<string, Array<Res | (() => Res)>>, extra: Partial<C
   const states: PairingState[] = []
   const p = new Pairing({
     feedUrl: 'https://api.example',
-    worldKey: 'vlmw_k',
+    worldKey: 'virviw_k',
     fetch: h.fetch,
     setTimeout: h.setTimeout,
     uuid: h.uuid,
@@ -77,7 +77,7 @@ describe('Pairing', () => {
     const start = t.calls[0]
     const body = JSON.parse(start.init.body!)
     const secret = ['1', '2', '3'].map((i) => `00000000-0000-4000-8000-${i.padStart(12, '0')}`).join('')
-    expect(body).toEqual({ worldKey: 'vlmw_k', playerName: 'Ada', secretHash: sha256Hex(secret) })
+    expect(body).toEqual({ worldKey: 'virviw_k', playerName: 'Ada', secretHash: sha256Hex(secret) })
     expect(start.init.body).not.toContain(secret)
     expect(t.states.at(-1)).toEqual({ status: 'waiting', code: 'ABC234', approveUrl: START.approveUrl, qrUrl: START.qrUrl, expiresAt: START.expiresAt })
   })
@@ -247,7 +247,7 @@ describe('Pairing: fix round 1', () => {
       'POST /api/hyperfy/pairings/pid-1/renew': [(): Res => (ok ? res(200, { pass: 'NEW', passExpiresAt: iso(T0 + 60 * MIN) }) : undefined)],
       'PUT /api/instances/i1': [(): Res => res(200, { instance: {} })],
     })
-    const api = new VlmApi({ feedUrl: 'https://api.example', fetch: t.fetch, getPass: () => t.p.pass(), onAuthFailure: () => t.p.renewNow() })
+    const api = new VirviApi({ feedUrl: 'https://api.example', fetch: t.fetch, getPass: () => t.p.pass(), onAuthFailure: () => t.p.renewNow() })
     t.p.start('Ada')
     await t.advance(HYPERFY_PAIRING.claimPollMs)
     await t.advance(16 * MIN)
@@ -305,7 +305,7 @@ describe('Pairing: fix round 1', () => {
 
 const HYPERFY_FEED_MAX = 30_000
 
-describe('VlmApi with Pairing', () => {
+describe('VirviApi with Pairing', () => {
   it('an expired pass keeps no one waiting: Save renews and goes through in one press', async () => {
     const t = make(
       {
@@ -316,7 +316,7 @@ describe('VlmApi with Pairing', () => {
       },
     )
     let failures = 0
-    const api = new VlmApi({ feedUrl: 'https://api.example', fetch: t.fetch, getPass: () => t.p.pass(), onAuthFailure: () => (failures++, t.p.renewOrExpire()) })
+    const api = new VirviApi({ feedUrl: 'https://api.example', fetch: t.fetch, getPass: () => t.p.pass(), onAuthFailure: () => (failures++, t.p.renewOrExpire()) })
     t.p.start('Ada')
     await t.advance(HYPERFY_PAIRING.claimPollMs)
     const draft = { position: { x: 1, y: 2, z: 3 }, rotation: { x: 0, y: 90, z: 0 }, scale: { x: 1, y: 1, z: 1 } }
@@ -330,7 +330,7 @@ describe('VlmApi with Pairing', () => {
   })
 })
 
-describe('Pairing.renewOrExpire (VLM refused the pass)', () => {
+describe('Pairing.renewOrExpire (Virvi refused the pass)', () => {
   for (const [name, renew] of [
     ['revoked (renew 401)', res(401)],
     ['a failed renew', undefined],

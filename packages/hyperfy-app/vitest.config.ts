@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
-// The edit mode uses vlm-core's transform session from source, as the bundle does (scripts/bundle-options.mjs).
+// The edit mode uses virvi-core's transform session from source, as the bundle does (scripts/bundle-options.mjs).
 export default defineConfig({
   resolve: {
     alias: {

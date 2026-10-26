@@ -20,7 +20,7 @@ const mark = <E extends Record<string, unknown>>(v: E, live: Set<string>): E => 
   return src && live.has(src) ? { ...v, isLive: true, liveSrc: src } : v
 }
 
-/** Serialized preset with `isLive: true` on videos whose liveSrc is a live VLM stream (no query when no video has a liveSrc). */
+/** Serialized preset with `isLive: true` on videos whose liveSrc is a live Virvi stream (no query when no video has a liveSrc). */
 export async function withLiveStatus<P extends { videos: Record<string, unknown>[] }>(preset: P): Promise<P> {
   if (!preset.videos.some((v) => normalizeUrl(v.liveSrc))) return preset
   const live = await liveUrls()

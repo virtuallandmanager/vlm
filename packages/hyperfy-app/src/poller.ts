@@ -22,7 +22,7 @@ const isSnapshot = (v: unknown): v is HyperfyFeedResponse => {
 }
 
 /**
- * Long-polls the VLM scene feed. Each answer is a whole snapshot; onSnapshot fires only when its version
+ * Long-polls the Virvi scene feed. Each answer is a whole snapshot; onSnapshot fires only when its version
  * changes. Failures back off (doubling, retryMinMs to retryMaxMs) and keep the last snapshot, except a 404
  * (the scene is gone), which clears the world once.
  */
@@ -50,7 +50,7 @@ export class FeedPoller {
     let body: unknown
     try {
       res = await fetch(`${feedUrl}/api/hyperfy/feed?since=${encodeURIComponent(this.version)}`, {
-        headers: { Authorization: `Bearer ${worldKey}`, 'X-VLM-App-Version': String(HYPERFY_FEED.version) },
+        headers: { Authorization: `Bearer ${worldKey}`, 'X-Virvi-App-Version': String(HYPERFY_FEED.version) },
       })
       if (res?.ok) body = await res.json()
     } catch {

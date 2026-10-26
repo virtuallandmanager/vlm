@@ -1,5 +1,5 @@
 import { AD_LIMITS } from '@virvixr/shared'
-import type { AdFormats, AdItem, AdShape, EntityHandle, TransformData, VLMPlatformAdapter } from '@virvixr/shared'
+import type { AdFormats, AdItem, AdShape, EntityHandle, TransformData, VirviPlatformAdapter } from '@virvixr/shared'
 import { add, eulerDegreesToQuat, rotateVector } from '../transform/math.js'
 import { durationMs } from './rotation.js'
 import type { AdHost } from './host.js'
@@ -27,7 +27,7 @@ const LABEL_INSET_M = 0.1
  * call to remove either), so owners must always read `holder.entity`.
  */
 export class AdSlot {
-  private readonly adapter: VLMPlatformAdapter
+  private readonly adapter: VirviPlatformAdapter
   private readonly host: AdHost | null
   private readonly holder: { entity: EntityHandle }
   private readonly spec: AdSlotSpec
@@ -44,7 +44,7 @@ export class AdSlot {
   private disposed = false
 
   constructor(opts: {
-    adapter: VLMPlatformAdapter
+    adapter: VirviPlatformAdapter
     host: AdHost | null
     holder: { entity: EntityHandle }
     spec: AdSlotSpec

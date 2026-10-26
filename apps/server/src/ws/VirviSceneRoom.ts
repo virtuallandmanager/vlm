@@ -55,8 +55,8 @@ export function isValidDraft(m: any) {
 const roomKey = (sessionId: string) => `room:${sessionId}`
 
 /** The scene rooms on this process, by scene, so the AR draft routes can relay into them. */
-const roomsByScene = new Map<string, Set<VLMSceneRoom>>()
-export function roomsForScene(sceneId: string): VLMSceneRoom[] {
+const roomsByScene = new Map<string, Set<VirviSceneRoom>>()
+export function roomsForScene(sceneId: string): VirviSceneRoom[] {
   return [...(roomsByScene.get(sceneId) ?? [])]
 }
 
@@ -68,7 +68,7 @@ export function runDraftSweep(now = Date.now()): void {
 }
 setInterval(() => runDraftSweep(), 30_000).unref()
 
-export class VLMSceneRoom extends Room {
+export class VirviSceneRoom extends Room {
   private static activeRoomCount = 0
 
   private sceneId: string = ''
@@ -116,7 +116,7 @@ export class VLMSceneRoom extends Room {
   }
 
   private setLink(sessionId: string, claims: SessionClaims | null) {
-    const link = VLMSceneRoom.linkOf(claims)
+    const link = VirviSceneRoom.linkOf(claims)
     if (link) this.linkedPass.set(sessionId, link)
     else this.linkedPass.delete(sessionId)
   }
@@ -127,17 +127,17 @@ export class VLMSceneRoom extends Room {
     // Compare against the room's own scene (set in onCreate from the creating client's options, which
     // runs before the first onAuth) — never a joining client's options.sceneId, which joinById can fake.
     if (claims?.kind === 'scene' && (!claims.sceneId || claims.sceneId !== this.sceneId)) return ANONYMOUS
-    if (await VLMSceneRoom.linkedPassRevoked(claims)) return ANONYMOUS
+    if (await VirviSceneRoom.linkedPassRevoked(claims)) return ANONYMOUS
     if (claims?.kind === 'scene') this.passExpiry.set(_client.sessionId, ((claims as { exp?: number }).exp ?? 0) * 1000)
     this.setLink(_client.sessionId, claims)
     return actorFromClaims(claims)
   }
 
   onCreate(options: JoinOptions) {
-    VLMSceneRoom.activeRoomCount++
+    VirviSceneRoom.activeRoomCount++
 
-    if (VLMSceneRoom.activeRoomCount > config.maxRoomsPerServer) {
-      VLMSceneRoom.activeRoomCount--
+    if (VirviSceneRoom.activeRoomCount > config.maxRoomsPerServer) {
+      VirviSceneRoom.activeRoomCount--
       throw new Error('Server room limit reached')
     }
 
@@ -146,7 +146,7 @@ export class VLMSceneRoom extends Room {
       if (!roomsByScene.has(this.sceneId)) roomsByScene.set(this.sceneId, new Set())
       roomsByScene.get(this.sceneId)!.add(this)
     }
-    console.log(`[VLMSceneRoom] Created for scene ${this.sceneId} (active rooms: ${VLMSceneRoom.activeRoomCount})`)
+    console.log(`[VirviSceneRoom] Created for scene ${this.sceneId} (active rooms: ${VirviSceneRoom.activeRoomCount})`)
     if (this.sceneId) this.presence.subscribe(venueTopic(this.sceneId), this.onVenueEventBound)
     if (this.sceneId) this.presence.subscribe(STREAMS_TOPIC, this.onStreamEventBound)
 
@@ -154,11 +154,11 @@ export class VLMSceneRoom extends Room {
     this.onMessage('auth_renew', async (client: Client, message: any) => {
       const claims = verifySessionToken(message?.sessionToken)
       const actor = client.auth as Actor
-      const revoked = await VLMSceneRoom.linkedPassRevoked(claims)
+      const revoked = await VirviSceneRoom.linkedPassRevoked(claims)
       const ok =
         !revoked && claims?.kind === 'scene' && claims.sceneId === this.sceneId && !!actor?.userId && claims.id === actor.userId && this.passExpiry.has(client.sessionId)
       if (!ok) {
-        client.send('vlm_error', { code: 'auth_renew_refused', messageType: 'auth_renew' })
+        client.send('virvi_error', { code: 'auth_renew_refused', messageType: 'auth_renew' })
         return
       }
       this.passExpiry.set(client.sessionId, ((claims as { exp?: number }).exp ?? 0) * 1000)
@@ -169,7 +169,7 @@ export class VLMSceneRoom extends Room {
 
     // ── Scene Preset Updates (create/update/delete elements) ──────────────
     this.guarded('scene_preset_update', async (client, message, result) => {
-      console.log(`[VLMSceneRoom] scene_preset_update from ${client.sessionId}`, message.action)
+      console.log(`[VirviSceneRoom] scene_preset_update from ${client.sessionId}`, message.action)
 
       await this.persistPresetUpdate(message, result.target)
       if (result.broadcast && this.sceneId) await publishSceneTouched(this.sceneId)
@@ -197,7 +197,7 @@ export class VLMSceneRoom extends Room {
       'transform_draft',
       async (client, message, _result, seq) => {
         if (!isValidDraft(message)) {
-          client.send('vlm_error', { code: 'bad_request', messageType: 'transform_draft' })
+          client.send('virvi_error', { code: 'bad_request', messageType: 'transform_draft' })
           return
         }
         const sk: string = message.sk
@@ -213,8 +213,8 @@ export class VLMSceneRoom extends Room {
           return
         }
         const now = Date.now()
-        const times = (this.draftTimes.get(client.sessionId) ?? []).filter((t) => now - t < VLMSceneRoom.DRAFT_WINDOW_MS)
-        if (times.length >= VLMSceneRoom.DRAFT_LIMIT) {
+        const times = (this.draftTimes.get(client.sessionId) ?? []).filter((t) => now - t < VirviSceneRoom.DRAFT_WINDOW_MS)
+        if (times.length >= VirviSceneRoom.DRAFT_LIMIT) {
           this.draftTimes.set(client.sessionId, times)
           return // over the limit: drop silently
         }
@@ -277,16 +277,16 @@ export class VLMSceneRoom extends Room {
         }
         // Non-holder: ignored, but a client that may not edit this scene still hears why.
         const result = await authorizeSceneMessage(await this.getAccess(client), this.sceneId, 'transform_end', message)
-        if (!result.ok) client.send('vlm_error', { code: result.code, messageType: 'transform_end' })
+        if (!result.ok) client.send('virvi_error', { code: result.code, messageType: 'transform_end' })
       } catch (err) {
-        console.error('[VLMSceneRoom] transform_end failed:', err)
-        client.send('vlm_error', { code: 'server_error', messageType: 'transform_end' })
+        console.error('[VirviSceneRoom] transform_end failed:', err)
+        client.send('virvi_error', { code: 'server_error', messageType: 'transform_end' })
       }
     })
 
     // ── Preset Switching ──────────────────────────────────────────────────
     this.guarded('scene_change_preset', async (client, message) => {
-      console.log(`[VLMSceneRoom] scene_change_preset`, message.presetId || message.id)
+      console.log(`[VirviSceneRoom] scene_change_preset`, message.presetId || message.id)
 
       const presetId = message.presetId || message.id
       if (presetId && this.sceneId) {
@@ -317,7 +317,7 @@ export class VLMSceneRoom extends Room {
             }).catch(() => {})
           }
         } catch (err) {
-          console.error('[VLMSceneRoom] Error changing preset:', err)
+          console.error('[VirviSceneRoom] Error changing preset:', err)
         }
       }
     })
@@ -393,7 +393,7 @@ export class VLMSceneRoom extends Room {
       sceneId: this.sceneId,
     })
 
-    console.log(`[VLMSceneRoom] ${clientType} joined: ${displayName} (${client.sessionId})`)
+    console.log(`[VirviSceneRoom] ${clientType} joined: ${displayName} (${client.sessionId})`)
 
     // Notify hosts that someone joined
     if (clientType === 'host') {
@@ -410,7 +410,7 @@ export class VLMSceneRoom extends Room {
 
   onLeave(client: Client, consented: boolean) {
     const meta = this.clientMeta.get(client.sessionId)
-    console.log(`[VLMSceneRoom] ${meta?.clientType || 'unknown'} left: ${meta?.displayName || client.sessionId}`)
+    console.log(`[VirviSceneRoom] ${meta?.clientType || 'unknown'} left: ${meta?.displayName || client.sessionId}`)
 
     if (meta?.clientType === 'host') {
       this.broadcast('host_left', { displayName: meta.displayName })
@@ -433,8 +433,8 @@ export class VLMSceneRoom extends Room {
   }
 
   onDispose() {
-    VLMSceneRoom.activeRoomCount--
-    console.log(`[VLMSceneRoom] Disposed (scene: ${this.sceneId}, active rooms: ${VLMSceneRoom.activeRoomCount})`)
+    VirviSceneRoom.activeRoomCount--
+    console.log(`[VirviSceneRoom] Disposed (scene: ${this.sceneId}, active rooms: ${VirviSceneRoom.activeRoomCount})`)
     if (this.sceneId) this.presence.unsubscribe(venueTopic(this.sceneId), this.onVenueEventBound)
     if (this.sceneId) this.presence.unsubscribe(STREAMS_TOPIC, this.onStreamEventBound)
     const mine = roomsByScene.get(this.sceneId)
@@ -457,7 +457,7 @@ export class VLMSceneRoom extends Room {
     const link = this.linkedPass.get(client.sessionId)
     if (link && !(await (link.via === 'ar' ? deviceLive(link.id) : pairingLive(link.id)))) return this.lookupAccess(ANONYMOUS)
     const cached = this.accessCache.get(client.sessionId)
-    if (cached && Date.now() - cached.at < VLMSceneRoom.ACCESS_TTL_MS) return cached.access
+    if (cached && Date.now() - cached.at < VirviSceneRoom.ACCESS_TTL_MS) return cached.access
     const generation = this.accessGeneration
     const access = await this.lookupAccess(client.auth as Actor)
     // A venue event during the lookup may have made this result stale: use it once, don't cache it.
@@ -514,13 +514,13 @@ export class VLMSceneRoom extends Room {
       try {
         const result = await authorizeSceneMessage(await this.getAccess(client), this.sceneId, type, message)
         if (!result.ok) {
-          client.send('vlm_error', { code: result.code, messageType: type })
+          client.send('virvi_error', { code: result.code, messageType: type })
           return
         }
         await handler(client, message, result, arrival)
       } catch (err) {
-        console.error(`[VLMSceneRoom] ${type} failed:`, err)
-        client.send('vlm_error', { code: 'server_error', messageType: type })
+        console.error(`[VirviSceneRoom] ${type} failed:`, err)
+        client.send('virvi_error', { code: 'server_error', messageType: type })
       } finally {
         hooks.done?.(client, message)
       }
@@ -572,7 +572,7 @@ export class VLMSceneRoom extends Room {
         }
       }
     } catch (err) {
-      console.error('[VLMSceneRoom] venue event failed:', err)
+      console.error('[VirviSceneRoom] venue event failed:', err)
     }
   }
 
@@ -596,7 +596,7 @@ export class VLMSceneRoom extends Room {
     })
   }
 
-  /** A VLM stream went live/offline: tell clients about each active-preset screen that plays it. */
+  /** A Virvi stream went live/offline: tell clients about each active-preset screen that plays it. */
   private async onStreamEvent(e: StreamStatusEvent) {
     try {
       if (e?.type !== 'stream_status') return
@@ -612,7 +612,7 @@ export class VLMSceneRoom extends Room {
         this.broadcast('scene_video_status', { elementId: v.id, status: e.live ? 'live' : 'offline', url: e.playlistUrl })
       }
     } catch (err) {
-      console.error('[VLMSceneRoom] stream event failed:', err)
+      console.error('[VirviSceneRoom] stream event failed:', err)
     }
   }
 
@@ -637,7 +637,7 @@ export class VLMSceneRoom extends Room {
       })
 
       if (!scene?.activePresetId) {
-        console.log(`[VLMSceneRoom] No active preset for scene ${this.sceneId}`)
+        console.log(`[VirviSceneRoom] No active preset for scene ${this.sceneId}`)
         // Still send init with empty preset so client doesn't hang
         client.send('scene_preset_update', {
           action: 'init',
@@ -657,7 +657,7 @@ export class VLMSceneRoom extends Room {
       })
 
       if (!preset) {
-        console.log(`[VLMSceneRoom] Active preset not found: ${scene.activePresetId}`)
+        console.log(`[VirviSceneRoom] Active preset not found: ${scene.activePresetId}`)
         client.send('scene_preset_update', {
           action: 'init',
           scenePreset: { videos: [], images: [], sounds: [], models: [], widgets: [], nfts: [], claimPoints: [], adSpaces: [] },
@@ -675,12 +675,12 @@ export class VLMSceneRoom extends Room {
       })
 
       console.log(
-        `[VLMSceneRoom] Sent init data: ${serialized.videos.length} videos, ` +
+        `[VirviSceneRoom] Sent init data: ${serialized.videos.length} videos, ` +
           `${serialized.images.length} images, ${serialized.sounds.length} sounds, ` +
           `${serialized.models.length} models`,
       )
     } catch (err) {
-      console.error('[VLMSceneRoom] Error loading init data:', err)
+      console.error('[VirviSceneRoom] Error loading init data:', err)
       // Send empty init so client doesn't hang
       client.send('scene_preset_update', {
         action: 'init',

@@ -4,18 +4,18 @@
  * Orchestrates all HUD panels, handles access control, and bridges
  * Colyseus messages to the notification feed and panel updates.
  *
- * Created by vlm-core after session start — only for authorized operators
+ * Created by virvi-core after session start — only for authorized operators
  * (scene admin+ with a platform that supports screen-space UI).
  */
 
 import type {
   HUDRenderer,
   BudgetLimits,
-  VLMStorage,
+  VirviStorage,
   WorldStatus,
 } from '@virvixr/shared'
 import { HUDPanelType } from '@virvixr/shared'
-import type { VLMHttpClient, ColyseusManager } from '@virvixr/client'
+import type { VirviHttpClient, ColyseusManager } from '@virvixr/client'
 import { PanelRegistry } from './PanelRegistry.js'
 import { AssetBrowserPanel } from './panels/AssetBrowserPanel.js'
 import { SceneLayoutPanel } from './panels/SceneLayoutPanel.js'
@@ -26,9 +26,9 @@ import { NotificationPanel } from './panels/NotificationPanel.js'
 
 export interface HUDManagerOptions {
   renderer: HUDRenderer
-  http: VLMHttpClient
+  http: VirviHttpClient
   colyseus: ColyseusManager
-  storage: VLMStorage
+  storage: VirviStorage
   budgetLimits: BudgetLimits
 }
 

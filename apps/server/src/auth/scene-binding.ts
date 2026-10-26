@@ -11,7 +11,7 @@ const VISITOR: SceneBinding = { locationId: null, sceneId: null }
 
 const isWorld = isWorldRealm
 
-/** Same keys as vlm-shared locationKeyFor, built only from the signed context. */
+/** Same keys as virvi-shared locationKeyFor, built only from the signed context. */
 export function locationKeyForContext(ctx: SceneRequestContext, wallet: string, preview: boolean): string {
   const place = isWorld(ctx) ? ctx.realm.serverName.toLowerCase() : ctx.parcel
   if (preview) return `preview:${wallet.toLowerCase()}:${place}`
@@ -19,7 +19,7 @@ export function locationKeyForContext(ctx: SceneRequestContext, wallet: string, 
 }
 
 /**
- * The VLM scene a signed scene request may act on: the active setup at its location. Anything uncertain → visitor.
+ * The Virvi scene a signed scene request may act on: the active setup at its location. Anything uncertain → visitor.
  * Outside local preview, only official Decentraland realms bind (the realm controls serverName, parcel and code),
  * and the signed scene entity must be the deployment the setup recorded (when none is recorded, the live one, if the team deployed it).
  */

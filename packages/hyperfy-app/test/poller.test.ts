@@ -43,7 +43,7 @@ function poller(responses: Array<Res | Error>) {
   const seen: HyperfyFeedResponse[] = []
   const p = new FeedPoller({
     feedUrl: 'https://api.example',
-    worldKey: 'vlmw_k',
+    worldKey: 'virviw_k',
     fetch: h.fetch,
     setTimeout: h.setTimeout,
     onSnapshot: (r) => seen.push(r),
@@ -64,7 +64,7 @@ describe('FeedPoller', () => {
       'https://api.example/api/hyperfy/feed?since=a',
     ])
     for (const c of t.calls) {
-      expect(c.init.headers).toMatchObject({ Authorization: 'Bearer vlmw_k', 'X-VLM-App-Version': '1' })
+      expect(c.init.headers).toMatchObject({ Authorization: 'Bearer virviw_k', 'X-Virvi-App-Version': '1' })
     }
     expect(t.seen.map((s) => s.version)).toEqual(['a', 'b'])
   })
@@ -127,7 +127,7 @@ describe('VisitRecorder', () => {
     let now = 1000
     const r = new VisitRecorder({
       feedUrl: 'https://api.example',
-      worldKey: 'vlmw_k',
+      worldKey: 'virviw_k',
       fetch: h.fetch,
       setTimeout: h.setTimeout,
       now: () => now,
@@ -147,7 +147,7 @@ describe('VisitRecorder', () => {
     t.r.leave('p1')
     await t.tick() // flush
     expect(t.calls[0].url).toBe('https://api.example/api/hyperfy/analytics')
-    expect(t.calls[0].init).toMatchObject({ method: 'POST', headers: { Authorization: 'Bearer vlmw_k' } })
+    expect(t.calls[0].init).toMatchObject({ method: 'POST', headers: { Authorization: 'Bearer virviw_k' } })
     expect(bodies(t.calls)).toEqual([
       {
         v: 1,

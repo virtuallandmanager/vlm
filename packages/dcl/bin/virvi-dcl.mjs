@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { sync, install, DEFAULT_SERVER } from './sync.mjs'
 
-const USAGE = `Usage: vlm-dcl sync [--server <url>] [--location <key>] [--dry-run]
-       vlm-dcl install [--dry-run] [--force]`
+const USAGE = `Usage: virvi-dcl sync [--server <url>] [--location <key>] [--dry-run]
+       virvi-dcl install [--dry-run] [--force]`
 
 const [cmd, ...args] = process.argv.slice(2)
 if (cmd !== 'sync' && cmd !== 'install') {
@@ -32,6 +32,6 @@ try {
   console.log(`\nNow deploy your scene (Creator Hub: Publish, or \`npx sdk-commands deploy\`).`)
   process.exit(r.over ? 2 : 0)
 } catch (e) {
-  console.error(`vlm-dcl: ${e.message}`)
+  console.error(`virvi-dcl: ${e.message}`)
   process.exit(1)
 }

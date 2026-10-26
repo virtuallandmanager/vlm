@@ -47,7 +47,7 @@ export function LinkedHyperfySessions() {
     <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
       <h3 className="text-sm font-medium text-gray-300 mb-1">Linked Hyperfy sessions</h3>
       <p className="text-xs text-gray-500 mb-3">
-        Hyperfy worlds you approved to edit your scenes from the VLM HUD. Revoke one to sign that world out.
+        Hyperfy worlds you approved to edit your scenes from the Virvi HUD. Revoke one to sign that world out.
       </p>
       {error && (
         <div className="mb-3 rounded-md bg-red-900/50 border border-red-700 px-4 py-2 text-sm text-red-300">{error}</div>

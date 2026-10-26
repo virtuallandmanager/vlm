@@ -1,5 +1,5 @@
 import { AD_LIMITS, VideoSourceType } from '@virvixr/shared'
-import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData } from '@virvixr/shared'
+import type { VirviPlatformAdapter, VirviStorage, EntityHandle, TransformData } from '@virvixr/shared'
 import { listTransformable, previewOn, restoreOn } from './transform-ops.js'
 import type { ListedInstance } from './transform-ops.js'
 import { AdSlot } from '../ads/slot.js'
@@ -43,13 +43,13 @@ interface VideoInstance {
 }
 
 export class VideoManager {
-  private adapter: VLMPlatformAdapter
-  private storage: VLMStorage
+  private adapter: VirviPlatformAdapter
+  private storage: VirviStorage
   private host: AdHost | null
   private configs: Map<string, VideoConfig> = new Map()
   private instances: Map<string, VideoInstance> = new Map()
 
-  constructor(adapter: VLMPlatformAdapter, storage: VLMStorage, host: AdHost | null = null) {
+  constructor(adapter: VirviPlatformAdapter, storage: VirviStorage, host: AdHost | null = null) {
     this.adapter = adapter
     this.storage = storage
     this.host = host

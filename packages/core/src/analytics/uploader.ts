@@ -74,7 +74,7 @@ export class Uploader {
     }
     if (!this.warnedRejected) {
       this.warnedRejected = true
-      log?.(`[VLM analytics] batch rejected (${res.status}): ${JSON.stringify(res.body)}`)
+      log?.(`[Virvi analytics] batch rejected (${res.status}): ${JSON.stringify(res.body)}`)
     }
   }
 }

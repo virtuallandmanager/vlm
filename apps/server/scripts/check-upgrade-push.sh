@@ -8,7 +8,7 @@
 #
 # Usage: scripts/check-upgrade-push.sh [--skip-presync]
 #   PG_ADMIN_URL   admin connection (default postgres://vlm:vlm_dev@localhost:5432/postgres)
-#   CHECK_DB       scratch database name (default vlm_upgrade_check)
+#   CHECK_DB       scratch database name (default virvi_upgrade_check)
 #   BASE_REF       git ref holding the old schema (default 73f1efe)
 #   PUSH_TIMEOUT   seconds before the head push counts as hung (default 120)
 set -eu
@@ -16,7 +16,7 @@ set -eu
 cd "$(dirname "$0")/.."
 SERVER_DIR=$(pwd)
 ADMIN_URL=${PG_ADMIN_URL:-postgres://vlm:vlm_dev@localhost:5432/postgres}
-CHECK_DB=${CHECK_DB:-vlm_upgrade_check}
+CHECK_DB=${CHECK_DB:-virvi_upgrade_check}
 BASE_REF=${BASE_REF:-73f1efe}
 PUSH_TIMEOUT=${PUSH_TIMEOUT:-120}
 SKIP_PRESYNC=0

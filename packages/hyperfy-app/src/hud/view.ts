@@ -219,7 +219,7 @@ export class HudView {
       : [
           this.row([
             this.label(l.label, C.error),
-            ...(l.canLink ? [this.button('Link to VLM', () => a.link())] : []),
+            ...(l.canLink ? [this.button('Link to Virvi', () => a.link())] : []),
           ]),
         ]
     const rows: UiNode[] = [
@@ -243,7 +243,7 @@ export class HudView {
     )
     const sel =
       b.selectedName === null
-        ? 'Click a VLM object to select it'
+        ? 'Click a Virvi object to select it'
         : `${b.selectedName || 'Untitled'}${b.dirty ? ' •' : ''}`
     rows.push(
       this.row([

@@ -33,7 +33,7 @@ const HOSTING_CONFIG = {
   hyperfyImage: 'registry.fly.io/vlm-hyperfy-image:abc123',
   hyperfyWorldsDatabaseUrl: 'postgres://admin:adminpw@worlds-db.internal/worlds',
   hyperfyWorldsDbUrlTemplate: 'postgres://{user}:{password}@worlds-db.flycast:5432/worlds',
-  hyperfyAssetsS3Uri: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/vlm-hyperfy',
+  hyperfyAssetsS3Uri: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/virvi-hyperfy',
   hyperfyAssetsBaseUrl: 'https://worlds-cdn.vlm.gg',
   hyperfyRouterDomain: 'worlds.vlm.gg',
   hyperfySecretKey: 'ab'.repeat(32),
@@ -163,7 +163,7 @@ describe('hosted Hyperfy worlds', () => {
       PUBLIC_WS_URL: 'wss://moon-base.worlds.vlm.gg/ws',
       PUBLIC_API_URL: 'https://moon-base.worlds.vlm.gg/api',
       ASSETS: 's3',
-      ASSETS_S3_URI: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/vlm-hyperfy/moon-base',
+      ASSETS_S3_URI: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/virvi-hyperfy/moon-base',
       ASSETS_BASE_URL: 'https://worlds-cdn.vlm.gg/moon-base',
       DB_URI: 'postgres://world_moon_base:dbpw_moon-base_s3cr3t@worlds-db.flycast:5432/worlds',
       DB_SCHEMA: 'world_moon_base',
@@ -173,13 +173,13 @@ describe('hosted Hyperfy worlds', () => {
       CLEAN: 'true',
       PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: 'wss://api.staging.vlm.gg',
       PUBLIC_MAX_UPLOAD_SIZE: '12',
-      VLM_FEED_URL: 'https://api.staging.vlm.gg',
-      VLM_WORLD_KEY: expect.stringMatching(/^vlmw_[0-9a-f]{64}$/),
+      VIRVI_FEED_URL: 'https://api.staging.vlm.gg',
+      VLM_WORLD_KEY: expect.stringMatching(/^virviw_[0-9a-f]{64}$/),
       VLM_WORLD_SECRET: expect.stringMatching(/^[0-9a-f]{64}$/),
     })
     expect((await findWorldByKey(machine.env.VLM_WORLD_KEY))?.id).toBe(world.id)
     // Hyperfy keys files under the URI's prefix; the CDN serves them at ASSETS_BASE_URL/<file>.
-    expect(hyperfyS3Prefix(machine.env.ASSETS_S3_URI)).toEqual({ bucket: 'vlm-hyperfy', prefix: 'moon-base/' })
+    expect(hyperfyS3Prefix(machine.env.ASSETS_S3_URI)).toEqual({ bucket: 'virvi-hyperfy', prefix: 'moon-base/' })
 
     expect(f.logs.length).toBeGreaterThan(0)
     const logText = f.logs.join('\n')
@@ -201,7 +201,7 @@ describe('hosted Hyperfy worlds', () => {
     const key = f.machines.get('vlm-w-secret-world')!.env.VLM_WORLD_KEY
     expect((await findWorldBySecret(key, secret))?.id).toBe(world.id)
     expect(await findWorldBySecret(key, 'wrong')).toBeNull()
-    expect(await findWorldBySecret('vlmw_other', secret)).toBeNull()
+    expect(await findWorldBySecret('virviw_other', secret)).toBeNull()
     // rotating the key leaves the secret alone
     await rotateHostedWorldKey(world.id, f.deps)
     expect(f.machines.get('vlm-w-secret-world')!.env.VLM_WORLD_SECRET).toBe(secret)
@@ -235,7 +235,7 @@ describe('hosted Hyperfy worlds', () => {
   it('create past the slot limit throws world_limit_reached and creates nothing', async () => {
     await setTier(owner.id, 'creator')
     await db.insert(hyperfyWorlds).values({
-      sceneId, ownerId: owner.id, name: 'Existing', kind: 'hosted', slug: 'existing', status: 'running', keyHash: 'h1', keyPrefix: 'vlmw_x',
+      sceneId, ownerId: owner.id, name: 'Existing', kind: 'hosted', slug: 'existing', status: 'running', keyHash: 'h1', keyPrefix: 'virviw_x',
     })
     const f = fakes()
     await expect(createHostedWorld({ ownerId: owner.id, sceneId, name: 'Second', endsAt: null }, f.deps))
@@ -463,7 +463,7 @@ describe('hosted Hyperfy worlds', () => {
     await hostedWorldSettled(world.id)
     const before = { ...f.machines.get('vlm-w-keys')!.env }
     const { key } = await rotateHostedWorldKey(world.id, f.deps)
-    expect(key).toMatch(/^vlmw_[0-9a-f]{64}$/)
+    expect(key).toMatch(/^virviw_[0-9a-f]{64}$/)
     expect(key).not.toBe(before.VLM_WORLD_KEY)
     expect(f.calls).toContain('updateMachine vlm-w-keys m-vlm-w-keys')
     expect(f.machines.get('vlm-w-keys')!.env).toEqual({ ...before, VLM_WORLD_KEY: key })
@@ -483,7 +483,7 @@ describe('hosted Hyperfy worlds', () => {
     expect(err).toMatchObject({ code: 'world_update_failed' })
     expect(err.message).toMatch(/key was changed/i)
     expect(err.message).toMatch(/rotate .*again/i)
-    expect(err.message).not.toContain('vlmw_')
+    expect(err.message).not.toContain('virviw_')
   })
 
   it("a rotate's failed machine update is logged without the world's secrets", async () => {

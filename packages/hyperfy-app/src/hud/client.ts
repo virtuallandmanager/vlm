@@ -19,7 +19,7 @@ import {
   type ScriptSetTimeout,
 } from '../sandbox.js'
 import { toHyperfyTransform } from '../transform.js'
-import { VlmApi, type ApiResult } from '../vlm-api.js'
+import { VirviApi, type ApiResult } from '../virvi-api.js'
 import {
   alertsFromSnapshot,
   chatCommandText,
@@ -57,15 +57,15 @@ export interface HudSandbox {
  *
  * Input (Hyperfy fires node pointer events only for the reticle while the pointer is locked, and for screen UI while
  * it is unlocked):
- * - Aim (pointer locked, Hyperfy's normal play): with edit mode on, clicking a VLM object selects it; clicking the
+ * - Aim (pointer locked, Hyperfy's normal play): with edit mode on, clicking a Virvi object selects it; clicking the
  *   selected object again starts a body drag, and gizmo handles start handle drags. A drag follows the camera's
  *   forward ray until the mouse button is released.
  * - Panels (pointer unlocked with ` or Esc, Hyperfy's own toggles): the bar and panels are clickable; clicking the
  *   world locks the pointer again.
  * - Keys: L cycles the axis lock (Shift is Hyperfy's run key). While a field is being typed into, every key goes to
  *   it: digits, '-' and '.' for values, any character for searches, Enter commits, Escape cancels.
- * - Chat: Hyperfy's chat takes '/' and Enter ahead of apps, so a link can't be typed into the HUD. `/vlm <link>` in
- *   chat opens the Link tab with it (and `/vlm <words>` searches the catalog).
+ * - Chat: Hyperfy's chat takes '/' and Enter ahead of apps, so a link can't be typed into the HUD. `/virvi <link>` in
+ *   chat opens the Link tab with it (and `/virvi <words>` searches the catalog).
  */
 export function runHud(hooks: ClientEditHooks, sandbox: HudSandbox): void {
   const { app, world, fetch, setTimeout, props, Matrix4, uuid } = sandbox
@@ -101,7 +101,7 @@ export function runHud(hooks: ClientEditHooks, sandbox: HudSandbox): void {
   const sceneId = () => (link.status === 'linked' ? link.sceneId : '')
   const rootInverse = () => new Matrix4().copy(app.matrixWorld).invert()
 
-  const api = new VlmApi({
+  const api = new VirviApi({
     feedUrl,
     fetch,
     getPass: () => pairing?.pass() ?? null,
@@ -398,7 +398,7 @@ export function runHud(hooks: ClientEditHooks, sandbox: HudSandbox): void {
     return pointerRay(c.camera, pointer)
   }
 
-  /** A click on a VLM node while editing: select it, or (already selected) grab it. */
+  /** A click on a Virvi node while editing: select it, or (already selected) grab it. */
   const onNodeClick = (key: string) => {
     if (!control) return
     if (controller.state.selectedKey === key) controller.pointerDown(null, ray())

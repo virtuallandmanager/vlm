@@ -1,5 +1,5 @@
 /**
- * AR headset pairing: the headset gets a code, a VLM user approves it on the website as personal or shared, the
+ * AR headset pairing: the headset gets a code, a Virvi user approves it on the website as personal or shared, the
  * headset claims its device id and then mints AR passes for the spaces it opens.
  *
  * POST   /api/ar/pair                — (public) Start a pairing with the sha256 of the headset's secret; returns the code

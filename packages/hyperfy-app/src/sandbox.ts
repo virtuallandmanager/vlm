@@ -1,5 +1,5 @@
 /**
- * The Hyperfy 0.16 script globals as the VLM app uses them, and the messages its two halves exchange. Only types:
+ * The Hyperfy 0.16 script globals as the Virvi app uses them, and the messages its two halves exchange. Only types:
  * the modules that need a global take it as an argument, so app.ts stays the one place that reads the sandbox.
  */
 import type { HyperfyVouchResponse, SerializedScene } from '@virvixr/shared'
@@ -7,7 +7,7 @@ import type { RenderedItem } from './edit/controller.js'
 import type { GizmoNode } from './edit/gizmo.js'
 import type { RenderItem } from './plan.js'
 import type { ScriptFetch, ScriptSetTimeout } from './poller.js'
-import type { VlmTransform } from './vlm-api.js'
+import type { VirviTransform } from './virvi-api.js'
 
 export type Vec = { x: number; y: number; z: number; fromArray(a: number[]): unknown }
 export interface HNode {
@@ -62,10 +62,10 @@ export interface HApp {
   /** The app root's world matrix (Hyperfy forwards unknown app props to the root node). */
   matrixWorld: Matrix
   /**
-   * A VLM-hosted world's server half only: the image vouches for a player with VLM from Node, holding the world secret
-   * itself. Undefined anywhere else (self-run worlds, clients, other apps, an edited VLM script).
+   * A Virvi-hosted world's server half only: the image vouches for a player with Virvi from Node, holding the world secret
+   * itself. Undefined anywhere else (self-run worlds, clients, other apps, an edited Virvi script).
    */
-  vlmVouch?: VlmVouch
+  virviVouch?: VirviVouch
   configure(fields: Array<{ key: string; type: 'text'; label: string; initial: string }>): void
   on(name: string, cb: (data: unknown, networkId?: string) => void): void
   send(name: string, data: unknown): void
@@ -79,25 +79,25 @@ export interface HApp {
   remove(node: HNode | GizmoNode | object): void
   control(): HControl
 }
-/** What the server half asks `app.vlmVouch` for: the player to vouch for, and their pending pairing when polling. */
-export interface VlmVouchRequest {
+/** What the server half asks `app.virviVouch` for: the player to vouch for, and their pending pairing when polling. */
+export interface VirviVouchRequest {
   hyperfyPlayerId: string
   playerName: string | null
   pendingPairingId?: string
 }
 /**
- * VLM's vouch answer as the image passes it on (only the expected fields): `unauthorized` when VLM refuses the world's
+ * Virvi's vouch answer as the image passes it on (only the expected fields): `unauthorized` when Virvi refuses the world's
  * secret (HTTP 401), `error` on any other failure.
  */
-export type VlmVouchResult = HyperfyVouchResponse | { status: 'unauthorized' } | { status: 'error' }
-export type VlmVouch = (req: VlmVouchRequest) => Promise<VlmVouchResult>
+export type VirviVouchResult = HyperfyVouchResponse | { status: 'unauthorized' } | { status: 'error' }
+export type VirviVouch = (req: VirviVouchRequest) => Promise<VirviVouchResult>
 export type Matrix4Ctor = new () => Matrix & { copy(m: Matrix): Matrix & { invert(): Matrix } }
 /** `hudIcon` is a file prop the .hyp ships (not configurable): the HUD's Virvi V, served from the world's assets. */
 export type AppProps = { feedUrl?: string; worldKey?: string; hudIcon?: { url?: string } | null }
 export type { ScriptFetch, ScriptSetTimeout }
 
 /** Client asks its server half to link it (and, linked, for a fresh pass); the server half answers that player only. */
-export const LINK = 'vlm:link'
+export const LINK = 'virvi:link'
 /** What the client sends on LINK: its attempt number, which every answer echoes. */
 export type LinkRequest = { attempt: number }
 /** What the server half sends back on LINK (plus the request's `attempt`). 'self': this world can't vouch, pair from the browser. */
@@ -117,10 +117,10 @@ export type LinkReply =
 
 /** What the client half offers edit mode and the HUD. */
 export interface ClientEditHooks {
-  /** Swaps every VLM node's click: select (while editing) or open its link. */
+  /** Swaps every Virvi node's click: select (while editing) or open its link. */
   setEditing(on: boolean, select: (key: string) => void): void
   items(): Map<string, RenderedItem>
-  preview(key: string, t: VlmTransform): void
+  preview(key: string, t: VirviTransform): void
   restore(key: string): void
   /** Called after each snapshot is applied, with the previous and the new plan and the new scene. */
   onPlan(cb: (prev: RenderItem[], next: RenderItem[], scene: SerializedScene | null) => void): void

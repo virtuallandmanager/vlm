@@ -100,11 +100,11 @@ describe('HudView brand', () => {
     return firstRow.children[0] as Fake
   }
 
-  it('shows the Virvi V with a round status dot at the symbol position instead of a VLM label', () => {
+  it('shows the Virvi V with a round status dot at the symbol position instead of a Virvi label', () => {
     const h = host()
     new HudView(h, noop, { iconSrc: 'asset://abc.png' }).render(vm(1))
     const bar = h.created.find((n) => n.type === 'ui')!
-    expect(texts(bar)).not.toContain('VLM')
+    expect(texts(bar)).not.toContain('Virvi')
     const brand = brandOf(h)
     expect(brand).toMatchObject({ type: 'uiview', width: 28, height: 28 })
     const [img, dot] = brand.children

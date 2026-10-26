@@ -40,7 +40,7 @@ describe.skipIf(!hasPython)('the studio worker contract', () => {
     await presence.subscribe(studioTopic(design.id), (e: any) => events.push(e))
 
     const worker = spawn('python3', [DRIVER], {
-      env: { ...process.env, VLM_API_URL: url, STUDIO_WORKER_TOKEN: token, STUDIO_DESIGN_ID: design.id, STUDIO_IDLE_EXIT_SEC: '5' },
+      env: { ...process.env, VIRVI_API_URL: url, STUDIO_WORKER_TOKEN: token, STUDIO_DESIGN_ID: design.id, STUDIO_IDLE_EXIT_SEC: '5' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let log = ''

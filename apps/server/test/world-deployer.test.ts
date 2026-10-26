@@ -103,7 +103,7 @@ describe('startVirviDeploy (mode A)', () => {
 
     const d = await destRow(dest.id)
     expect(d.lastEntityId).toBe(sent.entityId)
-    expect(d.deployedFiles).toEqual(['bin/index.js', 'images/virvi/hud-v.png', 'models/vlm/a.glb', 'scene.json'])
+    expect(d.deployedFiles).toEqual(['bin/index.js', 'images/virvi/hud-v.png', 'models/virvi/a.glb', 'scene.json'])
     expect(d.status).toBe('ok')
 
     const as = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, `world:${WORLD}`) })
@@ -168,7 +168,7 @@ describe('startVirviDeploy (mode A)', () => {
     expect(sent.files.size).toBe(2) // entity + b.glb
     const entity = JSON.parse(dec(sent.files.get(sent.entityId)!))
     for (const c of live.content) expect(entity.content).toContainEqual(c)
-    expect((await destRow(dest.id)).deployedFiles).toContain('models/vlm/b.glb')
+    expect((await destRow(dest.id)).deployedFiles).toContain('models/virvi/b.glb')
   })
 
   it('stops for review when the World changed outside Virvi', async () => {
@@ -225,7 +225,7 @@ describe('prepareSignedDeploy / submitSignedDeploy (mode B)', () => {
     expect(new Date(prep.expiresAt).getTime()).toBe((bundle.timestamp as number) + DEPLOY_WINDOW_MS)
     // Enough to rebuild, never the model bytes.
     expect(JSON.stringify(bundle)).not.toContain(Buffer.from(`bytes of ${CDN}/m/a.glb`).toString('base64'))
-    expect(bundle.newFiles).toContainEqual(expect.objectContaining({ file: 'models/vlm/a.glb', url: `${CDN}/m/a.glb` }))
+    expect(bundle.newFiles).toContainEqual(expect.objectContaining({ file: 'models/virvi/a.glb', url: `${CDN}/m/a.glb` }))
     expect(bundle.newFiles).toContainEqual(expect.objectContaining({ file: 'bin/index.js', runtimeVersion: DCL_RUNTIME_VERSION }))
     expect(bundle.newFiles).toContainEqual(expect.objectContaining({ file: 'images/virvi/hud-v.png', runtimeVersion: DCL_RUNTIME_VERSION }))
     expect(fake.deployed).toHaveLength(0)

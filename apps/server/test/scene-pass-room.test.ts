@@ -22,7 +22,7 @@ async function editsStopAfterRevoke(url: string, scene: { id: string; activePres
   await c.waitFor('scene_preset_update_ack')
   await revoke()
   c.room.send('scene_preset_update', screenUpdate(screen.id))
-  expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+  expect((await c.waitFor('virvi_error')).code).toBe('forbidden')
   c.room.leave()
 }
 
@@ -83,7 +83,7 @@ describe('scene pass in rooms', () => {
       await c.waitFor('scene_preset_update_ack')
       expire()
       c.room.send('scene_preset_update', update(screen.id))
-      expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+      expect((await c.waitFor('virvi_error')).code).toBe('forbidden')
       c.room.leave()
     })
 
@@ -110,7 +110,7 @@ describe('scene pass in rooms', () => {
         'garbage',
       ]) {
         c.room.send('auth_renew', { sessionToken })
-        expect((await c.waitFor('vlm_error')).code).toBe('auth_renew_refused')
+        expect((await c.waitFor('virvi_error')).code).toBe('auth_renew_refused')
       }
       c.room.leave()
     })
@@ -120,7 +120,7 @@ describe('scene pass in rooms', () => {
     async function hyperfyJoin() {
       const owner = await createUser()
       const { scene } = await createScene(owner, 'H')
-      const [world] = await db.insert(hyperfyWorlds).values({ sceneId: scene.id, ownerId: owner.id, name: 'W', keyHash: crypto.randomUUID(), keyPrefix: 'vlmw_x' }).returning()
+      const [world] = await db.insert(hyperfyWorlds).values({ sceneId: scene.id, ownerId: owner.id, name: 'W', keyHash: crypto.randomUUID(), keyPrefix: 'virviw_x' }).returning()
       const [p] = await db.insert(hyperfyPairings).values({ worldId: world.id, userId: owner.id, secretHash: 'h', status: 'claimed', codeExpiresAt: new Date(), expiresAt: new Date(Date.now() + 3_600_000) }).returning()
       const pass = (pairingId: string | undefined = p.id) => tokenFor(owner, { kind: 'scene', sceneId: scene.id, orgId: null, via: 'hyperfy', pairingId, worldId: world.id })
       return { owner, scene, p, pass }
@@ -152,9 +152,9 @@ describe('scene pass in rooms', () => {
       await c.waitFor('auth_renew_ack')
       await revokePairing(p.id, owner.id)
       c.room.send('auth_renew', { sessionToken: pass() })
-      expect((await c.waitFor('vlm_error')).code).toBe('auth_renew_refused')
+      expect((await c.waitFor('virvi_error')).code).toBe('auth_renew_refused')
       c.room.send('auth_renew', { sessionToken: pass(null as any) })
-      expect((await c.waitFor('vlm_error')).code).toBe('auth_renew_refused')
+      expect((await c.waitFor('virvi_error')).code).toBe('auth_renew_refused')
       c.room.leave()
     })
   })
@@ -200,7 +200,7 @@ describe('scene pass in rooms', () => {
       await c.waitFor('auth_renew_ack')
       await revokeDevice(d.id, owner.id)
       c.room.send('auth_renew', { sessionToken: pass() })
-      expect((await c.waitFor('vlm_error')).code).toBe('auth_renew_refused')
+      expect((await c.waitFor('virvi_error')).code).toBe('auth_renew_refused')
       c.room.leave()
     })
   })

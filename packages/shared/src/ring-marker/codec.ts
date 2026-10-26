@@ -15,7 +15,7 @@ const K = 6
 const NSYM = 6
 const OFFSET = [0, 2, 4]
 
-// XOR mask: the first 72 bits (MSB first) of SHA-256("VLM ring marker v0"). Precomputed so
+// XOR mask: the first 72 bits (MSB first) of SHA-256("Virvi ring marker v0"). Precomputed so
 // this module stays synchronous in the browser (Web Crypto digest is async). Made once with:
 //   python3 -c "import sys; sys.path.insert(0,'apps/ring-marker'); from ringmarker.codec import MASK; print(''.join('1' if m else '0' for m in MASK))"
 const MASK_BITS = '101111001101010100011110111111111010111100111011010110110110110001010101'
@@ -102,7 +102,7 @@ export function parseRingCode(code: string): number | null {
 
 /** Uniform 32-bit id, never 0. Server-only use. */
 export function randomRingId(): number {
-  // vlm-shared's tsconfig has neither DOM nor Node types, so type the global by hand.
+  // virvi-shared's tsconfig has neither DOM nor Node types, so type the global by hand.
   const { crypto } = globalThis as unknown as { crypto: { getRandomValues(a: Uint32Array): Uint32Array } }
   const buf = new Uint32Array(1)
   do crypto.getRandomValues(buf)

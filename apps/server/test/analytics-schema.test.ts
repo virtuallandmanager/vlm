@@ -42,7 +42,7 @@ describe('analytics schema and access', () => {
     expect(await getAnalyticsAccess(actor(host), unset.id)).toMatchObject({ canRead: false, canManage: false })
   })
 
-  it('linked VLM scene owner manages, collaborators read', async () => {
+  it('linked Virvi scene owner manages, collaborators read', async () => {
     const owner = await createUser()
     const viewer = await createUser()
     const { scene } = await createScene(owner)

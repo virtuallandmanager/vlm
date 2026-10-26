@@ -46,10 +46,10 @@ describe('planScene', () => {
     expect(item.transform.position).toEqual([1, 2, -3])
   })
 
-  it('keeps the element name and the VLM transform for editing', () => {
+  it('keeps the element name and the Virvi transform for editing', () => {
     const [item] = planScene(scene({ videos: [video({ name: 'Screen', isLive: true })] }))
     expect(item.name).toBe('Screen')
-    expect(item.vlm).toEqual({ position: v(1, 2, 3), rotation: v(0, 0, 0), scale: v(4, 2, 1) })
+    expect(item.virvi).toEqual({ position: v(1, 2, 3), rotation: v(0, 0, 0), scale: v(4, 2, 1) })
     const [unnamed] = planScene(scene({ videos: [video({ isLive: true })] }))
     expect(unnamed.name).toBe('')
   })

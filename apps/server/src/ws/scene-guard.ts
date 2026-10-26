@@ -17,10 +17,10 @@ const OK_BROADCAST: GuardResult = { ok: true, broadcast: true }
 const FORBIDDEN: GuardResult = { ok: false, code: 'forbidden' }
 const NOT_FOUND: GuardResult = { ok: false, code: 'not_found' }
 
-/** Field keys of an element update message, matching VLMSceneRoom.persistPresetUpdate. */
+/** Field keys of an element update message, matching VirviSceneRoom.persistPresetUpdate. */
 const ELEMENT_FIELDS = ['name', 'enabled', 'customId', 'clickEvent'] as const
 
-/** Must stay in sync with VLMSceneRoom.extractProperties' structural keys. */
+/** Must stay in sync with VirviSceneRoom.extractProperties' structural keys. */
 const STRUCTURAL = new Set([
   'sk', 'id', 'pk', 'name', 'enabled', 'customId', 'customRendering', 'clickEvent', 'instances', 'instanceIds',
   'position', 'rotation', 'scale', 'parent', 'withCollisions', 'elementId', 'configId', 'entity', 'services',

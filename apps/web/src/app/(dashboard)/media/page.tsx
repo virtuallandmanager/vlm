@@ -7,7 +7,7 @@ import { EmptyState, PageHeader, PrimaryButton, RowMenu, SearchField, SelectFiel
 import { countLabel, formatBytes, plural } from '@/lib/format'
 
 type Kind = 'image' | 'model' | 'video' | 'other'
-const VIEW_KEY = 'vlm.media.view'
+const VIEW_KEY = 'virvi.media.view'
 
 function mediaKind(asset: { contentType: string; filename?: string }): Kind {
   if (asset.contentType.startsWith('image/')) return 'image'

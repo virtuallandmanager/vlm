@@ -10,10 +10,10 @@ export function bundleOptions(root, entry) {
     target: 'es2020',
     write: false,
     legalComments: 'none',
-    // Only the Hyperfy feed and pairing constants are needed; this dependency-free entry keeps the rest of vlm-shared out.
+    // Only the Hyperfy feed and pairing constants are needed; this dependency-free entry keeps the rest of virvi-shared out.
     alias: {
       '@virvixr/shared': join(root, '../shared/src/hyperfy-entry.ts'),
-      // Edit mode reuses vlm-core's transform session; aliasing its two source files keeps the rest of vlm-core out.
+      // Edit mode reuses virvi-core's transform session; aliasing its two source files keeps the rest of virvi-core out.
       '@virvixr/core/transform/session': join(root, '../core/src/transform/session.ts'),
       '@virvixr/core/transform/math': join(root, '../core/src/transform/math.ts'),
     },

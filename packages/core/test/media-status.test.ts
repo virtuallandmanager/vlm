@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { SceneLibraryItemData } from '@virvixr/shared'
 import { applyLibraryChange, hudStatus } from '../src/media-status.js'
-import { VLM } from '../src/VLM.js'
+import { Virvi } from '../src/Virvi.js'
 
 const item = (over: Partial<SceneLibraryItemData> = {}): SceneLibraryItemData => ({
   id: 'l1', kind: 'media', name: 'a.png', contentType: 'image/png', url: 'https://cdn/a.png', sizeBytes: 1,
@@ -41,14 +41,14 @@ describe('applyLibraryChange', () => {
   })
 })
 
-describe('VLM.onLibraryChanged', () => {
+describe('Virvi.onLibraryChanged', () => {
   it('delivers scene_library_changed messages until unsubscribed', () => {
-    const vlm = new VLM({ capabilities: { gltfModels: true, platformName: 'test' } } as any)
+    const virvi = new Virvi({ capabilities: { gltfModels: true, platformName: 'test' } } as any)
     const handlers: Record<string, (m: unknown) => void> = {}
-    ;(vlm as any).colyseus = { onMessage: (t: string, h: (m: unknown) => void) => { handlers[t] = h }, onLeave: () => {}, getRoom: () => null }
-    ;(vlm as any).registerMessageHandlers()
+    ;(virvi as any).colyseus = { onMessage: (t: string, h: (m: unknown) => void) => { handlers[t] = h }, onLeave: () => {}, getRoom: () => null }
+    ;(virvi as any).registerMessageHandlers()
     const got: unknown[] = []
-    const off = vlm.onLibraryChanged((c) => got.push(c))
+    const off = virvi.onLibraryChanged((c) => got.push(c))
     handlers.scene_library_changed({ action: 'remove', id: 'x' })
     off()
     handlers.scene_library_changed({ action: 'remove', id: 'y' })

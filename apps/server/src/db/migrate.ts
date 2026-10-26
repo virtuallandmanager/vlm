@@ -12,15 +12,15 @@ import { ensureVenueConstraints } from './venue-constraints.js'
 export async function runMigrations() {
   // Test the database connection
   await db.execute(sql`SELECT 1`)
-  console.log('[vlm-server] Database connection verified')
+  console.log('[virvi-server] Database connection verified')
 
   try {
     await ensureVenueConstraints((q) => db.execute(sql.raw(q)))
-    console.log('[vlm-server] Venue constraints ensured')
+    console.log('[virvi-server] Venue constraints ensured')
   } catch (err) {
     // Don't rethrow: boot must behave as before when drizzle-kit push failed.
     console.error(
-      `[vlm-server] Venue constraints could not be ensured — double-booking protection is OFF: ${err instanceof Error ? err.message : String(err)}`,
+      `[virvi-server] Venue constraints could not be ensured — double-booking protection is OFF: ${err instanceof Error ? err.message : String(err)}`,
     )
   }
 

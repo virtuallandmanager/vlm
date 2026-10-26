@@ -1,6 +1,6 @@
 // Platform-free vector/quaternion math for in-world editing. Conventions match the Decentraland SDK
 // (left-handed, Euler degrees applied yaw(Y) / pitch(X) / roll(Z) like Quaternion.fromEulerDegrees),
-// but vlm-core must not depend on @dcl packages, so the formulas are reproduced here.
+// but virvi-core must not depend on @dcl packages, so the formulas are reproduced here.
 import type { Vec3 } from '@virvixr/shared'
 
 export type Quat = { x: number; y: number; z: number; w: number }

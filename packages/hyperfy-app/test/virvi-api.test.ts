@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { VlmApi } from '../src/vlm-api.js'
+import { VirviApi } from '../src/virvi-api.js'
 
 type Res = { ok: boolean; status: number; json(): Promise<unknown> } | undefined
 type Call = { url: string; init: { method?: string; headers?: Record<string, string>; body?: string } }
@@ -8,7 +8,7 @@ const res = (status: number, body: unknown = {}): Res => ({ ok: status >= 200 &&
 function make(responses: Array<Res | Error>, pass: string | null = 'P', renew: (() => string | null) | null = null) {
   const calls: Call[] = []
   let auth = 0
-  const api = new VlmApi({
+  const api = new VirviApi({
     feedUrl: 'https://api.example',
     fetch: async (url, init) => {
       calls.push({ url, init: init as Call['init'] })
@@ -30,7 +30,7 @@ function make(responses: Array<Res | Error>, pass: string | null = 'P', renew: (
 const T = { position: { x: 1, y: 2, z: 3 }, rotation: { x: 0, y: 45, z: 0 }, scale: { x: 1, y: 1, z: 1 } }
 const body = (c: Call) => JSON.parse(c.init.body!)
 
-describe('VlmApi', () => {
+describe('VirviApi', () => {
   it('403 on save maps to the no-access reason', async () => {
     const t = make([res(403, { error: 'Forbidden' })])
     expect(await t.api.saveTransform('i1', T)).toEqual({ ok: false, reason: 'no_access' })

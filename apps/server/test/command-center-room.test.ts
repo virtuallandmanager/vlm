@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { Client } from 'colyseus.js'
 import { db } from '../src/db/connection.js'
 import { events, eventSceneLinks } from '../src/db/schema.js'
-import { VLMCommandCenterRoom } from '../src/ws/VLMCommandCenterRoom.js'
+import { VirviCommandCenterRoom } from '../src/ws/VirviCommandCenterRoom.js'
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene, tokenFor } from './helpers/factories.js'
 
@@ -12,7 +12,7 @@ const { Server, LocalPresence } = _require('colyseus') as any
 const { WebSocketTransport } = _require('@colyseus/ws-transport') as any
 
 async function join(url: string, eventId: string, token: string) {
-  const room = await new Client(url).joinOrCreate('vlm_command_center', { eventId, sessionToken: token })
+  const room = await new Client(url).joinOrCreate('virvi_command_center', { eventId, sessionToken: token })
   const inbox: { type: string; message: any }[] = []
   room.onMessage('*', (type: string | number, message: any) => inbox.push({ type: String(type), message }))
   async function waitFor(type: string, ms = 3000) {
@@ -27,13 +27,13 @@ async function join(url: string, eventId: string, token: string) {
   return { room, waitFor }
 }
 
-describe('VLMCommandCenterRoom cross_world_update', () => {
+describe('VirviCommandCenterRoom cross_world_update', () => {
   let server: any
   let url: string
   beforeEach(async () => {
     await resetDb()
     server = new Server({ transport: new WebSocketTransport(), presence: new LocalPresence() })
-    server.define('vlm_command_center', VLMCommandCenterRoom).filterBy(['eventId'])
+    server.define('virvi_command_center', VirviCommandCenterRoom).filterBy(['eventId'])
     const port = 20000 + Math.floor(Math.random() * 20000)
     await server.listen(port)
     url = `ws://localhost:${port}`
@@ -63,8 +63,8 @@ describe('VLMCommandCenterRoom cross_world_update', () => {
     const owner = await createUser()
     const [event] = await db.insert(events).values({ ownerId: owner.id, name: 'Festival' }).returning()
     const c = new Client(url)
-    await expect(c.joinOrCreate('vlm_command_center', { eventId: event.id })).rejects.toThrow()
-    await expect(c.joinOrCreate('vlm_command_center', { eventId: event.id, sessionToken: 'garbage' })).rejects.toThrow()
+    await expect(c.joinOrCreate('virvi_command_center', { eventId: event.id })).rejects.toThrow()
+    await expect(c.joinOrCreate('virvi_command_center', { eventId: event.id, sessionToken: 'garbage' })).rejects.toThrow()
     const pass = tokenFor(owner, { kind: 'scene', sceneId: crypto.randomUUID() })
     await expect(join(url, event.id, pass)).rejects.toThrow()
   })

@@ -1,5 +1,5 @@
 // Writes assets/empty.glb: the smallest valid GLB, one scene with no nodes. Hyperfy apps need a model;
-// the VLM app draws everything from its script. Skips when the file exists unless --force is given.
+// the Virvi app draws everything from its script. Skips when the file exists unless --force is given.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'

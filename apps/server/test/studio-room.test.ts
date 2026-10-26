@@ -9,7 +9,7 @@ import { testApp, createUser, createScene, tokenFor } from './helpers/factories.
 import { startGameServer, joinStudio } from './helpers/game-server.js'
 import { createDesign, issueWorker, queueJob, okResult } from './helpers/studio.js'
 
-describe('VLMStudioRoom', () => {
+describe('VirviStudioRoom', () => {
   let gs: Awaited<ReturnType<typeof startGameServer>>
   let app: Awaited<ReturnType<typeof testApp>>
   const prev = config.studioEnabled

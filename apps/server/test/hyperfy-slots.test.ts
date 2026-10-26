@@ -28,7 +28,7 @@ describe('hosted Hyperfy world slots', () => {
     n += 1
     return db
       .insert(hyperfyWorlds)
-      .values({ sceneId, ownerId: owner.id, name: `W${n}`, keyHash: `hash-${n}`, keyPrefix: 'vlmw_xxxxxxx', ...values })
+      .values({ sceneId, ownerId: owner.id, name: `W${n}`, keyHash: `hash-${n}`, keyPrefix: 'virviw_xxxxxxx', ...values })
       .returning()
       .then((r) => r[0])
   }

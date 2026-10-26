@@ -39,7 +39,7 @@ describe('GET /api/setup/models', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({
       sceneId: scene.id,
-      models: [{ elementId: m.id, name: 'Hosted', url: 'https://cdn.vlm.gg/u/aa.glb', file: 'models/vlm/aa.glb', sizeBytes: 1234 }],
+      models: [{ elementId: m.id, name: 'Hosted', url: 'https://cdn.vlm.gg/u/aa.glb', file: 'models/virvi/aa.glb', sizeBytes: 1234 }],
     })
   })
 

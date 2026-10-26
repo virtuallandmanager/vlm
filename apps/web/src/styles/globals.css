@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * VLM theme: matte graphite surfaces, cyan reserved for actions, selection and focus.
+ * Virvi theme: matte graphite surfaces, cyan reserved for actions, selection and focus.
  * The dashboard is written with Tailwind's gray-* and blue-* classes; redefining those two scales here restyles
  * every page at once. blue-600 (filled buttons with white text) maps to a deep cyan that keeps white text at
  * 5:1; the bright cyan (accent-*) is for the primary call to action, with dark text on it.

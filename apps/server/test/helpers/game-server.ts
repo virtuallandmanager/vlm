@@ -1,9 +1,7 @@
 import { createRequire } from 'node:module'
 import { Client } from 'colyseus.js'
 import { initBus } from '../../src/realtime/bus.js'
-import { VLMSceneRoom } from '../../src/ws/VLMSceneRoom.js'
-import { VLMCommandCenterRoom } from '../../src/ws/VLMCommandCenterRoom.js'
-import { VLMStudioRoom } from '../../src/ws/VLMStudioRoom.js'
+import { defineRooms } from '../../src/ws/registry.js'
 
 const _require = createRequire(import.meta.url)
 const { Server, LocalPresence, matchMaker } = _require('colyseus') as any
@@ -13,9 +11,7 @@ export async function startGameServer() {
   const presence = new LocalPresence()
   initBus(presence)
   const server = new Server({ transport: new WebSocketTransport(), presence })
-  server.define('vlm_scene', VLMSceneRoom).filterBy(['sceneId'])
-  server.define('vlm_command_center', VLMCommandCenterRoom).filterBy(['eventId'])
-  server.define('vlm_studio', VLMStudioRoom).filterBy(['designId'])
+  defineRooms(server)
   const port = 20000 + Math.floor(Math.random() * 20000)
   await server.listen(port)
   return { url: `ws://localhost:${port}`, stop: () => server.gracefullyShutdown(false) as Promise<void> }
@@ -24,7 +20,7 @@ export async function startGameServer() {
 export async function joinScene(url: string, sceneId: string, token?: string) {
   const client = new Client(url)
   const inbox: { type: string; message: any }[] = []
-  const room = await client.joinOrCreate('vlm_scene', { sceneId, sessionToken: token, clientType: 'analytics' })
+  const room = await client.joinOrCreate('virvi_scene', { sceneId, sessionToken: token, clientType: 'analytics' })
   room.onMessage('*', (type: string | number, message: any) => inbox.push({ type: String(type), message }))
 
   async function waitFor(type: string, ms = 3000) {
@@ -47,7 +43,7 @@ export async function joinScene(url: string, sceneId: string, token?: string) {
 
 /** Joins a design's studio room and collects its `studio_event` messages in order. */
 export async function joinStudio(url: string, designId: string, token?: string) {
-  const room = await new Client(url).joinOrCreate('vlm_studio', { designId, sessionToken: token })
+  const room = await new Client(url).joinOrCreate('virvi_studio', { designId, sessionToken: token })
   const events: any[] = []
   room.onMessage('studio_event', (message: any) => events.push(message))
   async function waitForCount(n: number, ms = 3000) {

@@ -6,13 +6,13 @@ export interface HandoffDeps {
   href: string                                   // window.location.href at load
   replaceUrl: (url: string) => void              // history.replaceState(null, '', url)
   exchange: (code: string) => Promise<{ status: number; body?: { accessToken: string; refreshToken: string | null; user: unknown } }>
-  saveSession: (s: { token: string; refresh: string | null; user: unknown }) => void // localStorage 'vlm_auth', same shape as auth/callback
+  saveSession: (s: { token: string; refresh: string | null; user: unknown }) => void // localStorage 'virvi_auth', same shape as auth/callback
   go: (url: string) => void                      // window.location.href = url (full load so AuthProvider reads the session)
-  storedSession?: () => string | null            // localStorage.getItem('vlm_auth')
+  storedSession?: () => string | null            // localStorage.getItem('virvi_auth')
   now?: () => number
 }
 
-/** True when `vlm_auth` holds a usable full website session, which a hand-off must never replace with a scene pass. */
+/** True when `virvi_auth` holds a usable full website session, which a hand-off must never replace with a scene pass. */
 export function hasAccountSession(stored: string | null, now: number): boolean {
   if (!stored) return false
   try {

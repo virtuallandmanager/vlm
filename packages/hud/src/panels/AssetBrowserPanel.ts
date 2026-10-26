@@ -1,7 +1,7 @@
 /**
  * AssetBrowserPanel — Browse/search the 3D asset library, place assets in scene.
  *
- * Fetches assets from VLM API, renders thumbnail grid via HUDRenderer,
+ * Fetches assets from Virvi API, renders thumbnail grid via HUDRenderer,
  * and tracks budget usage against platform limits.
  */
 
@@ -12,11 +12,11 @@ import type {
   BudgetLimits,
 } from '@virvixr/shared'
 import { HUDPanelType } from '@virvixr/shared'
-import type { VLMHttpClient } from '@virvixr/client'
+import type { VirviHttpClient } from '@virvixr/client'
 
 export class AssetBrowserPanel {
   private renderer: HUDRenderer
-  private http: VLMHttpClient
+  private http: VirviHttpClient
   private assets: AssetThumbnail[] = []
   private usage: BudgetUsage = {
     fileSizeBytes: 0,
@@ -27,7 +27,7 @@ export class AssetBrowserPanel {
   }
   private limits: BudgetLimits
 
-  constructor(renderer: HUDRenderer, http: VLMHttpClient, limits: BudgetLimits) {
+  constructor(renderer: HUDRenderer, http: VirviHttpClient, limits: BudgetLimits) {
     this.renderer = renderer
     this.http = http
     this.limits = limits

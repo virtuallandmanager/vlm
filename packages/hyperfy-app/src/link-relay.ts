@@ -5,16 +5,16 @@ import {
   type HWorld,
   type LinkReply,
   type ScriptSetTimeout,
-  type VlmVouch,
-  type VlmVouchResult,
+  type VirviVouch,
+  type VirviVouchResult,
 } from './sandbox.js'
 
 export interface LinkRelayOptions {
   app: Pick<HApp, 'on' | 'sendTo'>
   world: Pick<HWorld, 'getPlayer' | 'on'>
   setTimeout: ScriptSetTimeout
-  /** `app.vlmVouch`: a hosted image's server-side vouch. Undefined means a self-run world. */
-  vouch: VlmVouch | undefined
+  /** `app.virviVouch`: a hosted image's server-side vouch. Undefined means a self-run world. */
+  vouch: VirviVouch | undefined
 }
 
 /** A LINK request's attempt number, echoed in every answer so the browser can drop answers to older attempts. */
@@ -27,14 +27,14 @@ function attemptOf(data: unknown): number {
  * The server half's answer to LINK.
  * - The player is the event's sender (Hyperfy passes the sender's socket id, which is the player id), never anything
  *   in the message, and only an admin or builder is answered at all.
- * - Hosted worlds vouch for that player through `app.vlmVouch`: the image calls VLM from Node with the world secret
+ * - Hosted worlds vouch for that player through `app.virviVouch`: the image calls Virvi from Node with the world secret
  *   and key from its machine env, so the secret never enters a script (any builder's script shares the sandbox).
  * - The result goes to that player only. While unlinked the pending pairing is polled every claimPollMs until it is
  *   approved, refused or expired.
- * - Without `app.vlmVouch` (a self-run world) nothing is vouched: the player pairs from the browser.
+ * - Without `app.virviVouch` (a self-run world) nothing is vouched: the player pairs from the browser.
  */
-export function runLinkRelay({ app, world, setTimeout, vouch: vlmVouch }: LinkRelayOptions): void {
-  const hosted = typeof vlmVouch === 'function'
+export function runLinkRelay({ app, world, setTimeout, vouch: virviVouch }: LinkRelayOptions): void {
+  const hosted = typeof virviVouch === 'function'
   /** Each player's link in progress: the poll that may act, the attempt to answer, its pending pairing and code card. */
   const pending = new Map<
     string,
@@ -44,9 +44,9 @@ export function runLinkRelay({ app, world, setTimeout, vouch: vlmVouch }: LinkRe
   const reply = (playerId: string, r: LinkReply, attempt: number) =>
     app.sendTo(playerId, LINK, { ...r, attempt })
 
-  const vouch = async (playerId: string, pendingPairingId?: string): Promise<VlmVouchResult | undefined> => {
+  const vouch = async (playerId: string, pendingPairingId?: string): Promise<VirviVouchResult | undefined> => {
     try {
-      return await vlmVouch!({
+      return await virviVouch!({
         hyperfyPlayerId: playerId,
         playerName: world.getPlayer(playerId)?.name ?? null,
         ...(pendingPairingId ? { pendingPairingId } : {}),
@@ -93,7 +93,7 @@ export function runLinkRelay({ app, world, setTimeout, vouch: vlmVouch }: LinkRe
       pending.delete(playerId)
       answer({ status: 'expired' })
     } else if (status === 'unauthorized') {
-      // VLM doesn't know this world's secret (bad or cleared): the browser can still pair with a code.
+      // Virvi doesn't know this world's secret (bad or cleared): the browser can still pair with a code.
       pending.delete(playerId)
       answer({ status: 'self' })
     } else if (entry.pairingId) {

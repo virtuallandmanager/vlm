@@ -107,7 +107,7 @@ describe('AR spaces setup routes', () => {
   it('a scene pass is refused on setup routes', async () => {
     const s = await setup()
     const space = await makeSpace(s.owner, s.scene.id)
-    const [world] = await db.insert(hyperfyWorlds).values({ sceneId: s.scene.id, ownerId: s.owner.id, name: 'W', keyHash: 'ar-world-hash', keyPrefix: 'vlmw_a' }).returning()
+    const [world] = await db.insert(hyperfyWorlds).values({ sceneId: s.scene.id, ownerId: s.owner.id, name: 'W', keyHash: 'ar-world-hash', keyPrefix: 'virviw_a' }).returning()
     const [pairing] = await db.insert(hyperfyPairings).values({
       worldId: world.id, userId: s.owner.id, secretHash: 'ar-secret-hash', status: 'claimed', codeExpiresAt: new Date(Date.now() + 3600_000), expiresAt: new Date(Date.now() + 3600_000),
     }).returning()

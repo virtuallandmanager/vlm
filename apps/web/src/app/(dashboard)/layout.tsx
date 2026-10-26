@@ -86,7 +86,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-screen flex-col md:flex-row">
       <aside className="flex w-full shrink-0 flex-col border-b border-gray-800 bg-gray-950 md:sticky md:top-0 md:h-screen md:w-64 md:border-b-0 md:border-r">
         <div className="px-4 pt-4 md:px-6 md:pt-7">
-          <Link href="/scenes" className="text-xl font-bold tracking-tight text-white">VLM</Link>
+          <Link href="/scenes" className="text-xl font-bold tracking-tight text-white">Virvi</Link>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 py-3 md:block md:flex-1 md:overflow-y-auto md:px-3 md:py-6">
           {navSections.map((section, i) => (

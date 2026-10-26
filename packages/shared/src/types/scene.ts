@@ -38,7 +38,7 @@ export interface Scene {
 // SDK initialization
 // ---------------------------------------------------------------------------
 
-export interface VLMInitConfig {
+export interface VirviInitConfig {
   env?: 'dev' | 'staging' | 'prod';
   sceneId?: string;
   apiUrl?: string;

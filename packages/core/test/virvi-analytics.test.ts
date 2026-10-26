@@ -1,17 +1,17 @@
 import { describe, it, expect, vi } from 'vitest'
-import { VLM } from '../src/VLM.js'
+import { Virvi } from '../src/Virvi.js'
 import type { Collector } from '../src/analytics/collector.js'
 
-describe('VLM analytics attachment', () => {
+describe('Virvi analytics attachment', () => {
   it('destroy() detaches the shared collector without destroying it', async () => {
     const collector = { destroy: vi.fn(async () => {}), track: vi.fn() } as unknown as Collector
-    const vlm = new VLM({} as any)
-    vlm.attachAnalytics(collector)
-    vlm.track('before')
+    const virvi = new Virvi({} as any)
+    virvi.attachAnalytics(collector)
+    virvi.track('before')
     expect(collector.track).toHaveBeenCalledWith('before', undefined)
-    await vlm.destroy()
+    await virvi.destroy()
     expect(collector.destroy).not.toHaveBeenCalled()
-    vlm.track('after')
+    virvi.track('after')
     expect(collector.track).toHaveBeenCalledTimes(1)
   })
 })

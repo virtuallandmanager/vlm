@@ -40,7 +40,7 @@ export interface PairingOptions {
 }
 
 /**
- * A HUD's link to VLM. Self-run: start() asks for a code, polls the claim until a VLM user approves it, then
+ * A HUD's link to Virvi. Self-run: start() asks for a code, polls the claim until a Virvi user approves it, then
  * keeps the pass fresh by renewing renewBeforeMs before it expires. Hosted: adopt() installs the pass the server
  * half vouched for, and the injected renewer keeps it fresh. The browser secret never leaves this object except
  * in the claim and renew bodies; only its SHA-256 goes out with the pair start.
@@ -93,7 +93,7 @@ export class Pairing {
   }
 
   /**
-   * VLM refused the pass (a 401): renews now, and if that can't produce a fresh pass the link is expired for good
+   * Virvi refused the pass (a 401): renews now, and if that can't produce a fresh pass the link is expired for good
    * ("Link expired. Pair again."), with no background renewal that could flip it back. Resolves true when renewed.
    */
   async renewOrExpire(): Promise<boolean> {
@@ -144,7 +144,7 @@ export class Pairing {
     try {
       const res = await this.opts.fetch(`${this.opts.feedUrl}${path}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-VLM-App-Version': String(HYPERFY_FEED.version) },
+        headers: { 'Content-Type': 'application/json', 'X-Virvi-App-Version': String(HYPERFY_FEED.version) },
         body: JSON.stringify(body),
       })
       if (!res) return undefined

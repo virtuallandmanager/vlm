@@ -1,4 +1,4 @@
-export class VLMAuth {
+export class VirviAuth {
   token: string | null = null
   refreshToken: string | null = null
 

@@ -95,8 +95,8 @@ async function release(setup: LocationSetupRow, scene: AnalyticsSceneRow, now: D
 }
 
 /**
- * Links a World Virvi just deployed to its VLM scene: the location row (as the registry would write it
- * for a World ref) and the active setup, so the in-world editor works with no "Set up VLM here" step.
+ * Links a World Virvi just deployed to its Virvi scene: the location row (as the registry would write it
+ * for a World ref) and the active setup, so the in-world editor works with no "Set up Virvi here" step.
  * Another scene's setup there is ended as 'replaced'; the same scene's only gets the new entity id.
  */
 export async function linkWorldLocation(input: {
@@ -161,7 +161,7 @@ export async function linkWorldLocation(input: {
   })
 }
 
-/** Create (or reuse) the wallet's user, a VLM scene with a default preset, and the active setup. Free: no plan limits. */
+/** Create (or reuse) the wallet's user, a Virvi scene with a default preset, and the active setup. Free: no plan limits. */
 export async function setUpLocation(scene: AnalyticsSceneRow, wallet: string, now = new Date()) {
   const w = wallet.toLowerCase()
   if (await getActiveSetup(scene.id)) throw new SetupError(409, 'already_set_up')

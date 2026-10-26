@@ -123,7 +123,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(fastifySwagger, {
     openapi: {
       info: {
-        title: 'VLM API',
+        title: 'Virvi API',
         description: 'Virtual Land Manager API',
         version: '2.0.0',
       },
@@ -134,7 +134,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
             type: 'http',
             scheme: 'bearer',
             bearerFormat: 'JWT',
-            description: 'JWT access token or API key (vlm_...)',
+            description: 'JWT access token or API key (virvi_...)',
           },
         },
       },
@@ -146,7 +146,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     routePrefix: '/api/docs',
   })
 
-  console.log('[vlm-server] API docs available at /api/docs')
+  console.log('[virvi-server] API docs available at /api/docs')
 
   // ── API Routes ───────────────────────────────────────────────────────────
   // Auth routes get stricter rate limits to mitigate brute-force attacks
@@ -274,7 +274,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       return reply.type(register.contentType).send(metrics)
     })
 
-    console.log(`[vlm-server] Prometheus metrics enabled at /metrics`)
+    console.log(`[virvi-server] Prometheus metrics enabled at /metrics`)
   }
 
   // ── Serve uploaded media files (local storage) ────────────────────────
@@ -304,9 +304,9 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
 
   // ── Static Dashboard ─────────────────────────────────────────────────────
   const dashboardPath = resolve(config.dashboardDir)
-  console.log(`[vlm-server] Dashboard path: ${dashboardPath} (exists: ${existsSync(dashboardPath)})`)
+  console.log(`[virvi-server] Dashboard path: ${dashboardPath} (exists: ${existsSync(dashboardPath)})`)
   if (existsSync(dashboardPath)) {
-    console.log(`[vlm-server] Serving dashboard from ${dashboardPath}`)
+    console.log(`[virvi-server] Serving dashboard from ${dashboardPath}`)
     await app.register(fastifyStatic, {
       root: dashboardPath,
       prefix: '/',
@@ -341,7 +341,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       return reply.sendFile('index.html')
     })
   } else {
-    console.log(`[vlm-server] No dashboard directory at ${dashboardPath} — API-only mode`)
+    console.log(`[virvi-server] No dashboard directory at ${dashboardPath} — API-only mode`)
     app.setNotFoundHandler(async (_request, reply) => {
       return reply.status(404).send({ error: 'Not found' })
     })

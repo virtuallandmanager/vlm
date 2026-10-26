@@ -87,7 +87,7 @@ describe('POST /api/hyperfy/analytics', () => {
   })
 
   it('401 for a bad key', async () => {
-    expect((await post(goodBatch(), 'vlmw_nope')).statusCode).toBe(401)
+    expect((await post(goodBatch(), 'virviw_nope')).statusCode).toBe(401)
     expect((await post(goodBatch(), null)).statusCode).toBe(401)
     expect(await db.select().from(analyticsScenes)).toHaveLength(0)
   })

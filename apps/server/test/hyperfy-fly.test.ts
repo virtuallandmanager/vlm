@@ -181,7 +181,7 @@ describe('FlyApi', () => {
   })
 
   describe('runJob', () => {
-    const JOB = { image: 'img:9', env: { DB_STATEMENTS: 'c2VjcmV0' }, cmd: ['node', '/app/vlm/db-job.mjs'] }
+    const JOB = { image: 'img:9', env: { DB_STATEMENTS: 'c2VjcmV0' }, cmd: ['node', '/app/virvi/db-job.mjs'] }
     const exitEvents = (code: number) => [
       { type: 'exit', status: 'stopped', timestamp: 3, request: { exit_event: { exit_code: code, oom_killed: false } } },
       { type: 'start', status: 'started', timestamp: 2 },
@@ -209,7 +209,7 @@ describe('FlyApi', () => {
         config: {
           image: 'img:9',
           env: { DB_STATEMENTS: 'c2VjcmV0' },
-          init: { cmd: ['node', '/app/vlm/db-job.mjs'] },
+          init: { cmd: ['node', '/app/virvi/db-job.mjs'] },
           guest: { cpu_kind: 'shared', cpus: 1, memory_mb: 256 },
           restart: { policy: 'no' },
           auto_destroy: false,

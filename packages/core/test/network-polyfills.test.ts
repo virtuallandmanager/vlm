@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { ensureNetworkPolyfills, ColyseusManager } from '@virvixr/client'
-import { VLM } from '../src/VLM.js'
+import { Virvi } from '../src/Virvi.js'
 
 const g = globalThis as any
 const saved = { URL: g.URL, XMLHttpRequest: g.XMLHttpRequest, fetch: g.fetch }
@@ -47,7 +47,7 @@ describe('ensureNetworkPolyfills (runtimes without URL / XMLHttpRequest, e.g. De
       req.onload = () => resolve()
       req.onerror = (e: unknown) => reject(e)
     })
-    req.open('POST', 'http://localhost:3010/matchmake/joinOrCreate/vlm_scene')
+    req.open('POST', 'http://localhost:3010/matchmake/joinOrCreate/virvi_scene')
     req.withCredentials = true
     req.setRequestHeader('Authorization', 'Bearer t')
     req.send(JSON.stringify({ sceneId: 's1' }))
@@ -81,15 +81,15 @@ describe('ensureNetworkPolyfills (runtimes without URL / XMLHttpRequest, e.g. De
   })
 })
 
-describe('VLM.connectToScene', () => {
+describe('Virvi.connectToScene', () => {
   it('moves to the error state (instead of hanging in "connecting") when starting the connection throws', async () => {
     vi.spyOn(ColyseusManager.prototype, 'connect').mockImplementation(() => {
       throw new Error('boom')
     })
-    const vlm = new VLM({ capabilities: { platformName: 'test' } } as any)
+    const virvi = new Virvi({ capabilities: { platformName: 'test' } } as any)
     const states: string[] = []
-    vlm.onStateChange((s) => states.push(s))
-    await expect(vlm.connectToScene('scene-1')).rejects.toThrow('boom')
+    virvi.onStateChange((s) => states.push(s))
+    await expect(virvi.connectToScene('scene-1')).rejects.toThrow('boom')
     expect(states).toEqual(['connecting', 'error'])
   })
 })

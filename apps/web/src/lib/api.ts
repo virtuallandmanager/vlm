@@ -141,7 +141,7 @@ export function mediaContentType(file: File): string {
 
 export type { AdminAdSpace } from '@virvixr/shared'
 
-/** A visitor's report of a VLM Spaces space, as the admin page lists it. */
+/** A visitor's report of a Virvi Spaces space, as the admin page lists it. */
 export interface AdminArReport {
   id: string
   spaceId: string
@@ -245,7 +245,7 @@ export function useApi() {
         throw Object.assign(new Error(err.error || `API error ${res.status}`), { status: res.status, body: err })
       }
       const m = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')
-      return { blob: await res.blob(), filename: m?.[1] ?? `vlm-ring-${id}.${format}` }
+      return { blob: await res.blob(), filename: m?.[1] ?? `virvi-ring-${id}.${format}` }
     },
 
     // Scene roles (wallet-based)
@@ -439,7 +439,7 @@ export function useApi() {
     getHeadsets: () => apiFetch<ArDeviceSummary[]>('/api/ar/devices'),
     revokeHeadset: (id: string) => apiFetch<void>(`/api/ar/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
-    // Hyperfy worlds (self-run and VLM-hosted)
+    // Hyperfy worlds (self-run and Virvi-hosted)
     getHyperfyWorlds: (sceneId: string) =>
       apiFetch<{ worlds: HyperfyWorldSummary[] }>(`/api/hyperfy/worlds?sceneId=${encodeURIComponent(sceneId)}`),
     createHyperfyWorld: (data: { sceneId: string; name: string }) =>

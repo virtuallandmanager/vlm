@@ -1,5 +1,5 @@
-// Logic for `vlm-dcl sync` and `vlm-dcl install`. Plain Node >= 18, node: built-ins only.
-// Trusts nothing from the server: file paths are validated and confined to <cwd>/models/vlm.
+// Logic for `virvi-dcl sync` and `virvi-dcl install`. Plain Node >= 18, node: built-ins only.
+// Trusts nothing from the server: file paths are validated and confined to <cwd>/models/virvi.
 // The HUD's launcher icon ships in this package and is copied to one fixed path in the scene.
 import fs from 'node:fs'
 import path from 'node:path'
@@ -7,20 +7,20 @@ import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
 const MB = 1024 * 1024
-const FILE_RE = /^models\/vlm\/[A-Za-z0-9._-]+\.glb$/i
-const MANIFEST = 'models/vlm/.vlm-sync.json'
+const FILE_RE = /^models\/virvi\/[A-Za-z0-9._-]+\.glb$/i
+const MANIFEST = 'models/virvi/.virvi-sync.json'
 const MAX_DOWNLOAD = 60 * MB
 const TIMEOUT_MS = 60000
 const LIST_TIMEOUT_MS = 30000
-const TMP_RE = /\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.vlm-tmp$/
+const TMP_RE = /\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.virvi-tmp$/
 const SIZE_EXCLUDES = new Set(['node_modules', 'bin', '.git', 'dist'])
 export const DEFAULT_SERVER = 'https://api.vlm.gg'
 
-/** Scene-relative path of the HUD launcher icon; must match HUD_ICON_SRC in vlm-adapter-dcl (src/hud/icon.ts). */
+/** Scene-relative path of the HUD launcher icon; must match HUD_ICON_SRC in virvi-adapter-dcl (src/hud/icon.ts). */
 export const HUD_ICON_FILE = 'images/virvi/hud-v.png'
 const HUD_ICON_ASSET = fileURLToPath(new URL('../assets/hud-v.png', import.meta.url))
-const CREATOR_HUB_SCRIPT = 'assets/scene/Scripts/VLMManager.ts'
-const CREATOR_HUB_SCRIPT_SRC = fileURLToPath(new URL('../creator-hub/VLMManager.ts', import.meta.url))
+const CREATOR_HUB_SCRIPT = 'assets/scene/Scripts/VirviManager.ts'
+const CREATOR_HUB_SCRIPT_SRC = fileURLToPath(new URL('../creator-hub/VirviManager.ts', import.meta.url))
 
 /**
  * Copies one packaged file to a fixed scene-relative `rel` path: never through a symlink, never outside cwd,
@@ -47,7 +47,7 @@ function copyIntoScene(cwd, rel, src, { dryRun = false, overwrite = true } = {})
   if (!fs.realpathSync(path.dirname(dest)).startsWith(base + path.sep)) {
     throw new Error(`${path.dirname(rel)} resolves outside the scene folder — refusing to continue`)
   }
-  const tmpFile = `${dest}.${randomUUID()}.vlm-tmp`
+  const tmpFile = `${dest}.${randomUUID()}.virvi-tmp`
   try {
     fs.writeFileSync(tmpFile, bytes)
     fs.renameSync(tmpFile, dest)
@@ -60,14 +60,14 @@ function copyIntoScene(cwd, rel, src, { dryRun = false, overwrite = true } = {})
   return 'installed'
 }
 
-/** Puts the HUD launcher icon at images/virvi/hud-v.png (always the packaged version: the path is VLM's own). */
+/** Puts the HUD launcher icon at images/virvi/hud-v.png (always the packaged version: the path is Virvi's own). */
 export function installHudAssets({ cwd = process.cwd(), dryRun = false } = {}) {
   return copyIntoScene(cwd, HUD_ICON_FILE, HUD_ICON_ASSET, { dryRun })
 }
 
 /**
- * `vlm-dcl install`: the HUD icon, plus, in a Creator Hub project (it has assets/scene), the VLMManager script
- * at assets/scene/Scripts/VLMManager.ts. An edited script is left alone unless `force`.
+ * `virvi-dcl install`: the HUD icon, plus, in a Creator Hub project (it has assets/scene), the VirviManager script
+ * at assets/scene/Scripts/VirviManager.ts. An edited script is left alone unless `force`.
  */
 export function install({ cwd = process.cwd(), dryRun = false, force = false, log = console.log } = {}) {
   if (!fs.existsSync(path.join(cwd, 'scene.json'))) throw new Error('Could not read scene.json — run this from your scene folder')
@@ -91,10 +91,10 @@ export function locationFromSceneJson(json) {
   throw new Error('scene.json has neither worldConfiguration.name nor scene.base — pass --location <key>')
 }
 
-/** Returns the absolute path if `file` is an allowed models/vlm GLB inside cwd, else null. */
+/** Returns the absolute path if `file` is an allowed models/virvi GLB inside cwd, else null. */
 function safePath(cwd, file) {
   if (typeof file !== 'string' || !FILE_RE.test(file)) return null
-  const root = path.resolve(cwd, 'models', 'vlm')
+  const root = path.resolve(cwd, 'models', 'virvi')
   const abs = path.resolve(cwd, file)
   if (path.dirname(abs) !== root) return null
   return abs
@@ -145,18 +145,18 @@ async function fetchModels(fetchFn, server, location, timeoutMs = LIST_TIMEOUT_M
     res = await fetchFn(url, { signal: AbortSignal.timeout(timeoutMs) })
   } catch (e) {
     if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
-      throw new Error(`The VLM server didn't answer within ${Math.round(timeoutMs / 1000)} s — try again later`)
+      throw new Error(`The Virvi server didn't answer within ${Math.round(timeoutMs / 1000)} s — try again later`)
     }
     throw e
   }
   if (res.status === 404) {
-    throw new Error("This location isn't set up in VLM yet — walk into your deployed scene and press Set up VLM here")
+    throw new Error("This location isn't set up in Virvi yet — walk into your deployed scene and press Set up Virvi here")
   }
   if (res.status === 400) throw new Error(`The server rejected the location "${location}" as invalid (use --location gc:<x>,<y> or world:<name>)`)
-  if (res.status === 429) throw new Error('Rate limited by the VLM server — wait a minute and try again')
-  if (!res.ok) throw new Error(`VLM server returned HTTP ${res.status}`)
+  if (res.status === 429) throw new Error('Rate limited by the Virvi server — wait a minute and try again')
+  if (!res.ok) throw new Error(`Virvi server returned HTTP ${res.status}`)
   const body = await res.json()
-  if (!body || !Array.isArray(body.models)) throw new Error('Unexpected response from the VLM server')
+  if (!body || !Array.isArray(body.models)) throw new Error('Unexpected response from the Virvi server')
   return body.models
 }
 
@@ -185,7 +185,7 @@ async function download(fetchFn, url, dest) {
     buf = Buffer.from(await res.arrayBuffer())
     if (buf.length > MAX_DOWNLOAD) throw new Error('file too large')
   }
-  const tmpFile = `${dest}.${randomUUID()}.vlm-tmp`
+  const tmpFile = `${dest}.${randomUUID()}.virvi-tmp`
   try {
     fs.writeFileSync(tmpFile, buf)
     fs.renameSync(tmpFile, dest)
@@ -197,17 +197,17 @@ async function download(fetchFn, url, dest) {
   }
 }
 
-/** Abort if models or models/vlm is a symlink or resolves outside cwd. */
+/** Abort if models or models/virvi is a symlink or resolves outside cwd. */
 function checkDirs(cwd) {
-  for (const rel of ['models', 'models/vlm']) {
+  for (const rel of ['models', 'models/virvi']) {
     const p = path.join(cwd, rel)
     if (isSymlink(p)) throw new Error(`${rel} is a symlink — refusing to write or delete through it`)
   }
-  const dir = path.join(cwd, 'models', 'vlm')
+  const dir = path.join(cwd, 'models', 'virvi')
   if (fs.existsSync(dir)) {
     const real = fs.realpathSync(dir)
     const base = fs.realpathSync(cwd)
-    if (!real.startsWith(base + path.sep)) throw new Error('models/vlm resolves outside the scene folder — refusing to continue')
+    if (!real.startsWith(base + path.sep)) throw new Error('models/virvi resolves outside the scene folder — refusing to continue')
   }
 }
 
@@ -215,7 +215,7 @@ function checkDirs(cwd) {
 function writeManifest(cwd, files) {
   const dest = path.join(cwd, MANIFEST)
   if (isSymlink(dest)) throw new Error(`${MANIFEST} is a symlink — refusing to write through it`)
-  const tmpFile = `${dest}.${randomUUID()}.vlm-tmp`
+  const tmpFile = `${dest}.${randomUUID()}.virvi-tmp`
   try {
     fs.writeFileSync(tmpFile, JSON.stringify({ files }, null, 2) + '\n')
     fs.renameSync(tmpFile, dest)
@@ -239,14 +239,14 @@ export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, locat
   log(`Location: ${loc}`)
 
   checkDirs(cwd)
-  // Before the model list, so scenes not set up yet (the Set up VLM here launcher) get the icon too
+  // Before the model list, so scenes not set up yet (the Set up Virvi here launcher) get the icon too
   const icon = installHudAssets({ cwd, dryRun })
   if (icon === 'installed') log(`${dryRun ? '[dry run] ' : ''}Installed the HUD icon: ${HUD_ICON_FILE}`)
   const prev = readManifest(cwd).filter((f) => safePath(cwd, f))
   const listed = await fetchModels(fetchFn, server, loc, listTimeoutMs)
-  if (!dryRun && fs.existsSync(path.join(cwd, 'models', 'vlm'))) {
-    for (const n of fs.readdirSync(path.join(cwd, 'models', 'vlm'))) {
-      if (TMP_RE.test(n)) fs.rmSync(path.join(cwd, 'models', 'vlm', n), { force: true })
+  if (!dryRun && fs.existsSync(path.join(cwd, 'models', 'virvi'))) {
+    for (const n of fs.readdirSync(path.join(cwd, 'models', 'virvi'))) {
+      if (TMP_RE.test(n)) fs.rmSync(path.join(cwd, 'models', 'virvi', n), { force: true })
     }
   }
   const downloaded = []
@@ -263,8 +263,8 @@ export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, locat
       urlOk = ['http:', 'https:'].includes(new URL(m?.url).protocol)
     } catch {}
     if (!abs || !urlOk) {
-      // A plain models/vlm/<name>.glb whose name has characters the sync won't write (old uploads)
-      const badName = urlOk && typeof m?.file === 'string' && /^models\/vlm\/[^/\\]+\.glb$/i.test(m.file) && !m.file.includes('..')
+      // A plain models/virvi/<name>.glb whose name has characters the sync won't write (old uploads)
+      const badName = urlOk && typeof m?.file === 'string' && /^models\/virvi\/[^/\\]+\.glb$/i.test(m.file) && !m.file.includes('..')
       log(
         badName
           ? `Warning: model "${m?.name ?? m?.elementId}" (${m.file}) can't be synced because its name has unsupported characters — re-upload it`
@@ -287,7 +287,7 @@ export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, locat
       st = fs.statSync(abs)
     } catch {}
     if (st && !tracked) {
-      log(`Warning: ${m.file} exists and wasn't created by vlm-dcl sync — rename or remove it`)
+      log(`Warning: ${m.file} exists and wasn't created by virvi-dcl sync — rename or remove it`)
       continue
     }
     const need = !st || (typeof m.sizeBytes === 'number' && st.size !== m.sizeBytes)
@@ -326,7 +326,7 @@ export async function sync({ cwd = process.cwd(), server = DEFAULT_SERVER, locat
   }
 
   if (!dryRun && (keep.size || prev.length)) {
-    fs.mkdirSync(path.join(cwd, 'models', 'vlm'), { recursive: true })
+    fs.mkdirSync(path.join(cwd, 'models', 'virvi'), { recursive: true })
     writeManifest(cwd, [...keep].sort())
   }
 

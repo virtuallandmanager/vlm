@@ -21,7 +21,7 @@ const MODE_COPY = {
   },
 } as const
 
-/** The Hyperfy app's setup, in Virvi's name (the deploy page's older copy says VLM). The file is still vlm.hyp. */
+/** The Hyperfy app's setup, in Virvi's name (the deploy page's older copy says Virvi). The file is still vlm.hyp. */
 function hyperfySetupSteps(feedUrl: string): string[] {
   return [
     'Download the Virvi app and drag vlm.hyp into your Hyperfy world.',

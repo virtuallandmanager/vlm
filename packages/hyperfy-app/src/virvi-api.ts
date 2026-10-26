@@ -4,8 +4,8 @@ import type { ScriptFetch } from './poller.js'
 export type ApiFailure = 'lost' | 'no_access' | 'auth' | 'invalid' | 'server'
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; reason: ApiFailure }
 
-/** A transform in VLM coordinates (Decentraland frame, rotation in degrees): no conversion happens here. */
-export interface VlmTransform {
+/** A transform in Virvi coordinates (Decentraland frame, rotation in degrees): no conversion happens here. */
+export interface VirviTransform {
   position: Vec3
   rotation: Vec3
   scale: Vec3
@@ -29,7 +29,7 @@ export interface CatalogEntry {
   [key: string]: unknown
 }
 
-export interface VlmApiOptions {
+export interface VirviApiOptions {
   feedUrl: string
   fetch: ScriptFetch
   getPass: () => string | null
@@ -63,16 +63,16 @@ function modelName(src: string): string {
 }
 
 /**
- * The Hyperfy HUD's edit client: VLM's REST API with a scene pass. Every call resolves (never rejects) with
+ * The Hyperfy HUD's edit client: Virvi's REST API with a scene pass. Every call resolves (never rejects) with
  * ok/value or a reason. An undefined fetch (network or CORS failure) is 'lost'; 401 calls onAuthFailure and, if
  * that renewed the pass, retries once, else (or on a second 401) is 'auth'; 403 is 'no_access'; other 4xx are
  * 'invalid'; 5xx are 'server'.
  */
-export class VlmApi {
-  constructor(private readonly opts: VlmApiOptions) {}
+export class VirviApi {
+  constructor(private readonly opts: VirviApiOptions) {}
 
   /** PUT /api/instances/:id */
-  saveTransform(instanceId: string, t: VlmTransform): Promise<ApiResult<unknown>> {
+  saveTransform(instanceId: string, t: VirviTransform): Promise<ApiResult<unknown>> {
     return this.call('PUT', `/api/instances/${encodeURIComponent(instanceId)}`, { position: t.position, rotation: t.rotation, scale: t.scale })
   }
 
@@ -133,7 +133,7 @@ export class VlmApi {
    * properties.modelSrc }, then POST /api/elements/:id/instances with the transform. If the instance can't be
    * made the new element is deleted again (DELETE /api/elements/:id) so no empty model is left behind.
    */
-  async placeModel(presetId: string, src: string, t: VlmTransform): Promise<ApiResult<{ elementId: string; instanceId: string }>> {
+  async placeModel(presetId: string, src: string, t: VirviTransform): Promise<ApiResult<{ elementId: string; instanceId: string }>> {
     const el = await this.call<{ element?: { id?: string } }>('POST', `/api/presets/${encodeURIComponent(presetId)}/elements`, {
       type: 'model',
       name: modelName(src),

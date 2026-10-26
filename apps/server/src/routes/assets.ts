@@ -28,7 +28,7 @@ const CATALOG_MODEL = { error: 'catalog_model', message: "Catalog models can't b
 /** Optional bearer: scene-pass, API-key and bad tokens count as anonymous (null). */
 function optionalAccount(authorization: string | undefined) {
   const bearer = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null
-  const claims = bearer && !bearer.startsWith('vlm_') ? verifySessionToken(bearer) : null
+  const claims = bearer && !bearer.startsWith('virvi_') ? verifySessionToken(bearer) : null
   return claims?.kind === 'account' ? claims : null
 }
 

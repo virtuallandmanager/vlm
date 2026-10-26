@@ -1,4 +1,4 @@
-import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData } from '@virvixr/shared'
+import type { VirviPlatformAdapter, VirviStorage, EntityHandle, TransformData } from '@virvixr/shared'
 import { listTransformable, previewOn, restoreOn } from './transform-ops.js'
 import type { ListedInstance } from './transform-ops.js'
 
@@ -26,12 +26,12 @@ interface SoundInstance {
 }
 
 export class SoundManager {
-  private adapter: VLMPlatformAdapter
-  private storage: VLMStorage
+  private adapter: VirviPlatformAdapter
+  private storage: VirviStorage
   private configs: Map<string, SoundConfig> = new Map()
   private instances: Map<string, SoundInstance> = new Map()
 
-  constructor(adapter: VLMPlatformAdapter, storage: VLMStorage) {
+  constructor(adapter: VirviPlatformAdapter, storage: VirviStorage) {
     this.adapter = adapter
     this.storage = storage
   }

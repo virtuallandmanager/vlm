@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { SceneManager } from '../src/SceneManager.js'
-import { VLMStorageImpl } from '../src/storage.js'
+import { VirviStorageImpl } from '../src/storage.js'
 import { EventBus } from '../src/events/EventBus.js'
 
 function setup() {
@@ -16,7 +16,7 @@ function setup() {
     removeCollider: vi.fn(),
     createVideoPlayer: vi.fn(),
   }
-  const storage = VLMStorageImpl.create()
+  const storage = VirviStorageImpl.create()
   const sm = new SceneManager(adapter, storage, new EventBus())
   return { adapter, storage, sm }
 }

@@ -6,7 +6,7 @@ import type { AnalyticsSceneRef } from './analytics.js';
 // Platform adapter — the single interface every metaverse platform implements
 // ---------------------------------------------------------------------------
 
-export interface VLMPlatformAdapter {
+export interface VirviPlatformAdapter {
   // --- Identity & Auth ---
   /** Get the current user's platform-specific identity */
   getPlatformUser(): Promise<PlatformUser>;

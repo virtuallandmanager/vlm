@@ -39,7 +39,7 @@ export type ArFeedResponse = { v: 1; version: string; space: ArSpaceWire; scene:
 export type ArMarkerLookup = { spaceId: string; floorId: string; markerId: string; spaceName: string; whereText: string | null }
 
 /**
- * Headset pairing: the headset shows a code, a VLM user approves it on the website as a personal headset (theirs,
+ * Headset pairing: the headset shows a code, a Virvi user approves it on the website as a personal headset (theirs,
  * stays paired while it is used) or a shared one (a venue's, one session). Codes use HYPERFY_PAIRING's alphabet and
  * length, and normalizePairingCode.
  */

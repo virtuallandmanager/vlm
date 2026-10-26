@@ -1,6 +1,6 @@
-import type { Scene, AuthProof, VLMPlatformAdapter, AnalyticsSceneRef, SceneLibraryItemData, AdServeRequest, AdServeResponse, AdEventBatch } from '@virvixr/shared'
+import type { Scene, AuthProof, VirviPlatformAdapter, AnalyticsSceneRef, SceneLibraryItemData, AdServeRequest, AdServeResponse, AdEventBatch } from '@virvixr/shared'
 import type { AuthResponse, MediaAsset } from './types.js'
-import { VLMAuth } from './auth.js'
+import { VirviAuth } from './auth.js'
 
 export type SetupStatus =
   | { state: 'eligible' }
@@ -33,13 +33,13 @@ export type SceneLibraryItem = SceneLibraryItemData
 /** A companion upload code: the page link (for this computer or a phone) and a QR image of it. */
 export type UploadToken = { code: string; uploadUrl: string; qrUrl: string; expiresAt: string; maxUploads: number }
 
-export class VLMHttpClient {
+export class VirviHttpClient {
   private baseUrl: string
-  public auth: VLMAuth
+  public auth: VirviAuth
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl
-    this.auth = new VLMAuth()
+    this.auth = new VirviAuth()
   }
 
   /**
@@ -47,7 +47,7 @@ export class VLMHttpClient {
    * anything (auth preHandler or an early check). Keep it that way.
    *
    * Signs in again when a request gets a 401 (an in-world scene pass lasts 15 min and has no refresh token).
-   * Set by VLM after platform sign-in; called at most once per request, shared by concurrent requests.
+   * Set by Virvi after platform sign-in; called at most once per request, shared by concurrent requests.
    */
   reauthenticate: (() => Promise<void>) | null = null
   private reauthInFlight: Promise<void> | null = null
@@ -121,7 +121,7 @@ export class VLMHttpClient {
   }
 
   /**
-   * Authenticate with the VLM server using platform credentials.
+   * Authenticate with the Virvi server using platform credentials.
    *
    * If the adapter supports signedRequest (e.g., DCL's signedFetch), the request
    * is made through the adapter so cryptographic auth headers are included.
@@ -132,7 +132,7 @@ export class VLMHttpClient {
   async authenticateWithPlatform(
     proof: AuthProof,
     platformData: Record<string, unknown>,
-    adapter?: VLMPlatformAdapter,
+    adapter?: VirviPlatformAdapter,
     /**
      * Re-signing an existing pass: signed request only, and an answer that isn't a pass for `keepSceneId`
      * (guest, visitor, another scene) never replaces the current tokens.
@@ -163,7 +163,7 @@ export class VLMHttpClient {
       } catch (err) {
         if (opts.signedOnly) throw err
         // If signedRequest fails, fall through to regular fetch
-        console.warn('[VLMHttpClient] signedRequest failed, falling back to regular fetch:', err)
+        console.warn('[VirviHttpClient] signedRequest failed, falling back to regular fetch:', err)
       }
     }
 
@@ -185,7 +185,7 @@ export class VLMHttpClient {
   /** `unavailable`: Decentraland could not answer; worth retrying (unlike a plain "not eligible"). */
   async checkAnalyticsClaimSigned(
     locationKey: string,
-    adapter: VLMPlatformAdapter,
+    adapter: VirviPlatformAdapter,
   ): Promise<{ eligible: boolean; known: boolean; unavailable?: boolean }> {
     if (!adapter.signedRequest) return { eligible: false, known: false }
     try {
@@ -204,7 +204,7 @@ export class VLMHttpClient {
   }
 
   /** Ads to show in this scene's ad spaces. Any failure is `null` (spaces fall back or hide). */
-  async getAds(adapter: VLMPlatformAdapter, req: AdServeRequest): Promise<AdServeResponse | null> {
+  async getAds(adapter: VirviPlatformAdapter, req: AdServeRequest): Promise<AdServeResponse | null> {
     if (!adapter.signedRequest) return null
     try {
       const res = await adapter.signedRequest(`${this.baseUrl}/api/ads/serve`, { method: 'POST', body: JSON.stringify(req) })
@@ -216,7 +216,7 @@ export class VLMHttpClient {
   }
 
   /** Report ad view events. `ok` only when the server accepted the batch; `status` 0 when there was no response. */
-  async sendAdEvents(adapter: VLMPlatformAdapter, batch: AdEventBatch): Promise<{ ok: boolean; status: number }> {
+  async sendAdEvents(adapter: VirviPlatformAdapter, batch: AdEventBatch): Promise<{ ok: boolean; status: number }> {
     if (!adapter.signedRequest) return { ok: false, status: 0 }
     try {
       const res = await adapter.signedRequest(`${this.baseUrl}/api/ads/events`, { method: 'POST', body: JSON.stringify(batch) })
@@ -227,7 +227,7 @@ export class VLMHttpClient {
   }
 
   /** What the in-world HUD should offer this signed-in wallet at this location. Failures count as "none". */
-  async getSetupStatus(scene: AnalyticsSceneRef, adapter: VLMPlatformAdapter): Promise<SetupStatus> {
+  async getSetupStatus(scene: AnalyticsSceneRef, adapter: VirviPlatformAdapter): Promise<SetupStatus> {
     if (!adapter.signedRequest) return { state: 'none' }
     try {
       const res = await adapter.signedRequest(`${this.baseUrl}/api/setup/status`, { method: 'POST', body: JSON.stringify({ scene }) })
@@ -238,7 +238,7 @@ export class VLMHttpClient {
     }
   }
 
-  /** Public: the VLM scene set up at a location key (`gc:x,y` / `world:name.eth`), or null. Used for guests (no signed fetch). */
+  /** Public: the Virvi scene set up at a location key (`gc:x,y` / `world:name.eth`), or null. Used for guests (no signed fetch). */
   async getSceneForLocation(locationKey: string): Promise<string | null> {
     try {
       const res = await fetch(`${this.baseUrl}/api/setup/scene?location=${encodeURIComponent(locationKey)}`)
@@ -250,8 +250,8 @@ export class VLMHttpClient {
     }
   }
 
-  /** One-press setup: the signed-in wallet becomes host of a new VLM scene for this location. */
-  async setUpHere(scene: AnalyticsSceneRef, adapter: VLMPlatformAdapter): Promise<{ sceneId: string } | { error: string; host?: string; status: number }> {
+  /** One-press setup: the signed-in wallet becomes host of a new Virvi scene for this location. */
+  async setUpHere(scene: AnalyticsSceneRef, adapter: VirviPlatformAdapter): Promise<{ sceneId: string } | { error: string; host?: string; status: number }> {
     if (!adapter.signedRequest) return { error: 'signed_request_unavailable', status: 0 }
     try {
       const res = await adapter.signedRequest(`${this.baseUrl}/api/setup`, { method: 'POST', body: JSON.stringify({ scene }) })

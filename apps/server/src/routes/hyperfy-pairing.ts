@@ -1,5 +1,5 @@
 /**
- * Hyperfy HUD pairing: a player's HUD gets a code, a VLM user approves it on vlm.gg, the HUD trades it for a scene pass.
+ * Hyperfy HUD pairing: a player's HUD gets a code, a Virvi user approves it on vlm.gg, the HUD trades it for a scene pass.
  *
  * POST   /api/hyperfy/pair                  — (public, world key) Start a pairing; returns the code, approve link and QR
  * GET    /api/hyperfy/pair/:code/qr.png     — (public) QR of the approve link

@@ -258,7 +258,7 @@ describe('print file download route', () => {
     const s = await setup()
     const res = await app.inject({ method: 'GET', url: `/api/ar/markers/${s.marker.id}/files?format=stl-base`, headers: as(s.owner) })
     expect(res.statusCode).toBe(200)
-    expect(res.headers['content-disposition']).toBe(`attachment; filename="vlm-ring-${s.marker.code}-140mm-base.stl"`)
+    expect(res.headers['content-disposition']).toBe(`attachment; filename="virvi-ring-${s.marker.code}-140mm-base.stl"`)
     expect(res.headers['content-type']).toBe('model/stl')
     expect(parseStl(res.rawPayload).count).toBe(12)
   })
@@ -277,7 +277,7 @@ describe('print file download route', () => {
       expect(res.statusCode, format).toBe(200)
       expect(res.headers['content-type']).toContain(type)
       const suffix = format === 'stl-raised' ? '-raised' : ''
-      expect(res.headers['content-disposition']).toContain(`vlm-ring-${s.marker.code}-140mm${suffix}.${ext}`)
+      expect(res.headers['content-disposition']).toContain(`virvi-ring-${s.marker.code}-140mm${suffix}.${ext}`)
     }
     expect((await get('format=svg')).body).toContain('<svg')
     const keyhole = await get('format=stl-base&mounting=keyhole')

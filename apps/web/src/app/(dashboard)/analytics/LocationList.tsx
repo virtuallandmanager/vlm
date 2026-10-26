@@ -23,8 +23,8 @@ export function LocationList({ locations, note }: { locations: AnalyticsLocation
       )}
       {locations.length === 0 ? (
         <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 text-sm text-gray-400">
-          No analytics yet. Analytics start as soon as a scene with <code className="rounded bg-gray-800 px-1 py-0.5 text-gray-200">vlm-dcl</code> gets
-          visitors; set the scene up in-world from the VLM HUD to see them here.
+          No analytics yet. Analytics start as soon as a scene with <code className="rounded bg-gray-800 px-1 py-0.5 text-gray-200">virvi-dcl</code> gets
+          visitors; set the scene up in-world from the Virvi HUD to see them here.
         </div>
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

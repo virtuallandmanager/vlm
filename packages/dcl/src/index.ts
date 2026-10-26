@@ -1,8 +1,8 @@
 /**
- * VLM Smart Item for Decentraland SDK 7
+ * Virvi Smart Item for Decentraland SDK 7
  *
- * Drop this into any Decentraland scene to connect it to VLM.
- * Handles VLM initialization, element rendering, HUD activation,
+ * Drop this into any Decentraland scene to connect it to Virvi.
+ * Handles Virvi initialization, element rendering, HUD activation,
  * and analytics — all configurable via the Creator Hub UI.
  *
  * The smart item now supports a full setup flow:
@@ -10,25 +10,25 @@
  * - If no sceneId: shows the HUD setup flow (auth → create/pick scene → connect)
  *
  * Usage as a Smart Item:
- *   Drag "VLM Manager" from the asset catalog, set sceneId, deploy.
+ *   Drag "Virvi Manager" from the asset catalog, set sceneId, deploy.
  *
  * Usage from code:
- *   import { VLMSmartItem } from '@virvixr/dcl'
- *   const item = new VLMSmartItem()
+ *   import { VirviSmartItem } from '@virvixr/dcl'
+ *   const item = new VirviSmartItem()
  *   item.init({ inventory })
  *   item.spawn(entity, { sceneId: 'your-scene-id' }, channel)
  */
 
 import { VisibilityComponent } from '@dcl/sdk/ecs'
-import { createVLM } from '@virvixr/adapter-dcl'
-import type { VLM } from '@virvixr/core'
-import type { VLMInitConfig } from '@virvixr/shared'
+import { createVirvi } from '@virvixr/adapter-dcl'
+import type { Virvi } from '@virvixr/core'
+import type { VirviInitConfig } from '@virvixr/shared'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export interface VLMSmartItemProps {
+export interface VirviSmartItemProps {
   sceneId: string
   serverUrl: string
   showBeacon: boolean
@@ -53,11 +53,11 @@ interface IChannel {
 type Entity = any
 
 // ---------------------------------------------------------------------------
-// VLM Smart Item
+// Virvi Smart Item
 // ---------------------------------------------------------------------------
 
-export class VLMSmartItem {
-  private vlm: VLM | null = null
+export class VirviSmartItem {
+  private virvi: Virvi | null = null
   private connecting = false
   private connected = false
 
@@ -71,7 +71,7 @@ export class VLMSmartItem {
   /**
    * Called once for each instance of the smart item placed in the scene.
    */
-  spawn(host: Entity, props: VLMSmartItemProps, channel: IChannel) {
+  spawn(host: Entity, props: VirviSmartItemProps, channel: IChannel) {
     const {
       sceneId,
       serverUrl = 'https://vlm.gg',
@@ -102,55 +102,55 @@ export class VLMSmartItem {
     })
 
     channel.handleAction('toggleHud', () => {
-      if (this.vlm?.hud) {
-        this.vlm.sendMessage('vlm:hud:toggle')
+      if (this.virvi?.hud) {
+        this.virvi.sendMessage('virvi:hud:toggle')
       }
     })
 
     channel.handleAction('switchPreset', (opts: any) => {
       const presetId = opts?.presetId || opts?.values?.presetId
-      if (presetId && this.vlm) {
-        this.vlm.sendMessage('vlm:preset:switch', { presetId })
+      if (presetId && this.virvi) {
+        this.virvi.sendMessage('virvi:preset:switch', { presetId })
       }
     })
 
     channel.handleAction('triggerGiveaway', (opts: any) => {
       const giveawayId = opts?.giveawayId || opts?.values?.giveawayId
-      if (giveawayId && this.vlm) {
-        this.vlm.sendMessage('vlm:giveaway:trigger', { giveawayId })
+      if (giveawayId && this.virvi) {
+        this.virvi.sendMessage('virvi:giveaway:trigger', { giveawayId })
       }
     })
 
     channel.handleAction('sendMessage', (opts: any) => {
       const messageId = opts?.messageId || opts?.values?.messageId
       const data = opts?.data || opts?.values?.data
-      if (messageId && this.vlm) {
+      if (messageId && this.virvi) {
         let parsed = data
         if (typeof data === 'string') {
           try { parsed = JSON.parse(data) } catch { /* use raw string */ }
         }
-        this.vlm.sendMessage(messageId, parsed)
+        this.virvi.sendMessage(messageId, parsed)
       }
     })
 
     channel.handleAction('recordAction', (opts: any) => {
       const actionName = opts?.actionName || opts?.values?.actionName
-      if (actionName && this.vlm) {
-        this.vlm.recordAction(actionName)
+      if (actionName && this.virvi) {
+        this.virvi.recordAction(actionName)
       }
     })
 
     // Reply to state requests from other smart items
     channel.reply<{ connected: boolean; sceneId: string }>('getState', () => ({
       connected: this.connected,
-      sceneId: sceneId || this.vlm?.sceneId || '',
+      sceneId: sceneId || this.virvi?.sceneId || '',
     }))
 
-    console.log(`[VLM Smart Item] Ready. Scene: ${sceneId || '(auto-setup)'}, Server: ${serverUrl}, Auto-connect: ${autoConnect}`)
+    console.log(`[Virvi Smart Item] Ready. Scene: ${sceneId || '(auto-setup)'}, Server: ${serverUrl}, Auto-connect: ${autoConnect}`)
   }
 
   /**
-   * Connect to VLM and initialize all scene elements.
+   * Connect to Virvi and initialize all scene elements.
    * If no sceneId is provided, the HUD will guide the user through setup.
    */
   private async connect(
@@ -161,15 +161,15 @@ export class VLMSmartItem {
     enableAnalytics: boolean,
   ) {
     if (this.connecting || this.connected) {
-      console.log('[VLM Smart Item] Already connected or connecting')
+      console.log('[Virvi Smart Item] Already connected or connecting')
       return
     }
 
     this.connecting = true
-    console.log(`[VLM Smart Item] Connecting to ${serverUrl}...`)
+    console.log(`[Virvi Smart Item] Connecting to ${serverUrl}...`)
 
     try {
-      const config: Partial<VLMInitConfig> & { enableHud?: boolean } = {
+      const config: Partial<VirviInitConfig> & { enableHud?: boolean } = {
         env,
         enableHud,
         // Only set sceneId if actually provided (empty string = no scene)
@@ -180,11 +180,11 @@ export class VLMSmartItem {
         } : {}),
       }
 
-      this.vlm = await createVLM(config)
+      this.virvi = await createVirvi(config)
       this.connected = true
       this.connecting = false
 
-      const storage = this.vlm.storage
+      const storage = this.virvi.storage
       const elementCounts = {
         videos: Object.keys(storage.videos.configs).length,
         images: Object.keys(storage.images.configs).length,
@@ -193,44 +193,44 @@ export class VLMSmartItem {
         widgets: Object.keys(storage.widgets.configs).length,
       }
 
-      console.log(`[VLM Smart Item] Connected! Scene: ${this.vlm.sceneId}, Elements:`, JSON.stringify(elementCounts))
+      console.log(`[Virvi Smart Item] Connected! Scene: ${this.virvi.sceneId}, Elements:`, JSON.stringify(elementCounts))
 
       if (enableAnalytics) {
-        this.vlm.recordAction('vlm:smart_item:connected')
+        this.virvi.recordAction('virvi:smart_item:connected')
       }
     } catch (err) {
       this.connecting = false
       this.connected = false
-      console.error('[VLM Smart Item] Failed to connect:', err)
+      console.error('[Virvi Smart Item] Failed to connect:', err)
     }
   }
 
   /**
-   * Disconnect from VLM and clean up.
+   * Disconnect from Virvi and clean up.
    */
   private async disconnect() {
-    if (!this.vlm) return
+    if (!this.virvi) return
 
     try {
-      await this.vlm.destroy()
+      await this.virvi.destroy()
     } catch (err) {
-      console.error('[VLM Smart Item] Error during disconnect:', err)
+      console.error('[Virvi Smart Item] Error during disconnect:', err)
     }
 
-    this.vlm = null
+    this.virvi = null
     this.connected = false
-    console.log('[VLM Smart Item] Disconnected')
+    console.log('[Virvi Smart Item] Disconnected')
   }
 
   /**
-   * Get the underlying VLM instance (for advanced usage from code).
+   * Get the underlying Virvi instance (for advanced usage from code).
    */
-  getVLM(): VLM | null {
-    return this.vlm
+  getVirvi(): Virvi | null {
+    return this.virvi
   }
 
   /**
-   * Check if currently connected to VLM.
+   * Check if currently connected to Virvi.
    */
   isConnected(): boolean {
     return this.connected
@@ -241,10 +241,10 @@ export class VLMSmartItem {
 // Creator Hub (SDK7 Script component)
 // ---------------------------------------------------------------------------
 
-export type VLMManagerOptions = Partial<VLMSmartItemProps>
+export type VirviManagerOptions = Partial<VirviSmartItemProps>
 
 const noopChannel: IChannel = {
-  id: 'vlm-manager',
+  id: 'virvi-manager',
   handleAction: () => {},
   sendActions: () => {},
   request: async () => undefined as any,
@@ -253,11 +253,11 @@ const noopChannel: IChannel = {
 
 /**
  * Entry point for Creator Hub's Script component. The scene's script file
- * (see creator-hub/VLMManager.ts) declares the inspector fields and calls this
+ * (see creator-hub/VirviManager.ts) declares the inspector fields and calls this
  * from start(). Blank serverUrl means "use the env's default server".
  */
-export function startVLMManager(entity: Entity, options: VLMManagerOptions = {}): VLMSmartItem {
-  const item = new VLMSmartItem()
+export function startVirviManager(entity: Entity, options: VirviManagerOptions = {}): VirviSmartItem {
+  const item = new VirviSmartItem()
   item.spawn(entity, {
     sceneId: options.sceneId || '',
     serverUrl: options.serverUrl || 'https://vlm.gg',
@@ -271,9 +271,9 @@ export function startVLMManager(entity: Entity, options: VLMManagerOptions = {})
 }
 
 // Default export for Creator Hub's smart item loader
-export default new VLMSmartItem()
+export default new VirviSmartItem()
 
 // Named exports for code-based usage
-export { createVLM, startVLMAnalytics, stopVLMAnalytics } from '@virvixr/adapter-dcl'
-export type { VLM } from '@virvixr/core'
-export type { VLMInitConfig, VLMStorage } from '@virvixr/shared'
+export { createVirvi, startVirviAnalytics, stopVirviAnalytics } from '@virvixr/adapter-dcl'
+export type { Virvi } from '@virvixr/core'
+export type { VirviInitConfig, VirviStorage } from '@virvixr/shared'

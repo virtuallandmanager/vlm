@@ -1,15 +1,15 @@
 import { describe, it, expect, vi } from 'vitest'
-import { VLMHttpClient } from '@virvixr/client'
+import { VirviHttpClient } from '@virvixr/client'
 
 const REQ = { elementIds: ['e1'] } as any
 const BATCH = { v: 1, sessionId: 's', events: [{ adId: 'a1', elementId: 'e1', level: 'screen', t: 1 }] } as any
 const SERVE = { spaces: { e1: { paused: false, ads: [] } } }
 
 function makeClient() {
-  return new VLMHttpClient('https://api.example')
+  return new VirviHttpClient('https://api.example')
 }
 
-describe('VLMHttpClient ad calls', () => {
+describe('VirviHttpClient ad calls', () => {
   it('getAds posts to /api/ads/serve and parses the response', async () => {
     const signedRequest = vi.fn(async () => ({ status: 200, body: JSON.stringify(SERVE) }))
     const res = await makeClient().getAds({ signedRequest } as any, REQ)

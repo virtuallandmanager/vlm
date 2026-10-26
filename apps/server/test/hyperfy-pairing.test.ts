@@ -37,7 +37,7 @@ describe('Hyperfy pairings and passes', () => {
     const { code, expiresAt } = await pair(s)
     expect(normalizePairingCode(code)).toBe(code)
     expect(expiresAt.getTime()).toBeGreaterThanOrEqual(before + HYPERFY_PAIRING.codeTtlMs - 1000)
-    await expect(startPairing('vlmw_nope', sha256(SECRET), null, null)).rejects.toThrow('invalid_world_key')
+    await expect(startPairing('virviw_nope', sha256(SECRET), null, null)).rejects.toThrow('invalid_world_key')
     const info = await pairingForApproval(code)
     expect(info).toMatchObject({ worldName: 'Arbor World', sceneId: s.scene.id, sceneName: s.scene.name, playerName: 'Pip' })
     expect(await pairingForApproval('ZZZZZZ')).toBeNull()

@@ -5,7 +5,7 @@ export type HUDMediaStatus = 'uploading' | 'processing' | 'available' | 'needs_s
 
 /**
  * A library item's HUD status. A ready model needs sync only when it's placed but its file isn't deployed with
- * the scene (its url is among `missingSrcs`, see VLM.missingModelSrcs); `vlm-dcl sync` only fetches placed models.
+ * the scene (its url is among `missingSrcs`, see Virvi.missingModelSrcs); `virvi-dcl sync` only fetches placed models.
  */
 export function hudStatus(item: SceneLibraryItemData, isModel: boolean, missingSrcs: ReadonlySet<string>): HUDMediaStatus {
   if (item.status !== 'ready') return item.status

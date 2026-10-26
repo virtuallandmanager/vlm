@@ -21,7 +21,7 @@ import {
   type HudState,
 } from '../src/hud/model.js'
 import { planScene } from '../src/plan.js'
-import type { ApiResult } from '../src/vlm-api.js'
+import type { ApiResult } from '../src/virvi-api.js'
 
 const edit = (over: Partial<EditState> = {}): EditState => ({
   selectedKey: null,
@@ -82,7 +82,7 @@ function state(over: Partial<HudState> = {}): HudState {
 describe('hudModel', () => {
   it('link card: a Link button when idle, the formatted code and QR while waiting, the name when linked', () => {
     const idle = hudModel(state({ pairing: { status: 'idle' } }))
-    expect(idle.link).toMatchObject({ status: 'idle', label: 'Link to VLM', canLink: true })
+    expect(idle.link).toMatchObject({ status: 'idle', label: 'Link to Virvi', canLink: true })
     expect(idle.linked).toBe(false)
     expect(idle.bar).toBeNull()
 
@@ -108,7 +108,7 @@ describe('hudModel', () => {
     const done = hudModel(state())
     expect(done.link).toMatchObject({
       status: 'linked',
-      label: 'Linked to VLM as Ada',
+      label: 'Linked to Virvi as Ada',
       canLink: false,
     })
     expect(done.linked).toBe(true)
@@ -118,7 +118,7 @@ describe('hudModel', () => {
       canLink: true,
     })
     expect(hudModel(state({ pairing: { status: 'lost' } })).link.label).toBe(
-      'Lost connection to VLM. Retrying…',
+      'Lost connection to Virvi. Retrying…',
     )
   })
 
@@ -298,14 +298,14 @@ describe('pairingAlert and failureAlert', () => {
         { status: 'waiting', code: 'A', approveUrl: '', qrUrl: '', expiresAt: '' },
         linked,
       ),
-    ).toEqual({ kind: 'info', text: 'Linked to VLM as Ada' })
+    ).toEqual({ kind: 'info', text: 'Linked to Virvi as Ada' })
     expect(pairingAlert(linked, { status: 'expired' })).toEqual({
       kind: 'error',
       text: 'Link expired. Pair again.',
     })
     expect(pairingAlert(linked, { status: 'lost' })).toEqual({
       kind: 'error',
-      text: 'Lost connection to VLM. Retrying…',
+      text: 'Lost connection to Virvi. Retrying…',
     })
     expect(pairingAlert({ status: 'lost' }, linked)).toEqual({ kind: 'info', text: 'Reconnected' })
     expect(pairingAlert(linked, linked)).toBeNull()
@@ -318,7 +318,7 @@ describe('pairingAlert and failureAlert', () => {
     })
     expect(failureAlert('lost')).toEqual({
       kind: 'error',
-      text: 'Lost connection to VLM. Retrying…',
+      text: 'Lost connection to Virvi. Retrying…',
     })
     expect(failureAlert('server')).toEqual({ kind: 'error', text: "Couldn't save: server" })
     expect(failureAlert('auth')).toBeNull()
@@ -331,7 +331,7 @@ describe('loadFailureAlert', () => {
     expect(loadFailureAlert('invalid')).toEqual({ kind: 'error', text: "Couldn't load: invalid" })
     expect(loadFailureAlert('lost')).toEqual({
       kind: 'error',
-      text: 'Lost connection to VLM. Retrying…',
+      text: 'Lost connection to Virvi. Retrying…',
     })
     expect(loadFailureAlert('no_access')).toEqual({
       kind: 'error',
@@ -387,13 +387,13 @@ describe('typeKey', () => {
 })
 
 describe('placement', () => {
-  it('puts a model 2 m in front of the camera, on the floor, in VLM coordinates', () => {
+  it('puts a model 2 m in front of the camera, on the floor, in Virvi coordinates', () => {
     // Camera at (0, 1.6, 0) looking down Hyperfy -z and a little down; the floor is at y = 0.
     const q = new Quaternion().setFromEuler(new Euler(-0.3, 0, 0, 'YXZ'))
     const t = inFrontOf({ position: { x: 0, y: 1.6, z: 0 }, quaternion: q }, 0, new Matrix4())
     expect(t.position.x).toBeCloseTo(0)
     expect(t.position.y).toBeCloseTo(0)
-    expect(t.position.z).toBeCloseTo(2) // Hyperfy -2 is VLM +2
+    expect(t.position.z).toBeCloseTo(2) // Hyperfy -2 is Virvi +2
     expect(t.scale).toEqual({ x: 1, y: 1, z: 1 })
   })
 
@@ -403,7 +403,7 @@ describe('placement', () => {
       new Quaternion().setFromEuler(new Euler(0, Math.PI / 2, 0)),
       new Vector3(1, 1, 1),
     )
-    // Facing world -x from (10, 1.7, 0): 2 m ahead is world (8, 0, 0), app-local (0, 0, -2), VLM (0, 0, 2).
+    // Facing world -x from (10, 1.7, 0): 2 m ahead is world (8, 0, 0), app-local (0, 0, -2), Virvi (0, 0, 2).
     const q = new Quaternion().setFromEuler(new Euler(0, Math.PI / 2, 0, 'YXZ'))
     const t = inFrontOf(
       { position: { x: 10, y: 1.7, z: 0 }, quaternion: q },
@@ -486,25 +486,25 @@ describe('text fields', () => {
 
   it('the Link tab shows the link, or how to paste one from chat', () => {
     expect(hudModel(state({ ui: { panel: 'assets', tab: 'link' } })).assets.linkText).toBe(LINK_HINT)
-    expect(LINK_HINT).toBe('In chat, type /vlm and paste the link')
+    expect(LINK_HINT).toBe('In chat, type /virvi and paste the link')
     expect(hudModel(state({ ui: { panel: 'assets', tab: 'link', linkUrl: 'https://x/a.glb' } })).assets.linkText).toBe('https://x/a.glb')
   })
 
-  it('/vlm in chat: a link fills the Link tab, anything else searches the catalog', () => {
+  it('/virvi in chat: a link fills the Link tab, anything else searches the catalog', () => {
     expect(chatEntry(' https://x.io/a/b.glb ')).toEqual({ tab: 'link', linkUrl: 'https://x.io/a/b.glb' })
     expect(chatEntry('HTTP://x.io/a.glb')).toEqual({ tab: 'link', linkUrl: 'HTTP://x.io/a.glb' })
     expect(chatEntry('red chair')).toEqual({ tab: 'catalog', query: 'red chair' })
     expect(chatEntry('   ')).toBeNull()
   })
 
-  it("reads /vlm's text from Hyperfy's command event, and ignores other commands", () => {
-    expect(chatCommandText({ playerId: 'p1', cmd: 'vlm', value: 'red chair', args: ['vlm', 'red', 'chair'] })).toBe('red chair')
+  it("reads /virvi's text from Hyperfy's command event, and ignores other commands", () => {
+    expect(chatCommandText({ playerId: 'p1', cmd: 'virvi', value: 'red chair', args: ['virvi', 'red', 'chair'] })).toBe('red chair')
     // the server's event has only args
-    expect(chatCommandText({ playerId: 'p1', args: ['vlm', 'https://x/a.glb'] })).toBe('https://x/a.glb')
+    expect(chatCommandText({ playerId: 'p1', args: ['virvi', 'https://x/a.glb'] })).toBe('https://x/a.glb')
     expect(chatCommandText({ playerId: 'p1', cmd: 'spawn', value: 'x', args: ['spawn', 'x'] })).toBeNull()
-    // '/' opens chat with a '/' already typed, so typing /vlm there sends //vlm
-    expect(chatCommandText({ playerId: 'p1', cmd: '/vlm', value: 'https://x/a.glb', args: ['/vlm', 'https://x/a.glb'] })).toBe('https://x/a.glb')
+    // '/' opens chat with a '/' already typed, so typing /virvi there sends //virvi
+    expect(chatCommandText({ playerId: 'p1', cmd: '/virvi', value: 'https://x/a.glb', args: ['/virvi', 'https://x/a.glb'] })).toBe('https://x/a.glb')
     expect(chatCommandText(null)).toBeNull()
-    expect(chatCommandText({ cmd: 'vlm' })).toBe('')
+    expect(chatCommandText({ cmd: 'virvi' })).toBe('')
   })
 })

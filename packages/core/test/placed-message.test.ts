@@ -24,7 +24,7 @@ describe('placedMessage', () => {
       ...(['virvi', 'sign'] as const).flatMap((mode) =>
         ['ok', 'needs_review', 'over_budget', 'unreachable'].flatMap((status) => [true, false].map((granted) => placedMessage('Lamp', { mode, status, granted })))),
     ]
-    for (const m of all) expect(m.text).not.toMatch(/vlm\.gg|virvi\.(gg|com)|https?:/)
+    for (const m of all) expect(m.text).not.toMatch(/virvi\.gg|virvi\.(gg|com)|https?:/)
     expect(placedMessage('Lamp', null).text).toMatch(/Deploy page/)
   })
 })

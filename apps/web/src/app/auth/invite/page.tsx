@@ -16,10 +16,10 @@ function InviteHandler() {
     }
 
     // Store the invite token so it can be accepted after login/register
-    localStorage.setItem('vlm_pending_invite', token)
+    localStorage.setItem('virvi_pending_invite', token)
 
     // Check if user is logged in
-    const authRaw = localStorage.getItem('vlm_auth')
+    const authRaw = localStorage.getItem('virvi_auth')
     if (!authRaw) {
       setStatus('login-required')
       return
@@ -49,7 +49,7 @@ function InviteHandler() {
     })
       .then(async (res) => {
         if (res.ok) {
-          localStorage.removeItem('vlm_pending_invite')
+          localStorage.removeItem('virvi_pending_invite')
           setStatus('accepted')
         } else {
           const data = await res.json()

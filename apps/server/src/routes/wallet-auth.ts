@@ -38,7 +38,7 @@ export default async function walletAuthRoutes(app: FastifyInstance) {
       `${url.host} wants you to sign in with your Ethereum account:`,
       getAddress(address.toLowerCase()),
       '',
-      'Sign in to VLM to manage your scenes and analytics.',
+      'Sign in to Virvi to manage your scenes and analytics.',
       '',
       `URI: ${url.origin}`,
       'Version: 1',

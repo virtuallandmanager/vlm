@@ -4,7 +4,7 @@
 import { engine, Entity, Transform, TextShape, Billboard } from '@dcl/sdk/ecs'
 import { Color3, Color4 } from '@dcl/sdk/math'
 import { TransformSession } from '@virvixr/core'
-import type { Axis, VLM, DraftPayload, Handle, MoveLock, Ray, Selected, TransformMode } from '@virvixr/core'
+import type { Axis, Virvi, DraftPayload, Handle, MoveLock, Ray, Selected, TransformMode } from '@virvixr/core'
 import type { TransformData, Vec3 } from '@virvixr/shared'
 import type { DclAdapter } from '../DclAdapter'
 import { Gizmo } from './gizmo.js'
@@ -81,14 +81,14 @@ export class DclEditMode implements EditHost {
   private appliedKey = ''
   private rescanIn = 0
 
-  constructor(private readonly vlm: VLM, adapter: DclAdapter) {
+  constructor(private readonly virvi: Virvi, adapter: DclAdapter) {
     this.session = new TransformSession({ now: () => Date.now(), onDraft: (d) => this.onDraft(d) })
     this.input = new EditInput(this, (fn) => adapter.registerSystem(fn), (fn) => adapter.unregisterSystem(fn))
-    vlm.events.on('transform_draft', (d: any) => this.onRemoteDraft(d))
-    vlm.events.on('transform_draft_end', (d: any) => this.onRemoteEnd(d))
-    vlm.events.on('transform_held', (d: any) => this.onHeld(d))
-    vlm.events.on('vlm_error', (e: any) => this.onError(e))
-    vlm.events.on('connection_lost', () => this.onConnectionLost())
+    virvi.events.on('transform_draft', (d: any) => this.onRemoteDraft(d))
+    virvi.events.on('transform_draft_end', (d: any) => this.onRemoteEnd(d))
+    virvi.events.on('transform_held', (d: any) => this.onHeld(d))
+    virvi.events.on('virvi_error', (e: any) => this.onError(e))
+    virvi.events.on('connection_lost', () => this.onConnectionLost())
   }
 
   get active(): boolean {
@@ -189,7 +189,7 @@ export class DclEditMode implements EditHost {
     this.savingSk = sel.sk
     this.message = SAVING
     this.changed()
-    this.vlm.editing.save(sel.element, sel.sk, draft).then(
+    this.virvi.editing.save(sel.element, sel.sk, draft).then(
       () => this.saved(sel.sk, draftKey),
       (err: unknown) => this.saveFailed(sel.sk, err),
     )
@@ -203,7 +203,7 @@ export class DclEditMode implements EditHost {
     if (this.sentDraftFor === sk) {
       this.sentDraftFor = null
       try {
-        this.vlm.editing.endDraft(sk, true)
+        this.virvi.editing.endDraft(sk, true)
       } catch {
         // Disconnected right after the save; the server releases the hold when this client leaves
       }
@@ -227,7 +227,7 @@ export class DclEditMode implements EditHost {
     if (!sel || this.savingSk !== null) return
     this.input.cancelDrag()
     this.session.revert()
-    this.vlm.editing.scene.restoreTransform(sel.element, sel.sk)
+    this.virvi.editing.scene.restoreTransform(sel.element, sel.sk)
     this.appliedKey = ''
     this.releaseHold()
     this.message = null
@@ -318,7 +318,7 @@ export class DclEditMode implements EditHost {
   /** The item as stored now, or as another editor just saved it if stored data hasn't caught up. */
   private freshItem(sk: string): Selected | null {
     const p = this.picks.get(sk)
-    const item = p ? this.vlm.editing.scene.findByEntity(p.entity) : null
+    const item = p ? this.virvi.editing.scene.findByEntity(p.entity) : null
     if (!item) return null
     const saved = this.remoteSaves.get(sk)
     if (saved) {
@@ -383,7 +383,7 @@ export class DclEditMode implements EditHost {
     const k = keyOf(draft)
     if (k === this.appliedKey) return
     this.appliedKey = k
-    this.vlm.editing.scene.previewTransform(sel.element, sel.sk, draft)
+    this.virvi.editing.scene.previewTransform(sel.element, sel.sk, draft)
   }
 
   private onDraft(d: DraftPayload): void {
@@ -391,7 +391,7 @@ export class DclEditMode implements EditHost {
     if (this.draftsForbidden) return
     try {
       // Dropped silently while disconnected (connection_lost shows the message)
-      this.vlm.editing.sendDraft({ element: d.element, sk: d.sk, ...d.transform })
+      this.virvi.editing.sendDraft({ element: d.element, sk: d.sk, ...d.transform })
       this.sentDraftFor = d.sk
     } catch {
       if (this.message !== NOT_CONNECTED) {
@@ -407,7 +407,7 @@ export class DclEditMode implements EditHost {
     if (!sk) return
     this.sentDraftFor = null
     try {
-      this.vlm.editing.endDraft(sk, false)
+      this.virvi.editing.endDraft(sk, false)
     } catch {
       // Not connected: the server releases the hold when this client leaves
     }
@@ -426,7 +426,7 @@ export class DclEditMode implements EditHost {
     this.remote.delete(d.sk)
     if (d.saved && last) {
       const p = this.picks.get(d.sk)
-      const stored = p ? this.vlm.editing.scene.findByEntity(p.entity)?.transform : null
+      const stored = p ? this.virvi.editing.scene.findByEntity(p.entity)?.transform : null
       this.remoteSaves.set(d.sk, { transform: last, at: Date.now(), stored: stored ? keyOf(stored) : null })
     }
     this.removeLabel(d.sk)
@@ -450,8 +450,8 @@ export class DclEditMode implements EditHost {
       this.input.cancelDrag()
       this.session.revert()
       if (this.sentDraftFor === d.sk) this.sentDraftFor = null
-      if (prev?.transform) this.vlm.editing.scene.previewTransform(sel.element, sel.sk, prev.transform)
-      else this.vlm.editing.scene.restoreTransform(sel.element, sel.sk)
+      if (prev?.transform) this.virvi.editing.scene.previewTransform(sel.element, sel.sk, prev.transform)
+      else this.virvi.editing.scene.restoreTransform(sel.element, sel.sk)
       this.appliedKey = ''
     }
     this.message = `Being moved by ${holderName}`
@@ -505,7 +505,7 @@ export class DclEditMode implements EditHost {
   /** Refreshes click areas, drops a selection whose item is gone, and keeps labels in step with picks. */
   private scan(): void {
     if (!this._active) return
-    const live = this.picks.sync(this.vlm.editing.scene.listEditable())
+    const live = this.picks.sync(this.virvi.editing.scene.listEditable())
     for (const sk of [...this.labels.keys()]) if (!this.picks.get(sk)) this.removeLabel(sk)
     for (const sk of this.remote.keys()) this.ensureLabel(sk)
     const sel = this.session.selected
@@ -538,7 +538,7 @@ export class DclEditMode implements EditHost {
     try {
       this.onChange()
     } catch (err) {
-      console.warn('[VLM] edit mode onChange failed:', err)
+      console.warn('[Virvi] edit mode onChange failed:', err)
     }
   }
 }

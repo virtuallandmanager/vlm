@@ -15,7 +15,7 @@ describe('HYPERFY_FEED values', () => {
       lastSeenThrottleMs: 60_000,
       analyticsFlushMs: 15_000,
       positionSampleMs: 5_000,
-      keyPrefix: 'vlmw_',
+      keyPrefix: 'virviw_',
     })
   })
 })

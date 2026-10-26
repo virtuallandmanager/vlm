@@ -13,7 +13,7 @@ export interface PublishDestination {
  */
 export function placedMessage(name: string, d: PublishDestination | null): { text: string; publish: boolean } {
   const placed = `Placed ${name} —`
-  if (!d) return { text: `${placed} to get it into your World, open this scene's Deploy page in Virvi Studio, or run npx vlm-dcl sync and redeploy`, publish: false }
+  if (!d) return { text: `${placed} to get it into your World, open this scene's Deploy page in Virvi Studio, or run npx virvi-dcl sync and redeploy`, publish: false }
   if (d.status === 'over_budget') return { text: `${placed} the scene is past Decentraland's limits for this plot, so it can't go live until something is removed`, publish: false }
   if (d.status === 'needs_review') return { text: `${placed} deploys to your World are paused; check this scene's Deploy page in Virvi Studio`, publish: false }
   if (d.mode === 'sign') return { text: `${placed} publish it to see it in your World`, publish: true }

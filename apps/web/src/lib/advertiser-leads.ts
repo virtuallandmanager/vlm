@@ -7,9 +7,9 @@ const CODE_MESSAGES: Record<string, string> = {
   too_long: 'One of the fields is too long.',
 }
 
-/** What to tell a visitor when the early-access form fails. `status` is null when the request never reached VLM. */
+/** What to tell a visitor when the early-access form fails. `status` is null when the request never reached Virvi. */
 export function leadErrorMessage(status: number | null, code?: string): string {
-  if (status === null) return "We couldn't reach VLM. Please try again."
+  if (status === null) return "We couldn't reach Virvi. Please try again."
   if (status === 429) return 'Too many tries — please try again later.'
   if (status === 400 && code && CODE_MESSAGES[code]) return CODE_MESSAGES[code]
   return 'Something went wrong. Please try again.'

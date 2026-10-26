@@ -5,7 +5,7 @@ import { checkFilePath } from './store.js'
 import { recordCost, refundPrompt, utcDay, type Exec } from './quota.js'
 import { publishStudio } from './events.js'
 
-/** A worker's Result, as apps/studio-worker/CONTRACT.md defines it (only the fields VLM reads are typed). */
+/** A worker's Result, as apps/studio-worker/CONTRACT.md defines it (only the fields Virvi reads are typed). */
 export type ContractResult = {
   jobId?: string
   outcome: 'ok' | 'needs_input' | 'no_change' | 'ceiling' | 'timeout' | 'error'

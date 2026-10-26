@@ -91,7 +91,7 @@ describe('getSceneAccess', () => {
 
   it('org membership grants no scene access, whatever the org role', async () => {
     const s = await seed()
-    const [org] = await db.insert(organizations).values({ name: 'VLM', slug: `vlm-${crypto.randomUUID()}` }).returning()
+    const [org] = await db.insert(organizations).values({ name: 'Virvi', slug: `virvi-${crypto.randomUUID()}` }).returning()
     await db.update(scenes).set({ orgId: org.id }).where(eq(scenes.id, s.scene.id))
     const orgAdmin = await createUser()
     const member = await createUser()

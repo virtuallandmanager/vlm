@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'sw
 const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono', display: 'swap' })
 
 export const metadata: Metadata = {
-  title: 'VLM — Virtual Land Manager',
+  title: 'Virvi — Virtual Land Manager',
   description: 'Run your metaverse scenes from one dashboard, and advertise on screens and billboards in live Decentraland scenes.',
 }
 

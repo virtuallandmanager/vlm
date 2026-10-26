@@ -1,5 +1,5 @@
 /**
- * Hyperfy worlds: connect your own, or have VLM host one on Fly.
+ * Hyperfy worlds: connect your own, or have Virvi host one on Fly.
  *
  * POST   /api/hyperfy/worlds                — Connect a world (kind 'self', default; returns its key once) or host one
  *                                             (kind 'hosted'; 202 with the admin code once)
@@ -90,13 +90,13 @@ export default async function hyperfyWorldRoutes(app: FastifyInstance) {
   const createPreHandler = [authenticate, requireFeature('deployment')]
   const preHandler = [authenticate]
 
-  // Public: the built VLM app, to drop into a Hyperfy world. Read per request so a rebuilt file is served without a restart.
+  // Public: the built Virvi app, to drop into a Hyperfy world. Read per request so a rebuilt file is served without a restart.
   app.get('/api/hyperfy/app.hyp', async (request, reply) => {
     let file: Buffer
     try {
       file = await readFile(APP_HYP)
     } catch (err) {
-      request.log.error({ err, path: APP_HYP }, 'hyperfy app.hyp is missing; run the vlm-hyperfy-app build')
+      request.log.error({ err, path: APP_HYP }, 'hyperfy app.hyp is missing; run the virvi-hyperfy-app build')
       return reply.code(503).send({ error: 'app_unavailable' })
     }
     return reply

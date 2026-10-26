@@ -213,7 +213,7 @@ export async function createCheckoutSession(options: {
   if (!customerId) {
     const customer = await stripe.customers.create({
       email: options.email,
-      metadata: { vlm_user_id: options.userId },
+      metadata: { virvi_user_id: options.userId },
     })
     customerId = customer.id
 
@@ -239,7 +239,7 @@ export async function createCheckoutSession(options: {
     line_items: [{ price: options.priceId, quantity: 1 }],
     success_url: options.successUrl,
     cancel_url: options.cancelUrl,
-    metadata: { vlm_user_id: options.userId },
+    metadata: { virvi_user_id: options.userId },
   })
 
   return { url: session.url }
@@ -283,7 +283,7 @@ export async function handleWebhookEvent(event: any): Promise<void> {
       const session = event.data.object
       if (session.mode === 'subscription') {
         await activateSubscription(
-          session.metadata.vlm_user_id,
+          session.metadata.virvi_user_id,
           session.subscription,
           session.customer,
         )

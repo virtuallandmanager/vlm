@@ -8,7 +8,7 @@ describe('leadErrorMessage', () => {
     expect(leadErrorMessage(400, 'invalid_email')).toBe('Please enter a valid email address.')
     expect(leadErrorMessage(400, 'invalid_website')).toBe('Please check the website address.')
     expect(leadErrorMessage(400, 'too_long')).toBe('One of the fields is too long.')
-    expect(leadErrorMessage(null)).toBe("We couldn't reach VLM. Please try again.")
+    expect(leadErrorMessage(null)).toBe("We couldn't reach Virvi. Please try again.")
     expect(leadErrorMessage(500)).toBe('Something went wrong. Please try again.')
   })
 })
@@ -40,6 +40,6 @@ describe('submitAdvertiserLead', () => {
 
   it('rejects with the network message when fetch throws', async () => {
     const down = (async () => { throw new TypeError('Failed to fetch') }) as unknown as typeof fetch
-    await expect(submitAdvertiserLead(input, down)).rejects.toThrow("We couldn't reach VLM. Please try again.")
+    await expect(submitAdvertiserLead(input, down)).rejects.toThrow("We couldn't reach Virvi. Please try again.")
   })
 })

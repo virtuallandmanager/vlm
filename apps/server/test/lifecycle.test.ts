@@ -109,15 +109,15 @@ describe('runLifecycleSweep', () => {
     const s = await seed()
     const at = new Date(s.booking.startsAt.getTime() - 60 * M)
     published.length = 0
-    await db.execute(sql`CREATE OR REPLACE FUNCTION vlm_test_fail() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'boom'; END $$ LANGUAGE plpgsql`)
-    await db.execute(sql`CREATE TRIGGER vlm_test_fail BEFORE UPDATE ON scenes FOR EACH ROW EXECUTE FUNCTION vlm_test_fail()`)
+    await db.execute(sql`CREATE OR REPLACE FUNCTION virvi_test_fail() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'boom'; END $$ LANGUAGE plpgsql`)
+    await db.execute(sql`CREATE TRIGGER virvi_test_fail BEFORE UPDATE ON scenes FOR EACH ROW EXECUTE FUNCTION virvi_test_fail()`)
     try {
       await expect(runLifecycleSweep(at)).rejects.toThrow()
       expect(await statusOf(s.booking.id)).toBe('confirmed')
       expect(published).toEqual([])
     } finally {
-      await db.execute(sql`DROP TRIGGER vlm_test_fail ON scenes`)
-      await db.execute(sql`DROP FUNCTION vlm_test_fail()`)
+      await db.execute(sql`DROP TRIGGER virvi_test_fail ON scenes`)
+      await db.execute(sql`DROP FUNCTION virvi_test_fail()`)
     }
     expect((await runLifecycleSweep(at)).wentLive).toEqual([s.booking.id])
     expect(await activePreset(s.scene.id)).toBe(s.booking.bookingPresetId)
@@ -157,6 +157,6 @@ describe('lifecycle reaches connected clients', () => {
     await runLifecycleSweep(new Date(s.booking.endsAt.getTime() + 15 * M))
     expect((await c.waitFor('access_revoked')).reason).toBe('expired')
     c.room.send('scene_video_update', { sk: 'x', isLive: true })
-    expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+    expect((await c.waitFor('virvi_error')).code).toBe('forbidden')
   })
 })

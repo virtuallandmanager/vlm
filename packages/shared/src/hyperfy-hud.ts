@@ -1,4 +1,4 @@
-/** Shared vocabulary for the Hyperfy HUD: pairing-code sign-in for editing a VLM scene from inside a Hyperfy world. */
+/** Shared vocabulary for the Hyperfy HUD: pairing-code sign-in for editing a Virvi scene from inside a Hyperfy world. */
 
 export const HYPERFY_PAIRING = {
   /** How long a pairing code stays claimable, in ms. */

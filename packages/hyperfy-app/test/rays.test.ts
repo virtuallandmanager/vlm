@@ -1,6 +1,6 @@
 import { Euler, Matrix4, PerspectiveCamera, Quaternion, Raycaster, Vector2, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { HYPERFY_DEFAULT_FOV, pointerRay, toVlmRay } from '../src/edit/rays.js'
+import { HYPERFY_DEFAULT_FOV, pointerRay, toVirviRay } from '../src/edit/rays.js'
 
 const close = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => {
   expect(a.x).toBeCloseTo(b.x, 6)
@@ -43,16 +43,16 @@ describe('pointerRay', () => {
   })
 })
 
-describe('toVlmRay', () => {
+describe('toVirviRay', () => {
   it('takes a world ray into the app frame and mirrors z', () => {
-    // App root at (10, 0, 0), scaled 2: world (12, 2, -4) is local (1, 1, -2), which is VLM (1, 1, 2).
+    // App root at (10, 0, 0), scaled 2: world (12, 2, -4) is local (1, 1, -2), which is Virvi (1, 1, 2).
     const root = new Matrix4().compose(new Vector3(10, 0, 0), new Quaternion(), new Vector3(2, 2, 2))
     const inverse = new Matrix4().copy(root).invert()
-    const ray = toVlmRay({ origin: { x: 12, y: 2, z: -4 }, direction: { x: 0, y: 0, z: -1 } }, inverse)
+    const ray = toVirviRay({ origin: { x: 12, y: 2, z: -4 }, direction: { x: 0, y: 0, z: -1 } }, inverse)
     close(ray.origin, { x: 1, y: 1, z: 2 })
     close(ray.direction, { x: 0, y: 0, z: 1 })
     // No inverse: the app root is the world origin.
-    const plain = toVlmRay({ origin: { x: 1, y: 2, z: 3 }, direction: { x: 0.6, y: 0, z: 0.8 } })
+    const plain = toVirviRay({ origin: { x: 1, y: 2, z: 3 }, direction: { x: 0.6, y: 0, z: 0.8 } })
     close(plain.origin, { x: 1, y: 2, z: -3 })
     close(plain.direction, { x: 0.6, y: 0, z: -0.8 })
   })

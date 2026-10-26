@@ -4,11 +4,11 @@ import type { SerializedScene } from '@virvixr/shared'
 import { TransformSession } from '@virvixr/core/transform/session'
 import { EditController, clickHandler, renderedItem, type HudAlert, type RenderedItem } from '../src/edit/controller.js'
 import { planScene, type RenderItem } from '../src/plan.js'
-import { VlmApi } from '../src/vlm-api.js'
+import { VirviApi } from '../src/virvi-api.js'
 
 const v = (x: number, y: number, z: number) => ({ x, y, z })
 
-/** A scene with image `el1` and its instances, each at (x, 1, 2) in VLM coordinates. */
+/** A scene with image `el1` and its instances, each at (x, 1, 2) in Virvi coordinates. */
 function scene(xs: Record<string, number>): SerializedScene {
   return {
     videos: [],
@@ -36,7 +36,7 @@ function setup(xs: Record<string, number> = { inst1: 1 }, opts: { replies?: Repl
     if (!r) return undefined
     return { ok: r.status >= 200 && r.status < 300, status: r.status, json: async () => r.body ?? {} }
   })
-  const api = new VlmApi({ feedUrl: 'https://api.example', fetch: fetch as never, getPass: () => 'pass', onAuthFailure: async () => opts.renews ?? false })
+  const api = new VirviApi({ feedUrl: 'https://api.example', fetch: fetch as never, getPass: () => 'pass', onAuthFailure: async () => opts.renews ?? false })
   const save = vi.spyOn(api, 'saveTransform')
   const preview = vi.fn()
   const restore = vi.fn()
@@ -71,11 +71,11 @@ function setup(xs: Record<string, number> = { inst1: 1 }, opts: { replies?: Repl
 
 const settle = () => new Promise((r) => setTimeout(r, 0))
 
-/** A world-space ray (Hyperfy frame) looking down -z from (x, 1, z). VLM z=2 is Hyperfy z=-2. */
+/** A world-space ray (Hyperfy frame) looking down -z from (x, 1, z). Virvi z=2 is Hyperfy z=-2. */
 const look = (x: number, z = 3) => ({ origin: v(x, 1, z), direction: v(0, 0, -1) })
 const X_ARROW = { kind: 'arrow', axis: 'x' } as const
 
-/** Selects inst1 and drags its X arrow from x=1 to x=3 (Hyperfy and VLM agree on x). */
+/** Selects inst1 and drags its X arrow from x=1 to x=3 (Hyperfy and Virvi agree on x). */
 function dragX(t: ReturnType<typeof setup>, to = 3, from = 1) {
   expect(t.edit.select('el1:inst1')).toBe('ok')
   t.edit.pointerDown(X_ARROW, look(from))
@@ -83,7 +83,7 @@ function dragX(t: ReturnType<typeof setup>, to = 3, from = 1) {
 }
 
 describe('EditController', () => {
-  it('select, drag on the X arrow, save calls saveTransform with VLM coordinates', async () => {
+  it('select, drag on the X arrow, save calls saveTransform with Virvi coordinates', async () => {
     // The app root sits at world (10, 0, 0): world rays are taken into its frame first.
     const root = new Matrix4().makeTranslation(10, 0, 0)
     const t = setup({ inst1: 1 }, { rootInverse: new Matrix4().copy(root).invert() })
@@ -103,7 +103,7 @@ describe('EditController', () => {
     expect(id).toBe('inst1')
     expect(sent.position.x).toBeCloseTo(3)
     expect(sent.position.y).toBeCloseTo(1)
-    expect(sent.position.z).toBeCloseTo(2) // VLM z, not Hyperfy's -2
+    expect(sent.position.z).toBeCloseTo(2) // Virvi z, not Hyperfy's -2
     expect(sent.scale).toEqual(v(2, 1, 1))
     expect(t.fetch.mock.calls[0][0]).toBe('https://api.example/api/instances/inst1')
     expect(t.alerts).toEqual([{ kind: 'info', text: 'Saved' }])
@@ -224,7 +224,7 @@ describe('EditController', () => {
     await t.edit.save()
     await t.edit.save()
     expect(t.alerts).toEqual([
-      { kind: 'error', text: 'Lost connection to VLM. Retrying…' },
+      { kind: 'error', text: 'Lost connection to Virvi. Retrying…' },
       { kind: 'error', text: "Couldn't save: server" },
       { kind: 'error', text: "Couldn't save: invalid" },
     ])
@@ -318,7 +318,7 @@ describe('EditController after a save', () => {
     expect(t.save).toHaveBeenCalledTimes(7)
     for (const [, sent] of t.save.mock.calls) expect(sent.position.x).toBeCloseTo(3)
     expect(t.alerts).toEqual([
-      { kind: 'error', text: 'Lost connection to VLM. Retrying…' },
+      { kind: 'error', text: 'Lost connection to Virvi. Retrying…' },
       { kind: 'info', text: 'Reconnected' },
       { kind: 'info', text: 'Saved' },
     ])
@@ -348,14 +348,14 @@ describe('EditController after a save', () => {
     expect(t.timers).toEqual([])
   })
 
-  it('a Z-arrow drag under an offset root saves the VLM z with its sign', async () => {
-    // Root at world (0, 0, 10): VLM (1, 1, 2) is local (1, 1, -2), world (1, 1, 8). Rays look along +x.
+  it('a Z-arrow drag under an offset root saves the Virvi z with its sign', async () => {
+    // Root at world (0, 0, 10): Virvi (1, 1, 2) is local (1, 1, -2), world (1, 1, 8). Rays look along +x.
     const root = new Matrix4().makeTranslation(0, 0, 10)
     const t = setup({ inst1: 1 }, { rootInverse: new Matrix4().copy(root).invert() })
     const across = (worldZ: number) => ({ origin: v(-3, 1, worldZ), direction: v(1, 0, 0) })
     t.edit.select('el1:inst1')
     t.edit.pointerDown({ kind: 'arrow', axis: 'z' }, across(8))
-    t.edit.pointerMove(across(5)) // world z down 3 = Hyperfy -z = VLM +z
+    t.edit.pointerMove(across(5)) // world z down 3 = Hyperfy -z = Virvi +z
     t.edit.pointerUp()
     await t.edit.save()
     const sent = t.save.mock.calls[0][1]

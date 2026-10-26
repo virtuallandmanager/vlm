@@ -119,7 +119,7 @@ async function seed() {
       enabled: true,
       customId: 'welcome-banner',
       properties: {
-        textureSrc: 'https://via.placeholder.com/1024x512/2d2d44/ffffff?text=Welcome+to+VLM',
+        textureSrc: 'https://via.placeholder.com/1024x512/2d2d44/ffffff?text=Welcome+to+Virvi',
         emission: 1.0,
         isTransparent: false,
       },

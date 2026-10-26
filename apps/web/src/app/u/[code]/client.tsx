@@ -170,7 +170,7 @@ export default function CompanionUploadClient() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <h1 style={styles.title}>VLM Upload</h1>
+        <h1 style={styles.title}>Virvi Upload</h1>
         <p style={styles.subtitle}>
           {remaining > 0
             ? `${remaining} upload${remaining !== 1 ? 's' : ''} remaining`

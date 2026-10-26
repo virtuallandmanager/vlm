@@ -1,24 +1,24 @@
 /**
  * Edit mode's state and wiring, free of Hyperfy nodes. It feeds pointer rays (world space, Hyperfy frame) into
- * vlm-core's TransformSession in VLM coordinates, shows the draft through `preview`, and saves with VlmApi. Drafts
- * and saves stay in VLM coordinates; only rays are mapped (rays.ts) and the app maps drafts back for display.
+ * virvi-core's TransformSession in Virvi coordinates, shows the draft through `preview`, and saves with VirviApi. Drafts
+ * and saves stay in Virvi coordinates; only rays are mapped (rays.ts) and the app maps drafts back for display.
  */
 import type { Vec3 } from '@virvixr/shared'
 import type { Axis, Ray } from '@virvixr/core/transform/math'
 import type { ElementKind, Handle, MoveLock, TransformMode, TransformSession } from '@virvixr/core/transform/session'
 import type { RenderItem } from '../plan.js'
-import type { ApiResult, VlmTransform } from '../vlm-api.js'
-import { toVlmRay } from './rays.js'
+import type { ApiResult, VirviTransform } from '../virvi-api.js'
+import { toVirviRay } from './rays.js'
 
 /** A message for the HUD's alert stack (Task 8 draws it). */
 export type HudAlert = { kind: 'info' | 'error'; text: string }
 
-/** What edit mode needs from a shown item: its key (`elementId:instanceId`) and its transform in VLM coordinates. */
+/** What edit mode needs from a shown item: its key (`elementId:instanceId`) and its transform in Virvi coordinates. */
 export interface RenderedItem {
   key: string
   kind: RenderItem['kind']
   name: string
-  transform: VlmTransform
+  transform: VirviTransform
 }
 
 /** A gizmo part: the session's handles, plus move arrows, which drag the body locked to their axis. */
@@ -32,7 +32,7 @@ export interface EditState {
   snap: boolean
   dirty: boolean
   dragging: boolean
-  /** A Save is waiting for VLM. */
+  /** A Save is waiting for Virvi. */
   saving: boolean
   /** Unsaved changes blocked a selection or Done: the HUD asks Save or Revert. */
   prompt: boolean
@@ -42,10 +42,10 @@ export interface EditState {
 
 export interface EditControllerOptions {
   session: TransformSession
-  api: { saveTransform(instanceId: string, t: VlmTransform): Promise<ApiResult<unknown>> }
+  api: { saveTransform(instanceId: string, t: VirviTransform): Promise<ApiResult<unknown>> }
   items: () => Map<string, RenderedItem>
-  /** Shows a VLM transform on the item's node without changing the plan. */
-  preview: (key: string, t: VlmTransform) => void
+  /** Shows a Virvi transform on the item's node without changing the plan. */
+  preview: (key: string, t: VirviTransform) => void
   /** Puts the item's node back to its plan (feed) transform. */
   restore: (key: string) => void
   alert: (a: HudAlert) => void
@@ -59,7 +59,7 @@ export interface EditControllerOptions {
 
 export const ALERT_SAVED = 'Saved'
 export const ALERT_NO_ACCESS = "You can't edit this right now"
-export const ALERT_LOST = 'Lost connection to VLM. Retrying…'
+export const ALERT_LOST = 'Lost connection to Virvi. Retrying…'
 export const ALERT_RECONNECTED = 'Reconnected'
 export const alertCouldntSave = (reason: string) => `Couldn't save: ${reason}`
 
@@ -70,19 +70,19 @@ const RETRY_FIRST_MS = 2_000
 const RETRY_MAX_MS = 30_000
 const EPSILON = 1e-4
 const closeVec = (a: Vec3, b: Vec3) => Math.abs(a.x - b.x) < EPSILON && Math.abs(a.y - b.y) < EPSILON && Math.abs(a.z - b.z) < EPSILON
-/** Equal within float noise (a value that went through VLM's API may not round-trip exactly). */
-const closeTransform = (a: VlmTransform, b: VlmTransform) =>
+/** Equal within float noise (a value that went through Virvi's API may not round-trip exactly). */
+const closeTransform = (a: VirviTransform, b: VirviTransform) =>
   closeVec(a.position, b.position) && closeVec(a.rotation, b.rotation) && closeVec(a.scale, b.scale)
 
 /** The instance id half of a RenderItem key. */
 export const instanceIdOf = (key: string): string => key.slice(key.indexOf(':') + 1)
 
 export function renderedItem(item: RenderItem): RenderedItem {
-  return { key: item.key, kind: item.kind, name: item.name, transform: item.vlm }
+  return { key: item.key, kind: item.kind, name: item.name, transform: item.virvi }
 }
 
 /**
- * The `onPointerDown` for a VLM node: while editing, every node selects itself; otherwise only a node with a link
+ * The `onPointerDown` for a Virvi node: while editing, every node selects itself; otherwise only a node with a link
  * gets one, which opens the link. Undefined means no handler (so Hyperfy shows no pointer for it).
  */
 export function clickHandler(
@@ -112,7 +112,7 @@ export class EditController {
    * snapshot moves the item off `before` (or onto the saved value), the saved transform stands in for the feed's:
    * it stays previewed and is the baseline for the next drag.
    */
-  private readonly saved = new Map<string, { transform: VlmTransform; before: VlmTransform }>()
+  private readonly saved = new Map<string, { transform: VirviTransform; before: VirviTransform }>()
   /** Bumped to cancel a scheduled save retry (the sandbox has no clearTimeout). */
   private retryToken = 0
   private retryDelay = 0
@@ -175,9 +175,9 @@ export class EditController {
     if (h.kind === 'arrow') {
       this.lockAfterDrag = s.lock
       while (s.lock !== h.axis) s.cycleLock()
-      s.beginDrag({ kind: 'body' }, this.vlmRay(ray), null)
+      s.beginDrag({ kind: 'body' }, this.virviRay(ray), null)
     } else {
-      s.beginDrag(h, this.vlmRay(ray), null)
+      s.beginDrag(h, this.virviRay(ray), null)
     }
     this.dragging = true
     this.changed()
@@ -186,7 +186,7 @@ export class EditController {
   pointerMove(ray: Ray): void {
     if (!this.dragging) return
     const before = this.opts.session.draft
-    this.opts.session.drag(this.vlmRay(ray), null)
+    this.opts.session.drag(this.virviRay(ray), null)
     if (!same(before, this.opts.session.draft)) this.show()
   }
 
@@ -234,7 +234,7 @@ export class EditController {
    * Saves the draft with PUT /api/instances/:id.
    * - Success: the saved value stands in for the feed's until the feed brings it (see `saved`).
    * - 'no_access': alerts and reverts.
-   * - 'auth' (VLM refused the pass): VlmApi has already renewed and retried once, so this means the pass couldn't be
+   * - 'auth' (Virvi refused the pass): VirviApi has already renewed and retried once, so this means the pass couldn't be
    *   renewed. Keeps the draft quietly; the pairing shows "Link expired. Pair again." and Save works once re-linked.
    * - 'lost': keeps the draft, alerts once, and retries with back-off (2 s doubling to 30 s) while the draft is
    *   unchanged; a later success alerts "Reconnected" then "Saved".
@@ -289,7 +289,7 @@ export class EditController {
     this.changed()
   }
 
-  private scheduleRetry(key: string, draft: VlmTransform): void {
+  private scheduleRetry(key: string, draft: VirviTransform): void {
     this.retryDelay = this.retryDelay ? Math.min(this.retryDelay * 2, RETRY_MAX_MS) : RETRY_FIRST_MS
     const token = ++this.retryToken
     this.timeout(() => {
@@ -343,7 +343,7 @@ export class EditController {
     const nextByKey = new Map(nextPlan.map((i) => [i.key, i]))
     for (const [k, p] of [...this.saved]) {
       const item = nextByKey.get(k)
-      if (item && closeTransform(item.vlm, p.before) && !closeTransform(item.vlm, p.transform)) continue
+      if (item && closeTransform(item.virvi, p.before) && !closeTransform(item.virvi, p.transform)) continue
       this.saved.delete(k)
       // The feed is the truth again; the selected item is handled below.
       if (k !== this.selectedKey && item) this.opts.restore(k)
@@ -379,8 +379,8 @@ export class EditController {
     }
   }
 
-  private vlmRay(ray: Ray): Ray {
-    return toVlmRay(ray, this.opts.rootInverse?.())
+  private virviRay(ray: Ray): Ray {
+    return toVirviRay(ray, this.opts.rootInverse?.())
   }
 
   /** Selects the item in the session afresh (the session must be clean). */

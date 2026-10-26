@@ -1,15 +1,15 @@
-import { VLM, resolveApiUrl, analyticsUrlFor, handoffUrlFor, dashboardOriginFor, hudStatus, applyLibraryChange, placedMessage } from '@virvixr/core'
-import { VLMHttpClient } from '@virvixr/client'
+import { Virvi, resolveApiUrl, analyticsUrlFor, handoffUrlFor, dashboardOriginFor, hudStatus, applyLibraryChange, placedMessage } from '@virvixr/core'
+import { VirviHttpClient } from '@virvixr/client'
 import type { SetupStatus, SceneLibraryItem } from '@virvixr/client'
-import type { VLMConnectionState } from '@virvixr/core'
+import type { VirviConnectionState } from '@virvixr/core'
 import { engine, Transform } from '@dcl/sdk/ecs'
 import { DclAdapter } from './DclAdapter'
-import { startVLMAnalytics, getAnalyticsSceneRef } from './analytics.js'
+import { startVirviAnalytics, getAnalyticsSceneRef } from './analytics.js'
 import { DclHUDRenderer, setSceneActionHandler } from './DclHUDRenderer.js'
 import { DclEditMode } from './transform/edit-mode.js'
 import type { HUDMediaItem, HUDLayoutItem } from './DclHUDRenderer.js'
 import { locationKeyFor } from '@virvixr/shared'
-import type { VLMInitConfig, VLMStorage } from '@virvixr/shared'
+import type { VirviInitConfig, VirviStorage } from '@virvixr/shared'
 
 // Setup-status re-checks while Decentraland's directory is unavailable (~2.5 min).
 const OWNER_CHECK_BACKOFF_MS = [10_000, 20_000, 40_000, 80_000]
@@ -18,11 +18,11 @@ const OWNER_CHECK_BACKOFF_MS = [10_000, 20_000, 40_000, 80_000]
 const ROLE_ERRORS: Record<string, string> = {
   Forbidden: 'Only the host and co-hosts can manage roles.',
   is_host: 'That wallet is the host.',
-  not_a_signed_in_cohost: 'They need to sign in to VLM with that wallet before they can become host.',
+  not_a_signed_in_cohost: 'They need to sign in to Virvi with that wallet before they can become host.',
   host_has_no_wallet: 'Link your wallet in Settings before transferring host.',
 }
 
-/** Map a vlm-client error (`HTTP 409: {"error":"is_host"}`) to text for the Roles panel. */
+/** Map a virvi-client error (`HTTP 409: {"error":"is_host"}`) to text for the Roles panel. */
 function friendlyRoleError(err: unknown): string {
   const m = /^HTTP \d+: ([\s\S]*)$/.exec(err instanceof Error ? err.message : String(err))
   if (m) {
@@ -36,7 +36,7 @@ function friendlyRoleError(err: unknown): string {
   return 'Something went wrong — try again'
 }
 
-/** Map a vlm-client error from a media / layout edit to text for the Assets and Layout panels. */
+/** Map a virvi-client error from a media / layout edit to text for the Assets and Layout panels. */
 function friendlyEditError(err: unknown): string {
   const status = Number(/^HTTP (\d+):/.exec(err instanceof Error ? err.message : String(err))?.[1])
   if (status === 401 || status === 403) return "You don't have permission to edit this scene"
@@ -54,7 +54,7 @@ function friendlyRenameError(err: unknown): string {
 const PLACEABLE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 const LAYOUT_TYPES = new Set(['image', 'video', 'model', 'sound', 'ad_space'])
 
-/** Images (rendered live) and GLBs (rendered after `npx vlm-dcl sync` + redeploy) can be placed from the HUD. */
+/** Images (rendered live) and GLBs (rendered after `npx virvi-dcl sync` + redeploy) can be placed from the HUD. */
 function mediaKind(a: SceneLibraryItem): 'image' | 'model' | null {
   // In-flight and failed uploads have no url yet but still show (with their status)
   if (!a.url && a.status === 'ready') return null
@@ -81,7 +81,7 @@ const toLayoutItem = (el: any): HUDLayoutItem => ({ id: el.id, name: el.name, ty
  * Where a placed item goes: 2 m in front of the player on the XZ plane, turned to face them (to the nearest 90°).
  * SDK7 Transforms of root scene entities and of the player are both relative to the scene's base
  * parcel (the analytics probe relies on the same), so this is already the scene-local space that
- * VLM instance positions use (the adapter's setTransform applies them as-is).
+ * Virvi instance positions use (the adapter's setTransform applies them as-is).
  */
 function placementInFrontOfPlayer(kind: 'image' | 'model') {
   const t = Transform.getOrNull(engine.PlayerEntity)
@@ -105,22 +105,22 @@ function placementInFrontOfPlayer(kind: 'image' | 'model') {
 }
 
 /**
- * Create a VLM instance for Decentraland SDK 7.
+ * Create a Virvi instance for Decentraland SDK 7.
  *
  * If sceneId is provided, authenticates and connects to that scene directly.
- * If not, asks the VLM server what the signed-in wallet gets at this location:
+ * If not, asks the Virvi server what the signed-in wallet gets at this location:
  * - a member of this location's setup (host / co-host / editor / viewer) connects straight to its scene;
- * - an owner, operator or deployer of the land with no setup yet gets a one-press "Set up VLM here" card;
- * - everyone else (visitors, guests, wallets without a role) gets no VLM UI at all, but still
+ * - an owner, operator or deployer of the land with no setup yet gets a one-press "Set up Virvi here" card;
+ * - everyone else (visitors, guests, wallets without a role) gets no Virvi UI at all, but still
  *   connects content-only when the location is set up, so they see its images, video and models.
  */
-export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: boolean }): Promise<VLM> {
+export async function createVirvi(config?: Partial<VirviInitConfig> & { enableHud?: boolean }): Promise<Virvi> {
   const adapter = new DclAdapter()
-  const vlm = new VLM(adapter)
+  const virvi = new Virvi(adapter)
   if (config?.analytics !== false) {
-    // Analytics start once per scene runtime; every createVLM call (retries included) attaches the shared collector.
-    void startVLMAnalytics({ env: config?.env, apiUrl: config?.apiUrl, adapter }).then((c) => {
-      if (c) vlm.attachAnalytics(c)
+    // Analytics start once per scene runtime; every createVirvi call (retries included) attaches the shared collector.
+    void startVirviAnalytics({ env: config?.env, apiUrl: config?.apiUrl, adapter }).then((c) => {
+      if (c) virvi.attachAnalytics(c)
     })
   }
   const enableHud = config?.enableHud !== false
@@ -133,26 +133,26 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       const r = new DclHUDRenderer()
       r.init()
       r.updateConnectionState('idle')
-      vlm.onStateChange((state: VLMConnectionState, detail?: Record<string, unknown>) => {
+      virvi.onStateChange((state: VirviConnectionState, detail?: Record<string, unknown>) => {
         r.updateConnectionState(state, detail)
       })
       // Models not deployed with the scene yet; always the latest count (an upsert can emit 0 then 1)
-      r.setMissingModels(vlm.missingModels())
-      vlm.onModelsMissing((n) => r.setMissingModels(n))
+      r.setMissingModels(virvi.missingModels())
+      virvi.onModelsMissing((n) => r.setMissingModels(n))
       renderer = r
     } catch (err) {
-      console.warn('[VLM] HUD initialization failed:', err)
+      console.warn('[Virvi] HUD initialization failed:', err)
     }
     return renderer
   }
 
-  // initHUD runs once per vlm, after the first successful connect (which may be a Retry)
+  // initHUD runs once per virvi, after the first successful connect (which may be a Retry)
   // (shared promise, so a Retry racing an in-flight connect can't initialise it twice)
   let hudInit: Promise<void> | null = null
   const ensureHUD = async () => {
     if (!renderer) return
     if (!hudInit) {
-      hudInit = vlm.initHUD(renderer).catch((err) => {
+      hudInit = virvi.initHUD(renderer).catch((err) => {
         hudInit = null
         throw err
       })
@@ -169,7 +169,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
     const swallow = () => {}
     const openPlain = () => { void Promise.resolve(adapter.openUrl(analyticsUrlFor(apiUrl, sceneId))).catch(swallow) }
     if (!dashboardOriginFor(apiUrl)) return openPlain()
-    vlm.httpClient.createHandoff().then(
+    virvi.httpClient.createHandoff().then(
       ({ code }) => {
         const url = handoffUrlFor(apiUrl, code, next)
         if (!url) return openPlain()
@@ -183,7 +183,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
   if (config?.sceneId) {
     ensureRenderer()
     try {
-      await vlm.init({ env: 'prod', ...config })
+      await virvi.init({ env: 'prod', ...config })
 
       if (renderer) {
         renderer.setCurrentScene(config.sceneId, 'Scene')
@@ -194,19 +194,19 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         })
       }
 
-      console.log('[VLM] Connected to scene:', config.sceneId)
+      console.log('[Virvi] Connected to scene:', config.sceneId)
       // Edit rights come from the setup at this location, not from config.sceneId: say so instead of failing silently.
-      if (vlm.binding?.sceneId !== config.sceneId) {
-        console.warn(`[VLM] Scene ${config.sceneId} is not set up at this location, so it shows content only. Set up VLM at this location to edit it in-world.`)
+      if (virvi.binding?.sceneId !== config.sceneId) {
+        console.warn(`[Virvi] Scene ${config.sceneId} is not set up at this location, so it shows content only. Set up Virvi at this location to edit it in-world.`)
         renderer?.showNotification({
-          id: `vlm-binding-${Date.now()}`,
+          id: `virvi-binding-${Date.now()}`,
           type: 'warning',
-          title: 'Set up VLM at this location to edit',
+          title: 'Set up Virvi at this location to edit',
           message: 'This scene is not set up here, so in-world editing is off.',
           timestamp: Date.now(),
         })
       }
-      return vlm
+      return virvi
     } catch (err) {
       if (renderer) {
         renderer.updateConnectionState('error', { error: String(err) })
@@ -216,14 +216,14 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
   }
 
   // No sceneId: ask the server what this wallet gets here (nothing / Set up / member of the setup).
-  // Visitors, role-less wallets and wallets that can't set up here never get any VLM UI.
-  // createVLM never blocks the creator's scene code: it resolves right after the first status probe,
+  // Visitors, role-less wallets and wallets that can't set up here never get any Virvi UI.
+  // createVirvi never blocks the creator's scene code: it resolves right after the first status probe,
   // and connecting, setup and directory retries all continue in the background.
   type SceneRole = 'host' | 'cohost' | 'editor' | 'viewer'
   try {
     const sceneRef = await getAnalyticsSceneRef()
     const user = await adapter.getPlatformUser()
-    const probe = new VLMHttpClient(resolveApiUrl(config ?? {}))
+    const probe = new VirviHttpClient(resolveApiUrl(config ?? {}))
 
     // Visitors (role-less wallets and guests) at a set-up location: join the scene room for its
     // content only — no renderer, no HUD; failures are only logged. Platform auth gives guests a
@@ -233,10 +233,10 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       if (contentStarted) return
       contentStarted = true
       void (async () => {
-        await vlm.authenticate({ env: 'prod', ...config })
-        await vlm.connectToScene(sceneId)
-        console.log('[VLM] Showing VLM content for scene', sceneId)
-      })().catch((err) => console.log('[VLM] VLM content unavailable:', String(err)))
+        await virvi.authenticate({ env: 'prod', ...config })
+        await virvi.connectToScene(sceneId)
+        console.log('[Virvi] Showing Virvi content for scene', sceneId)
+      })().catch((err) => console.log('[Virvi] Virvi content unavailable:', String(err)))
     }
 
     if (user.isGuest) {
@@ -245,15 +245,15 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         void probe
           .getSceneForLocation(locationKeyFor(sceneRef, null))
           .then((sceneId) => { if (sceneId) connectContentOnly(sceneId) })
-          .catch((err) => console.log('[VLM] VLM content unavailable:', String(err)))
+          .catch((err) => console.log('[Virvi] Virvi content unavailable:', String(err)))
       }
-      return vlm
+      return virvi
     }
 
     const reconnect = async (sceneId: string) => {
       try {
         renderer?.updateConnectionState('connecting', { sceneId })
-        await vlm.connectToScene(sceneId)
+        await virvi.connectToScene(sceneId)
         // A failed first connect never reached initHUD; do it now so the HUD isn't left dead after Retry
         await ensureHUD()
       } catch (err) {
@@ -261,7 +261,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       }
     }
 
-    // In-world transform tools: one edit mode per VLM, only for members who can edit (HUD actions drive it)
+    // In-world transform tools: one edit mode per Virvi, only for members who can edit (HUD actions drive it)
     let editMode: DclEditMode | null = null
     // Live library + missing-model subscriptions of the current connected handler (replaced on reinstall)
     let offLibrary: (() => void)[] = []
@@ -271,11 +271,11 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
     // (the server enforces the same; the scene room's upsert/delete broadcast renders the result)
     const installConnectedHandler = (configuredSceneId: string, role: SceneRole) => {
       // A scene pass is only valid for the scene the server bound it to; prefer that over the configured id
-      const sceneId = vlm.binding?.sceneId ?? configuredSceneId
+      const sceneId = virvi.binding?.sceneId ?? configuredSceneId
       let currentRole: SceneRole = role
       const managesRoles = () => currentRole === 'host' || currentRole === 'cohost'
       const edits = () => currentRole !== 'viewer'
-      if (edits() && !editMode) editMode = new DclEditMode(vlm, adapter)
+      if (edits() && !editMode) editMode = new DclEditMode(virvi, adapter)
       if (editMode) {
         const em = editMode
         em.onChange = () => renderer?.setEditMode(em.state)
@@ -286,28 +286,28 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
 
       const refresh = async () => {
         try {
-          const data = await vlm.httpClient.getSceneRoles(sceneId)
+          const data = await virvi.httpClient.getSceneRoles(sceneId)
           renderer?.setRoles({ hostWallets: data.host.wallets, roles: data.roles })
           renderer?.setRolesError(null)
         } catch (err) {
           renderer?.setRolesError(friendlyRoleError(err))
         }
       }
-      const pushMedia = () => renderer?.setMedia(toHUDMedia(media, vlm.missingModelSrcs()))
+      const pushMedia = () => renderer?.setMedia(toHUDMedia(media, virvi.missingModelSrcs()))
       const refreshMedia = async () => {
-        const { items } = await vlm.httpClient.getSceneLibrary(sceneId)
+        const { items } = await virvi.httpClient.getSceneLibrary(sceneId)
         media = items
         pushMedia()
       }
       // Uploads (from this computer, a phone, or another editor) arrive live; a model's sync state follows placing and redeploys
       for (const off of offLibrary) off()
       offLibrary = [
-        vlm.onLibraryChanged((change) => {
+        virvi.onLibraryChanged((change) => {
           if (!edits()) return
           media = applyLibraryChange(media, change)
           pushMedia()
         }),
-        vlm.onModelsMissing(() => { if (edits() && media.length) pushMedia() }),
+        virvi.onModelsMissing(() => { if (edits() && media.length) pushMedia() }),
       ]
       // Upload link: minted on the press, kept only while the Upload view is open
       let uploadUrl: string | null = null
@@ -315,7 +315,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         uploadUrl = null
         renderer?.setUploadView({ open: true, loading: true, error: null, token: null })
         try {
-          const { token } = await vlm.httpClient.createUploadToken(sceneId, { kinds: ['image', 'model'] })
+          const { token } = await virvi.httpClient.createUploadToken(sceneId, { kinds: ['image', 'model'] })
           uploadUrl = token.uploadUrl
           renderer?.setUploadView({ loading: false, token })
         } catch {
@@ -323,7 +323,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         }
       }
       const activePreset = async () => {
-        const { scene } = await vlm.httpClient.getScene(sceneId)
+        const { scene } = await virvi.httpClient.getScene(sceneId)
         return scene.presets?.find((p) => p.id === scene.activePresetId) ?? null
       }
       const refreshLayout = async () => {
@@ -347,23 +347,23 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
           renderer?.setEditMessage("That file isn't ready yet", true)
           return
         }
-        const scene = (await vlm.httpClient.getScene(sceneId)).scene
+        const scene = (await virvi.httpClient.getScene(sceneId)).scene
         if (!scene.activePresetId) {
           renderer?.setEditMessage('This scene has no active preset — pick one on the dashboard', true)
           return
         }
         const where = placementInFrontOfPlayer(kind)
-        const { element } = await vlm.httpClient.createElement(scene.activePresetId, {
+        const { element } = await virvi.httpClient.createElement(scene.activePresetId, {
           type: kind,
           name: asset.name,
           enabled: true,
           properties: kind === 'image' ? { textureSrc: asset.url } : { modelSrc: asset.url },
         })
         try {
-          await vlm.httpClient.createInstance(element.id, { ...where, enabled: true })
+          await virvi.httpClient.createInstance(element.id, { ...where, enabled: true })
         } catch (err) {
           // Don't leave an element with no instance behind (best effort)
-          await vlm.httpClient.deleteElement(element.id).catch(() => {})
+          await virvi.httpClient.deleteElement(element.id).catch(() => {})
           throw err
         }
         layout = [...layout.filter((el) => el.id !== element.id), toLayoutItem(element)]
@@ -373,7 +373,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
           return
         }
         // What happens next depends on the scene's World destination; a failed lookup reads as "none"
-        const destination = await vlm.httpClient.getDclPublishStatus(sceneId).then((r) => r.destination, () => null)
+        const destination = await virvi.httpClient.getDclPublishStatus(sceneId).then((r) => r.destination, () => null)
         const next = placedMessage(asset.name, destination)
         publishUrl = next.publish && destination ? destination.publishUrl : null
         if (publishUrl) renderer?.setEditMessage(next.text, false, { label: 'Publish', action: 'open_publish' })
@@ -409,13 +409,13 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
           try {
             if (action === 'roles_refresh') await refresh()
             if (action === 'roles_add') {
-              await vlm.httpClient.addSceneRole(sceneId, data.wallet, data.role)
+              await virvi.httpClient.addSceneRole(sceneId, data.wallet, data.role)
               renderer?.clearRoleDraft()
               await refresh()
             }
-            if (action === 'roles_remove') { await vlm.httpClient.removeSceneRole(sceneId, data.wallet); await refresh() }
+            if (action === 'roles_remove') { await virvi.httpClient.removeSceneRole(sceneId, data.wallet); await refresh() }
             if (action === 'roles_transfer' && currentRole === 'host') {
-              await vlm.httpClient.transferHost(sceneId, data.wallet)
+              await virvi.httpClient.transferHost(sceneId, data.wallet)
               currentRole = 'cohost'
               renderer?.setSceneRole('cohost')
               await refresh()
@@ -445,7 +445,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
           if (!edits() || busy) return
           busy = true
           try {
-            const { item } = await vlm.httpClient.renameSceneLibraryItem(sceneId, String(data?.assetId), String(data?.name ?? ''))
+            const { item } = await virvi.httpClient.renameSceneLibraryItem(sceneId, String(data?.assetId), String(data?.name ?? ''))
             media = applyLibraryChange(media, { action: 'upsert', item })
             pushMedia()
             renderer?.setRenaming(null)
@@ -460,7 +460,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         if (action === 'media_dismiss') {
           if (!edits()) return
           try {
-            await vlm.httpClient.removeFromSceneLibrary(sceneId, String(data?.assetId))
+            await virvi.httpClient.removeFromSceneLibrary(sceneId, String(data?.assetId))
             media = media.filter((a) => a.id !== String(data?.assetId))
             pushMedia()
           } catch (err) {
@@ -494,13 +494,13 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
         try {
           if (action === 'media_place') await place(String(data?.assetId))
           if (action === 'layout_toggle') {
-            const { element } = await vlm.httpClient.updateElement(String(data?.elementId), { enabled: !!data?.enabled })
+            const { element } = await virvi.httpClient.updateElement(String(data?.elementId), { enabled: !!data?.enabled })
             layout = layout.map((el) => (el.id === element.id ? toLayoutItem(element) : el))
             renderer?.setLayout(layout)
           }
           if (action === 'layout_delete') {
             const id = String(data?.elementId)
-            await vlm.httpClient.deleteElement(id)
+            await virvi.httpClient.deleteElement(id)
             layout = layout.filter((el) => el.id !== id)
             renderer?.setLayout(layout)
           }
@@ -514,22 +514,22 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
     }
 
     const connectAs = async (sceneId: string, role: SceneRole): Promise<void> => {
-      await vlm.authenticate({ env: 'prod', ...config })
+      await virvi.authenticate({ env: 'prod', ...config })
       ensureRenderer()
       renderer?.setSceneRole(role)
       renderer?.updateConnectionState('connecting', { sceneId })
       renderer?.setCurrentScene(sceneId, sceneRef.title || 'Scene')
       // Installed before connecting so the error screen's Retry works even if this first connect fails
       if (renderer) installConnectedHandler(sceneId, role)
-      await vlm.connectToScene(sceneId)
+      await virvi.connectToScene(sceneId)
       await ensureHUD()
-      console.log('[VLM] Connected to scene as', role, sceneId)
+      console.log('[Virvi] Connected to scene as', role, sceneId)
     }
 
     const connectInBackground = (sceneId: string, role: SceneRole) => {
       void connectAs(sceneId, role).catch((err) => {
         if (renderer) renderer.updateConnectionState('error', { error: String(err) })
-        else console.log('[VLM] Setup unavailable:', String(err))
+        else console.log('[Virvi] Setup unavailable:', String(err))
       })
     }
 
@@ -551,7 +551,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
               const msg =
                 res.error === 'already_set_up' ? `Already set up by ${res.host ?? 'someone else'}`
                 : res.status === 503 ? "Decentraland's servers aren't answering — try again in a minute"
-                : res.status === 403 ? "Only this land's owner, operators or deployer can set up VLM here"
+                : res.status === 403 ? "Only this land's owner, operators or deployer can set up Virvi here"
                 : `Setup failed (${res.error})`
               renderer?.showSetupOffer(msg)
               return
@@ -564,7 +564,7 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
           setSceneActionHandler(onSetupAction)
           renderer?.showSetupOffer(
             createdSceneId
-              ? `VLM is set up, but connecting failed (${String(err)}) — press again to retry`
+              ? `Virvi is set up, but connecting failed (${String(err)}) — press again to retry`
               : 'Setup failed — try again',
           )
         } finally {
@@ -579,44 +579,44 @@ export async function createVLM(config?: Partial<VLMInitConfig> & { enableHud?: 
       if (status.state === 'member') connectInBackground(status.sceneId, status.role)
       else if (status.state === 'eligible') offerSetup()
       else if (status.state === 'unavailable') return false
-      else if (status.state === 'taken') console.log(`[VLM] Analytics running; VLM here is already set up by ${status.host}`)
-      else console.log("[VLM] Analytics running; VLM setup is only offered to this land's owners, operators and deployer")
+      else if (status.state === 'taken') console.log(`[Virvi] Analytics running; Virvi here is already set up by ${status.host}`)
+      else console.log("[Virvi] Analytics running; Virvi setup is only offered to this land's owners, operators and deployer")
       // Not a member, but the location is set up: show its content (no HUD)
       if ((status.state === 'taken' || status.state === 'none') && status.sceneId) connectContentOnly(status.sceneId)
       return true
     }
 
     if (!act(await probe.getSetupStatus(sceneRef, adapter))) {
-      console.log("[VLM] Analytics running; Decentraland's servers aren't answering, will re-check VLM setup in the background")
+      console.log("[Virvi] Analytics running; Decentraland's servers aren't answering, will re-check Virvi setup in the background")
       void (async () => {
         for (const delay of OWNER_CHECK_BACKOFF_MS) {
           await new Promise((r) => setTimeout(r, delay))
           if (act(await probe.getSetupStatus(sceneRef, adapter))) return
         }
-        console.log('[VLM] VLM setup check gave up; Decentraland is still unavailable')
-      })().catch((err) => console.log('[VLM] Setup unavailable:', String(err)))
+        console.log('[Virvi] Virvi setup check gave up; Decentraland is still unavailable')
+      })().catch((err) => console.log('[Virvi] Setup unavailable:', String(err)))
     }
-    return vlm
+    return virvi
   } catch (err) {
-    console.log('[VLM] Setup unavailable:', String(err))
-    return vlm
+    console.log('[Virvi] Setup unavailable:', String(err))
+    return virvi
   }
 }
 
 // Backward-compatible default export
-const VLMCompat = {
-  init: async (config?: Partial<VLMInitConfig>): Promise<VLMStorage> => {
-    const vlm = await createVLM(config)
-    return vlm.storage
+const VirviCompat = {
+  init: async (config?: Partial<VirviInitConfig>): Promise<VirviStorage> => {
+    const virvi = await createVirvi(config)
+    return virvi.storage
   },
 }
-export default VLMCompat
+export default VirviCompat
 
 export { DclAdapter }
 export { DclHUDRenderer } from './DclHUDRenderer.js'
 export { DclEditMode } from './transform/edit-mode.js'
 export type { DclEditModeState } from './transform/edit-mode.js'
 export { SHIFT_ACTION } from './transform/input.js'
-export type { VLMInitConfig }
-export { startVLMAnalytics, stopVLMAnalytics, DclAnalyticsProbe, getAnalyticsSceneRef } from './analytics.js'
+export type { VirviInitConfig }
+export { startVirviAnalytics, stopVirviAnalytics, DclAnalyticsProbe, getAnalyticsSceneRef } from './analytics.js'
 export { HUD_ICON_SRC } from './hud/icon.js'

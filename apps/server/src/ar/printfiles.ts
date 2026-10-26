@@ -397,7 +397,7 @@ export function buildMarkerMeshes(markerId: number, diameterMm: number, mounting
 // File formats
 
 /** Binary STL. */
-export function stl(mesh: Mesh, name = 'VLM ring marker'): Buffer {
+export function stl(mesh: Mesh, name = 'Virvi ring marker'): Buffer {
   const buf = Buffer.alloc(84 + 50 * mesh.tris.length)
   buf.write(name.slice(0, 80), 0, 'latin1')
   buf.writeUInt32LE(mesh.tris.length, 80)
@@ -482,7 +482,7 @@ export function paperPdf(markerId: number, diameterMm: number): Buffer {
   const cy = pageH - (top + side / 2) * k
   const poly = (pts: P[]) => pts.map(([x, y], i) => `${num(cx + x * k)} ${num(cy + y * k)} ${i ? 'l' : 'm'}`).join(' ') + ' h'
 
-  text(15, 14, 16, `VLM ring marker  ${code}`, 'F2')
+  text(15, 14, 16, `Virvi ring marker  ${code}`, 'F2')
   ops.push('0 G 0.6 w', `${X(left)} ${Y(top + side)} ${num(side * k)} ${num(side * k)} re S`)
   ops.push('0 g')
   for (const s of ringShapes(markerId, diameterMm)) {

@@ -11,7 +11,7 @@ export interface HyperfyTransform {
 const DEG = Math.PI / 180
 
 /**
- * VLM (Decentraland, left-handed, +Z forward) to Hyperfy (three.js, right-handed). Position z is mirrored;
+ * Virvi (Decentraland, left-handed, +Z forward) to Hyperfy (three.js, right-handed). Position z is mirrored;
  * rotation goes degrees to radians with x and y negated (a z-mirror flips turns about x and y), and keeps
  * Decentraland's yaw-pitch-roll order, which is three.js 'YXZ'. Scale is unchanged.
  */
@@ -26,7 +26,7 @@ export function toHyperfyTransform(t: { position: Vec3; rotation: Vec3; scale: V
 /**
  * The turn a loaded model gets inside the group that carries its mapped transform. Decentraland shows a glTF
  * x-mirrored (glTF (x, y, z) at (-x, y, z)); with the z-mirror above that is a half turn about Y in Hyperfy.
- * The half turn, diag(-1, 1, -1), commutes with scale, so the group can keep the VLM scale.
+ * The half turn, diag(-1, 1, -1), commutes with scale, so the group can keep the Virvi scale.
  */
 export const MODEL_TURN: Triple = [0, Math.PI, 0]
 
@@ -42,7 +42,7 @@ export function worldToLocal(p: XYZ, inverse: { elements: ArrayLike<number> }): 
   }
 }
 
-/** An app-local Hyperfy position back in VLM terms: the inverse of toHyperfyTransform's position mapping. */
-export function toVlmPosition(local: XYZ): Vec3 {
+/** An app-local Hyperfy position back in Virvi terms: the inverse of toHyperfyTransform's position mapping. */
+export function toVirviPosition(local: XYZ): Vec3 {
   return { x: local.x, y: local.y, z: -local.z }
 }

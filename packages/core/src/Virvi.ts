@@ -1,7 +1,7 @@
-import type { SceneLibraryChangeData, TransformData, TransformDraftData, VLMPlatformAdapter, VLMInitConfig, VLMStorage as VLMStorageType, HUDRenderer, BudgetLimits, Scene } from '@virvixr/shared'
-import { VLMHttpClient, ColyseusManager } from '@virvixr/client'
+import type { SceneLibraryChangeData, TransformData, TransformDraftData, VirviPlatformAdapter, VirviInitConfig, VirviStorage as VirviStorageType, HUDRenderer, BudgetLimits, Scene } from '@virvixr/shared'
+import { VirviHttpClient, ColyseusManager } from '@virvixr/client'
 import { SceneManager } from './SceneManager.js'
-import { VLMStorageImpl } from './storage.js'
+import { VirviStorageImpl } from './storage.js'
 import type { Selected } from './transform/session.js'
 import { EventBus } from './events/EventBus.js'
 import { AdHost } from './ads/host.js'
@@ -12,7 +12,7 @@ const API_URLS: Record<string, string> = {
   staging: 'https://staging-api.vlm.gg',
   prod: 'https://api.vlm.gg',
 }
-export function resolveApiUrl(config: Partial<VLMInitConfig> = {}): string {
+export function resolveApiUrl(config: Partial<VirviInitConfig> = {}): string {
   const env = config.env || 'prod'
   return config.apiUrl || API_URLS[env] || API_URLS.prod
 }
@@ -23,7 +23,7 @@ const WSS_URLS: Record<string, string> = {
   prod: 'wss://api.vlm.gg',
 }
 
-export type VLMConnectionState =
+export type VirviConnectionState =
   | 'idle'
   | 'authenticating'
   | 'authenticated'
@@ -33,13 +33,13 @@ export type VLMConnectionState =
   | 'connected'
   | 'error'
 
-export interface VLMStateListener {
-  (state: VLMConnectionState, detail?: Record<string, unknown>): void
+export interface VirviStateListener {
+  (state: VirviConnectionState, detail?: Record<string, unknown>): void
 }
 
-export class VLM {
-  private adapter: VLMPlatformAdapter
-  private http: VLMHttpClient
+export class Virvi {
+  private adapter: VirviPlatformAdapter
+  private http: VirviHttpClient
   private colyseus: ColyseusManager
   private sceneManager: SceneManager
   /** Serves and measures the scene's ads; started once the scene has loaded. */
@@ -47,9 +47,9 @@ export class VLM {
   /** Core event emitter (also carries transform_draft / transform_draft_end / transform_held). */
   public readonly events: EventBus
   private userMessageHandlers: Map<string, (data: unknown) => void> = new Map()
-  private stateListeners: Set<VLMStateListener> = new Set()
+  private stateListeners: Set<VirviStateListener> = new Set()
   private handlersRegistered = false
-  private _connectionState: VLMConnectionState = 'idle'
+  private _connectionState: VirviConnectionState = 'idle'
   private _sceneId: string | null = null
   private _user: { id: string; displayName?: string; email?: string; role: string } | null = null
   private _scenes: Scene[] = []
@@ -59,15 +59,15 @@ export class VLM {
   /** Frame system timing pending saves out (platforms have no timers here); null when none are pending. */
   private saveTimeoutSystem: ((dt: number) => void) | null = null
   private static SAVE_TIMEOUT_MS = 5000
-  public storage: VLMStorageType
-  public hud: any | null = null // HUDManager — typed as any to avoid hard dep on vlm-hud
+  public storage: VirviStorageType
+  public hud: any | null = null // HUDManager — typed as any to avoid hard dep on virvi-hud
 
-  constructor(adapter: VLMPlatformAdapter) {
+  constructor(adapter: VirviPlatformAdapter) {
     this.adapter = adapter
-    this.http = new VLMHttpClient('')
+    this.http = new VirviHttpClient('')
     this.colyseus = new ColyseusManager()
     this.events = new EventBus()
-    this.storage = VLMStorageImpl.create()
+    this.storage = VirviStorageImpl.create()
     // Reads this.http at call time: authenticate() replaces the client
     this.ads = new AdHost({
       adapter,
@@ -80,20 +80,20 @@ export class VLM {
   private _binding: { sceneId: string | null; locationId: string | null } | null = null
   private analytics: import('./analytics/collector.js').Collector | null = null
 
-  get connectionState(): VLMConnectionState { return this._connectionState }
+  get connectionState(): VirviConnectionState { return this._connectionState }
   get sceneId(): string | null { return this._sceneId }
   get user(): typeof this._user { return this._user }
   get scenes(): Scene[] { return this._scenes }
-  get httpClient(): VLMHttpClient { return this.http }
+  get httpClient(): VirviHttpClient { return this.http }
   /** The scene the server bound this sign-in to (in-world scene pass), or null when unbound / not signed in. */
   get binding(): { sceneId: string | null; locationId: string | null } | null { return this._binding }
 
-  onStateChange(listener: VLMStateListener): () => void {
+  onStateChange(listener: VirviStateListener): () => void {
     this.stateListeners.add(listener)
     return () => this.stateListeners.delete(listener)
   }
 
-  private setState(state: VLMConnectionState, detail?: Record<string, unknown>): void {
+  private setState(state: VirviConnectionState, detail?: Record<string, unknown>): void {
     this._connectionState = state
     for (const listener of this.stateListeners) {
       try { listener(state, detail) } catch { /* swallow */ }
@@ -104,7 +104,7 @@ export class VLM {
    * Full initialization — authenticate, discover/create scene, connect Colyseus.
    * If sceneId is provided, connects directly. If not, discovers or creates one.
    */
-  async init(config: VLMInitConfig): Promise<VLMStorageType> {
+  async init(config: VirviInitConfig): Promise<VirviStorageType> {
     // Phase 1: Authenticate (also sets up http client and wssUrl)
     await this.authenticate(config)
 
@@ -130,7 +130,7 @@ export class VLM {
   /** Frame system checking the clock (platforms have no timers here); null when nothing is scheduled. */
   private renewSystem: ((dt: number) => void) | null = null
 
-  private async signInWithPlatform(http: VLMHttpClient, config: VLMInitConfig, renew = false): Promise<void> {
+  private async signInWithPlatform(http: VirviHttpClient, config: VirviInitConfig, renew = false): Promise<void> {
     const [platformUser, sceneInfo, environment] = await Promise.all([
       this.adapter.getPlatformUser(),
       this.adapter.getSceneInfo(),
@@ -158,13 +158,13 @@ export class VLM {
   }
 
   /** Re-sign the pass: signed request only, and only a pass for the same scene replaces it (see the HTTP client's keepSceneId). */
-  private renewPass(http: VLMHttpClient, config: VLMInitConfig): Promise<void> {
+  private renewPass(http: VirviHttpClient, config: VirviInitConfig): Promise<void> {
     return this.signInWithPlatform(http, config, true)
   }
 
-  private scheduleRenewal(http: VLMHttpClient, config: VLMInitConfig): void {
+  private scheduleRenewal(http: VirviHttpClient, config: VirviInitConfig): void {
     this.stopRenewal()
-    let due = Date.now() + VLM.RENEW_MS
+    let due = Date.now() + Virvi.RENEW_MS
     let busy = false
     const system = (_dt: number) => {
       if (busy || Date.now() < due) return
@@ -172,8 +172,8 @@ export class VLM {
       busy = true
       // Shared with the 401 retry. A failure keeps the current pass and tries again shortly.
       void http.renewSession().then(
-        () => { due = Date.now() + VLM.RENEW_MS },
-        () => { due = Date.now() + VLM.RENEW_RETRY_MS },
+        () => { due = Date.now() + Virvi.RENEW_MS },
+        () => { due = Date.now() + Virvi.RENEW_RETRY_MS },
       ).finally(() => { busy = false })
     }
     this.renewSystem = system
@@ -186,14 +186,14 @@ export class VLM {
   }
 
   /**
-   * Phase 1: Authenticate with the VLM server using platform credentials.
+   * Phase 1: Authenticate with the Virvi server using platform credentials.
    * Can be called standalone before scene discovery.
    */
-  async authenticate(config: VLMInitConfig): Promise<void> {
+  async authenticate(config: VirviInitConfig): Promise<void> {
     const env = config.env || 'prod'
     const apiUrl = resolveApiUrl(config)
     this.wssUrl = config.wssUrl || WSS_URLS[env] || WSS_URLS.prod
-    this.http = new VLMHttpClient(apiUrl)
+    this.http = new VirviHttpClient(apiUrl)
     // A previous sign-in's binding must never outlive a new attempt (failed or not).
     this._binding = null
 
@@ -247,7 +247,7 @@ export class VLM {
    * Phase 3: Connect to a specific scene via Colyseus.
    * Must be called after authenticate().
    */
-  async connectToScene(sceneId: string): Promise<VLMStorageType> {
+  async connectToScene(sceneId: string): Promise<VirviStorageType> {
     this._sceneId = sceneId
     this.setState('connecting', { sceneId })
 
@@ -261,7 +261,7 @@ export class VLM {
       throw err
     }
 
-    return new Promise<VLMStorageType>(async (resolve, reject) => {
+    return new Promise<VirviStorageType>(async (resolve, reject) => {
       try {
         this.events.on('scene_initialized', () => {
           void this.ads.start()
@@ -295,14 +295,14 @@ export class VLM {
   /**
    * Select a scene from the user's existing scenes and connect to it.
    */
-  async selectScene(sceneId: string): Promise<VLMStorageType> {
+  async selectScene(sceneId: string): Promise<VirviStorageType> {
     return this.connectToScene(sceneId)
   }
 
   /**
    * Create a new scene and connect to it.
    */
-  async createScene(name: string, description?: string): Promise<VLMStorageType> {
+  async createScene(name: string, description?: string): Promise<VirviStorageType> {
     const { scene } = await this.http.createScene(name, description)
     this._sceneId = scene.id
     this._scenes = [scene, ...this._scenes]
@@ -352,11 +352,11 @@ export class VLM {
       if (sk) this.pendingSaves.get(sk)?.resolve()
     })
 
-    this.colyseus.onMessage('vlm_error', (message: unknown) => {
+    this.colyseus.onMessage('virvi_error', (message: unknown) => {
       const e = message as { code?: string; messageType?: string } | null
       // Errors carry no sk: a refused scene_preset_update fails every save still waiting
       if (e?.messageType === 'scene_preset_update') this.failSaves(e.code || 'server_error')
-      this.events.emit('vlm_error', message)
+      this.events.emit('virvi_error', message)
     })
 
     this.colyseus.onLeave((code: number) => {
@@ -387,8 +387,8 @@ export class VLM {
       this.hud.destroy()
       this.hud = null
     }
-    // The collector is shared per scene runtime (other VLM instances may use it): detach only.
-    // Stop it explicitly with the adapter's stopVLMAnalytics().
+    // The collector is shared per scene runtime (other Virvi instances may use it): detach only.
+    // Stop it explicitly with the adapter's stopVirviAnalytics().
     this.analytics = null
     this.ads.stop()
     this.stopRenewal()
@@ -426,7 +426,7 @@ export class VLM {
       })
       this.hud.init()
     } catch {
-      // vlm-hud not installed — that's fine, it's optional
+      // virvi-hud not installed — that's fine, it's optional
     }
   }
 
@@ -465,7 +465,7 @@ export class VLM {
               this.settleSave(sk, entry)
               reject(err)
             },
-            deadline: Date.now() + VLM.SAVE_TIMEOUT_MS,
+            deadline: Date.now() + Virvi.SAVE_TIMEOUT_MS,
           }
           this.pendingSaves.set(sk, entry)
           this.watchSaveTimeouts()
@@ -508,7 +508,7 @@ export class VLM {
     return this.storage.models.missing.size
   }
 
-  /** The modelSrc of each placed model this platform can't load yet (needs `vlm-dcl sync` + redeploy). */
+  /** The modelSrc of each placed model this platform can't load yet (needs `virvi-dcl sync` + redeploy). */
   missingModelSrcs(): string[] {
     return this.sceneManager.missingModelSrcs()
   }

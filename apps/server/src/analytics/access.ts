@@ -16,15 +16,15 @@ export interface AnalyticsAccess {
   since?: Date
   /** Only data before this instant (an ended tenure). */
   until?: Date
-  /** The VLM scene of the tenure that granted read access. */
+  /** The Virvi scene of the tenure that granted read access. */
   vlmSceneId?: string
 }
 
 const NONE = (scene: AnalyticsAccess['scene']): AnalyticsAccess => ({ canRead: false, canManage: false, canDelete: false, scene })
 
 /**
- * Analytics belong to setup tenures: a VLM scene's team reads the data recorded while its setup was active.
- * `onlyVlmSceneId` (set for a scene pass) limits access to tenures of that one VLM scene — no admin shortcut,
+ * Analytics belong to setup tenures: a Virvi scene's team reads the data recorded while its setup was active.
+ * `onlyVlmSceneId` (set for a scene pass) limits access to tenures of that one Virvi scene — no admin shortcut,
  * no reach through another scene's past setup at the same location.
  */
 export async function getAnalyticsAccess(actor: Actor, analyticsSceneId: string, now = new Date(), onlyVlmSceneId?: string | null): Promise<AnalyticsAccess> {

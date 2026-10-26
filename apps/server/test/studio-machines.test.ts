@@ -25,7 +25,7 @@ describe('studio worker machines', () => {
     const spec = fly.calls.create[0]
     expect(spec.name).toBe(`design-${d.id}`)
     expect(spec.image).toBe('registry.fly.io/vlm-studio-worker:test')
-    expect(spec.env).toMatchObject({ VLM_API_URL: config.publicUrl, STUDIO_DESIGN_ID: d.id, STUDIO_IDLE_EXIT_SEC: '600' })
+    expect(spec.env).toMatchObject({ VIRVI_API_URL: config.publicUrl, STUDIO_DESIGN_ID: d.id, STUDIO_IDLE_EXIT_SEC: '600' })
     expect(spec.env.STUDIO_WORKER_TOKEN).toMatch(/^[A-Za-z0-9_-]{43}$/)
     expect(spec.env).not.toHaveProperty('ANTHROPIC_API_KEY')
     expect(spec.env).not.toHaveProperty('OPENAI_API_KEY')
@@ -54,7 +54,7 @@ describe('studio worker machines', () => {
     expect(fly.calls.create).toHaveLength(1)
   })
 
-  it('a machine destroyed outside VLM is recreated', async () => {
+  it('a machine destroyed outside Virvi is recreated', async () => {
     const fly = fakeFly()
     const d = await createDesign(await createUser())
     await ensureWorker(d.id, { fly })

@@ -876,7 +876,7 @@ export const apiKeys = pgTable('api_keys', {
   orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   keyHash: text('key_hash').notNull(), // SHA-256 hash of the key
-  keyPrefix: text('key_prefix').notNull(), // first 8 chars for identification (e.g., "vlm_k1_a")
+  keyPrefix: text('key_prefix').notNull(), // first 8 chars for identification (e.g., "virvi_k1")
   scopes: text('scopes').array(), // ['scenes:read', 'scenes:write', 'media:read', 'media:write']
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
@@ -929,7 +929,7 @@ export const hyperfyWorlds = pgTable('hyperfy_worlds', {
   slugUq: uniqueIndex('hyperfy_worlds_slug_uq').on(t.slug).where(sql`${t.purgedAt} IS NULL`),
 }))
 
-// ── Hyperfy HUD pairings (a Hyperfy player is paired to a VLM user, who approves on vlm.gg) ──
+// ── Hyperfy HUD pairings (a Hyperfy player is paired to a Virvi user, who approves on vlm.gg) ──
 
 export const hyperfyPairings = pgTable('hyperfy_pairings', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1007,7 +1007,7 @@ export const arAdjustments = pgTable('ar_adjustments', {
   spaceInstanceUnique: uniqueIndex('ar_adjustments_space_instance_unique').on(t.spaceId, t.instanceId),
 }))
 
-// A headset paired to a VLM user. The headset holds a secret (only its sha256 is stored) and shows a code; the user
+// A headset paired to a Virvi user. The headset holds a secret (only its sha256 is stored) and shows a code; the user
 // approves the code on the website as personal or shared. Codes and secrets are credentials: never logged.
 export const arDevices = pgTable('ar_devices', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1025,7 +1025,7 @@ export const arDevices = pgTable('ar_devices', {
   userIdx: index('ar_devices_user_idx').on(t.userId),
 }))
 
-// A visitor's report of a published space (VLM Spaces menu → Report this space). Stores no identity: no IP, no device.
+// A visitor's report of a published space (Virvi Spaces menu → Report this space). Stores no identity: no IP, no device.
 export const arReports = pgTable('ar_reports', {
   id: uuid('id').primaryKey().defaultRandom(),
   spaceId: uuid('space_id').notNull().references(() => arSpaces.id, { onDelete: 'cascade' }),
@@ -1095,7 +1095,7 @@ const tstzrange = customType<{ data: string }>({
 
 export const venueKindEnum = pgEnum('venue_kind', ['permanent', 'popup'])
 export const bookingStatusEnum = pgEnum('booking_status', ['pending', 'confirmed', 'live', 'ended', 'canceled'])
-// Must match VENUE_SCOPES / VENUE_ROLES in vlm-shared (asserted in test/schema-venues.test.ts)
+// Must match VENUE_SCOPES / VENUE_ROLES in virvi-shared (asserted in test/schema-venues.test.ts)
 export const venueScopeEnum = pgEnum('venue_scope', [
   'screens',
   'playlist',
@@ -1210,7 +1210,7 @@ export const sceneRoles = pgTable(
   }),
 )
 
-/** One tenure of a location being set up in VLM. At most one active (ended_at IS NULL) per location. */
+/** One tenure of a location being set up in Virvi. At most one active (ended_at IS NULL) per location. */
 export const locationSetups = pgTable(
   'location_setups',
   {

@@ -10,7 +10,7 @@ export function hashWorldKey(raw: string): string {
   return createHash('sha256').update(raw).digest('hex')
 }
 
-/** A world key: `vlmw_` + 32 random bytes as hex. Only the hash is stored; the raw key is shown once. */
+/** A world key: `virviw_` + 32 random bytes as hex. Only the hash is stored; the raw key is shown once. */
 export function createWorldKey(): { raw: string; hash: string; prefix: string } {
   const raw = `${HYPERFY_FEED.keyPrefix}${randomBytes(32).toString('hex')}`
   return { raw, hash: hashWorldKey(raw), prefix: raw.slice(0, 12) }

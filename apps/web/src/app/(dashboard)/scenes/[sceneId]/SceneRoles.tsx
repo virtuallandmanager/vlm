@@ -11,7 +11,7 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 const ERRORS: Record<string, string> = {
   Forbidden: 'Only the host and co-hosts can manage roles.',
   is_host: 'That wallet is the host.',
-  not_a_signed_in_cohost: 'They need to sign in to VLM with that wallet before they can become host.',
+  not_a_signed_in_cohost: 'They need to sign in to Virvi with that wallet before they can become host.',
   host_has_no_wallet: 'Link your wallet in Settings before transferring host.',
 }
 const friendly = (err: any): string => ERRORS[err?.message] ?? err?.message ?? 'Something went wrong'

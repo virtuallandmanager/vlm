@@ -14,7 +14,7 @@ export const HYPERFY_FEED = {
   lastSeenThrottleMs: 60_000,
   analyticsFlushMs: 15_000,
   positionSampleMs: 5_000,
-  keyPrefix: 'vlmw_',
+  keyPrefix: 'virviw_',
 } as const
 
 /**

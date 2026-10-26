@@ -43,7 +43,7 @@ describe('token kinds', () => {
 
   it('API keys still authenticate (they have no kind)', async () => {
     const u = await createUser()
-    const key = 'vlm_' + 'a'.repeat(40)
+    const key = 'virvi_' + 'a'.repeat(40)
     await db.insert(apiKeys).values({ userId: u.id, name: 't', keyHash: createHash('sha256').update(key).digest('hex'), keyPrefix: key.slice(0, 8) } as any)
     const res = await app.inject({ method: 'GET', url: '/api/scenes', headers: { authorization: `Bearer ${key}` } })
     expect(res.statusCode).toBe(200)

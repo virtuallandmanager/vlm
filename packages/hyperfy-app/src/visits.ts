@@ -13,7 +13,7 @@ export interface VisitRecorderOptions {
 const MAX_QUEUED = 1_000
 
 /**
- * Queues visitor enter, leave and position events and posts them to VLM's analytics in batches.
+ * Queues visitor enter, leave and position events and posts them to Virvi's analytics in batches.
  * Positions are sampled every positionSampleMs for each present player; the queue flushes every
  * analyticsFlushMs. Players already present at start() are recorded as entering. A post that fails on the
  * network, a 429 or a 5xx keeps the events, up to 1,000, dropping the oldest; any other refusal drops the batch.

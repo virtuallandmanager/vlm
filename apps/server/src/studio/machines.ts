@@ -67,7 +67,7 @@ export async function ensureWorker(designId: string, deps: Partial<MachineDeps> 
       throw new StudioMachineError(`The studio machine could not be reached: ${plain(err)}`)
     }
     if (state === null || DEAD.includes(state)) {
-      // Destroyed outside VLM (Fly reports `destroyed` for a while before 404) or failed: forget it and make a new one
+      // Destroyed outside Virvi (Fly reports `destroyed` for a while before 404) or failed: forget it and make a new one
       await db.update(studioDesigns).set({ machineId: null, workerTokenHash: null })
         .where(and(eq(studioDesigns.id, designId), eq(studioDesigns.machineId, design.machineId)))
     } else if (state === 'stopped' || state === 'suspended' || state === 'stopping') {
@@ -110,7 +110,7 @@ export async function ensureWorker(designId: string, deps: Partial<MachineDeps> 
       name: `design-${designId}`,
       image: config.studioWorkerImage,
       env: {
-        VLM_API_URL: config.publicUrl,
+        VIRVI_API_URL: config.publicUrl,
         STUDIO_WORKER_TOKEN: token,
         STUDIO_DESIGN_ID: designId,
         STUDIO_IDLE_EXIT_SEC: IDLE_EXIT_SEC,

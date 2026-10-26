@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { VLMHttpClient } from '@virvixr/client'
+import { VirviHttpClient } from '@virvixr/client'
 
 const call = (fetchMock: any, i = 0) => fetchMock.mock.calls[i] as [string, RequestInit]
 
-describe('VLMHttpClient media + element calls', () => {
+describe('VirviHttpClient media + element calls', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   it('getMedia GETs /api/media and returns the assets', async () => {
     const assets = [{ id: 'a1', filename: 'duck.glb', contentType: 'model/gltf-binary', publicUrl: 'https://cdn.vlm.gg/u1/ab.glb', sizeBytes: 10 }]
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ assets }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
-    const client = new VLMHttpClient('https://api.example')
+    const client = new VirviHttpClient('https://api.example')
     const res = await client.getMedia()
     expect(res.assets).toEqual(assets)
     expect(call(fetchMock)[0]).toBe('https://api.example/api/media')
@@ -21,7 +21,7 @@ describe('VLMHttpClient media + element calls', () => {
     const items = [{ id: 'l1', kind: 'media', name: 'cat.png', contentType: 'image/png', url: 'https://cdn.vlm.gg/s1/cat.png', sizeBytes: 5 }]
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ items }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
-    const client = new VLMHttpClient('https://api.example')
+    const client = new VirviHttpClient('https://api.example')
     client.auth.setTokens('tok123', 'ref')
     const res = await client.getSceneLibrary('s1')
     expect(res.items).toEqual(items)
@@ -33,7 +33,7 @@ describe('VLMHttpClient media + element calls', () => {
     const item = { id: 'l2', kind: 'media', name: 'a.png', contentType: 'image/png', url: 'u', sizeBytes: 3 }
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ item }), { status: 201 }))
     vi.stubGlobal('fetch', fetchMock)
-    const client = new VLMHttpClient('https://api.example')
+    const client = new VirviHttpClient('https://api.example')
     const res = await client.uploadToSceneLibrary('s1', { filename: 'a.png', contentType: 'image/png', data: 'AAEC' })
     expect(res.item).toEqual(item)
     expect(call(fetchMock)[0]).toBe('https://api.example/api/scenes/s1/library/upload')
@@ -44,7 +44,7 @@ describe('VLMHttpClient media + element calls', () => {
   it('createUploadToken sends the sceneId', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ token: { code: 'c' } }), { status: 201 }))
     vi.stubGlobal('fetch', fetchMock)
-    const client = new VLMHttpClient('https://api.example')
+    const client = new VirviHttpClient('https://api.example')
     await client.createUploadToken('s1')
     expect(call(fetchMock)[0]).toBe('https://api.example/api/upload-tokens')
     expect(JSON.parse(call(fetchMock)[1].body as string).sceneId).toBe('s1')
@@ -53,7 +53,7 @@ describe('VLMHttpClient media + element calls', () => {
   it('authenticateWithPlatform returns the scene binding from the response', async () => {
     const body = { accessToken: 'a', refreshToken: 'r', user: { id: 'u', role: 'user' }, scene: { sceneId: 's1', locationId: 'l1' } }
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })))
-    const client = new VLMHttpClient('https://api.example')
+    const client = new VirviHttpClient('https://api.example')
     const res = await client.authenticateWithPlatform({} as any, {})
     expect(res.scene).toEqual({ sceneId: 's1', locationId: 'l1' })
   })
@@ -61,7 +61,7 @@ describe('VLMHttpClient media + element calls', () => {
   it('createElement POSTs type, name and properties to the preset', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ element: { id: 'e1' } }), { status: 201 }))
     vi.stubGlobal('fetch', fetchMock)
-    const client = new VLMHttpClient('https://api.example')
+    const client = new VirviHttpClient('https://api.example')
     const body = { type: 'image', name: 'cat.png', properties: { textureSrc: 'https://cdn.vlm.gg/u1/c.png' } }
     const res = await client.createElement('p1', body)
     expect(res.element.id).toBe('e1')
@@ -73,7 +73,7 @@ describe('VLMHttpClient media + element calls', () => {
   it('createInstance POSTs position, rotation and scale to the element', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ instance: { id: 'i1' } }), { status: 201 }))
     vi.stubGlobal('fetch', fetchMock)
-    const client = new VLMHttpClient('https://api.example')
+    const client = new VirviHttpClient('https://api.example')
     const body = { position: { x: 1, y: 2, z: 3 }, rotation: { x: 0, y: 90, z: 0 }, scale: { x: 2, y: 2, z: 1 } }
     const res = await client.createInstance('e1', body)
     expect(res.instance.id).toBe('i1')
@@ -85,7 +85,7 @@ describe('VLMHttpClient media + element calls', () => {
   it('updateElement PUTs the patch', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ element: { id: 'e1', enabled: false } }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
-    const client = new VLMHttpClient('https://api.example')
+    const client = new VirviHttpClient('https://api.example')
     await client.updateElement('e1', { enabled: false })
     expect(call(fetchMock)[0]).toBe('https://api.example/api/elements/e1')
     expect(call(fetchMock)[1].method).toBe('PUT')
@@ -95,7 +95,7 @@ describe('VLMHttpClient media + element calls', () => {
   it('deleteElement DELETEs the element and tolerates a 204', async () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 204 }))
     vi.stubGlobal('fetch', fetchMock)
-    const client = new VLMHttpClient('https://api.example')
+    const client = new VirviHttpClient('https://api.example')
     await expect(client.deleteElement('e1')).resolves.toBeUndefined()
     expect(call(fetchMock)[0]).toBe('https://api.example/api/elements/e1')
     expect(call(fetchMock)[1].method).toBe('DELETE')
@@ -103,14 +103,14 @@ describe('VLMHttpClient media + element calls', () => {
 
   it('surfaces the HTTP status in errors (403 → mapped to friendly text by the HUD)', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"Forbidden"}', { status: 403 })))
-    const client = new VLMHttpClient('https://api.example')
+    const client = new VirviHttpClient('https://api.example')
     await expect(client.deleteElement('e1')).rejects.toThrow(/HTTP 403/)
   })
 
   it('bodyless DELETEs send no JSON content type (the server rejects an empty JSON body)', async () => {
     const fetchMock = vi.fn(async () => new Response(null, { status: 204 }))
     vi.stubGlobal('fetch', fetchMock)
-    const client = new VLMHttpClient('https://api.example')
+    const client = new VirviHttpClient('https://api.example')
     await client.deleteElement('e1')
     await client.removeFromSceneLibrary('s1', 'l1')
     for (const i of [0, 1]) {
@@ -124,7 +124,7 @@ describe('VLMHttpClient media + element calls', () => {
   it('requests with a body still send the JSON content type', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ element: {} }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
-    await new VLMHttpClient('https://api.example').createElement('p1', { type: 'image' })
+    await new VirviHttpClient('https://api.example').createElement('p1', { type: 'image' })
     expect((call(fetchMock)[1].headers as Record<string, string>)['Content-Type']).toBe('application/json')
   })
 })

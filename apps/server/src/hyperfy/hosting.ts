@@ -1,5 +1,5 @@
 /**
- * VLM-hosted Hyperfy worlds on Fly: create, destroy, switch scene, rotate key, reveal admin code.
+ * Virvi-hosted Hyperfy worlds on Fly: create, destroy, switch scene, rotate key, reveal admin code.
  *
  * A create inserts the `provisioning` row and returns; the rest (world database, Fly app, IPs, machine, health wait)
  * finishes in the background, tracked in an in-process map so a destroy can cancel it and wait for it to unwind.
@@ -329,7 +329,7 @@ function worldEnv(w: { slug: string; address: string; dbUri: string; schema: str
     // For a later WebSocket feed: this server's origin, https → wss, http → ws.
     PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: new URL(config.publicUrl).origin.replace(/^http/, 'ws'),
     PUBLIC_MAX_UPLOAD_SIZE: '12', // MB; Hyperfy refuses to boot without it
-    VLM_FEED_URL: config.publicUrl,
+    VIRVI_FEED_URL: config.publicUrl,
     VLM_WORLD_KEY: w.worldKey,
     // Lets the world's server vouch for its players (POST /api/hyperfy/pairings/vouch). Not rotated with the key.
     VLM_WORLD_SECRET: w.worldSecret,

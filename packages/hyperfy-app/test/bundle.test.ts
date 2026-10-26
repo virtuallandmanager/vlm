@@ -8,7 +8,7 @@ import { bundleOptions } from '../scripts/bundle-options.mjs'
 const pkg = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('production bundling of the pure modules', () => {
-  for (const entry of ['src/pairing.ts', 'src/vlm-api.ts', 'src/sha256.ts', 'src/edit/controller.ts', 'src/edit/rays.ts', 'src/edit/gizmo.ts', 'src/hud/model.ts', 'src/hud/view.ts', 'src/hud/client.ts', 'src/link-relay.ts', 'src/app.ts']) {
+  for (const entry of ['src/pairing.ts', 'src/virvi-api.ts', 'src/sha256.ts', 'src/edit/controller.ts', 'src/edit/rays.ts', 'src/edit/gizmo.ts', 'src/hud/model.ts', 'src/hud/view.ts', 'src/hud/client.ts', 'src/link-relay.ts', 'src/app.ts']) {
     it(`${entry} bundles with the production alias and uses no forbidden globals`, async () => {
       const out = await build({ ...bundleOptions(pkg, join(pkg, entry)), format: 'iife', globalName: 'M' })
       const js = Buffer.from(out.outputFiles![0].contents).toString('utf8')
@@ -31,7 +31,7 @@ describe('production bundling of the pure modules', () => {
     })
   }
 
-  it('edit mode takes only the transform session and its math from vlm-core', async () => {
+  it('edit mode takes only the transform session and its math from virvi-core', async () => {
     // What the app's edit wiring pulls in: the session (a value) next to the edit modules.
     const { entryPoints: _, ...opts } = bundleOptions(pkg, '')
     const out = await build({

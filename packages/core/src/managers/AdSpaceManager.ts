@@ -1,4 +1,4 @@
-import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData, AdShape, AdFormats } from '@virvixr/shared'
+import type { VirviPlatformAdapter, VirviStorage, EntityHandle, TransformData, AdShape, AdFormats } from '@virvixr/shared'
 import { listTransformable } from './transform-ops.js'
 import type { ListedInstance } from './transform-ops.js'
 import { AdSlot } from '../ads/slot.js'
@@ -39,14 +39,14 @@ function planeTransform(t: TransformData, shape: AdShape): TransformData {
 }
 
 export class AdSpaceManager {
-  private adapter: VLMPlatformAdapter
-  private storage: VLMStorage
+  private adapter: VirviPlatformAdapter
+  private storage: VirviStorage
   private host: AdHost | null
   private isStreamLive: () => boolean
   private configs: Map<string, AdSpaceConfig> = new Map()
   private instances: Map<string, AdSpaceInstance> = new Map()
 
-  constructor(adapter: VLMPlatformAdapter, storage: VLMStorage, host: AdHost | null, isStreamLive: () => boolean) {
+  constructor(adapter: VirviPlatformAdapter, storage: VirviStorage, host: AdHost | null, isStreamLive: () => boolean) {
     this.adapter = adapter
     this.storage = storage
     this.host = host

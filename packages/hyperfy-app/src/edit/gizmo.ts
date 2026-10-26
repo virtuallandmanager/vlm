@@ -24,7 +24,7 @@ export interface GizmoNode {
 export interface GizmoHost {
   /** `app.create`: 'group', or 'prim' with its data. */
   create(type: 'group' | 'prim', data?: Record<string, unknown>): GizmoNode
-  /** `app.add` / `app.remove`: the gizmo lives under the app root, like VLM's nodes. */
+  /** `app.add` / `app.remove`: the gizmo lives under the app root, like Virvi's nodes. */
   add(node: GizmoNode): void
   remove(node: GizmoNode): void
 }
@@ -44,7 +44,7 @@ const RING_RADIUS = 0.7
 const NO_SHADOW = { castShadow: false, receiveShadow: false }
 
 /**
- * Turns that point a prim's +Y along an axis (YXZ Euler, Hyperfy frame). VLM +z is Hyperfy -z, so the Z arrow
+ * Turns that point a prim's +Y along an axis (YXZ Euler, Hyperfy frame). Virvi +z is Hyperfy -z, so the Z arrow
  * points down Hyperfy's -z.
  */
 const ARROW_TURN: Record<Axis, Triple> = { x: [0, 0, -Math.PI / 2], y: [0, 0, 0], z: [-Math.PI / 2, 0, 0] }

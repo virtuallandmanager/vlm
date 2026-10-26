@@ -20,7 +20,7 @@ export interface ModelNeed {
   elementId: string
   name: string
   url: string
-  /** Deployed path, `models/vlm/<basename>.glb`. */
+  /** Deployed path, `models/virvi/<basename>.glb`. */
   file: string
   /** Of one copy of the model. */
   triangles: number | null

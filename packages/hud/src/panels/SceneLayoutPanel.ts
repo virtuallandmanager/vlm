@@ -6,7 +6,7 @@
  * Changes sync via Colyseus — same as editing from the dashboard.
  */
 
-import type { HUDRenderer, VLMStorage, EntityHandle } from '@virvixr/shared'
+import type { HUDRenderer, VirviStorage, EntityHandle } from '@virvixr/shared'
 import { HUDPanelType } from '@virvixr/shared'
 import type { ColyseusManager } from '@virvixr/client'
 
@@ -20,12 +20,12 @@ interface ElementEntry {
 
 export class SceneLayoutPanel {
   private renderer: HUDRenderer
-  private storage: VLMStorage
+  private storage: VirviStorage
   private colyseus: ColyseusManager
   private selectedEntity: EntityHandle | null = null
   private gizmoMode: 'move' | 'rotate' | 'scale' = 'move'
 
-  constructor(renderer: HUDRenderer, storage: VLMStorage, colyseus: ColyseusManager) {
+  constructor(renderer: HUDRenderer, storage: VirviStorage, colyseus: ColyseusManager) {
     this.renderer = renderer
     this.storage = storage
     this.colyseus = colyseus

@@ -187,7 +187,7 @@ describe('companion uploads', () => {
   })
 
   it('serves the upload page for /u/:code when the dashboard is present', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'vlm-dash-'))
+    const dir = mkdtempSync(join(tmpdir(), 'virvi-dash-'))
     writeFileSync(join(dir, 'index.html'), 'HOME')
     mkdirSync(join(dir, 'u', '_'), { recursive: true })
     writeFileSync(join(dir, 'u', '_', 'index.html'), 'UPLOAD')
@@ -202,7 +202,7 @@ describe('companion uploads', () => {
   })
 
   it('serves the pairing approval page for /pair/:code, leaving the API routes alone', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'vlm-dash-'))
+    const dir = mkdtempSync(join(tmpdir(), 'virvi-dash-'))
     writeFileSync(join(dir, 'index.html'), 'HOME')
     mkdirSync(join(dir, 'pair', '_'), { recursive: true })
     writeFileSync(join(dir, 'pair', '_', 'index.html'), 'PAIR')
@@ -271,7 +271,7 @@ describe('renaming library files', () => {
 
 describe('local storage files', () => {
   it('are served at /uploads even when the server has no dashboard build (local dev)', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'vlm-uploads-'))
+    const dir = mkdtempSync(join(tmpdir(), 'virvi-uploads-'))
     mkdirSync(join(dir, 'u1'))
     writeFileSync(join(dir, 'u1', 'a.png'), Buffer.from(PNG, 'base64'))
     const prevPath = process.env.LOCAL_STORAGE_PATH

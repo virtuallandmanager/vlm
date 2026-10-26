@@ -1,5 +1,5 @@
 /**
- * VLMCommandCenterRoom — Colyseus room for multi-world event orchestration.
+ * VirviCommandCenterRoom — Colyseus room for multi-world event orchestration.
  *
  * Clients join filtered by eventId (or userId for global view).
  * The room aggregates status from all scene rooms linked to the event
@@ -43,7 +43,7 @@ interface WorldStatus {
   activePreset: string | null
 }
 
-export class VLMCommandCenterRoom extends Room {
+export class VirviCommandCenterRoom extends Room {
   private eventId: string = ''
   private userId: string = ''
   private statusInterval: ReturnType<typeof setInterval> | null = null
@@ -58,16 +58,16 @@ export class VLMCommandCenterRoom extends Room {
 
   onCreate(options: JoinOptions) {
     this.eventId = options.eventId || ''
-    console.log(`[VLMCommandCenter] Created for event ${this.eventId || 'global'}`)
+    console.log(`[VirviCommandCenter] Created for event ${this.eventId || 'global'}`)
 
     // ── Cross-World Update ─────────────────────────────────────────────
     // Receives an action and fans it out to all scene rooms linked to this event
     this.onMessage('cross_world_update', async (client, message) => {
       const actor = client.auth as Actor
       if (!actor?.userId || !actor.verified) {
-        return client.send('vlm_error', { code: 'forbidden', messageType: 'cross_world_update' })
+        return client.send('virvi_error', { code: 'forbidden', messageType: 'cross_world_update' })
       }
-      console.log(`[VLMCommandCenter] cross_world_update from ${client.sessionId}`)
+      console.log(`[VirviCommandCenter] cross_world_update from ${client.sessionId}`)
 
       if (!this.eventId) {
         client.send('error', { message: 'No event context for cross-world update' })
@@ -78,7 +78,7 @@ export class VLMCommandCenterRoom extends Room {
         // Same rule as POST /api/command-center/:eventId/broadcast: event owner or admin.
         const event = await db.query.events.findFirst({ where: eq(events.id, this.eventId), columns: { ownerId: true } })
         if (!event || (event.ownerId !== actor.userId && actor.role !== 'admin')) {
-          return client.send('vlm_error', { code: 'forbidden', messageType: 'cross_world_update' })
+          return client.send('virvi_error', { code: 'forbidden', messageType: 'cross_world_update' })
         }
 
         // Get all scenes linked to this event
@@ -108,7 +108,7 @@ export class VLMCommandCenterRoom extends Room {
           action,
         })
       } catch (err) {
-        console.error('[VLMCommandCenter] Error dispatching cross-world update:', err)
+        console.error('[VirviCommandCenter] Error dispatching cross-world update:', err)
         client.send('error', { message: 'Failed to dispatch cross-world update' })
       }
     })
@@ -128,21 +128,21 @@ export class VLMCommandCenterRoom extends Room {
       if (!event || event.ownerId !== actor.userId) throw new Error('Forbidden')
     }
     this.userId = options.userId || client.sessionId
-    console.log(`[VLMCommandCenter] Client joined: ${client.sessionId}`)
+    console.log(`[VirviCommandCenter] Client joined: ${client.sessionId}`)
 
     // Send initial status immediately
     await this.broadcastStatus()
   }
 
   onLeave(client: Client) {
-    console.log(`[VLMCommandCenter] Client left: ${client.sessionId}`)
+    console.log(`[VirviCommandCenter] Client left: ${client.sessionId}`)
   }
 
   onDispose() {
     if (this.statusInterval) {
       clearInterval(this.statusInterval)
     }
-    console.log(`[VLMCommandCenter] Disposed (event: ${this.eventId || 'global'})`)
+    console.log(`[VirviCommandCenter] Disposed (event: ${this.eventId || 'global'})`)
   }
 
   /**
@@ -199,7 +199,7 @@ export class VLMCommandCenterRoom extends Room {
         timestamp: Date.now(),
       })
     } catch (err) {
-      console.error('[VLMCommandCenter] Error broadcasting status:', err)
+      console.error('[VirviCommandCenter] Error broadcasting status:', err)
     }
   }
 }

@@ -146,14 +146,14 @@ export default async function setupRoutes(app: FastifyInstance) {
     return setup
   }
 
-  /** Public: the VLM scene for a set-up location, so guests (no signed fetch) can connect content-only. */
+  /** Public: the Virvi scene for a set-up location, so guests (no signed fetch) can connect content-only. */
   app.get<{ Querystring: { location?: string } }>('/api/setup/scene', async (request, reply) => {
     const setup = await publicSetupFor(request, reply)
     if (!setup) return reply
     return reply.send({ sceneId: setup.vlmSceneId })
   })
 
-  /** Public: the hosted (.glb) models a set-up location's active preset uses, for `npx vlm-dcl sync`. */
+  /** Public: the hosted (.glb) models a set-up location's active preset uses, for `npx virvi-dcl sync`. */
   app.get<{ Querystring: { location?: string } }>('/api/setup/models', async (request, reply) => {
     const setup = await publicSetupFor(request, reply)
     if (!setup) return reply

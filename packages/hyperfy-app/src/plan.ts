@@ -14,8 +14,8 @@ export type RenderItem = {
   width: number
   height: number
   transform: ReturnType<typeof toHyperfyTransform>
-  /** The same transform in VLM coordinates (Decentraland frame, degrees), as edit mode drafts and saves it. */
-  vlm: { position: Vec3; rotation: Vec3; scale: Vec3 }
+  /** The same transform in Virvi coordinates (Decentraland frame, degrees), as edit mode drafts and saves it. */
+  virvi: { position: Vec3; rotation: Vec3; scale: Vec3 }
   clickUrl: string | null
 }
 
@@ -102,7 +102,7 @@ function planElements(
       const inst = raw as Props
       if (inst.enabled === false) continue
       const scale = vec(inst.scale, 1)
-      const vlm = { position: vec(inst.position, 0), rotation: vec(inst.rotation, 0), scale }
+      const virvi = { position: vec(inst.position, 0), rotation: vec(inst.rotation, 0), scale }
       out.push({
         key: `${el.sk}:${inst.sk}`,
         kind: media.kind,
@@ -112,8 +112,8 @@ function planElements(
         volume: media.kind === 'image' ? 0 : volume,
         width: scale.x,
         height: scale.y,
-        transform: toHyperfyTransform(vlm),
-        vlm,
+        transform: toHyperfyTransform(virvi),
+        virvi,
         clickUrl: externalUrl(clickOf(inst, el)),
       })
     }

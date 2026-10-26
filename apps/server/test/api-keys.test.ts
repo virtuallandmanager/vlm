@@ -28,6 +28,14 @@ describe('api keys', () => {
     expect(viaKey.statusCode).toBe(403)
   })
 
+  it('new keys start virvi_k1_, and an old vlm_k1_ key is refused', async () => { // virvi-rename: keep
+    const u = await createUser()
+    const res = await create({ authorization: `Bearer ${tokenFor(u)}` }, { name: 'k' })
+    expect(res.json().key).toMatch(/^virvi_k1_[0-9a-f]{32}$/)
+    const old = `vlm_k1_${'0'.repeat(32)}` // virvi-rename: keep
+    expect((await app.inject({ method: 'GET', url: '/api/keys', headers: { authorization: `Bearer ${old}` } })).statusCode).toBe(401)
+  })
+
   it('orgId must be an org the caller belongs to', async () => {
     const u = await createUser()
     const other = await createUser()
@@ -47,7 +55,7 @@ describe('api keys', () => {
     expect(bare.json().scenes).toEqual([])
     expect((await getSceneAccess(actorFromClaims({ id: u.id, role: u.role, kind: 'account' }), scene.id)).level).toBe('none')
 
-    const rawKey = 'vlm_k1_' + 'a'.repeat(32)
+    const rawKey = 'virvi_k1_' + 'a'.repeat(32)
     await db.insert(apiKeys).values({ userId: u.id, name: 'k', keyHash: createHash('sha256').update(rawKey).digest('hex'), keyPrefix: rawKey.slice(0, 8) })
     const viaKey = await app.inject({ method: 'GET', url: '/api/scenes', headers: { authorization: `Bearer ${rawKey}` } })
     expect(viaKey.json().scenes.map((s: any) => s.id)).toContain(scene.id)

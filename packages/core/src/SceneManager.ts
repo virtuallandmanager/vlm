@@ -1,4 +1,4 @@
-import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData } from '@virvixr/shared'
+import type { VirviPlatformAdapter, VirviStorage, EntityHandle, TransformData } from '@virvixr/shared'
 import type { Selected } from './transform/session.js'
 import type { ListedInstance } from './managers/transform-ops.js'
 import { VideoManager } from './managers/VideoManager.js'
@@ -33,10 +33,10 @@ const EDITABLE: Selected['element'][] = ['image', 'video', 'model', 'sound', 'ad
 export class SceneManager {
   private managers: Record<string, ElementManager>
   private events: EventBus
-  private adapter: VLMPlatformAdapter
+  private adapter: VirviPlatformAdapter
 
   /** `ads` serves the scene's ad spaces and ads-mode screens; without it they show their fallback or hide. */
-  constructor(adapter: VLMPlatformAdapter, storage: VLMStorage, events: EventBus, ads: AdHost | null = null) {
+  constructor(adapter: VirviPlatformAdapter, storage: VirviStorage, events: EventBus, ads: AdHost | null = null) {
     this.adapter = adapter
     this.events = events
     const video = new VideoManager(adapter, storage, ads)

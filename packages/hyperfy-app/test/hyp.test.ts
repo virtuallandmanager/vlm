@@ -34,7 +34,7 @@ describe('vlm.hyp', () => {
   it('build output parses back into a blueprint with model, script, the two props and the HUD icon, and every asset url is the sha256 of its bytes', () => {
     const { blueprint, assets } = header
     expect(blueprint).toMatchObject({
-      name: 'VLM',
+      name: 'Virvi',
       props: { feedUrl: 'https://api.vlm.gg', worldKey: '' },
       preload: false,
     })
@@ -65,7 +65,7 @@ describe('vlm.hyp', () => {
 
   it('the bundled script references no forbidden globals', () => {
     const js = script()
-    expect(js).toContain('vlm:scene')
+    expect(js).toContain('virvi:scene')
     const forbidden: Array<[string, RegExp]> = [
       ['WebSocket', /\bWebSocket\b/],
       ['TextEncoder', /\bTextEncoder\b/],

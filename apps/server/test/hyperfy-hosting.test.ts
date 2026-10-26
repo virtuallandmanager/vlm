@@ -12,7 +12,7 @@ const HOSTING = {
   hyperfyImage: 'registry.fly.io/vlm-hyperfy-image:abc',
   hyperfyWorldsDatabaseUrl: 'postgres://a:b@h/db',
   hyperfyWorldsDbUrlTemplate: 'postgres://{user}:{password}@h/db',
-  hyperfyAssetsS3Uri: 's3://k:s@acct.r2.cloudflarestorage.com/vlm-hyperfy',
+  hyperfyAssetsS3Uri: 's3://k:s@acct.r2.cloudflarestorage.com/virvi-hyperfy',
   hyperfyAssetsBaseUrl: 'https://worlds-cdn.vlm.gg',
   hyperfyRouterDomain: 'worlds.vlm.gg',
   hyperfySecretKey: 'ab'.repeat(32),

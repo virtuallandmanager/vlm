@@ -15,7 +15,7 @@ import {
 } from '../src/transform/math.js'
 
 // Generated once from the DCL math (@dcl/ecs-math 2.1.0, as used by @dcl/sdk/math) with
-// Quaternion.fromEulerDegrees(e) and Quaternion.toEulerAngles(q). Pasted so vlm-core has no @dcl dependency.
+// Quaternion.fromEulerDegrees(e) and Quaternion.toEulerAngles(q). Pasted so virvi-core has no @dcl dependency.
 const DCL_VECTORS: { e: [number, number, number]; q: [number, number, number, number]; back: [number, number, number] }[] = [
   { e: [0, 0, 0], q: [0, 0, 0, 1], back: [0, 0, 0] },
   { e: [0, 90, 0], q: [0, 0.7071067811865475, 0, 0.7071067811865476], back: [0, 89.99999999999999, 0] },

@@ -14,7 +14,7 @@ export interface ModelStore extends ElementStore {
   missing: Set<string>;
 }
 
-export interface VLMStorage {
+export interface VirviStorage {
   videos: ElementStore;
   images: ElementStore;
   models: ModelStore;

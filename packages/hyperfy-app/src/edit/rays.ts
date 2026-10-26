@@ -46,10 +46,10 @@ export function pointerRay(camera: PointerCamera, pointer: PointerCoords | null,
 }
 
 /**
- * A world-space Hyperfy ray in VLM coordinates: into the app root's frame with the inverse of its world matrix
+ * A world-space Hyperfy ray in Virvi coordinates: into the app root's frame with the inverse of its world matrix
  * (three.js Matrix4, column-major; omitted means the root is the world origin), then z mirrored (see transform.ts).
  */
-export function toVlmRay(ray: Ray, inverse?: { elements: ArrayLike<number> }): Ray {
+export function toVirviRay(ray: Ray, inverse?: { elements: ArrayLike<number> }): Ray {
   let { origin: o, direction: d } = ray
   if (inverse) {
     const e = inverse.elements

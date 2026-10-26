@@ -131,7 +131,7 @@ export function directRunner(adminUrl: string): WorldDbRunner {
   }
 }
 
-export const DB_JOB_CMD = ['node', '/app/vlm/db-job.mjs']
+export const DB_JOB_CMD = ['node', '/app/virvi/db-job.mjs']
 
 /**
  * Runs the statements in a one-shot machine of the DB job app, inside Fly's private network. The admin URL is the jobs

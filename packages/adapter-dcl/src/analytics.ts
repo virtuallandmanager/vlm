@@ -165,19 +165,19 @@ export async function getAnalyticsSceneRef(): Promise<AnalyticsSceneRef> {
   }
 }
 
-// One collector per scene runtime: repeated starts (and every createVLM call) share it.
+// One collector per scene runtime: repeated starts (and every createVirvi call) share it.
 let shared: Promise<Collector | null> | null = null
 
 /**
  * Analytics only: no realtime room, no HUD, no login flow. Starts the scene's collector once;
  * later calls return the same collector (their options are ignored).
  */
-export function startVLMAnalytics(
+export function startVirviAnalytics(
   opts: { env?: 'dev' | 'staging' | 'prod'; apiUrl?: string; adapter?: DclAdapter } = {},
 ): Promise<Collector | null> {
   if (!shared) {
     shared = start(opts).catch((err) => {
-      console.log('[VLM analytics] disabled:', String(err))
+      console.log('[Virvi analytics] disabled:', String(err))
       return null
     })
   }
@@ -185,7 +185,7 @@ export function startVLMAnalytics(
 }
 
 /** Stop the shared collector (sends session.leave and flushes). A later start creates a new one. */
-export async function stopVLMAnalytics(): Promise<void> {
+export async function stopVirviAnalytics(): Promise<void> {
   const current = shared
   shared = null
   const collector = current ? await current : null
@@ -215,7 +215,7 @@ async function start(opts: { env?: 'dev' | 'staging' | 'prod'; apiUrl?: string; 
     adapter.registerSystem(() => collector.tick())
     return collector
   } catch (err) {
-    console.log('[VLM analytics] disabled:', String(err))
+    console.log('[Virvi analytics] disabled:', String(err))
     return null
   }
 }

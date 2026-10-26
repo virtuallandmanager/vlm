@@ -1,7 +1,7 @@
 /**
  * Decentraland HUD Renderer
  *
- * Implements the VLM HUDRenderer interface using DCL SDK 7's ReactECS UI system.
+ * Implements the Virvi HUDRenderer interface using DCL SDK 7's ReactECS UI system.
  * Renders management panels as screen-space overlay UI.
  *
  * Supports a "setup" flow for first-time users:
@@ -22,7 +22,7 @@ import type {
 } from '@virvixr/shared'
 import { HUDPanelType } from '@virvixr/shared'
 import type { EntityHandle, WorldStatus } from '@virvixr/shared'
-import type { VLMConnectionState, HUDMediaStatus } from '@virvixr/core'
+import type { VirviConnectionState, HUDMediaStatus } from '@virvixr/core'
 import type { UploadToken } from '@virvixr/client'
 import { nearbyPlayers } from './players.js'
 import { markHudPress } from './hud/press.js'
@@ -35,7 +35,7 @@ import { HUD_ICON_SRC, hudIconDot } from './hud/icon.js'
 
 interface HUDState {
   // Connection state
-  connectionState: VLMConnectionState
+  connectionState: VirviConnectionState
   statusMessage: string
   errorMessage: string | null
   userName: string | null
@@ -293,7 +293,7 @@ function Divider() {
 
 function ConnectingScreen() {
   const messages: Record<string, string> = {
-    idle: 'Initializing VLM...',
+    idle: 'Initializing Virvi...',
     authenticating: 'Authenticating with Decentraland...',
     authenticated: 'Signed in! Loading scenes...',
     discovering_scene: 'Looking for your scenes...',
@@ -316,7 +316,7 @@ function ConnectingScreen() {
       }}
       uiBackground={{ color: C.bg }}
     >
-      {/* VLM Header */}
+      {/* Virvi Header */}
       <UiEntity uiTransform={{ width: '100%', flexDirection: 'row', alignItems: 'center', margin: { bottom: 12 } }}>
         <Label value="Virtual Land Manager" fontSize={16} color={C.text} />
       </UiEntity>
@@ -452,7 +452,7 @@ function SceneSetupScreen() {
         {/* Info text */}
         <UiEntity uiTransform={{ margin: { top: 12 } }}>
           <Label
-            value="Your Decentraland wallet is automatically linked to your VLM account."
+            value="Your Decentraland wallet is automatically linked to your Virvi account."
             fontSize={9}
             color={C.textMuted}
           />
@@ -473,7 +473,7 @@ function SetupOfferScreen() {
       }}
       uiBackground={{ color: C.bg }}
     >
-      <PanelHeader title="Set up VLM here" onClose={() => { state.hudVisible = false }} />
+      <PanelHeader title="Set up Virvi here" onClose={() => { state.hudVisible = false }} />
       <UiEntity uiTransform={{ width: '100%', flexDirection: 'column', padding: 12 }}>
         <Label
           value="Manage this scene's screens, streams and events from here, see its visitor analytics, and invite your crew. You'll be the host."
@@ -485,7 +485,7 @@ function SetupOfferScreen() {
             uiTransform={{ width: '100%', height: 32, margin: { bottom: 6 } }} />
         )}
         <Button
-          label="Set up VLM here"
+          label="Set up Virvi here"
           color={C.accent}
           onPress={() => {
             // Hide the card so the connecting spinner shows; showSetupOffer() brings it back on failure
@@ -614,7 +614,7 @@ function ConnectedBanner() {
         <Label value="Scene Created!" fontSize={14} color={C.text} />
       </UiEntity>
       <Label value={`"${state.currentSceneName || 'New Scene'}" is ready.`} fontSize={11} color={C.textDim} />
-      <Label value="Use the VLM button to manage your scene." fontSize={10} color={C.textMuted}
+      <Label value="Use the Virvi button to manage your scene." fontSize={10} color={C.textMuted}
         uiTransform={{ margin: { top: 4 } }} />
       <UiEntity uiTransform={{ margin: { top: 10 } }}>
         <Button label="Got it" color={C.accent}
@@ -982,7 +982,7 @@ function SyncNotice() {
   return (
     <UiEntity uiTransform={{ width: '100%', padding: { left: 10, right: 10, top: 4, bottom: 4 } }}
       uiBackground={{ color: C.bgCard }}>
-      <Label value={`${n} model(s) need sync + redeploy — run npx vlm-dcl sync`} fontSize={10} color={C.warning}
+      <Label value={`${n} model(s) need sync + redeploy — run npx virvi-dcl sync`} fontSize={10} color={C.warning}
         textAlign="middle-left" uiTransform={{ width: '100%', height: 20 }} />
     </UiEntity>
   )
@@ -1250,7 +1250,7 @@ function NotificationToast() {
 // Main HUD Component
 // ---------------------------------------------------------------------------
 
-function VLMHUD() {
+function VirviHUD() {
   const isSetup = state.connectionState !== 'connected' || state.isNewScene
 
   return (
@@ -1318,7 +1318,7 @@ function VLMHUD() {
           }
 
           // No panel open yet: show the toolbar on its own so a panel can be picked
-          // (otherwise the connected HUD renders nothing and the VLM button appears dead)
+          // (otherwise the connected HUD renders nothing and the Virvi button appears dead)
           return (
             <UiEntity
               uiTransform={{
@@ -1362,13 +1362,13 @@ export class DclHUDRenderer implements HUDRenderer {
     // Added alongside the scene's own UI (setUiRenderer would replace it). Sizes are 1920x1080 design
     // pixels, scaled to the screen by the SDK's virtual canvas (so the HUD isn't tiny on high-DPI screens);
     // a virtual size set by the scene's main UI takes precedence. zIndex keeps the HUD above the scene's UI.
-    ReactEcsRenderer.addUiRenderer(engine.addEntity(), VLMHUD, { virtualWidth: 1920, virtualHeight: 1080, zIndex: 1000 })
-    console.log('[VLM HUD] DCL HUD renderer initialized')
+    ReactEcsRenderer.addUiRenderer(engine.addEntity(), VirviHUD, { virtualWidth: 1920, virtualHeight: 1080, zIndex: 1000 })
+    console.log('[Virvi HUD] DCL HUD renderer initialized')
   }
 
-  // --- Connection state updates (called by the createVLM flow) ---
+  // --- Connection state updates (called by the createVirvi flow) ---
 
-  updateConnectionState(connectionState: VLMConnectionState, detail?: Record<string, unknown>): void {
+  updateConnectionState(connectionState: VirviConnectionState, detail?: Record<string, unknown>): void {
     state.connectionState = connectionState
 
     if (detail?.error) {
@@ -1405,7 +1405,7 @@ export class DclHUDRenderer implements HUDRenderer {
     state.statusMessage = messages[connectionState] || ''
   }
 
-  // --- In-world setup + roles (called by the createVLM flow) ---
+  // --- In-world setup + roles (called by the createVirvi flow) ---
 
   showSetupOffer(message?: string): void {
     state.setupOffer = true
@@ -1434,7 +1434,7 @@ export class DclHUDRenderer implements HUDRenderer {
     state.roleDraftWallet = ''
   }
 
-  // --- Media library + layout editing (called by the createVLM flow) ---
+  // --- Media library + layout editing (called by the createVirvi flow) ---
 
   setMedia(list: HUDMediaItem[]): void {
     state.media = list

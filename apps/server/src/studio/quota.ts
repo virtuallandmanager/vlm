@@ -6,7 +6,7 @@ import { getSubscription } from '../integrations/stripe.js'
 /**
  * The Design Studio's daily prompt allowance and the hidden daily cost ceiling, per user and UTC day. A prompt counts
  * when it is accepted and is given back when its job ends in `error` or is lost. The allowance applies even when
- * config.allFeaturesUnlocked: prompts run on VLM's paid agent keys.
+ * config.allFeaturesUnlocked: prompts run on Virvi's paid agent keys.
  */
 
 /** A database handle or an open transaction. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
-import { MODEL_TURN, toHyperfyTransform, toVlmPosition, worldToLocal } from '../src/transform.js'
+import { MODEL_TURN, toHyperfyTransform, toVirviPosition, worldToLocal } from '../src/transform.js'
 
 const v = (x: number, y: number, z: number) => ({ x, y, z })
 const rad = (d: number) => (d * Math.PI) / 180
@@ -23,7 +23,7 @@ describe('toHyperfyTransform', () => {
     expect(t.scale).toEqual([2, 3, 4])
   })
 
-  it('a 90° yaw in VLM faces the same way after mapping', () => {
+  it('a 90° yaw in Virvi faces the same way after mapping', () => {
     const t = toHyperfyTransform({ position: v(0, 0, 0), rotation: v(0, 90, 0), scale: v(1, 1, 1) })
     // DCL forward (0,0,1) yawed 90° is (1,0,0); in Hyperfy that is still (1,0,0)
     const q = new Quaternion().setFromEuler(new Euler(t.rotation[0], t.rotation[1], t.rotation[2], 'YXZ'))
@@ -54,9 +54,9 @@ describe('MODEL_TURN', () => {
   it('a model placed with the mapped transform and turned by MODEL_TURN inside it lands where Decentraland shows it', () => {
     // Decentraland shows a glTF point g at local (-gx, gy, gz), then applies the element's transform.
     const [rx, ry, rz] = [20, 135, -10]
-    const vlm = { position: v(4, 1, 7), rotation: v(rx, ry, rz), scale: v(2, 3, 0.5) }
+    const virvi = { position: v(4, 1, 7), rotation: v(rx, ry, rz), scale: v(2, 3, 0.5) }
     const dclQ = new Quaternion().setFromEuler(new Euler(rad(rx), rad(ry), rad(rz), 'YXZ'))
-    const t = toHyperfyTransform(vlm)
+    const t = toHyperfyTransform(virvi)
     const group = new Matrix4().compose(
       new Vector3(...t.position),
       new Quaternion().setFromEuler(new Euler(t.rotation[0], t.rotation[1], t.rotation[2], 'YXZ')),
@@ -74,25 +74,25 @@ describe('MODEL_TURN', () => {
   })
 })
 
-describe('toVlmPosition and worldToLocal', () => {
-  it('toVlmPosition undoes the position mapping of toHyperfyTransform', () => {
+describe('toVirviPosition and worldToLocal', () => {
+  it('toVirviPosition undoes the position mapping of toHyperfyTransform', () => {
     const t = toHyperfyTransform({ position: v(1, 2, 3), rotation: v(0, 0, 0), scale: v(1, 1, 1) })
-    expect(toVlmPosition({ x: t.position[0], y: t.position[1], z: t.position[2] })).toEqual(v(1, 2, 3))
+    expect(toVirviPosition({ x: t.position[0], y: t.position[1], z: t.position[2] })).toEqual(v(1, 2, 3))
   })
 
-  it('a world position under a moved, turned and scaled app comes back as the VLM position', () => {
+  it('a world position under a moved, turned and scaled app comes back as the Virvi position', () => {
     const root = new Matrix4().compose(new Vector3(10, -2, 30), new Quaternion().setFromEuler(new Euler(0, 1.1, 0.2)), new Vector3(2, 2, 2))
     const inverse = root.clone().invert()
-    const vlm = v(4, 1.5, -6)
-    const t = toHyperfyTransform({ position: vlm, rotation: v(0, 0, 0), scale: v(1, 1, 1) })
+    const virvi = v(4, 1.5, -6)
+    const t = toHyperfyTransform({ position: virvi, rotation: v(0, 0, 0), scale: v(1, 1, 1) })
     const world = new Vector3(...t.position).applyMatrix4(root)
-    const back = toVlmPosition(worldToLocal(world, inverse))
-    expect(back.x).toBeCloseTo(vlm.x)
-    expect(back.y).toBeCloseTo(vlm.y)
-    expect(back.z).toBeCloseTo(vlm.z)
+    const back = toVirviPosition(worldToLocal(world, inverse))
+    expect(back.x).toBeCloseTo(virvi.x)
+    expect(back.y).toBeCloseTo(virvi.y)
+    expect(back.z).toBeCloseTo(virvi.z)
   })
 
   it('with the app at the origin, only z flips', () => {
-    expect(toVlmPosition(worldToLocal({ x: 1, y: 2, z: 3 }, new Matrix4()))).toEqual(v(1, 2, -3))
+    expect(toVirviPosition(worldToLocal({ x: 1, y: 2, z: 3 }, new Matrix4()))).toEqual(v(1, 2, -3))
   })
 })

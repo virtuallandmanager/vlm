@@ -19,10 +19,10 @@ import {
 } from '../edit/controller.js'
 import type { PairingState } from '../pairing.js'
 import type { RenderItem } from '../plan.js'
-import { toVlmPosition, worldToLocal } from '../transform.js'
-import type { ApiFailure, ApiResult, VlmTransform } from '../vlm-api.js'
+import { toVirviPosition, worldToLocal } from '../transform.js'
+import type { ApiFailure, ApiResult, VirviTransform } from '../virvi-api.js'
 
-export const alertLinked = (name: string) => `Linked to VLM as ${name}`
+export const alertLinked = (name: string) => `Linked to Virvi as ${name}`
 export const ALERT_LINK_EXPIRED = 'Link expired. Pair again.'
 export const ALERT_STREAM_LIVE = 'Stream is live'
 export const ALERT_STREAM_OFFLINE = 'Stream went offline'
@@ -36,8 +36,8 @@ export const KEY_HINT = 'L: axis lock · ` or Esc: use the HUD · click the worl
  * a message starting with '/' is a command, kept off the chat log and handed to apps. Chat is a real text box, so
  * pasting works there.
  */
-export const CHAT_COMMAND = 'vlm'
-export const LINK_HINT = 'In chat, type /vlm and paste the link'
+export const CHAT_COMMAND = 'virvi'
+export const LINK_HINT = 'In chat, type /virvi and paste the link'
 export const SEARCH_PLACEHOLDER = 'Search the catalog'
 
 /** How far in front of the camera "Place in front of me" puts a model, in metres. */
@@ -200,7 +200,7 @@ export const isModelUrl = (s: string) => /^https?:\/\/\S+$/i.test(s.trim())
 function linkCard(p: PairingState, linking: boolean): HudViewModel['link'] {
   switch (p.status) {
     case 'idle':
-      return { status: p.status, label: linking ? 'Linking…' : 'Link to VLM', canLink: !linking }
+      return { status: p.status, label: linking ? 'Linking…' : 'Link to Virvi', canLink: !linking }
     case 'waiting':
       return {
         status: p.status,
@@ -217,7 +217,7 @@ function linkCard(p: PairingState, linking: boolean): HudViewModel['link'] {
     case 'lost':
       return { status: p.status, label: ALERT_LOST, canLink: false }
     case 'error':
-      return { status: p.status, label: "This app's VLM world key isn't valid", canLink: false }
+      return { status: p.status, label: "This app's Virvi world key isn't valid", canLink: false }
   }
 }
 
@@ -386,7 +386,7 @@ export function typeKey(
   return { text: text + char, action: 'none' }
 }
 
-/** What `/vlm <text>` in chat fills: a web link goes to the Link tab, anything else searches the catalog. */
+/** What `/virvi <text>` in chat fills: a web link goes to the Link tab, anything else searches the catalog. */
 export function chatEntry(
   text: string,
 ): { tab: 'link'; linkUrl: string } | { tab: 'catalog'; query: string } | null {
@@ -396,9 +396,9 @@ export function chatEntry(
 }
 
 /**
- * The text after `/vlm` from Hyperfy's 'command' event, or null for any other command. The client's event carries
+ * The text after `/virvi` from Hyperfy's 'command' event, or null for any other command. The client's event carries
  * `cmd` and `value` (the rest of the line as typed); the server's carries only `args`. Pressing '/' opens chat with a
- * '/' already typed, so typing `/vlm` there sends `//vlm` (cmd '/vlm'): both count.
+ * '/' already typed, so typing `/virvi` there sends `//virvi` (cmd '/virvi'): both count.
  */
 export function chatCommandText(e: unknown): string | null {
   if (!e || typeof e !== 'object') return null
@@ -427,13 +427,13 @@ function rotate(q: Quat, v: XYZ): XYZ {
 
 /**
  * Where "Place in front of me" puts a model: PLACE_DISTANCE in front of the camera rig, along its heading (pitch
- * ignored), at the player's feet height; then app-local (inverse of the app root's world matrix) and VLM coordinates.
+ * ignored), at the player's feet height; then app-local (inverse of the app root's world matrix) and Virvi coordinates.
  */
 export function inFrontOf(
   camera: { position: XYZ; quaternion: Quat },
   floorY: number,
   rootInverse: { elements: ArrayLike<number> },
-): VlmTransform {
+): VirviTransform {
   const f = rotate(camera.quaternion, { x: 0, y: 0, z: -1 })
   let len = Math.hypot(f.x, f.z)
   // Looking straight up or down: use the camera's up vector, which then points along the heading.
@@ -444,7 +444,7 @@ export function inFrontOf(
     y: floorY,
     z: camera.position.z + (h.z / len) * PLACE_DISTANCE,
   }
-  const position: Vec3 = toVlmPosition(worldToLocal(world, rootInverse))
+  const position: Vec3 = toVirviPosition(worldToLocal(world, rootInverse))
   return { position, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }
 }
 
@@ -453,7 +453,7 @@ export interface PlaceApi {
   placeModel(
     presetId: string,
     src: string,
-    t: VlmTransform,
+    t: VirviTransform,
   ): Promise<ApiResult<{ elementId: string; instanceId: string }>>
 }
 
@@ -466,7 +466,7 @@ export async function placeAsset(opts: {
   sceneId: string
   presetId: string
   entry: AssetEntry
-  transform: VlmTransform
+  transform: VirviTransform
   alert: (a: HudAlert) => void
 }): Promise<boolean> {
   const fail = (reason: ApiFailure) => {

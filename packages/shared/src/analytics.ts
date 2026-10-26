@@ -30,7 +30,7 @@ export const ANALYTICS_LIMITS = {
   backoffMaxMs: 30_000,
 } as const
 
-export const NOTICE_TEXT = 'This scene records visitor wallets and names for analytics — powered by VLM'
+export const NOTICE_TEXT = 'This scene records visitor wallets and names for analytics — powered by Virvi'
 
 export interface AnalyticsEvent {
   t: number

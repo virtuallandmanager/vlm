@@ -16,7 +16,7 @@ export class ColyseusManager {
   async joinSceneRoom(sceneId: string, joinOptions: Record<string, unknown> = {}): Promise<Room> {
     if (!this.client) throw new Error('Not connected — call connect() first')
 
-    const room = await this.client.joinOrCreate('vlm_scene', {
+    const room = await this.client.joinOrCreate('virvi_scene', {
       sceneId,
       ...joinOptions,
     })

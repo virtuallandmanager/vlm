@@ -22,7 +22,7 @@ function build() {
 }
 
 describe('Gizmo', () => {
-  it('each arrow tip points along its VLM axis (Hyperfy z mirrored)', () => {
+  it('each arrow tip points along its Virvi axis (Hyperfy z mirrored)', () => {
     const { gizmo, root, handles, pressed } = build()
     gizmo.show('move', [0, 0, 0])
     root.updateMatrixWorld(true)
@@ -33,13 +33,13 @@ describe('Gizmo', () => {
       const h = pressed.pop()!
       if (h.kind === 'arrow') tips[h.axis] = node.getWorldPosition(new Vector3())
     }
-    // VLM (x, y, z) is Hyperfy (x, y, -z).
-    const vlm = (p: Vector3) => ({ x: p.x, y: p.y, z: -p.z })
-    expect(vlm(tips.x).x).toBeGreaterThan(0.5)
-    expect(vlm(tips.y).y).toBeGreaterThan(0.5)
-    expect(vlm(tips.z).z).toBeGreaterThan(0.5)
+    // Virvi (x, y, z) is Hyperfy (x, y, -z).
+    const virvi = (p: Vector3) => ({ x: p.x, y: p.y, z: -p.z })
+    expect(virvi(tips.x).x).toBeGreaterThan(0.5)
+    expect(virvi(tips.y).y).toBeGreaterThan(0.5)
+    expect(virvi(tips.z).z).toBeGreaterThan(0.5)
     for (const [axis, tip] of Object.entries(tips)) {
-      const p = vlm(tip)
+      const p = virvi(tip)
       for (const other of ['x', 'y', 'z'] as const) if (other !== axis) expect(Math.abs(p[other])).toBeLessThan(1e-9)
     }
   })

@@ -9,7 +9,7 @@ import postgres from 'postgres'
 
 const url = process.env.DATABASE_URL
 if (!url) {
-  console.log('[vlm-server] pre-push upgrade: DATABASE_URL not set, skipping')
+  console.log('[virvi-server] pre-push upgrade: DATABASE_URL not set, skipping')
   process.exit(0)
 }
 
@@ -47,9 +47,9 @@ try {
       const playbackId = randomBytes(16).toString('hex')
       await sql`UPDATE streaming_servers SET playback_id = ${playbackId}, hls_playlist_url = ${`${hlsBase}/${playbackId}/playlist.m3u8`} WHERE id = ${id} AND playback_id IS NULL`
     }
-    if (legacy.length) console.log(`[vlm-server] pre-push upgrade: backfilled playback_id on ${legacy.length} stream(s)`)
+    if (legacy.length) console.log(`[virvi-server] pre-push upgrade: backfilled playback_id on ${legacy.length} stream(s)`)
   }
-  console.log('[vlm-server] pre-push upgrade: legacy analytics tables cleared, scene_state dropped, deployment_wallets retired, playback_id ensured')
+  console.log('[virvi-server] pre-push upgrade: legacy analytics tables cleared, scene_state dropped, deployment_wallets retired, playback_id ensured')
 } finally {
   await sql.end()
 }

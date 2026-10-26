@@ -1,4 +1,4 @@
-import type { VLMPlatformAdapter, VLMStorage, EntityHandle, TransformData } from '@virvixr/shared'
+import type { VirviPlatformAdapter, VirviStorage, EntityHandle, TransformData } from '@virvixr/shared'
 import { listTransformable, previewOn, restoreOn } from './transform-ops.js'
 import type { ListedInstance } from './transform-ops.js'
 
@@ -27,12 +27,12 @@ interface ImageInstance {
 }
 
 export class ImageManager {
-  private adapter: VLMPlatformAdapter
-  private storage: VLMStorage
+  private adapter: VirviPlatformAdapter
+  private storage: VirviStorage
   private configs: Map<string, ImageConfig> = new Map()
   private instances: Map<string, ImageInstance> = new Map()
 
-  constructor(adapter: VLMPlatformAdapter, storage: VLMStorage) {
+  constructor(adapter: VirviPlatformAdapter, storage: VirviStorage) {
     this.adapter = adapter
     this.storage = storage
   }
