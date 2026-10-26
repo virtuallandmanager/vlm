@@ -7,7 +7,8 @@ import type { SceneRequestContext } from '../middleware/dcl-auth.js'
  * the realm the player is connected to, so only Decentraland's own realms are believed.
  *
  * The explorer (unity-explorer RealmController.ResolveHostname) fills `realm.hostname` as:
- * - a World (ENS realm name): `{host}{path}` of the realm URL, e.g. `worlds-content-server.decentraland.org/world/name.dcl.eth`;
+ * - a World (ENS realm name): `{host}{path}` of the realm URL, e.g. `worlds-content-server.decentraland.org/world/name.dcl.eth`,
+ *   or, in current explorers, `gateway.decentraland.org/worlds-content-server/world/name.dcl.eth`;
  * - a realm with its own comms (a catalyst): the realm URL's host, e.g. `peer-ec1.decentraland.org`;
  * - the main realm (no comms in /about): `realm-provider.decentraland.org`.
  * Older explorers send the bare host (ADR-289 example: `peer.decentraland.org`).
@@ -29,6 +30,9 @@ export const FALLBACK_CATALYST_HOSTS = ['peer-ec1.decentraland.org', 'peer-ec2.d
 
 /** The Worlds content server, which is also the Worlds realm host. */
 export const DCL_WORLDS_HOSTS = ['worlds-content-server.decentraland.org']
+
+/** Decentraland's gateway, which current explorers report for Worlds as `gateway.decentraland.org/worlds-content-server/world/<name>`. */
+export const DCL_WORLDS_GATEWAY = { host: 'gateway.decentraland.org', pathPrefix: '/worlds-content-server' }
 
 const genesisHosts = () => new Set([...DCL_GENESIS_HOSTS, hostOf(config.catalystUrl)].filter(Boolean) as string[])
 const worldsHosts = () => new Set([...DCL_WORLDS_HOSTS, hostOf(config.worldsUrl)].filter(Boolean) as string[])
@@ -53,9 +57,13 @@ export async function isOfficialRealm(ctx: SceneRequestContext): Promise<boolean
     const slash = raw.indexOf('/')
     const host = slash < 0 ? raw : raw.slice(0, slash)
     const path = slash < 0 ? '' : raw.slice(slash).replace(/\/$/, '')
-    if (!DNS_NAME.test(host) || !worldsHosts().has(host)) return false
+    if (!DNS_NAME.test(host)) return false
+    const worldPath = `/world/${ctx.realm.serverName.toLowerCase()}`
+    // Through the gateway, the path must be exactly the Worlds server's path to this World.
+    if (host === DCL_WORLDS_GATEWAY.host) return path === `${DCL_WORLDS_GATEWAY.pathPrefix}${worldPath}`
+    if (!worldsHosts().has(host)) return false
     // When the explorer reports the World path, it must name the same World as serverName.
-    return path === '' || path === `/world/${ctx.realm.serverName.toLowerCase()}`
+    return path === '' || path === worldPath
   }
   if (!DNS_NAME.test(raw)) return false
   if (genesisHosts().has(raw)) return true

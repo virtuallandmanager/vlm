@@ -133,6 +133,14 @@ describe('scene binding', () => {
       expect(await w(`${WORLDS}.evil.com/world/victim.dcl.eth`)).toEqual({ locationId: null, sceneId: null })
       expect(await w('peer.decentraland.org')).toEqual({ locationId: null, sceneId: null })
       expect(await w('realm-provider.decentraland.org')).toEqual({ locationId: null, sceneId: null })
+      // Current explorers reach Worlds through Decentraland's gateway (seen live 2026-10-26).
+      expect(await w('gateway.decentraland.org/worlds-content-server/world/victim.dcl.eth')).toEqual({ locationId: loc.id, sceneId: scene.id })
+      expect(await w('gateway.decentraland.org/worlds-content-server/world/victim.dcl.eth/')).toEqual({ locationId: loc.id, sceneId: scene.id })
+      expect(await w('gateway.decentraland.org/worlds-content-server/world/other.dcl.eth')).toEqual({ locationId: null, sceneId: null })
+      expect(await w('gateway.decentraland.org/evil/world/victim.dcl.eth')).toEqual({ locationId: null, sceneId: null })
+      expect(await w('gateway.decentraland.org/world/victim.dcl.eth')).toEqual({ locationId: null, sceneId: null })
+      expect(await w('gateway.decentraland.org')).toEqual({ locationId: null, sceneId: null })
+      expect(await w('gateway.decentraland.org.evil.com/worlds-content-server/world/victim.dcl.eth')).toEqual({ locationId: null, sceneId: null })
       // A Genesis City realm name on the Worlds host is not a Genesis City realm.
       await victimGc()
       expect(await bindSceneRequest(ctx({ hostname: WORLDS, sceneId: 'bafyVictim' }), '0xa')).toEqual({ locationId: null, sceneId: null })
