@@ -56,6 +56,13 @@ describe('addAsset', () => {
     expect(s.items).toEqual([])
     expect(s.notice).toMatch(/This plot fits about 10,000 triangles/)
   })
+  it('adds a 1x1 building after switching a theme to Empty plot', () => {
+    let s = wizardReducer(withPlot(), { type: 'applyTheme', themeId: 'park', items: [{ asset: asset('tree'), x: 0.5, z: 0.5, rotationY: 0 }] })
+    s = wizardReducer(s, { type: 'applyTheme', themeId: 'empty', items: [] })
+    s = wizardReducer(s, { type: 'addAsset', asset: asset('house', 3_000, 16) })
+    expect(s.items).toHaveLength(1)
+    expect(s.notice).toBeNull()
+  })
   it('refuses when there is no room', () => {
     let s = withPlot()
     for (let i = 0; i < 40; i++) s = wizardReducer(s, { type: 'addAsset', asset: asset('b', 10, 4) })
