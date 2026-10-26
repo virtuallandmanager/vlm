@@ -24,14 +24,15 @@ afterEach(() => { (config as { cdnUrl: string | null }).cdnUrl = savedCdn })
 
 const fetcher = () => vi.fn(async (url: string) => enc(`bytes of ${url}`))
 
-async function live(over: Partial<LiveEntity['metadata']> = {}, runtime = 1): Promise<LiveEntity> {
-  const rt = (await runtimeFiles(1)).get('bin/index.js')!
+/** A live wizard World on runtime `runtime` (default: the current one), with that version's runtime files. */
+async function live(over: Partial<LiveEntity['metadata']> = {}, runtime = DCL_RUNTIME_VERSION): Promise<LiveEntity> {
+  const rt = await runtimeFiles(Math.max(1, runtime))
   const meta = { ...wizardSceneJson({ title: 'T', world: 'w.dcl.eth', base: '0,0', parcels: ['0,0'], spawn: { x: 8, y: 0, z: 8 } }), ...over }
   if (meta.virvi) meta.virvi = { ...meta.virvi, runtime }
   return {
     id: 'bafyold', pointers: ['0,0'], metadata: meta,
     content: [
-      { file: 'bin/index.js', hash: await dclHash(rt) },
+      ...(await Promise.all([...rt].map(async ([file, bytes]) => ({ file, hash: await dclHash(bytes) })))),
       { file: 'scene.json', hash: await dclHash(enc('scene')) },
       { file: 'models/vlm/a.glb', hash: await dclHash(enc('a')) },
     ],
@@ -46,7 +47,7 @@ describe('assembleRedeploy', () => {
     expect(f).toHaveBeenCalledTimes(1)
     expect(r.added).toEqual(['models/vlm/b.glb'])
     expect(r.pointers).toEqual(['0,0'])
-    expect(r.deployedFiles).toEqual(['bin/index.js', 'models/vlm/a.glb', 'models/vlm/b.glb', 'scene.json'])
+    expect(r.deployedFiles).toEqual(['bin/index.js', 'images/virvi/hud-v.png', 'models/vlm/a.glb', 'models/vlm/b.glb', 'scene.json'])
     for (const c of l.content) expect(r.existing).toContainEqual(c)
     expect(r.newFileSources).toEqual([{ file: 'models/vlm/b.glb', hash: await dclHash(enc(`bytes of ${CDN}/m/b.glb`)), url: `${CDN}/m/b.glb` }])
     expect(r.files.size).toBe(2) // entity file + b
@@ -97,6 +98,17 @@ describe('assembleRedeploy', () => {
     expect(r.deployedFiles).toContain('bin/index.js')
   })
 
+  it('upgrading a v1 World adds the HUD icon and replaces bin/index.js', async () => {
+    const l = await live({}, 1)
+    expect(l.content.map((c) => c.file)).not.toContain('images/virvi/hud-v.png')
+    const r = await assembleRedeploy({ live: l, adopted: false, models: [need('a')], timestamp: 1, fetch: fetcher() })
+    expect(r.changed).toBe(true)
+    expect(r.deployedFiles).toEqual(['bin/index.js', 'images/virvi/hud-v.png', 'models/vlm/a.glb', 'scene.json'])
+    for (const [, bytes] of await runtimeFiles()) expect(r.files.has(await dclHash(bytes))).toBe(true)
+    expect(r.existing.map((c) => c.file).sort()).toEqual(['models/vlm/a.glb', 'scene.json'])
+    expect(r.metadata.virvi?.runtime).toBe(2)
+  })
+
   it('refuses foreign and private model hosts without fetching them', async () => {
     const f = fetcher()
     const r = await assembleRedeploy({
@@ -114,7 +126,7 @@ describe('assembleFresh', () => {
   it('holds exactly the runtime, scene.json and one file per model', async () => {
     const metadata = wizardSceneJson({ title: 'T', world: 'w.dcl.eth', base: '0,0', parcels: ['0,0', '1,0'], spawn: { x: 8, y: 0, z: 8 } })
     const r = await assembleFresh({ metadata, models: [need('a'), need('b')], timestamp: 1, fetch: fetcher() })
-    expect(r.deployedFiles).toEqual(['bin/index.js', 'models/vlm/a.glb', 'models/vlm/b.glb', 'scene.json'])
+    expect(r.deployedFiles).toEqual(['bin/index.js', 'images/virvi/hud-v.png', 'models/vlm/a.glb', 'models/vlm/b.glb', 'scene.json'])
     expect(r.added).toEqual(['models/vlm/a.glb', 'models/vlm/b.glb'])
     expect(r.pointers).toEqual(['0,0', '1,0'])
     expect(r.existing).toEqual([])
