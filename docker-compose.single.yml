@@ -1,5 +1,5 @@
 # =============================================================================
-# VLM V2 — Single Mode (self-hosted, one server)
+# Virvi V2 — Single Mode (self-hosted, one server)
 #
 # Everything runs from one container + Postgres.
 # No Redis, no external storage required.
@@ -16,18 +16,18 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: vlm
-      POSTGRES_USER: vlm
+      POSTGRES_DB: vlm  # virvi-rename: keep (local database name)
+      POSTGRES_USER: vlm  # virvi-rename: keep (local database name)
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vlm_prod}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vlm"]
+      test: ["CMD-SHELL", "pg_isready -U vlm"]  # virvi-rename: keep
       interval: 10s
       timeout: 5s
       retries: 5
 
-  vlm:
+  virvi:
     build: .
     restart: unless-stopped
     ports:
@@ -36,7 +36,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      VLM_MODE: single
+      VIRVI_MODE: single
       DATABASE_URL: postgresql://vlm:${POSTGRES_PASSWORD:-vlm_prod}@postgres:5432/vlm
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3010}

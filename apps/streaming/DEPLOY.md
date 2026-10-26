@@ -24,7 +24,7 @@ Generate one shared secret: `openssl rand -hex 32`.
 fly secrets set VIRVI_WEBHOOK_KEY=<secret> --app vlm-streaming
 ```
 
-On the Railway `@virvixr/server` service set:
+On the Railway `virvi-server` service set:
 
 | Variable | Value |
 |---|---|

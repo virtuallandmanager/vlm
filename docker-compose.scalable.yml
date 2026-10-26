@@ -1,13 +1,13 @@
 # =============================================================================
-# VLM V2 — Scalable Mode (self-hosted, multiple servers)
+# Virvi V2 — Scalable Mode (self-hosted, multiple servers)
 #
 # Postgres + Redis for Colyseus cross-server presence.
-# Can run multiple vlm containers behind a load balancer.
+# Can run multiple virvi containers behind a load balancer.
 #
 # Usage:
 #   cp .env.example .env   # edit vars
 #   docker compose -f docker-compose.scalable.yml up -d
-#   docker compose -f docker-compose.scalable.yml up -d --scale vlm=3  # 3 servers
+#   docker compose -f docker-compose.scalable.yml up -d --scale virvi=3  # 3 servers
 # =============================================================================
 
 services:
@@ -17,13 +17,13 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: vlm
-      POSTGRES_USER: vlm
+      POSTGRES_DB: vlm  # virvi-rename: keep (local database name)
+      POSTGRES_USER: vlm  # virvi-rename: keep (local database name)
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vlm_prod}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vlm"]
+      test: ["CMD-SHELL", "pg_isready -U vlm"]  # virvi-rename: keep
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,7 +41,7 @@ services:
       timeout: 5s
       retries: 5
 
-  vlm:
+  virvi:
     build: .
     restart: unless-stopped
     ports:
@@ -52,7 +52,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      VLM_MODE: scalable
+      VIRVI_MODE: scalable
       DATABASE_URL: postgresql://vlm:${POSTGRES_PASSWORD:-vlm_prod}@postgres:5432/vlm
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}

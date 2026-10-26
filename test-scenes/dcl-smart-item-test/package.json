@@ -1,8 +1,8 @@
 {
-  "name": "vlm-v2-dcl-smart-item-test",
+  "name": "virvi-v2-dcl-smart-item-test",
   "version": "1.0.0",
   "private": true,
-  "description": "VLM V2 smart item (Creator Hub Script component) test scene",
+  "description": "Virvi V2 smart item (Creator Hub Script component) test scene",
   "scripts": {
     "start": "sdk-commands start",
     "build": "sdk-commands build"

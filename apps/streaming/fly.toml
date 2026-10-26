@@ -1,6 +1,6 @@
 # apps/streaming/fly.toml — deploy from the repo root:
 #   fly deploy . --config apps/streaming/fly.toml
-app = "@virvixr/streaming"
+app = "vlm-streaming"
 primary_region = "iad"
 
 [build]

@@ -1,11 +1,11 @@
-app = "vlm"
+app = "virvi"
 primary_region = "iad"
 
 [build]
   dockerfile = "Dockerfile"
 
 [env]
-  VLM_MODE = "single"
+  VIRVI_MODE = "single"
   PORT = "3010"
   NODE_ENV = "production"
 

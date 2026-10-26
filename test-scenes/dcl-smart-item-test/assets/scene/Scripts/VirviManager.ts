@@ -1,12 +1,12 @@
 import { Entity } from '@dcl/sdk/ecs'
-import { startVLMManager, VLMSmartItem } from '@virvixr/dcl'
+import { startVirviManager, VirviSmartItem } from '@virvixr/dcl'
 
 /**
- * Connects this scene to Virtual Land Manager.
+ * Connects this scene to Virvi.
  * Leave Scene ID blank to set the scene up from the in-world HUD.
  */
-export class VLMManager {
-  private item: VLMSmartItem | null = null
+export class VirviManager {
+  private item: VirviSmartItem | null = null
 
   constructor(
     public src: string,
@@ -20,7 +20,7 @@ export class VLMManager {
   ) {}
 
   start() {
-    this.item = startVLMManager(this.entity, {
+    this.item = startVirviManager(this.entity, {
       sceneId: this.sceneId,
       env: this.env === 'dev' || this.env === 'staging' ? this.env : 'prod',
       serverUrl: this.serverUrl,

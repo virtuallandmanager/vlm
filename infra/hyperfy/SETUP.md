@@ -6,7 +6,7 @@ A one-time runbook for the Fly, Cloudflare, DNS and Railway pieces behind hosted
 token, password or key into a repo, a ticket or a chat.
 
 Every world runs in `iad`, in the Fly org `vlm-worlds`, in an app named `vlm-w-<slug>`. The Fly org is separate from
-`@virvixr/streaming`, and the server's token must not reach that one.
+`vlm-streaming`, and the server's token must not reach that one.
 
 You need: `flyctl`, `docker`, `railway`, a Cloudflare account, and access to your DNS provider for `virvi.io`.
 
@@ -125,7 +125,7 @@ Hosted worlds get `VIRVI_WORLD_SECRET` automatically when they are created. It l
 
 ## 7. Railway variables
 
-Set these on the `@virvixr/server` service:
+Set these on the `virvi-server` service:
 
 | Variable | Value |
 |---|---|
@@ -147,7 +147,7 @@ railway variables -s virvi-server --set "HYPERFY_INFRA_PROVIDER=fly" --set "FLY_
 
 Enter the secret values in the Railway dashboard instead if you don't want them in your shell history.
 
-Also add every one of these names (and `HYPERFY_WORLDS_DATABASE_URL`, which stays unset in production) to the `env` of `@virvixr/server` in `.railway/railway.ts`, each as `NAME: preserve()`. `railway config apply` deletes any variable that file doesn't list, so unlisted ones would vanish on the next apply. Run `railway config plan` before any apply.
+Also add every one of these names (and `HYPERFY_WORLDS_DATABASE_URL`, which stays unset in production) to the `env` of `virvi-server` in `.railway/railway.ts`, each as `NAME: preserve()`. `railway config apply` deletes any variable that file doesn't list, so unlisted ones would vanish on the next apply. Run `railway config plan` before any apply.
 
 Deploy the server (and only this way):
 

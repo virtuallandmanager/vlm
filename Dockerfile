@@ -1,5 +1,5 @@
 # =============================================================================
-# VLM V2 — Production Dockerfile
+# Virvi V2 — Production Dockerfile
 # One image for all modes (single / scalable / cloud). Behavior controlled by
 # environment variables at runtime. See .env.example for full reference.
 # =============================================================================
