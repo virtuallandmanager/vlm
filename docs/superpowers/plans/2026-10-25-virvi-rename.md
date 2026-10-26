@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rename VLM to Virvi across the monorepo (names, copy, logo, identifiers, default domains) on branch `feature/virvi-rename`, then roll it out to virvi.org in owner-approved steps.
+**Goal:** Rename VLM to Virvi across the monorepo (names, copy, logo, identifiers, default domains) on branch `feature/virvi-rename`, then roll it out to virvi.io in owner-approved steps.
 
 **How it's built:**
 - A guard script lists every remaining "vlm" in tracked files outside an explicit allowlist. Each code task drives its area of the repo to zero hits, so the guard is the failing test that each task turns green.
@@ -53,18 +53,18 @@
 
   | Old | New |
   |---|---|
-  | `vlm.gg` | `virvi.org` |
-  | `api.vlm.gg` | `api.virvi.org` |
-  | `cdn.vlm.gg` | `cdn.virvi.org` |
-  | `live.vlm.gg` | `live.virvi.org` |
-  | `ingest.vlm.gg` | `ingest.virvi.org` |
-  | `worlds.vlm.gg` | `worlds.virvi.org` |
-  | `worlds-cdn.vlm.gg` | `worlds-cdn.virvi.org` |
-  | `staging-api.vlm.gg` and `api.staging.vlm.gg` | `api.staging.virvi.org` |
-  | `noreply@vlm.gg`, `support@vlm.gg` | `noreply@virvi.org`, `support@virvi.org` |
+  | `vlm.gg` | `virvi.io` |
+  | `api.vlm.gg` | `api.virvi.io` |
+  | `cdn.vlm.gg` | `cdn.virvi.io` |
+  | `live.vlm.gg` | `live.virvi.io` |
+  | `ingest.vlm.gg` | `ingest.virvi.io` |
+  | `worlds.vlm.gg` | `worlds.virvi.io` |
+  | `worlds-cdn.vlm.gg` | `worlds-cdn.virvi.io` |
+  | `staging-api.vlm.gg` and `api.staging.vlm.gg` | `api.staging.virvi.io` |
+  | `noreply@vlm.gg`, `support@vlm.gg` | `noreply@virvi.io`, `support@virvi.io` |
 
-- **Quest:** `applicationId` and `namespace` are `org.virvi.ar`, the Kotlin package is `org.virvi.ar`, the label is "Virvi AR", and App Links use `https://virvi.org/s/`.
-- **iOS/visionOS:** `org.virvi.ar.ios`, `org.virvi.ar.visionos` and `bundleIdPrefix: org.virvi.ar`. The display name is "Virvi AR" and the types are `VirviAR*`.
+- **Quest:** `applicationId` and `namespace` are `io.virvi.ar`, the Kotlin package is `io.virvi.ar`, the label is "Virvi AR", and App Links use `https://virvi.io/s/`.
+- **iOS/visionOS:** `io.virvi.ar.ios`, `io.virvi.ar.visionos` and `bundleIdPrefix: io.virvi.ar`. The display name is "Virvi AR" and the types are `VirviAR*`.
 
 ### Server, database and runtime
 
@@ -108,7 +108,7 @@
 2. **A wizard World deployed after the rename.** The new runtime bundle joins `virvi_scene` and sends `virvi_*` messages, and nothing in it says `vlm_scene` or `api.vlm.gg`. Pinned in Task 8.
 3. **A returning browser with only an old `vlm_auth` in storage.** It lands on the login page with no crash or loop, and the old key is ignored. Pinned in Task 6.
 4. **The stored-URL rewrite.** It changes only whole `vlm.gg` hosts, including inside nested jsonb and inside a `vlm-w-` or `*.worlds.` address. It's idempotent on a second run, and leaves look-alikes such as `notvlm.gg.example.com` or `vlm.ggx` untouched. Pinned in Task 13.
-5. **Quest App Links.** `GET /.well-known/assetlinks.json` names `org.virvi.ar`, and the manifest's intent filter host is `virvi.org`. Pinned in Tasks 4 and 10.
+5. **Quest App Links.** `GET /.well-known/assetlinks.json` names `io.virvi.ar`, and the manifest's intent filter host is `virvi.io`. Pinned in Tasks 4 and 10.
 
 ---
 
@@ -202,7 +202,7 @@ Package names and their imports are the only things that change here. Code ident
 
 **Files:**
 - Modify:
-  - `apps/server/src/config.ts`: the defaults `emailFrom: 'noreply@virvi.org'`, `arReportsEmail: 'support@virvi.org'`, `ANDROID_APP_PACKAGE` default `'org.virvi.ar'`, and the hyperfy router domain comment
+  - `apps/server/src/config.ts`: the defaults `emailFrom: 'noreply@virvi.io'`, `arReportsEmail: 'support@virvi.io'`, `ANDROID_APP_PACKAGE` default `'io.virvi.ar'`, and the hyperfy router domain comment
   - `apps/server/src/app.ts`: the Swagger title `'Virvi API'` and the assetlinks route
   - the `vlm_k1_` key prefix (`schema.ts:879` area and the key service)
   - `apps/server/src/services/email.ts`: the `[virvi-email]` prefix
@@ -210,14 +210,14 @@ Package names and their imports are the only things that change here. Code ident
   - tests: `apps/server/test/ar-pages.test.ts` and the API-key tests
 
 - [ ] **Step 1:** Update the tests first:
-  - In `ar-pages.test.ts`, assetlinks returns `package_name: 'org.virvi.ar'`.
+  - In `ar-pages.test.ts`, assetlinks returns `package_name: 'io.virvi.ar'`.
   - In the API-key tests, a new key matches `/^virvi_k1_/`, and a key starting with `vlm_k1_` is rejected with 401.
 
   Run them. Expected: FAIL.
 - [ ] **Step 2:** Change the defaults, title, prefix and hosts to the Global Constraints values.
 - [ ] **Step 3:** Run the server suite. Expected: PASS.
 - [ ] **Step 4:** Run `node scripts/check-no-vlm.mjs apps/server/src apps/server/test | tail -1`. Expected: `0 hits`, apart from the `vlm_scene_id` hits left for Task 5.
-- [ ] **Step 5:** Commit: `feat(server): virvi.org domains, email and API names`.
+- [ ] **Step 5:** Commit: `feat(server): virvi.io domains, email and API names`.
 
 ### Task 5: Database column and index rename
 
@@ -277,7 +277,7 @@ Package names and their imports are the only things that change here. Code ident
   - all `apps/docs/src/content/**`
   - move `getting-started/what-is-vlm.md` to `getting-started/what-is-virvi.md` and fix the links to it
   - `README.md`, root `package.json` description
-  - `packages/dcl/README.md` and the package `description`/`homepage` (`https://virvi.org`)/`repository` (`github.com/virvi-xr/virvi`) fields
+  - `packages/dcl/README.md` and the package `description`/`homepage` (`https://virvi.io`)/`repository` (`github.com/virvi-xr/virvi`) fields
   - `.env.example` (the hosts and `VIRVI_*` names)
 
 - [ ] **Step 1:** Run `node scripts/check-no-vlm.mjs apps/docs README.md package.json packages/dcl .env.example | tail -1`. Expected: N > 0.
@@ -312,40 +312,40 @@ Package names and their imports are the only things that change here. Code ident
   - `packages/hyperfy-app` scripts and sources: the output is `dist/virvi.hyp`, and the `vlm.hyp` constants become `virvi.hyp`
   - delete `dist/vlm.hyp` and commit the rebuilt `dist/virvi.hyp`
   - `apps/server/src/routes/hyperfy-worlds.ts` and `infra/hyperfy/{Dockerfile,Dockerfile.dockerignore,build.sh,SETUP.md,test-world.mjs}`: the `.hyp` path and the `VIRVI_WORLD_KEY`/`VIRVI_WORLD_SECRET` names the image reads
-  - `infra/hyperfy-router/server.mjs`: the fallback domain `worlds.virvi.org` and the 404 copy "There is no Virvi world at this address."
-  - `infra/hyperfy-router/fly.toml`: `ROUTER_DOMAIN = "worlds.virvi.org"`. The app name stays `vlm-worlds-router`.
+  - `infra/hyperfy-router/server.mjs`: the fallback domain `worlds.virvi.io` and the 404 copy "There is no Virvi world at this address."
+  - `infra/hyperfy-router/fly.toml`: `ROUTER_DOMAIN = "worlds.virvi.io"`. The app name stays `vlm-worlds-router`.
   - `infra/hyperfy-router/server.test.mjs`
   - the server Hyperfy provisioning code: the secrets it sets on world apps use the `VIRVI_*` names, and the `vlm-w-` prefix stays
 
 - [ ] **Step 1:** In `server.test.mjs`, change the expectations:
-  - The host `foo.worlds.virvi.org` replays to `app=vlm-w-foo`.
+  - The host `foo.worlds.virvi.io` replays to `app=vlm-w-foo`.
   - `foo.worlds.vlm.gg` gets the 404 body "There is no Virvi world at this address."
 
   Run `node --test infra/hyperfy-router/server.test.mjs`. Expected: FAIL.
 - [ ] **Step 2:** Make the changes, then rebuild the app with `pnpm --filter @virvixr/hyperfy-app build`.
 - [ ] **Step 3:** Run the router tests, `pnpm --filter @virvixr/hyperfy-app test` and the server suite. Expected: all pass.
 - [ ] **Step 4:** Run `node scripts/check-no-vlm.mjs packages/hyperfy-app infra | tail -1`. Expected: `0 hits`.
-- [ ] **Step 5:** Commit: `feat(hyperfy): virvi.hyp, worlds.virvi.org router, VIRVI_ world secrets`.
+- [ ] **Step 5:** Commit: `feat(hyperfy): virvi.hyp, worlds.virvi.io router, VIRVI_ world secrets`.
 
 ### Task 10: Quest app: Virvi AR
 
 **Files:**
-- Move with `git mv`: `apps/quest/app/src/{main,test,androidTest}/java/gg/vlm/spaces` to `…/java/org/virvi/ar`.
+- Move with `git mv`: `apps/quest/app/src/{main,test,androidTest}/java/gg/vlm/spaces` to `…/java/io/virvi/ar`.
 - Modify:
   - every `package`/`import` line in those Kotlin files
-  - `apps/quest/app/build.gradle.kts`: `namespace = "org.virvi.ar"`, `applicationId = "org.virvi.ar"`, and the `VIRVI_QUEST_*` keystore environment names (the alias value `vlm-quest` stays)
-  - `AndroidManifest.xml`: `android:label="Virvi AR"`, the App Link host `virvi.org`, and `android:icon`/`roundIcon` pointing at the new mipmaps
+  - `apps/quest/app/build.gradle.kts`: `namespace = "io.virvi.ar"`, `applicationId = "io.virvi.ar"`, and the `VIRVI_QUEST_*` keystore environment names (the alias value `vlm-quest` stays)
+  - `AndroidManifest.xml`: `android:label="Virvi AR"`, the App Link host `virvi.io`, and `android:icon`/`roundIcon` pointing at the new mipmaps
   - `res/values/strings.xml`
-  - `STORE.md` and `README.md`: copy, the privacy URL `https://virvi.org/privacy`, and "Virvi ring"
+  - `STORE.md` and `README.md`: copy, the privacy URL `https://virvi.io/privacy`, and "Virvi ring"
   - all `vlm.gg` hosts and API URLs in the Kotlin sources
 - Create: `apps/quest/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` and `ic_launcher_round.xml`. The foreground layer is the symbol as a vector drawable (`drawable/ic_launcher_foreground.xml`, converted from `virvi-symbol-light-clean.svg`) and the background is the graphite colour. Also create the PNG fallbacks in `mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}`.
 
-- [ ] **Step 1:** Add a unit test under `src/test/java/org/virvi/ar`, `AppLinkHostTest`. The deep-link parser accepts `https://virvi.org/s/abc` and rejects `https://vlm.gg/s/abc`. The parser is the existing one that `VisitorFlow` and the link handling use. Run `./gradlew :app:testDebugUnitTest`. Expected: FAIL.
+- [ ] **Step 1:** Add a unit test under `src/test/java/io/virvi/ar`, `AppLinkHostTest`. The deep-link parser accepts `https://virvi.io/s/abc` and rejects `https://vlm.gg/s/abc`. The parser is the existing one that `VisitorFlow` and the link handling use. Run `./gradlew :app:testDebugUnitTest`. Expected: FAIL.
 - [ ] **Step 2:** Make the changes.
 - [ ] **Step 3:** Run `cd apps/quest && ./gradlew :app:testDebugUnitTest :app:assembleDebug`. Expected: PASS, and the APK is built.
-  - Check `aapt2 dump badging app/build/outputs/apk/debug/app-debug.apk | head -3` shows `package: name='org.virvi.ar'` and `application-label:'Virvi AR'`.
+  - Check `aapt2 dump badging app/build/outputs/apk/debug/app-debug.apk | head -3` shows `package: name='io.virvi.ar'` and `application-label:'Virvi AR'`.
 - [ ] **Step 4:** Run `node scripts/check-no-vlm.mjs apps/quest | tail -1`. Expected: `0 hits` (the keystore alias is allowlisted).
-- [ ] **Step 5:** Commit: `feat(quest): Virvi AR, org.virvi.ar, launcher icon`.
+- [ ] **Step 5:** Commit: `feat(quest): Virvi AR, io.virvi.ar, launcher icon`.
 
 ### Task 11: AR spike (iOS/visionOS), ring-marker, streaming
 
@@ -370,7 +370,7 @@ Package names and their imports are the only things that change here. Code ident
 
 **Files:**
 - Modify:
-  - `.railway/railway.ts`: the project name `"Virvi"`, the service `virvi-server`, `VIRVI_MODE`, and the virvi.org hosts in any env values it declares
+  - `.railway/railway.ts`: the project name `"Virvi"`, the service `virvi-server`, `VIRVI_MODE`, and the virvi.io hosts in any env values it declares
   - root `fly.toml`: `app = "virvi"`
   - `render.yaml`: service `virvi`
   - `docker-compose.{dev,single,scalable}.yml`: the service name `virvi` and `VIRVI_MODE`. The database names, users and passwords stay and are marked `# virvi-rename: keep` where the token allowlist doesn't cover them.
@@ -407,13 +407,13 @@ Package names and their imports are the only things that change here. Code ident
   - `scene_elements.properties` (jsonb, rewritten as text)
   - `hyperfy_worlds.address`
 - **Host map:**
-  - `cdn.vlm.gg` → `cdn.virvi.org`
-  - `live.vlm.gg` → `live.virvi.org`
-  - `ingest.vlm.gg` → `ingest.virvi.org`
-  - `worlds-cdn.vlm.gg` → `worlds-cdn.virvi.org`
-  - `<slug>.worlds.vlm.gg` → `<slug>.worlds.virvi.org`
-  - `api.vlm.gg` → `api.virvi.org`
-  - bare `vlm.gg` → `virvi.org`
+  - `cdn.vlm.gg` → `cdn.virvi.io`
+  - `live.vlm.gg` → `live.virvi.io`
+  - `ingest.vlm.gg` → `ingest.virvi.io`
+  - `worlds-cdn.vlm.gg` → `worlds-cdn.virvi.io`
+  - `<slug>.worlds.vlm.gg` → `<slug>.worlds.virvi.io`
+  - `api.vlm.gg` → `api.virvi.io`
+  - bare `vlm.gg` → `virvi.io`
 - Match only at host boundaries: the host is preceded by start, `/`, `.` (for subdomains) or `@`, and followed by end, `/`, `:`, `"`, `?` or `#`.
 - Every line holding an old host string carries `// virvi-rename: keep`.
 
@@ -448,33 +448,33 @@ Package names and their imports are the only things that change here. Code ident
 
 **Prerequisites from the owner:**
 - The three domains are active and are zones in Cloudflare.
-- virvi.org is in Google Workspace, with `noreply@` and `support@`.
+- virvi.io is in Google Workspace, with `noreply@` and `support@`.
 - npm is logged in as a `virvixr` member that can also deprecate `vlm-dcl`.
 - An empty `virtuallandmanager` org exists on GitHub to hold the name.
 
 ### R1: DNS and certificates
 
-- **Railway:** add the custom domains `virvi.org` and `api.virvi.org` to the production service. Create the CNAME/ALIAS records Railway gives, DNS-only, in the virvi.org Cloudflare zone.
-- **R2:** add `cdn.virvi.org` as a custom domain on the `vlm-media` bucket. Add `worlds-cdn.virvi.org` the same way as `worlds-cdn.vlm.gg` is set up today, mirroring its current config.
+- **Railway:** add the custom domains `virvi.io` and `api.virvi.io` to the production service. Create the CNAME/ALIAS records Railway gives, DNS-only, in the virvi.io Cloudflare zone.
+- **R2:** add `cdn.virvi.io` as a custom domain on the `vlm-media` bucket. Add `worlds-cdn.virvi.io` the same way as `worlds-cdn.vlm.gg` is set up today, mirroring its current config.
 - **Fly:**
-  - `fly certs add live.virvi.org` and `fly certs add ingest.virvi.org` on `vlm-streaming`.
-  - `fly certs add worlds.virvi.org` and `fly certs add '*.worlds.virvi.org'` on `vlm-worlds-router`.
+  - `fly certs add live.virvi.io` and `fly certs add ingest.virvi.io` on `vlm-streaming`.
+  - `fly certs add worlds.virvi.io` and `fly certs add '*.worlds.virvi.io'` on `vlm-worlds-router`.
   - Create the matching DNS records.
 - **Check:** every new host answers over HTTPS (RTMP only on `ingest`) with a valid certificate, before R2 starts.
 
 ### R2: Settings and deploy
 
 **Railway settings to set:**
-- `WEB_APP_URL=https://virvi.org`
-- `PUBLIC_URL=https://api.virvi.org`
-- `NEXT_PUBLIC_API_URL=https://api.virvi.org`
-- `NEXT_PUBLIC_WSS_URL=wss://api.virvi.org`
-- `CORS_ORIGINS=https://virvi.org,https://www.virvi.org`
-- `CDN_URL=https://cdn.virvi.org`
-- `HLS_BASE_URL=https://live.virvi.org/streams`
-- `RTMP_INGEST_URL=rtmp://ingest.virvi.org/live`
-- `HYPERFY_ROUTER_DOMAIN=worlds.virvi.org`
-- `HYPERFY_ASSETS_BASE_URL=https://worlds-cdn.virvi.org`
+- `WEB_APP_URL=https://virvi.io`
+- `PUBLIC_URL=https://api.virvi.io`
+- `NEXT_PUBLIC_API_URL=https://api.virvi.io`
+- `NEXT_PUBLIC_WSS_URL=wss://api.virvi.io`
+- `CORS_ORIGINS=https://virvi.io,https://www.virvi.io`
+- `CDN_URL=https://cdn.virvi.io`
+- `HLS_BASE_URL=https://live.virvi.io/streams`
+- `RTMP_INGEST_URL=rtmp://ingest.virvi.io/live`
+- `HYPERFY_ROUTER_DOMAIN=worlds.virvi.io`
+- `HYPERFY_ASSETS_BASE_URL=https://worlds-cdn.virvi.io`
 
 **Renamed settings:** add `VIRVI_MODE=cloud` and remove `VLM_MODE`. Rename any other `VLM_*` the server reads, as listed in Task 3.
 
@@ -487,9 +487,9 @@ Package names and their imports are the only things that change here. Code ident
 
 **Check:**
 - The boot log has `vlm_scene_id renamed`, and the push succeeds.
-- `https://api.virvi.org/api/health` returns 200.
-- Login on virvi.org works, and so does the WebSocket.
-- One catalog thumbnail loads from `cdn.virvi.org`.
+- `https://api.virvi.io/api/health` returns 200.
+- Login on virvi.io works, and so does the WebSocket.
+- One catalog thumbnail loads from `cdn.virvi.io`.
 
 ### R3: Stored-URL rewrite
 
@@ -499,10 +499,10 @@ Run `node apps/server/scripts/rewrite-vlm-urls.mjs` (dry run) inside the server 
 
 - Detach `vlm.gg` and `api.vlm.gg` from Railway.
 - In Cloudflare, add 301 Single Redirect rules that keep path and query:
-  - `vlm.gg/*` and `www.vlm.gg/*` → `https://virvi.org/$1`
-  - `cdn.vlm.gg/*` → `cdn.virvi.org`
-  - `virvi.net/*`, `www.virvi.net/*`, `virvixr.com/*` and `www.virvixr.com/*` → `https://virvi.org/$1`
-  - `www.virvi.org/*` → `https://virvi.org/$1`
+  - `vlm.gg/*` and `www.vlm.gg/*` → `https://virvi.io/$1`
+  - `cdn.vlm.gg/*` → `cdn.virvi.io`
+  - `virvi.org/*`, `www.virvi.org/*`, `virvi.net/*`, `www.virvi.net/*`, `virvixr.com/*` and `www.virvixr.com/*` → `https://virvi.io/$1`
+  - `www.virvi.io/*` → `https://virvi.io/$1`
 - Check: `curl -sI` on each shows a 301 to the right location.
 
 ### R5: Publish and redeploy
@@ -518,5 +518,5 @@ Run `node apps/server/scripts/rewrite-vlm-urls.mjs` (dry run) inside the server 
 - Rename the Railway project to "Virvi" and the service to `virvi-server`.
 - Update the deploy command (`-s virvi-server`) in the memory notes.
 - Build Virvi AR (`./gradlew :app:assembleRelease`) and sideload it on the headset.
-- Check that pairing works and that a `https://virvi.org/s/<code>` link opens the app.
+- Check that pairing works and that a `https://virvi.io/s/<code>` link opens the app.
 - Update the memory notes `virvi-rebrand.md` and `vlm-venues-project.md`.

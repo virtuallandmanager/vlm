@@ -22,7 +22,7 @@ The existing "Virvi deploys" feature (the Decentraland deploy wallet and signer,
 
 ## Goals
 
-- **virvi.org is the home.** virvi.net, virvixr.com and vlm.gg all redirect permanently to it, keeping the path.
+- **virvi.io is the home** (owner, 2026-10-26; it was virvi.org until then). virvi.org, virvi.net, virvixr.com and vlm.gg all redirect permanently to it, keeping the path.
 - **The visible name changes everywhere:** "Virvi" and its product names appear in the dashboard, landing page, docs, emails, the API docs, the Quest app and its store listing, and Decentraland and Hyperfy in-world text.
 - **The new logo replaces `vlm-logo.svg`.** The favicon, app icons and share image are new, made from the symbol.
 - **Package, app and code identifiers use virvi.** That covers npm packages, the Quest app ID, settings names, database columns, storage keys, event names and log prefixes.
@@ -39,7 +39,7 @@ The existing "Virvi deploys" feature (the Decentraland deploy wallet and signer,
 
 - A blanket find-and-replace that mangles the vendored `apps/server/dcl-runtime/**` bundle, lockfile hashes, or the "Virvi deploys" names.
 - Production boot hanging because drizzle-kit asks "renamed or created?" about a renamed column or table. Every rename has to be handled before `drizzle-kit push` (see Database).
-- vlm.gg going dark before virvi.org serves everything, including API, WebSocket, CDN, streaming and Hyperfy worlds.
+- vlm.gg going dark before virvi.io serves everything, including API, WebSocket, CDN, streaming and Hyperfy worlds.
 - A visitor seeing "VLM" anywhere a visitor can see it.
 
 ## Already done (2026-10-25)
@@ -52,9 +52,9 @@ The existing "Virvi deploys" feature (the Decentraland deploy wallet and signer,
 ## Owner prerequisites (things only the owner can do)
 
 1. **Domains:**
-   - Check that virvi.org, virvi.net and virvixr.com show as active at the registrar. On 2026-10-25 the .org, .net and .com registries had no record of them.
+   - Check that virvi.io, virvi.net and virvixr.com show as active at the registrar. On 2026-10-25 the .org, .net and .com registries had no record of them.
    - Add all three as zones in **Cloudflare**, next to vlm.gg, and switch the registrar's nameservers to Cloudflare.
-2. **Email:** add virvi.org to Google Workspace as a secondary domain, and create or alias `noreply@virvi.org` and `support@virvi.org`.
+2. **Email:** add virvi.io to Google Workspace as a secondary domain, and create or alias `noreply@virvi.io` and `support@virvi.io`.
 3. **npm:**
    - Confirm the `virvixr` npm org is yours.
    - Run `! npm login` as a member of `virvixr`.
@@ -67,17 +67,17 @@ The existing "Virvi deploys" feature (the Decentraland deploy wallet and signer,
 
 | Old | New |
 |---|---|
-| `vlm.gg`, `www.vlm.gg` | `virvi.org`. `www.virvi.org` redirects to the bare domain. |
-| `api.vlm.gg` (HTTP and `wss://`) | `api.virvi.org` |
-| `cdn.vlm.gg` | `cdn.virvi.org` |
-| `live.vlm.gg` (HLS) | `live.virvi.org` |
-| `ingest.vlm.gg` (RTMP) | `ingest.virvi.org` |
-| `worlds.vlm.gg`, `*.worlds.vlm.gg` | `worlds.virvi.org`, `*.worlds.virvi.org` |
-| `worlds-cdn.vlm.gg` | `worlds-cdn.virvi.org` |
-| `staging-api.vlm.gg` / `api.staging.vlm.gg` | `api.staging.virvi.org` (my call: one spelling) |
-| `noreply@vlm.gg`, `support@vlm.gg` | `noreply@virvi.org`, `support@virvi.org` |
+| `vlm.gg`, `www.vlm.gg` | `virvi.io`. `www.virvi.io` redirects to the bare domain. |
+| `api.vlm.gg` (HTTP and `wss://`) | `api.virvi.io` |
+| `cdn.vlm.gg` | `cdn.virvi.io` |
+| `live.vlm.gg` (HLS) | `live.virvi.io` |
+| `ingest.vlm.gg` (RTMP) | `ingest.virvi.io` |
+| `worlds.vlm.gg`, `*.worlds.vlm.gg` | `worlds.virvi.io`, `*.worlds.virvi.io` |
+| `worlds-cdn.vlm.gg` | `worlds-cdn.virvi.io` |
+| `staging-api.vlm.gg` / `api.staging.vlm.gg` | `api.staging.virvi.io` (my call: one spelling) |
+| `noreply@vlm.gg`, `support@vlm.gg` | `noreply@virvi.io`, `support@virvi.io` |
 
-virvi.net, virvixr.com and every old vlm.gg host get Cloudflare redirect rules: a 301 to the same path on virvi.org, or for subdomains, the matching virvi.org subdomain.
+virvi.org, virvi.net, virvixr.com and every old vlm.gg host get Cloudflare redirect rules: a 301 to the same path on virvi.io, or for subdomains, the matching virvi.io subdomain.
 
 **My call:** `api.vlm.gg` is removed at cutover, with no grace period.
 - The event, message and key-prefix renames ship together with no shims, so old scenes would break anyway even if the hostname stayed attached.
@@ -112,13 +112,13 @@ The older v1 repos (`vlm-api`, `vlm-ui`, `vlm-jobs`, `vlm-scenes`, `vlm-dcl-qc`,
 ### App identifiers
 
 - **Quest:**
-  - `applicationId` and `namespace` change from `gg.vlm.spaces` to **`org.virvi.ar`**. The Kotlin package moves from `gg/vlm/spaces/**` to `org/virvi/ar/**`.
+  - `applicationId` and `namespace` change from `gg.vlm.spaces` to **`io.virvi.ar`**. The Kotlin package moves from `gg/vlm/spaces/**` to `io/virvi/ar/**`.
   - The label "VLM Spaces" becomes **"Virvi AR"**.
-  - App Links move from `vlm.gg/s/` to `virvi.org/s/`.
+  - App Links move from `vlm.gg/s/` to `virvi.io/s/`.
   - The server default `ANDROID_APP_PACKAGE` and the assetlinks route follow.
   - It's a new app to Meta, which is fine while the store release is on hold.
   - The signing keystore stays the same. The key alias `vlm-quest` may stay; it isn't visible.
-- **iOS/visionOS spike:** `gg.vlm.spaces.*` becomes `org.virvi.ar.*`, the display name becomes "Virvi AR", and `VLMSpaces*` targets and types become `VirviAR*`.
+- **iOS/visionOS spike:** `gg.vlm.spaces.*` becomes `io.virvi.ar.*`, the display name becomes "Virvi AR", and `VLMSpaces*` targets and types become `VirviAR*`.
 
 ### Code identifiers
 
@@ -144,13 +144,13 @@ The older v1 repos (`vlm-api`, `vlm-ui`, `vlm-jobs`, `vlm-scenes`, `vlm-dcl-qc`,
 ### Railway and other hosting
 
 - **Railway:** rename the project "VLM" to "Virvi" and the service `vlm-server` to `virvi-server`. Update `.railway/railway.ts` and the deploy command to match.
-- **Railway settings:** `WEB_APP_URL`, `PUBLIC_URL`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WSS_URL`, `CORS_ORIGINS`, `CDN_URL`, `HLS_BASE_URL`, `RTMP_INGEST_URL`, `HYPERFY_ROUTER_DOMAIN` and `HYPERFY_ASSETS_BASE_URL` all move to the virvi.org hosts. `VLM_MODE` becomes `VIRVI_MODE`.
+- **Railway settings:** `WEB_APP_URL`, `PUBLIC_URL`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WSS_URL`, `CORS_ORIGINS`, `CDN_URL`, `HLS_BASE_URL`, `RTMP_INGEST_URL`, `HYPERFY_ROUTER_DOMAIN` and `HYPERFY_ASSETS_BASE_URL` all move to the virvi.io hosts. `VLM_MODE` becomes `VIRVI_MODE`.
 - **My call: these keep their names**, because they can't be renamed in place, aren't visible to anyone, and recreating them means moving data:
   - the Fly apps (`vlm-streaming`, `vlm-worlds-router`, `vlm-worlds-pg` and the others);
   - the Fly org `vlm-worlds`;
   - the R2 bucket `vlm-media`.
 
-  This includes the per-world app prefix `vlm-w-<slug>` for **all** worlds, new ones too. The router (`infra/hyperfy-router/server.mjs`) and `hosting.ts` turn a slug straight into an app name with no lookup, so one prefix has to cover every world. A visitor only ever sees `<slug>.worlds.virvi.org`.
+  This includes the per-world app prefix `vlm-w-<slug>` for **all** worlds, new ones too. The router (`infra/hyperfy-router/server.mjs`) and `hosting.ts` turn a slug straight into an app name with no lookup, so one prefix has to cover every world. A visitor only ever sees `<slug>.worlds.virvi.io`.
 - **My call: local dev database names stay as they are** (`vlm`, `vlm_test`, the docker-compose user and passwords). Other sessions and tests depend on them, and they're never visible.
 
 ### Stored URLs in production data
@@ -160,7 +160,7 @@ Production rows store full vlm.gg URLs:
 - the Hyperfy world `address`;
 - any asset or CDN URLs.
 
-The plan's first database task finds every column that holds a vlm.gg host. In rollout step 3, after the virvi.org hosts serve and before the redirect, a one-off script rewrites `vlm.gg` hosts to their virvi.org equivalents. It runs as one transaction, and the old values are copied to the `retired` schema first. It's a production data change, so the owner OKs it when it runs. **My call.**
+The plan's first database task finds every column that holds a vlm.gg host. In rollout step 3, after the virvi.io hosts serve and before the redirect, a one-off script rewrites `vlm.gg` hosts to their virvi.io equivalents. It runs as one transaction, and the old values are copied to the `retired` schema first. It's a production data change, so the owner OKs it when it runs. **My call.**
 
 ### Decentraland runtime bundle
 
@@ -188,12 +188,12 @@ The plan's first database task finds every column that holds a vlm.gg host. In r
 
 1. **Code** (one branch, merged locally, not deployed): all identifier, copy, logo and config-default changes, plus the database rename in `pre-push-upgrade.mjs`. The full server test suite and `check-upgrade-push.sh` pass on Postgres 16 and 18. The web, docs and Quest builds succeed.
 2. **Infrastructure:** this needs the owner prerequisites first.
-   - Add virvi.org and `api.virvi.org` as Railway custom domains, with DNS in Cloudflare.
-   - Point `cdn.virvi.org` at R2.
-   - Add Fly certificates for `live.`, `ingest.`, `worlds.`, `*.worlds.` and `worlds-cdn.virvi.org`.
+   - Add virvi.io and `api.virvi.io` as Railway custom domains, with DNS in Cloudflare.
+   - Point `cdn.virvi.io` at R2.
+   - Add Fly certificates for `live.`, `ingest.`, `worlds.`, `*.worlds.` and `worlds-cdn.virvi.io`.
    - Set the router's `ROUTER_DOMAIN`.
    - Verify every host serves before anything redirects.
-3. **Deploy:** update the Railway settings and deploy the branch. Check health, login, WebSocket, the CDN, a stream and a Hyperfy world, all on virvi.org.
+3. **Deploy:** update the Railway settings and deploy the branch. Check health, login, WebSocket, the CDN, a stream and a Hyperfy world, all on virvi.io.
 4. **Redirect:**
    - Run the stored-URL rewrite.
    - Detach `vlm.gg` and `api.vlm.gg` from Railway.
@@ -203,7 +203,7 @@ The plan's first database task finds every column that holds a vlm.gg host. In r
    - Rename the three GitHub repos.
    - Redeploy the test Decentraland scenes and wizard Worlds with the new package or runtime.
    - Rename the Railway project and service.
-6. **Quest:** build and sideload Virvi AR (`org.virvi.ar`). Check pairing and App Links on virvi.org.
+6. **Quest:** build and sideload Virvi AR (`io.virvi.ar`). Check pairing and App Links on virvi.io.
 
 Steps 2 to 6 are pushes, deploys, publishes and external changes, so each needs the owner's go-ahead at the time it happens.
 
@@ -212,4 +212,4 @@ Steps 2 to 6 are pushes, deploys, publishes and external changes, so each needs 
 - How to batch the code rename. Codemods, moving directories with `git mv`, then fixing imports is the expected approach. `pnpm-lock.yaml` is regenerated, not hand-edited.
 - Exactly which favicon sizes to make and which tool generates them.
 - Rewording copy where "VLM" sits mid-sentence. Plain "Virvi" is the default, and a product name like "Virvi Studio" is used only where the feature clearly is that product.
-- The order of the Railway domain and settings changes inside step 2, as long as vlm.gg never stops serving before virvi.org works.
+- The order of the Railway domain and settings changes inside step 2, as long as vlm.gg never stops serving before virvi.io works.
