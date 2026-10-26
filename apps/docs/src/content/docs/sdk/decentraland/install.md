@@ -20,7 +20,9 @@ Track your own events with `vlm.track('bought_ticket', { tier: 'vip' })`.
 npm install vlm-adapter-dcl vlm-core vlm-client vlm-shared
 ```
 
-**Peer dependency:** `@dcl/sdk >=7.23.0`
+**Peer dependency:** `@dcl/sdk >=7.26.0` (the HUD scales with the SDK's virtual canvas, so it isn't tiny on high-DPI screens).
+
+The HUD's launcher icon loads from `images/virvi/hud-v.png` in your scene. Run `npx vlm-dcl install` in the scene folder to copy it there (`npx vlm-dcl sync` keeps it up to date), and deploy it with the scene.
 
 ## Basic Usage
 
