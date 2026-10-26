@@ -206,7 +206,7 @@ def paper_pdf(marker_id: int, diameter_mm: float, name: str, path: Path) -> None
     for t in range(0, 101, 10):
         d.rectangle([mm(15) + round(t / 25.4 * DPI) - (2 if t else 0), bar_y - mm(2), mm(15) + round(t / 25.4 * DPI) + 1, bar_y], fill=0)
     d.text((mm(118), bar_y - mm(1)), "100 mm", font=small, fill=0)
-    d.text((mm(15), bar_y + mm(8)), f"{name}   {code_of(marker_id)}   vlm.gg/s/{code_of(marker_id)}", font=small, fill=0)
+    d.text((mm(15), bar_y + mm(8)), f"{name}   {code_of(marker_id)}   virvi.io/s/{code_of(marker_id)}", font=small, fill=0)
     page.convert("1", dither=Image.NONE).save(path, "PDF", resolution=DPI)  # 1-bit: lossless (CCITT/flate), no JPEG
 
 
@@ -218,7 +218,7 @@ def write_print_files(marker_id: int, diameter_mm: float, out_dir: Path, name: s
     render(marker_id, diameter_mm, REFERENCE_PX_PER_MM).save(ref)
     paper_pdf(marker_id, diameter_mm, name, pdf)
     base, raised = build_meshes(marker_id, diameter_mm)
-    write_stl(base, base_p, f"VLM ring marker {name} base")
-    write_stl(raised, raised_p, f"VLM ring marker {name} raised")
+    write_stl(base, base_p, f"Virvi ring marker {name} base")
+    write_stl(raised, raised_p, f"Virvi ring marker {name} raised")
     write_3mf([("base (light)", base, "#F2F2F2"), ("raised (dark)", raised, "#1A1A1A")], mf)
     return [ref, pdf, base_p, raised_p, mf]

@@ -10,7 +10,7 @@ const MIME_TYPES: Record<string, string> = {
 }
 
 /**
- * Public HTTP (https://live.vlm.gg): health and HLS files only. Nothing here may reveal stream
+ * Public HTTP (https://live.virvi.io): health and HLS files only. Nothing here may reveal stream
  * keys — anyone holding one can publish — so health reports a count, and HLS lives under playback ids.
  */
 export function createHttpHandler(opts: { outputDir: string; activeCount: () => number }) {

@@ -5,11 +5,11 @@ enum SettingsKeys {
     static let feedUrl = "feedUrl"
     static let worldKey = "worldKey" // Spike only: production would keep this in the Keychain.
     static let soundOn = "soundOn"
-    static let defaultFeedUrl = "https://api.vlm.gg"
+    static let defaultFeedUrl = "https://api.virvi.io"
 }
 
 /// Ties the feed to the renderer. `placement` is what the platform code anchors in the world: it sits where the
-/// scene's centre should be, and holds the scene root shifted so VLM (8, 0, 8) lands on placement's origin.
+/// scene's centre should be, and holds the scene root shifted so Virvi (8, 0, 8) lands on placement's origin.
 @MainActor
 final class AppModel: ObservableObject {
     let feed = FeedClient()
@@ -21,7 +21,7 @@ final class AppModel: ObservableObject {
     }
 
     init() {
-        let c = toRealityKitTransform(position: VLM_SCENE_CENTER, rotation: Vec3(x: 0, y: 0, z: 0), scale: Vec3(x: 1, y: 1, z: 1))
+        let c = toRealityKitTransform(position: VIRVI_SCENE_CENTER, rotation: Vec3(x: 0, y: 0, z: 0), scale: Vec3(x: 1, y: 1, z: 1))
         renderer.root.position = -SIMD3<Float>(c.position)
         placement.addChild(renderer.root)
         feed.onSnapshot = { [weak self] scene in

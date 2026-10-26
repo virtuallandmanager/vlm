@@ -2,7 +2,7 @@ import RealityKit
 import SwiftUI
 
 @main
-struct VLMSpacesApp: App {
+struct VirviARApp: App {
     @StateObject private var model: AppModel
     @StateObject private var space: SpaceController
     @StateObject private var markers: MarkerTestModel
@@ -22,7 +22,7 @@ struct VLMSpacesApp: App {
         }
         .defaultSize(width: 640, height: 820)
 
-        ImmersiveSpace(id: ImmersiveSpaceID.vlm) {
+        ImmersiveSpace(id: ImmersiveSpaceID.virvi) {
             ImmersiveView(model: model, space: space, markers: markers)
         }
         .immersionStyle(selection: .constant(.mixed), in: .mixed)
@@ -30,7 +30,7 @@ struct VLMSpacesApp: App {
 }
 
 enum ImmersiveSpaceID {
-    static let vlm = "vlm-space"
+    static let virvi = "virvi-space"
 }
 
 struct ContentView: View {
@@ -57,7 +57,7 @@ struct ContentView: View {
                                     await dismissImmersiveSpace()
                                     inSpace = false
                                 } else {
-                                    if case .opened = await openImmersiveSpace(id: ImmersiveSpaceID.vlm) { inSpace = true }
+                                    if case .opened = await openImmersiveSpace(id: ImmersiveSpaceID.virvi) { inSpace = true }
                                 }
                             }
                         }
@@ -76,7 +76,7 @@ struct ContentView: View {
                             if let name = space.selectedName {
                                 VStack(alignment: .leading) {
                                     Text(name).font(.headline).lineLimit(1)
-                                    Text(space.editedKeys.contains(space.selectedKey ?? "") ? "Changed on this headset" : "As in VLM")
+                                    Text(space.editedKeys.contains(space.selectedKey ?? "") ? "Changed on this headset" : "As in Virvi")
                                         .font(.footnote).foregroundStyle(.secondary)
                                 }
                                 Spacer()
@@ -86,7 +86,7 @@ struct ContentView: View {
                                 Spacer()
                             }
                         }
-                        Text("Changes stay on this headset for now. They aren't saved to VLM, and an edit in VLM replaces them.")
+                        Text("Changes stay on this headset for now. They aren't saved to Virvi, and an edit in Virvi replaces them.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                     .padding(12)
@@ -103,12 +103,12 @@ struct ContentView: View {
                 .padding()
                 SettingsForm(model: model)
             }
-            .navigationTitle("VLM Spaces")
+            .navigationTitle("Virvi AR")
         }
         .task {
             // Debug: `-autoEnterSpace YES` as a launch argument opens the space without a tap (simulator checks).
             if UserDefaults.standard.bool(forKey: "autoEnterSpace"), !inSpace,
-               case .opened = await openImmersiveSpace(id: ImmersiveSpaceID.vlm) { inSpace = true }
+               case .opened = await openImmersiveSpace(id: ImmersiveSpaceID.virvi) { inSpace = true }
         }
     }
 

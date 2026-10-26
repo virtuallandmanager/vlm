@@ -21,9 +21,9 @@ export function createApiClient(opts: { apiUrl: string; webhookKey: string; fetc
     async notify(streamKey: string, status: 'live' | 'offline'): Promise<void> {
       try {
         const res = await call('/api/streaming/webhook', { method: 'POST', body: JSON.stringify({ streamKey, status, timestamp: Date.now() }) })
-        if (!res.ok) console.error(`[webhook] VLM API returned ${res.status}`)
+        if (!res.ok) console.error(`[webhook] Virvi API returned ${res.status}`)
       } catch (err) {
-        console.error('[webhook] Failed to notify VLM API:', err)
+        console.error('[webhook] Failed to notify Virvi API:', err)
       }
     },
     async liveKeys(): Promise<string[]> {

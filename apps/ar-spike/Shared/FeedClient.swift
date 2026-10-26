@@ -55,7 +55,7 @@ final class FeedClient: ObservableObject {
             comps.queryItems = [URLQueryItem(name: "since", value: version)]
             var req = URLRequest(url: comps.url!)
             req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-            req.setValue("1", forHTTPHeaderField: "X-VLM-App-Version")
+            req.setValue("1", forHTTPHeaderField: "X-Virvi-App-Version")
 
             var failure: String
             do {

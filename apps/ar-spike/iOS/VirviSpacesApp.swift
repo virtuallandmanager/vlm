@@ -4,7 +4,7 @@ import SwiftUI
 import Vision
 
 @main
-struct VLMSpacesApp: App {
+struct VirviARApp: App {
     @StateObject private var model = AppModel()
     @StateObject private var markers = MarkerTestModel()
 
@@ -155,7 +155,7 @@ struct ARContainer: UIViewRepresentable {
                 ?? view.raycast(from: point, allowing: .estimatedPlane, alignment: .horizontal).first else { return }
             anchor?.removeFromParent()
             let a = AnchorEntity(world: hit.worldTransform)
-            // Turn the scene so VLM north (+Z, RealityKit -Z) points away from the camera.
+            // Turn the scene so Virvi north (+Z, RealityKit -Z) points away from the camera.
             let f = view.cameraTransform.matrix.columns.2 // camera looks down its -Z
             let fx = -f.x, fz = -f.z
             model.placement.orientation = simd_quatf(angle: atan2(-fx, -fz), axis: [0, 1, 0])

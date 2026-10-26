@@ -1,6 +1,6 @@
-# VLM ring markers
+# Virvi ring markers
 
-VLM's own marker: a round, printable plaque that a headset camera can find and read from across a room. It replaces the QR-code markers in `apps/ar-spike/markers/` for the AR spaces spikes. This folder is the reference implementation in Python: the code, the layout, print files, a synthetic camera test set and a reference detector. The Quest app (`apps/quest`) ports the codec and detector to Kotlin and checks them against the same vectors and images.
+Virvi's own marker: a round, printable plaque that a headset camera can find and read from across a room. It replaces the QR-code markers in `apps/ar-spike/markers/` for the AR spaces spikes. This folder is the reference implementation in Python: the code, the layout, print files, a synthetic camera test set and a reference detector. The Quest app (`apps/quest`) ports the codec and detector to Kotlin and checks them against the same vectors and images.
 
 ## What a marker is
 
@@ -10,7 +10,7 @@ At the 140 mm reference size (every length scales by `diameter / 140`):
 - Three **code rings** (r = 51–59, 40–48 and 29–37 mm), each 24 cells of 15°. The 72 cells are 12 six-bit symbols of a Reed–Solomon RS(12,6) code over GF(64), so up to 2 bad symbols are corrected and cells the camera can't judge count as erasures. The 6 data symbols hold a 4-bit format version and a 32-bit ID.
 - A **centre dot** (r = 12 mm), on a square plaque 150 mm across with corner marks. There's no text on the face.
 
-The ID appears in URLs as `vlm.gg/s/<code>`, the 32-bit ID in 7 characters of Crockford base32. Markers are never more than 256 mm across.
+The ID appears in URLs as `virvi.io/s/<code>`, the 32-bit ID in 7 characters of Crockford base32. Markers are never more than 256 mm across.
 
 Code: `ringmarker/codec.py` (the code), `layout.py` (geometry), `render.py`, `printfiles.py` (PNG, PDF, STL, 3MF), `testset.py` (synthetic camera views) and `detect.py` (the reference detector; its docstring is the spec the Kotlin port follows).
 

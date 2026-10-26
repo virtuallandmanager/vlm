@@ -1,6 +1,6 @@
-name: VLMSpaces
+name: VirviAR
 options:
-  bundleIdPrefix: gg.vlm.spaces
+  bundleIdPrefix: io.virvi.ar
   deploymentTarget:
     iOS: "18.0"
     visionOS: "2.0"
@@ -20,7 +20,7 @@ packages:
     exactVersion: 0.5.15
 
 targets:
-  VLMSpaces-iOS:
+  VirviAR-iOS:
     type: application
     platform: iOS
     sources: [Shared, iOS]
@@ -29,8 +29,8 @@ targets:
     info:
       path: iOS/Info.plist
       properties:
-        CFBundleDisplayName: VLM Spaces
-        NSCameraUsageDescription: VLM Spaces uses the camera to show your VLM scene in augmented reality.
+        CFBundleDisplayName: Virvi AR
+        NSCameraUsageDescription: Virvi AR uses the camera to show your Virvi scene in augmented reality.
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -40,10 +40,10 @@ targets:
           NSAllowsArbitraryLoadsForMedia: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: gg.vlm.spaces.ios
+        PRODUCT_BUNDLE_IDENTIFIER: io.virvi.ar.ios
         TARGETED_DEVICE_FAMILY: "1"
 
-  VLMSpaces-visionOS:
+  VirviAR-visionOS:
     type: application
     platform: visionOS
     sources: [Shared, visionOS]
@@ -52,8 +52,8 @@ targets:
     info:
       path: visionOS/Info.plist
       properties:
-        CFBundleDisplayName: VLM Spaces
-        NSWorldSensingUsageDescription: VLM Spaces uses world tracking to pin your VLM scene to a spot in this room.
+        CFBundleDisplayName: Virvi AR
+        NSWorldSensingUsageDescription: Virvi AR uses world tracking to pin your Virvi scene to a spot in this room.
         UIApplicationSceneManifest:
           UIApplicationPreferredDefaultSceneSessionRole: UIWindowSceneSessionRoleApplication
           UIApplicationSupportsMultipleScenes: true
@@ -62,10 +62,10 @@ targets:
           NSAllowsArbitraryLoadsForMedia: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: gg.vlm.spaces.visionos
+        PRODUCT_BUNDLE_IDENTIFIER: io.virvi.ar.visionos
         TARGETED_DEVICE_FAMILY: "7"
 
-  VLMSpacesTests:
+  VirviARTests:
     type: bundle.unit-test
     platform: iOS
     sources:
@@ -75,17 +75,17 @@ targets:
       - Shared/MarkerReadings.swift
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: gg.vlm.spaces.tests
+        PRODUCT_BUNDLE_IDENTIFIER: io.virvi.ar.tests
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:
-  VLMSpaces-iOS:
+  VirviAR-iOS:
     build:
       targets:
-        VLMSpaces-iOS: all
+        VirviAR-iOS: all
     test:
-      targets: [VLMSpacesTests]
-  VLMSpaces-visionOS:
+      targets: [VirviARTests]
+  VirviAR-visionOS:
     build:
       targets:
-        VLMSpaces-visionOS: all
+        VirviAR-visionOS: all

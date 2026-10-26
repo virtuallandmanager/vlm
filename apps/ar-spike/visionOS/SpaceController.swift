@@ -22,7 +22,7 @@ private enum PinKeys {
 }
 
 /// visionOS-only state for the immersive space: the place/edit mode, the room pin (a `WorldAnchor`) and local,
-/// unsaved edits to items. The scene's pivot is `model.placement`, which sits at the scene's centre (VLM 8, 0, 8).
+/// unsaved edits to items. The scene's pivot is `model.placement`, which sits at the scene's centre (Virvi 8, 0, 8).
 @MainActor
 final class SpaceController: ObservableObject {
     let model: AppModel
@@ -64,7 +64,7 @@ final class SpaceController: ObservableObject {
             pinStatus = pinnedID == nil ? "Not pinned" : "Pinned · enter the space to restore"
         }
 
-        guides.name = "vlm-guides"
+        guides.name = "virvi-guides"
         guides.addChild(Self.makeMarker())
         guides.addChild(Self.makeFootprint())
         model.placement.addChild(guides)
@@ -81,7 +81,7 @@ final class SpaceController: ObservableObject {
     func spaceOpened() async {
         placeAhead()
         guard trackingSupported else {
-            print("[vlm] world tracking is not supported here (simulator?): pinning is off")
+            print("[virvi] world tracking is not supported here (simulator?): pinning is off")
             pinStatus = "Pinning needs a device"
             return
         }
@@ -91,7 +91,7 @@ final class SpaceController: ObservableObject {
         do {
             try await session.run(images.map { [world, $0] } ?? [world])
         } catch {
-            print("[vlm] world tracking failed: \(error.localizedDescription)")
+            print("[virvi] world tracking failed: \(error.localizedDescription)")
             pinStatus = "World tracking failed: \(error.localizedDescription)"
             return
         }
@@ -175,7 +175,7 @@ final class SpaceController: ObservableObject {
         world = nil
     }
 
-    /// The scene's centre 2 m ahead of the user on the floor, with VLM north pointing away from them.
+    /// The scene's centre 2 m ahead of the user on the floor, with Virvi north pointing away from them.
     private func placeAhead() {
         var position = SIMD3<Float>(0, 0, -2)
         var yaw: Float = 0
@@ -195,7 +195,7 @@ final class SpaceController: ObservableObject {
 
     func pin() async {
         guard trackingSupported else {
-            print("[vlm] pin: world tracking is not supported here")
+            print("[virvi] pin: world tracking is not supported here")
             pinStatus = "Pinning needs a device"
             return
         }
@@ -210,7 +210,7 @@ final class SpaceController: ObservableObject {
             pinnedID = anchor.id
             pinStatus = "Pinned to this room"
         } catch {
-            print("[vlm] pin failed: \(error.localizedDescription)")
+            print("[virvi] pin failed: \(error.localizedDescription)")
             pinStatus = "Pin failed: \(error.localizedDescription)"
         }
     }
@@ -315,7 +315,7 @@ final class SpaceController: ObservableObject {
         if key == selectedKey { Self.setHighlight(true, on: entity) }
     }
 
-    private static let highlightName = "vlm-selection"
+    private static let highlightName = "virvi-selection"
 
     private static func setHighlight(_ on: Bool, on entity: Entity) {
         entity.findEntity(named: highlightName)?.removeFromParent()
@@ -352,10 +352,10 @@ final class SpaceController: ObservableObject {
         e.components.set(PlaceHandleComponent())
     }
 
-    /// A 0.6 m disc at the scene's centre with an arrow and an "N" pointing to VLM north (+Z, RealityKit -Z).
+    /// A 0.6 m disc at the scene's centre with an arrow and an "N" pointing to Virvi north (+Z, RealityKit -Z).
     static func makeMarker() -> Entity {
         let marker = Entity()
-        marker.name = "vlm-marker"
+        marker.name = "virvi-marker"
         let accent = UIColor(red: 0.2, green: 0.85, blue: 1, alpha: 1)
         let disc = ModelEntity(mesh: .generateCylinder(height: 0.004, radius: 0.3), materials: [translucent(.white, 0.35)])
         disc.position.y = 0.002
@@ -378,10 +378,10 @@ final class SpaceController: ObservableObject {
         return marker
     }
 
-    /// A thin outline of one 16 m parcel around the scene's centre (VLM 0…16 on x and z).
+    /// A thin outline of one 16 m parcel around the scene's centre (Virvi 0…16 on x and z).
     static func makeFootprint() -> Entity {
         let footprint = Entity()
-        footprint.name = "vlm-footprint"
+        footprint.name = "virvi-footprint"
         let mat = translucent(UIColor(red: 0.2, green: 0.85, blue: 1, alpha: 1), 0.6)
         let half: Float = 8, w: Float = 0.03
         for (pos, size) in [

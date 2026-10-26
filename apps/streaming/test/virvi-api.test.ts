@@ -1,7 +1,7 @@
-// apps/streaming/test/vlm-api.test.ts
+// apps/streaming/test/virvi-api.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createApiClient } from '../src/vlm-api.js'
+import { createApiClient } from '../src/virvi-api.js'
 
 const res = (status: number, body: unknown) => new Response(JSON.stringify(body), { status })
 

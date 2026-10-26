@@ -5,7 +5,9 @@
     "pnpm-lock.yaml",
     "**/package-lock.json",
     "scripts/vlm-allowlist.json",
-    "scripts/check-no-vlm*.mjs"
+    "scripts/check-no-vlm*.mjs",
+    "apps/ar-spike/docs/visionos-controls.png",
+    "apps/ar-spike/docs/visionos-window-missing-key.png"
   ],
   "tokens": [
     "vlm-w-",
