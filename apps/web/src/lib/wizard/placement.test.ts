@@ -39,6 +39,14 @@ describe('suggestPosition', () => {
     const p = suggestPosition(plot, [placed(a, 8, 8)], a, { x: 8, z: 1 })!
     expect(Math.abs(p.x - 8) >= 4.5 || Math.abs(p.z - 8) >= 4.5).toBe(true)
   })
+  it('places a 16x16 building on a 1x1 plot even though it covers the spawn', () => {
+    expect(suggestPosition(plot, [], asset('house', 16), { x: 8, z: 1 })).toEqual({ x: 8, z: 8 })
+  })
+  it('still keeps clear of the spawn when another spot fits', () => {
+    // 32 x 16 m plot, spawn at x = 12: only centres x >= 22 keep the footprint 2 m from it.
+    const p = suggestPosition({ width: 2, depth: 1, base: { x: 0, y: 0 } }, [], asset('house', 16), { x: 12, z: 1 })!
+    expect(p.x).toBeGreaterThanOrEqual(22)
+  })
   it('returns null when the asset is larger than the plot', () => {
     expect(suggestPosition(plot, [], asset('huge', 20), { x: 8, z: 1 })).toBeNull()
   })

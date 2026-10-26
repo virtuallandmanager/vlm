@@ -48,8 +48,9 @@ export function layoutTheme(
 
 /**
  * A free spot for `asset`, searched outward from the plot's centre. The
- * footprint plus a margin must clear every placed item and the spawn point
- * and stay inside the plot. Null when nothing fits.
+ * footprint plus a margin must clear every placed item and stay inside the
+ * plot, and keeps 2 m from the spawn point when any spot allows it (a building
+ * as big as the plot can't, and the spawn can be moved). Null when nothing fits.
  */
 export function suggestPosition(
   plot: Plot,
@@ -64,12 +65,12 @@ export function suggestPosition(
   if (f.x > size.x || f.z > size.z) return null
   const cx = size.x / 2
   const cz = size.z / 2
-  const fits = (x: number, z: number) => {
+  const fits = (x: number, z: number, clearSpawn: boolean) => {
     if (x - hx < 0 || x + hx > size.x || z - hz < 0 || z + hz > size.z) return false
     // Nearest point of the footprint to the spawn.
     const dx = Math.max(x - hx - spawn.x, 0, spawn.x - (x + hx))
     const dz = Math.max(z - hz - spawn.z, 0, spawn.z - (z + hz))
-    if (Math.hypot(dx, dz) < SPAWN_CLEAR) return false
+    if (clearSpawn && Math.hypot(dx, dz) < SPAWN_CLEAR) return false
     return placed.every((p) => {
       const pf = footprint(p.asset, p.rotationY)
       return (
@@ -78,16 +79,19 @@ export function suggestPosition(
     })
   }
   const maxRing = Math.ceil(Math.max(size.x, size.z) / STEP)
-  for (let k = 0; k <= maxRing; k++) {
-    const ring: Array<{ x: number; z: number; d: number }> = []
-    for (let i = -k; i <= k; i++) {
-      for (let j = -k; j <= k; j++) {
-        if (Math.max(Math.abs(i), Math.abs(j)) !== k) continue
-        ring.push({ x: cx + i * STEP, z: cz + j * STEP, d: Math.hypot(i, j) })
+  const search = (clearSpawn: boolean) => {
+    for (let k = 0; k <= maxRing; k++) {
+      const ring: Array<{ x: number; z: number; d: number }> = []
+      for (let i = -k; i <= k; i++) {
+        for (let j = -k; j <= k; j++) {
+          if (Math.max(Math.abs(i), Math.abs(j)) !== k) continue
+          ring.push({ x: cx + i * STEP, z: cz + j * STEP, d: Math.hypot(i, j) })
+        }
       }
+      ring.sort((a, b) => a.d - b.d)
+      for (const c of ring) if (fits(c.x, c.z, clearSpawn)) return { x: c.x, z: c.z }
     }
-    ring.sort((a, b) => a.d - b.d)
-    for (const c of ring) if (fits(c.x, c.z)) return { x: c.x, z: c.z }
+    return null
   }
-  return null
+  return search(true) ?? search(false)
 }
