@@ -24,6 +24,7 @@ class FakeApi:
         self.events: list[tuple[str, dict]] = []  # (job id, event)
         self.files: dict[str, bytes] = {}  # '<job id>/<path>' -> body
         self.results: list[dict] = []
+        self.inputs: dict[str, bytes] = {}  # '<job id>/<path>' -> body, served by GET /jobs/{id}/inputs/{path}
         self.fail: dict[tuple[str, str], int] = {}  # (method, path suffix) -> status to answer instead
         self.on_event = None  # called with (job id, event) as each arrives
 
@@ -60,6 +61,9 @@ class FakeApi:
             if what == 'files' and method == 'PUT':
                 self.files[f"{job_id}/{'/'.join(parts[3:])}"] = body
                 return 204, b''
+            if what == 'inputs' and method == 'GET':
+                key = f"{job_id}/{'/'.join(parts[3:])}"
+                return (200, self.inputs[key]) if key in self.inputs else (404, b'')
             if what == 'result' and method == 'POST':
                 self.results.append(json.loads(body))
                 return 204, b''
