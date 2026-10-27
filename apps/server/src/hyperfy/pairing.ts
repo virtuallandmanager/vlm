@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { randomInt } from 'node:crypto'
 import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm'
-import { HYPERFY_PAIRING, type HyperfyPairingSummary, type HyperfyVouchLinked, type PairClaimResponse, type PairRenewResponse } from 'vlm-shared'
+import { HYPERFY_PAIRING, type HyperfyPairingSummary, type HyperfyVouchLinked, type PairClaimResponse, type PairRenewResponse } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { hyperfyPairings, hyperfyWorlds, scenes, users } from '../db/schema.js'
 import { getSceneAccess, type SceneAccess } from '../auth/permissions.js'
@@ -12,7 +12,7 @@ import { sameHash, sha256 } from '../auth/hash.js'
 import { findWorldByKey, type HyperfyWorldRow } from './worlds.js'
 
 /**
- * Pairing a Hyperfy player to a VLM user: the HUD gets a short code, the user approves it on vlm.gg, and the HUD
+ * Pairing a Hyperfy player to a Virvi user: the HUD gets a short code, the user approves it on virvi.io, and the HUD
  * trades the code (plus the secret only it knows) for a short-lived scene pass. Codes and secrets are credentials:
  * only their sha256 is stored and they are never logged.
  */

@@ -35,14 +35,14 @@ describe('REST element/instance writes dispatch platform callbacks', () => {
     const headers = { authorization: `Bearer ${tokenFor(host)}` }
     const created = await app.inject({
       method: 'POST', url: `/api/presets/${preset.id}/elements`, headers,
-      payload: { type: 'image', name: 'Poster', properties: { textureSrc: 'https://cdn.vlm.gg/u1/a.png' } },
+      payload: { type: 'image', name: 'Poster', properties: { textureSrc: 'https://cdn.virvi.io/u1/a.png' } },
     })
     const elementId = created.json().element.id
     await until(1)
     expect(dispatch).toHaveBeenCalledTimes(1)
     const [sceneId, payload] = dispatch.mock.calls[0] as [string, Record<string, unknown>]
     expect(sceneId).toBe(scene.id)
-    expect(payload).toMatchObject({ action: 'config_update', elementId, element: 'image', name: 'Poster', textureSrc: 'https://cdn.vlm.gg/u1/a.png' })
+    expect(payload).toMatchObject({ action: 'config_update', elementId, element: 'image', name: 'Poster', textureSrc: 'https://cdn.virvi.io/u1/a.png' })
     expect(payload).not.toHaveProperty('instances')
     expect(payload).not.toHaveProperty('sk')
 
@@ -120,7 +120,7 @@ describe('platform hook callback safety', () => {
     const { scene } = await createScene(host)
     await db.insert(streamingServers).values({
       ownerId: host.id, sceneId: scene.id, name: 's', status: 'ready', streamKey: 'secret-key',
-      rtmpUrl: 'rtmp://ingest.vlm.gg/live/secret-key', hlsPlaylistUrl: 'https://live.vlm.gg/streams/x/playlist.m3u8',
+      rtmpUrl: 'rtmp://ingest.virvi.io/live/secret-key', hlsPlaylistUrl: 'https://live.virvi.io/streams/x/playlist.m3u8',
     })
     for (const status of ['live', 'offline']) {
       dispatch.mockClear()

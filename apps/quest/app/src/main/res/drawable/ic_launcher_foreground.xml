@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Virvi symbol (white V, cyan dot), from virvi-symbol-light-clean.svg (1254 units), scaled into the
+     adaptive icon's 66-unit safe zone of a 108-unit canvas. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <group
+      android:scaleX="0.054"
+      android:scaleY="0.054"
+      android:translateX="20.14"
+      android:translateY="18.14">
+    <path
+        android:pathData="M 327 554.5 L 627 980 L 927 554.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="215"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="#08DDEB"
+        android:pathData="M 495 373 a 132 132 0 1 0 264 0 a 132 132 0 1 0 -264 0" />
+  </group>
+</vector>

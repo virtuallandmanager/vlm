@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { ArMarkerLookup } from 'vlm-shared'
+import type { ArMarkerLookup } from '@virvixr/shared'
 import { API_URL } from '@/lib/config'
 import { shareUrl, spaceCodeFromPath } from '@/lib/ar'
 
@@ -56,7 +56,7 @@ export default function SpaceClient() {
           </>
         )}
         <p style={styles.body}>Look at the ring when you get there</p>
-        <a href={shareUrl(code)} style={styles.button}>Open in the VLM app on Quest</a>
+        <a href={shareUrl(code)} style={styles.button}>Open in the Virvi app on Quest</a>
         <p style={styles.hint}>iPhone and Vision Pro apps are coming.</p>
       </div>
     </div>

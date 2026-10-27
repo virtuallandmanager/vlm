@@ -5,7 +5,7 @@ description: Control and monitor your scenes from within Decentraland.
 
 ## Management and access control
 
-The management HUD and all scene-changing messages now require a signed-in, verified user with permission for that scene. Visitors still receive scene updates. Clients receive `auth_status`, `venue_access` and `access_revoked` messages, and `vlm_error { code, messageType }` when a message is rejected. The error codes are:
+The management HUD and all scene-changing messages now require a signed-in, verified user with permission for that scene. Visitors still receive scene updates. Clients receive `auth_status`, `venue_access` and `access_revoked` messages, and `virvi_error { code, messageType }` when a message is rejected. The error codes are:
 
 - `forbidden` — the user lacks permission for the requested action
 - `not_found` — the requested scene or resource does not exist
@@ -27,7 +27,7 @@ Changes are drafts until you press **Save**. Save stores them to the live preset
 
 While you hold an item, other editors see "being moved by" and your name on it and can't grab it until you save or revert. Visitors only ever see saved changes.
 
-vlm-dcl needs Decentraland SDK 7.26 or newer (Shift was added in 7.23; the HUD's high-DPI scaling is reliable from 7.26).
+@virvixr/dcl needs Decentraland SDK 7.26 or newer (Shift was added in 7.23; the HUD's high-DPI scaling is reliable from 7.26).
 
 ## Uploading from in-world
 
@@ -45,7 +45,7 @@ Uploads appear in the Media Library straight away, newest first, with a status:
 
 - **• Uploading / • Processing:** the file is on its way.
 - **✓ Available:** ready to **Place**.
-- **⟳ Needs sync:** a model you've placed that won't show until you run `npx vlm-dcl sync` and redeploy the scene. Models only render once they're deployed with the scene.
+- **⟳ Needs sync:** a model you've placed that won't show until you run `npx @virvixr/dcl sync` and redeploy the scene. Models only render once they're deployed with the scene.
 - **✕ Failed:** the reason is shown, for example when a file is too big. Press **Dismiss** to clear it.
 
 Images can be up to 10 MB and models up to 50 MB. An editor's uploads count against the scene owner's storage. iPhone HEIC photos are usually converted to JPEG automatically; if one isn't, choose a JPEG or PNG instead.

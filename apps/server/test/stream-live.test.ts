@@ -7,8 +7,8 @@ import { createUser, createScene, createElement, tokenFor, testApp } from './hel
 import { startGameServer, joinScene } from './helpers/game-server.js'
 
 const KEY = 'test-webhook-secret'
-const URL_A = 'https://live.vlm.gg/streams/ka/playlist.m3u8'
-const URL_B = 'https://live.vlm.gg/streams/kb/playlist.m3u8'
+const URL_A = 'https://live.virvi.io/streams/ka/playlist.m3u8'
+const URL_B = 'https://live.virvi.io/streams/kb/playlist.m3u8'
 const video = (presetId: string, liveSrc: string, name = 'Screen') =>
   createElement(presetId, { type: 'video', name, properties: { liveSrc, enableLiveStream: true, offType: 1, offImageSrc: 'https://x/off.png', playlist: [] } })
 
@@ -29,7 +29,7 @@ describe('stream live status in scene rooms', () => {
   const webhook = (streamKey: string, status: 'live' | 'offline') =>
     app.inject({ method: 'POST', url: '/api/streaming/webhook', headers: { 'x-webhook-key': KEY }, payload: { streamKey, status } })
   async function provision(ownerId: string, key: string, url: string) {
-    await db.insert(streamingServers).values({ ownerId, name: key, status: 'ready', streamKey: key, rtmpUrl: `rtmp://ingest.vlm.gg/live/${key}`, hlsPlaylistUrl: url })
+    await db.insert(streamingServers).values({ ownerId, name: key, status: 'ready', streamKey: key, rtmpUrl: `rtmp://ingest.virvi.io/live/${key}`, hlsPlaylistUrl: url })
   }
 
   it('live/offline reach every matching active-preset screen in every scene, and nothing else', async () => {

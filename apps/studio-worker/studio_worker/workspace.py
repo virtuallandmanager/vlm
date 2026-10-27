@@ -1,4 +1,4 @@
-"""A design's workspace as one tar.gz that VLM's API keeps between machine starts: design/, the agent's working
+"""A design's workspace as one tar.gz that Virvi's API keeps between machine starts: design/, the agent's working
 files and session homes, and state/, the worker's own records (conversation, sessions, usage, piece hashes).
 
 The agent owns design/ and can put anything there, so the root worker treats it as hostile: state lives outside it,

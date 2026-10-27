@@ -1,7 +1,7 @@
 // Tag files: one row per catalog model (catalog/tags/<source>.json), drafted from the source repos and spot-checked
 // before import. Tags are data: fix a row and re-run the import.
-import { CATALOG_CATEGORIES, CATALOG_STYLES, CATALOG_VENUES } from 'vlm-shared'
-import type { CatalogCategory, CatalogStyle, CatalogVenue } from 'vlm-shared'
+import { CATALOG_CATEGORIES, CATALOG_STYLES, CATALOG_VENUES } from '@virvixr/shared'
+import type { CatalogCategory, CatalogStyle, CatalogVenue } from '@virvixr/shared'
 
 export type TagRow = {
   pack: string

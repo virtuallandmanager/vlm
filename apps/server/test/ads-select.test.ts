@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { db } from '../src/db/connection.js'
 import { ads, adCreatives, adPlacements, venues, bookings, sceneElements } from '../src/db/schema.js'
-import { DEFAULT_VENUE_RULES } from 'vlm-shared'
+import { DEFAULT_VENUE_RULES } from '@virvixr/shared'
 import { selectAdsForElements } from '../src/ads/select.js'
 import { resetDb } from './helpers/db.js'
 import { createUser, createScene, createElement } from './helpers/factories.js'

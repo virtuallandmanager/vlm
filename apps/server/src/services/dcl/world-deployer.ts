@@ -12,7 +12,7 @@
  * (`assertDeployable`), and never signs or uploads a deployment that would change nothing.
  */
 import { and, eq, inArray, lt, sql } from 'drizzle-orm'
-import { DCL_MAX_FILE_BYTES, DCL_PARCEL_M, dclBudget, parseParcel } from 'vlm-shared'
+import { DCL_MAX_FILE_BYTES, DCL_PARCEL_M, dclBudget, parseParcel } from '@virvixr/shared'
 import { db } from '../../db/connection.js'
 import { dclWorldDestinations, sceneDeployments, scenes } from '../../db/schema.js'
 import { linkWorldLocation } from '../../setup/setups.js'
@@ -308,7 +308,7 @@ export async function afterWorldDeploy(dest: Destination, entityId: string, depl
   })
   const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, dest.sceneId), columns: { name: true } })
   await linkWorldLocation({
-    world: dest.worldName, vlmSceneId: dest.sceneId, hostUserId: dest.ownerUserId, entityId,
+    world: dest.worldName, virviSceneId: dest.sceneId, hostUserId: dest.ownerUserId, entityId,
     title: scene?.name ?? dest.worldName, base: dest.base, parcels: dest.parcels,
   }, now)
 }

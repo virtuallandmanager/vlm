@@ -1,5 +1,5 @@
 /**
- * Publish lifecycle: a publish is transcoded only after the VLM API authorizes its key (fail closed),
+ * Publish lifecycle: a publish is transcoded only after the Virvi API authorizes its key (fail closed),
  * and reported live only once its HLS playlist exists (screens switch immediately on "live", so they
  * must find something to play). Node-Media-Server emits prePublish synchronously, so a rejected
  * publisher is dropped via `reject` once the check answers.

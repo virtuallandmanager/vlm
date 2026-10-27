@@ -3,7 +3,7 @@ title: Catalog Packs
 description: Free, ready-made 3D models from open-source collections, added to your scenes without using storage.
 ---
 
-The **3D Asset Library** in the dashboard includes VLM's catalog: free models from open-source collections by Mr Dhingia, the Last Slice In World Builder artists, and Decentraland's asset packs. Each collection is split into **packs** (one per artist or theme).
+The **3D Asset Library** in the dashboard includes Virvi's catalog: free models from open-source collections by Mr Dhingia, the Last Slice In World Builder artists, and Decentraland's asset packs. Each collection is split into **packs** (one per artist or theme).
 
 ## Finding models
 
@@ -20,7 +20,7 @@ Each catalog model shows its artist, pack and license.
 
 Open a model and choose **Add to scene**. It appears in that scene's Media Library, both in the dashboard and in the in-world HUD, ready to place.
 
-Catalog models are hosted by VLM and only linked into your scene, so they **never count toward your storage**.
+Catalog models are hosted by Virvi and only linked into your scene, so they **never count toward your storage**.
 
 ## Credits
 
@@ -46,12 +46,12 @@ The import itself:
 
 ```sh
 # Validate only (no database needed)
-pnpm --filter vlm-server catalog:import catalog/tags/decentraland.json --check
+pnpm --filter @virvixr/server catalog:import catalog/tags/decentraland.json --check
 
 # Import into the configured database and storage
-pnpm --filter vlm-server catalog:import catalog/tags/decentraland.json <repos-dir>
-pnpm --filter vlm-server catalog:import catalog/tags/dhingia.json <repos-dir>
-pnpm --filter vlm-server catalog:import catalog/tags/last-slice.json <repos-dir>
+pnpm --filter @virvixr/server catalog:import catalog/tags/decentraland.json <repos-dir>
+pnpm --filter @virvixr/server catalog:import catalog/tags/dhingia.json <repos-dir>
+pnpm --filter @virvixr/server catalog:import catalog/tags/last-slice.json <repos-dir>
 ```
 
 Import Decentraland first. When two packs carry the same file, the first import keeps it, and later duplicates are skipped and reported.

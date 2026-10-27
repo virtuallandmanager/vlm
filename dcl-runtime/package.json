@@ -11,6 +11,6 @@
     "@dcl/sdk": "7.30.1"
   },
   "dependencies": {
-    "vlm-dcl": "file:../packages/vlm-smart-item-dcl"
+    "@virvixr/dcl": "file:../packages/dcl"
   }
 }

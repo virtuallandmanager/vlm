@@ -1,5 +1,5 @@
 /**
- * VLM-hosted Hyperfy worlds on Fly: create, destroy, switch scene, rotate key, reveal admin code.
+ * Virvi-hosted Hyperfy worlds on Fly: create, destroy, switch scene, rotate key, reveal admin code.
  *
  * A create inserts the `provisioning` row and returns; the rest (world database, Fly app, IPs, machine, health wait)
  * finishes in the background, tracked in an in-process map so a destroy can cancel it and wait for it to unwind.
@@ -7,7 +7,7 @@
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { and, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm'
-import type { HyperfyWorldSummary } from 'vlm-shared'
+import type { HyperfyWorldSummary } from '@virvixr/shared'
 import { config } from '../config.js'
 import { db } from '../db/connection.js'
 import { hyperfyWorlds, scenes } from '../db/schema.js'
@@ -329,10 +329,10 @@ function worldEnv(w: { slug: string; address: string; dbUri: string; schema: str
     // For a later WebSocket feed: this server's origin, https → wss, http → ws.
     PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: new URL(config.publicUrl).origin.replace(/^http/, 'ws'),
     PUBLIC_MAX_UPLOAD_SIZE: '12', // MB; Hyperfy refuses to boot without it
-    VLM_FEED_URL: config.publicUrl,
-    VLM_WORLD_KEY: w.worldKey,
+    VIRVI_FEED_URL: config.publicUrl,
+    VIRVI_WORLD_KEY: w.worldKey,
     // Lets the world's server vouch for its players (POST /api/hyperfy/pairings/vouch). Not rotated with the key.
-    VLM_WORLD_SECRET: w.worldSecret,
+    VIRVI_WORLD_SECRET: w.worldSecret,
   }
 }
 
@@ -473,8 +473,30 @@ export async function switchHostedWorldScene(worldId: string, sceneId: string): 
   if (!updated.length) throw new HostingError('world_not_found')
 }
 
+/** Pre-rename world settings and their Virvi names. */
+const LEGACY_ENV: Record<string, string> = {
+  VLM_FEED_URL: 'VIRVI_FEED_URL', // virvi-rename: keep
+  VLM_WORLD_KEY: 'VIRVI_WORLD_KEY', // virvi-rename: keep
+  VLM_WORLD_SECRET: 'VIRVI_WORLD_SECRET', // virvi-rename: keep
+}
+const LEGACY_HOST = /(^|[/@.])((?:[a-z0-9-]+\.)*)vlm\.gg(?=$|[/:?#])/gi // virvi-rename: keep
+
 /**
- * New key: stores its hash and swaps only VLM_WORLD_KEY in the machine's env (the update restarts the machine). The
+ * A world machine's env made before the rename, moved onto Virvi: legacy setting names renamed (values kept, so the
+ * stored secret hash still matches) and pre-rename hosts in any value pointed at virvi.io. A current env is unchanged.
+ */
+export function migrateWorldEnv(env: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(env)) {
+    const name = LEGACY_ENV[k] ?? k
+    if (name !== k && env[name] !== undefined) continue // the Virvi name is already set: it wins
+    out[name] = v.replace(LEGACY_HOST, '$1$2virvi.io')
+  }
+  return out
+}
+
+/**
+ * New key: stores its hash and swaps only VIRVI_WORLD_KEY in the machine's env (the update restarts the machine). The
  * update runs under the owner's hosted-world lock with the world re-read as `running`, so a world the sweep ended
  * meanwhile never gets autostart turned back on by it.
  */
@@ -485,7 +507,8 @@ export async function rotateHostedWorldKey(worldId: string, deps?: Partial<Hosti
   const app = w.flyApp
   const [machine] = await d.fly.listMachines(app)
   if (!machine) throw new HostingError('world_not_running', 'the world has no machine')
-  const env = await d.fly.getMachineEnv(app, machine.id)
+  // A machine made before the rename moves onto Virvi's settings and hosts with its new key.
+  const env = migrateWorldEnv(await d.fly.getMachineEnv(app, machine.id))
   const key = createWorldKey()
   // A world made before secrets existed gets one now (ruling R7); one that has a hash keeps its env value untouched.
   let newSecret = null as { raw: string; hash: string } | null
@@ -497,7 +520,7 @@ export async function rotateHostedWorldKey(worldId: string, deps?: Partial<Hosti
     // Stored before the update: a machine update that fails may still have applied.
     await tx.update(hyperfyWorlds).set({ keyHash: key.hash, keyPrefix: key.prefix, ...(newSecret ? { worldSecretHash: newSecret.hash } : {}) }).where(eq(hyperfyWorlds.id, worldId))
     try {
-      await d.fly.updateMachine(app, machine.id, { image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'), env: { ...env, VLM_WORLD_KEY: key.raw, ...(newSecret ? { VLM_WORLD_SECRET: newSecret.raw } : {}) } })
+      await d.fly.updateMachine(app, machine.id, { image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'), env: { ...env, VIRVI_WORLD_KEY: key.raw, ...(newSecret ? { VIRVI_WORLD_SECRET: newSecret.raw } : {}) } })
       return null
     } catch (err) {
       // The env may or may not have the new secret; a hash with no matching env would stick forever, so drop it (the next rotate makes another).
@@ -518,9 +541,10 @@ export async function rotateHostedWorldKey(worldId: string, deps?: Partial<Hosti
   return { key: key.raw }
 }
 
-/** The secrets in a world machine's env, for redact(). */
+/** The secrets in a world machine's env, for redact(); includes the pre-rename names a machine may still carry. */
 function secretEnvValues(env: Record<string, string>): string[] {
-  const values = ['VLM_WORLD_KEY', 'VLM_WORLD_SECRET', 'ADMIN_CODE', 'JWT_SECRET', 'DB_URI', 'ASSETS_S3_URI'].map((k) => env[k] ?? '')
+  const names = ['VIRVI_WORLD_KEY', 'VIRVI_WORLD_SECRET', 'ADMIN_CODE', 'JWT_SECRET', 'DB_URI', 'ASSETS_S3_URI', ...Object.keys(LEGACY_ENV)]
+  const values = names.map((k) => env[k] ?? '')
   return [...values, safeUrlPassword(env.DB_URI ?? '')]
 }
 
@@ -563,8 +587,8 @@ export async function restoreHostedWorld(worldId: string, deps?: Partial<Hosting
     const app = restored.after.flyApp!
     for (const m of await d.fly.listMachines(app)) {
       // Ending turned autostart off; turn it back on before the machine can serve again.
-      const env = await d.fly.getMachineEnv(app, m.id)
-      if (newSecret) env.VLM_WORLD_SECRET = newSecret.raw
+      const env = migrateWorldEnv(await d.fly.getMachineEnv(app, m.id))
+      if (newSecret) env.VIRVI_WORLD_SECRET = newSecret.raw
       await d.fly.updateMachine(app, m.id, { image: requireValue(config.hyperfyImage, 'HYPERFY_IMAGE'), env, autostart: true })
       await d.fly.startMachine(app, m.id)
     }

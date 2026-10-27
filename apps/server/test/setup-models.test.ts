@@ -31,15 +31,15 @@ describe('GET /api/setup/models', () => {
 
   it('lists only hosted glb models of the active preset', async () => {
     const { owner, scene, preset } = await setup('gc:5,6')
-    await db.insert(mediaAssets).values({ ownerId: owner.id, filename: 'aa.glb', contentType: 'model/gltf-binary', sizeBytes: 1234, storageKey: 'u/aa.glb', publicUrl: 'https://cdn.vlm.gg/u/aa.glb' })
-    const m = await createElement(preset.id, { type: 'model', name: 'Hosted', properties: { modelSrc: 'https://cdn.vlm.gg/u/aa.glb' } })
+    await db.insert(mediaAssets).values({ ownerId: owner.id, filename: 'aa.glb', contentType: 'model/gltf-binary', sizeBytes: 1234, storageKey: 'u/aa.glb', publicUrl: 'https://cdn.virvi.io/u/aa.glb' })
+    const m = await createElement(preset.id, { type: 'model', name: 'Hosted', properties: { modelSrc: 'https://cdn.virvi.io/u/aa.glb' } })
     await createElement(preset.id, { type: 'model', name: 'Local', properties: { modelSrc: 'models/local.glb' } })
-    await createElement(preset.id, { type: 'image', name: 'Pic', properties: { imageSrc: 'https://cdn.vlm.gg/u/p.png' } })
+    await createElement(preset.id, { type: 'image', name: 'Pic', properties: { imageSrc: 'https://cdn.virvi.io/u/p.png' } })
     const res = await get('gc:5,6')
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({
       sceneId: scene.id,
-      models: [{ elementId: m.id, name: 'Hosted', url: 'https://cdn.vlm.gg/u/aa.glb', file: 'models/vlm/aa.glb', sizeBytes: 1234 }],
+      models: [{ elementId: m.id, name: 'Hosted', url: 'https://cdn.virvi.io/u/aa.glb', file: 'models/virvi/aa.glb', sizeBytes: 1234 }],
     })
   })
 

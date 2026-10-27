@@ -4,7 +4,7 @@ import * as schema from './schema.js'
 import { config } from '../config.js'
 
 if (!config.databaseUrl) {
-  console.error('[vlm-server] FATAL: DATABASE_URL environment variable is required')
+  console.error('[virvi-server] FATAL: DATABASE_URL environment variable is required')
   process.exit(1)
 }
 

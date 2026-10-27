@@ -57,6 +57,6 @@ export const fromInstance: SceneFrom = async (r) => {
 export const fromAnalyticsLocation: SceneFrom = async (r) => {
   const id = param(r, 'id')
   if (!id) return null
-  const l = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.id, id), columns: { vlmSceneId: true } })
-  return l?.vlmSceneId ?? null
+  const l = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.id, id), columns: { virviSceneId: true } })
+  return l?.virviSceneId ?? null
 }

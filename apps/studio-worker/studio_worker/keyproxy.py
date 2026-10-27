@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 ANTHROPIC_PORT, OPENAI_PORT = 8890, 8891
-# The endpoints the agents use, and no others (no files, batches or fine-tunes on VLM's keys): exact paths and prefixes
+# The endpoints the agents use, and no others (no files, batches or fine-tunes on Virvi's keys): exact paths and prefixes
 ANTHROPIC_PATHS = ({'/v1/messages', '/v1/messages/count_tokens', '/v1/models'}, ('/v1/models/',))
 OPENAI_PATHS = ({'/v1/responses', '/v1/models'}, ('/v1/responses/', '/v1/models/'))
 UPSTREAM_TIMEOUT_SEC = 900  # between reads; an agent's stream can sit quiet while the model thinks

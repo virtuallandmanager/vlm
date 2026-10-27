@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { HyperfyWorldSummary } from 'vlm-shared'
+import type { HyperfyWorldSummary } from '@virvixr/shared'
 import { lastSeenLabel, setupSteps, hyperfyErrorMessage, removeWorldPrompt, worldStatusLabel, slotLine, noSlotsLine, destroyWorldPrompt } from './hyperfy'
 
 const now = new Date('2026-10-20T12:00:00Z')
@@ -26,10 +26,10 @@ describe('lastSeenLabel', () => {
 
 describe('setupSteps', () => {
   it('gives the four steps with the feed url', () => {
-    expect(setupSteps('https://api.vlm.gg')).toEqual([
-      'Download the VLM app and drag vlm.hyp into your Hyperfy world.',
-      "Open the app's settings and paste your world key into VLM world key.",
-      'Leave VLM feed URL as https://api.vlm.gg unless VLM support tells you otherwise.',
+    expect(setupSteps('https://api.virvi.io')).toEqual([
+      'Download the Virvi app and drag virvi.hyp into your Hyperfy world.',
+      "Open the app's settings and paste your world key into Virvi world key.",
+      'Leave Virvi feed URL as https://api.virvi.io unless Virvi support tells you otherwise.',
       'Your scene appears within a few seconds and follows your edits.',
     ])
   })
@@ -37,7 +37,7 @@ describe('setupSteps', () => {
 
 describe('removeWorldPrompt', () => {
   it('says the world keeps its last scene but stops receiving updates', () => {
-    expect(removeWorldPrompt('Gallery')).toBe('Remove "Gallery"? The VLM app in that world stops receiving updates from VLM.')
+    expect(removeWorldPrompt('Gallery')).toBe('Remove "Gallery"? The Virvi app in that world stops receiving updates from Virvi.')
   })
 })
 
@@ -55,8 +55,8 @@ describe('hyperfyErrorMessage', () => {
 })
 
 const world = (over: Partial<HyperfyWorldSummary>): HyperfyWorldSummary => ({
-  id: 'w1', sceneId: 's1', name: 'Gallery', kind: 'hosted', address: 'gallery.worlds.vlm.gg', status: 'running',
-  errorMessage: null, keyPrefix: 'vlmw_abcdefg', createdAt: '2026-10-01T00:00:00Z', lastSeenAt: null,
+  id: 'w1', sceneId: 's1', name: 'Gallery', kind: 'hosted', address: 'gallery.worlds.virvi.io', status: 'running',
+  errorMessage: null, keyPrefix: 'virviw_abcdefg', createdAt: '2026-10-01T00:00:00Z', lastSeenAt: null,
   endsAt: null, endedAt: null, purgeAfter: null, ...over,
 })
 

@@ -7,7 +7,7 @@
  * live scene without Virvi's `virvi` block (not made by the wizard), never have their code or metadata touched.
  */
 import { and, count, eq, inArray } from 'drizzle-orm'
-import { DCL_MAX_FILE_BYTES, localModelFile } from 'vlm-shared'
+import { DCL_MAX_FILE_BYTES, localModelFile } from '@virvixr/shared'
 import { config } from '../../config.js'
 import { db } from '../../db/connection.js'
 import { assetLibraryItems, mediaAssets, sceneElementInstances, sceneElements, scenes } from '../../db/schema.js'
@@ -20,7 +20,7 @@ export interface ModelNeed {
   elementId: string
   name: string
   url: string
-  /** Deployed path, `models/vlm/<basename>.glb`. */
+  /** Deployed path, `models/virvi/<basename>.glb`. */
   file: string
   /** Of one copy of the model. */
   triangles: number | null
@@ -283,6 +283,17 @@ export async function assembleFresh(input: {
   })
 }
 
+const LEGACY_MODEL_DIR = 'models/vlm/' // virvi-rename: keep
+
+/** True when `url` is on the pre-rename hosted domain (any subdomain). */
+function onLegacyHost(url: string | undefined): boolean {
+  try {
+    return !!url && /(^|\.)vlm\.gg$/i.test(new URL(url).hostname) // virvi-rename: keep
+  } catch {
+    return false
+  }
+}
+
 export async function assembleRedeploy(input: {
   live: LiveEntity
   adopted: boolean
@@ -305,12 +316,18 @@ export async function assembleRedeploy(input: {
       existing = existing.filter((c) => c.file !== file)
       newFiles.set(file, bytes)
     }
+    // Models deployed before the rename live under the old folder, which the current runtime never reads.
+    existing = existing.filter((c) => !c.file.toLowerCase().startsWith(LEGACY_MODEL_DIR))
+    const current = { apiUrl: config.publicUrl, wssUrl: config.publicUrl.replace(/^http/i, 'ws') }
+    const prior = live.metadata.virvi!
     metadata = {
       ...live.metadata,
       virvi: {
-        apiUrl: config.publicUrl,
-        wssUrl: config.publicUrl.replace(/^http/i, 'ws'),
-        ...live.metadata.virvi,
+        ...current,
+        ...prior,
+        // A World built against the pre-rename hosted API follows the current one; a self-hosted address stays.
+        ...(onLegacyHost(prior.apiUrl) ? { apiUrl: current.apiUrl } : {}),
+        ...(onLegacyHost(prior.wssUrl) ? { wssUrl: current.wssUrl } : {}),
         runtime: DCL_RUNTIME_VERSION,
       },
     }

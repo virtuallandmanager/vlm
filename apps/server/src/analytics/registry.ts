@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { eq, sql } from 'drizzle-orm'
-import { locationKeyFor, type AnalyticsSceneRef } from 'vlm-shared'
+import { locationKeyFor, type AnalyticsSceneRef } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { analyticsScenes } from '../db/schema.js'
 import { DirectoryUnavailableError, getDclDirectory } from './dcl-directory.js'

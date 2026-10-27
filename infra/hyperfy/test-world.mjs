@@ -1,6 +1,6 @@
-// World test for VLM's Hyperfy image: boots a built, patched Hyperfy source tree locally and checks that the VLM app
-// is installed as blueprint `vlm` (one entity at the origin) beside Hyperfy's default `$scene`, and that only the server
-// half of the shipped VLM script can vouch with VLM (`app.vlmVouch`, patch 0003), and the world secret stays in Node.
+// World test for Virvi's Hyperfy image: boots a built, patched Hyperfy source tree locally and checks that the Virvi app
+// is installed as blueprint `virvi` (one entity at the origin) beside Hyperfy's default `$scene`, and that only the server
+// half of the shipped Virvi script can vouch with Virvi (`app.virviVouch`, patch 0003), and the world secret stays in Node.
 //
 //   node infra/hyperfy/test-world.mjs <hyperfy-src-dir>
 //
@@ -22,10 +22,10 @@ if (!process.argv[2] || !existsSync(path.join(srcDir, 'build/index.js'))) {
   console.error('usage: node infra/hyperfy/test-world.mjs <built hyperfy src dir>')
   process.exit(2)
 }
-const hypPath = path.join(repoRoot, 'packages/vlm-hyperfy-app/dist/vlm.hyp')
+const hypPath = path.join(repoRoot, 'packages/hyperfy-app/dist/virvi.hyp')
 const PORT = 3211
 const base = `http://localhost:${PORT}`
-const FEED_URL = 'http://127.0.0.1:9/vlm-feed'
+const FEED_URL = 'http://127.0.0.1:9/virvi-feed'
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 
 function readHyp(file) {
@@ -50,7 +50,7 @@ const scriptAsset = (code) => {
   const bytes = Buffer.from(code)
   return { type: 'script', url: `asset://${createHash('sha256').update(bytes).digest('hex')}.js`, mime: 'application/javascript', bytes }
 }
-const vlmHyp = readHyp(hypPath)
+const virviHyp = readHyp(hypPath)
 const sceneHyp = readHyp(path.join(srcDir, 'src/world/scene.hyp'))
 
 // --- world process -------------------------------------------------------------------------------------------------
@@ -75,8 +75,8 @@ async function boot(world, env) {
       ASSETS: 'local',
       ASSETS_BASE_URL: `${base}/assets`,
       DB_URI: 'local',
-      VLM_APP_PATH: hypPath,
-      VLM_FEED_URL: FEED_URL,
+      VIRVI_APP_PATH: hypPath,
+      VIRVI_FEED_URL: FEED_URL,
       ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -112,7 +112,7 @@ const rowsOf = (rows) => rows.map((r) => ({ ...r, data: JSON.parse(r.data) }))
 // --- headless Chrome probe (as in project 1's probe.mjs) ------------------------------------------------------------
 
 async function probe(url, expression, settleMs = 20000) {
-  const profile = mkdtempSync(path.join(tmpdir(), 'vlm-world-test-chrome-'))
+  const profile = mkdtempSync(path.join(tmpdir(), 'virvi-world-test-chrome-'))
   const chrome = spawn(
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     ['--headless=new', `--user-data-dir=${profile}`, '--remote-debugging-port=9333', '--use-angle=swiftshader',
@@ -153,20 +153,20 @@ const inspectWorld = `(() => {
   const w = window.world
   if (!w || !w.blueprints || !w.entities) return { ready: false }
   const apps = [...w.entities.items.values()].filter((e) => e.data?.type === 'app')
-  const vlm = w.blueprints.get('vlm')
+  const virvi = w.blueprints.get('virvi')
   const scene = w.blueprints.get('$scene')
   return {
-    ready: !!vlm && !!scene && apps.length > 0,
-    vlmProps: vlm?.props ?? null,
+    ready: !!virvi && !!scene && apps.length > 0,
+    virviProps: virvi?.props ?? null,
     sceneModel: scene?.model ?? null,
-    vlmEntities: apps.filter((e) => e.data.blueprint === 'vlm').map((e) => e.data.position),
+    virviEntities: apps.filter((e) => e.data.blueprint === 'virvi').map((e) => e.data.position),
   }
 })()`
 
 // A Chrome session on the world that records the page's console and every WebSocket frame it receives; `fn` gets
 // `evaluate(expression)` (awaits promises) and `waitFor(expression)` (until it returns a truthy value).
 async function session(url, fn) {
-  const profile = mkdtempSync(path.join(tmpdir(), 'vlm-world-test-chrome-'))
+  const profile = mkdtempSync(path.join(tmpdir(), 'virvi-world-test-chrome-'))
   const chrome = spawn(
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     ['--headless=new', `--user-data-dir=${profile}`, '--remote-debugging-port=9333', '--use-angle=swiftshader',
@@ -223,22 +223,22 @@ async function session(url, fn) {
   return { consoles, frames }
 }
 
-// --- app.vlmVouch probes -------------------------------------------------------------------------------------------
+// --- app.virviVouch probes -------------------------------------------------------------------------------------------
 
-// Scripts that print `typeof app.vlmVouch` and `typeof app.vlmWorld` (removed; must stay undefined), prefixed
-// `[vlm-probe] <which> <server|client>`. The probe .hyp is the VLM app with its script swapped for the shipped probe, so
+// Scripts that print `typeof app.virviVouch` and `typeof app.virviWorld` (removed; must stay undefined), prefixed
+// `[virvi-probe] <which> <server|client>`. The probe .hyp is the Virvi app with its script swapped for the shipped probe, so
 // it is what patch 0002 installs. On the server the shipped probe vouches for every player who enters (as the relay
-// would), then for a player id that isn't in the world, then with pending pairings VLM answers 500, 401 and a redirect
+// would), then for a player id that isn't in the world, then with pending pairings Virvi answers 500, 401 and a redirect
 // to, then with a 300-character name.
 const probeLine = (which) =>
-  `console.log('[vlm-probe] ${which} ' + (world.isServer ? 'server' : 'client') + ' ' + typeof app.vlmVouch + ' ' + typeof app.vlmWorld)`
+  `console.log('[virvi-probe] ${which} ' + (world.isServer ? 'server' : 'client') + ' ' + typeof app.virviVouch + ' ' + typeof app.virviWorld)`
 const HOLD_PORT = 3212
-const VLM_PORT = 3213
-const VLM_URL = `http://127.0.0.1:${VLM_PORT}`
+const VIRVI_PORT = 3213
+const VIRVI_URL = `http://127.0.0.1:${VIRVI_PORT}`
 const shippedProbe = scriptAsset(`${probeLine('shipped')}
-if (world.isServer && app.vlmVouch) {
-  const vouch = app.vlmVouch
-  const show = (which, r) => console.log('[vlm-probe] ' + which + ' server ' + JSON.stringify(r))
+if (world.isServer && app.virviVouch) {
+  const vouch = app.virviVouch
+  const show = (which, r) => console.log('[virvi-probe] ' + which + ' server ' + JSON.stringify(r))
   world.on('enter', async (e) => {
     show('vouch', await vouch({ hyperfyPlayerId: e.playerId, playerName: 'Probe Player' }))
     show('vouch-nobody', await vouch({ hyperfyPlayerId: 'nobody', playerName: 'X' }))
@@ -257,23 +257,23 @@ if (world.isServer) fetch('http://127.0.0.1:${HOLD_PORT}/hold').then(() => { ${p
 const otherProbe = scriptAsset(`${probeLine('other')}\n`)
 // A builder's app that hooks the realm's shared intrinsics, as a thief would, and prints anything secret-shaped.
 const hookProbe = scriptAsset(`if (world.isServer) {
-  const steal = (v) => { const t = String(v); if (t.includes('vlmws_')) console.log('[vlm-probe] stolen server ' + t) }
+  const steal = (v) => { const t = String(v); if (t.includes('virviws_')) console.log('[virvi-probe] stolen server ' + t) }
   Object.defineProperty(Object.prototype, 'toJSON', { configurable: true, value() { if (this && this.worldSecret) steal(this.worldSecret); return this } })
   const stringify = JSON.stringify
   JSON.stringify = function (v, ...rest) { const out = stringify(v, ...rest); if (typeof out === 'string') steal(out); return out }
-  console.log('[vlm-probe] hook server installed')
+  console.log('[virvi-probe] hook server installed')
 }
 `)
-const probeDir = mkdtempSync(path.join(tmpdir(), 'vlm-world-test-hyp-'))
-const probeHypPath = path.join(probeDir, 'vlm-probe.hyp')
-writeHyp(probeHypPath, { ...vlmHyp.blueprint, script: shippedProbe.url }, [
-  ...vlmHyp.header.assets.filter((a) => a.type !== 'script').map((a) => ({ ...a, bytes: vlmHyp.files.find((f) => `asset://${f.name}` === a.url).bytes })),
+const probeDir = mkdtempSync(path.join(tmpdir(), 'virvi-world-test-hyp-'))
+const probeHypPath = path.join(probeDir, 'virvi-probe.hyp')
+writeHyp(probeHypPath, { ...virviHyp.blueprint, script: shippedProbe.url }, [
+  ...virviHyp.header.assets.filter((a) => a.type !== 'script').map((a) => ({ ...a, bytes: virviHyp.files.find((f) => `asset://${f.name}` === a.url).bytes })),
   shippedProbe,
 ])
 const probeReads = (which, side) =>
-  log.join('').split('\n').filter((l) => l.startsWith(`[vlm-probe] ${which} ${side} `)).map((l) => l.slice(`[vlm-probe] ${which} ${side} `.length))
+  log.join('').split('\n').filter((l) => l.startsWith(`[virvi-probe] ${which} ${side} `)).map((l) => l.slice(`[virvi-probe] ${which} ${side} `.length))
 const pageReads = (consoles, which) =>
-  consoles.filter((l) => l.startsWith(`[vlm-probe] ${which} client `)).map((l) => l.slice(`[vlm-probe] ${which} client `.length))
+  consoles.filter((l) => l.startsWith(`[virvi-probe] ${which} client `)).map((l) => l.slice(`[virvi-probe] ${which} client `.length))
 async function until(cond, what, ms = 30000) {
   for (let t = 0; t < ms; t += 250) {
     if (cond()) return
@@ -294,20 +294,20 @@ async function connected({ waitFor, consoles, reload }) {
   }
   throw new Error('the page kept being disconnected from the world')
 }
-const worldReady = `!!(window.world?.blueprints?.get('vlm') && window.world.network?.id && [...window.world.entities.items.values()].some((e) => e.data?.blueprint === 'vlm'))`
+const worldReady = `!!(window.world?.blueprints?.get('virvi') && window.world.network?.id && [...window.world.entities.items.values()].some((e) => e.data?.blueprint === 'virvi'))`
 
-// A fake VLM: records every request, answers vouch with a linked player plus fields the image must strip; for
+// A fake Virvi: records every request, answers vouch with a linked player plus fields the image must strip; for
 // pendingPairingId `pair-500` 500, `pair-401` 401 (the world secret refused), `pair-302` a redirect to a path that would
 // answer linked if followed.
-const vlmRequests = []
+const virviRequests = []
 const REDIRECTED = '/api/hyperfy/pairings/vouch-redirected'
-const fakeVlm = createServer((req, res) => {
+const fakeVirvi = createServer((req, res) => {
   let body = ''
   req.on('data', (d) => (body += d))
   req.on('end', () => {
     let json
     try { json = JSON.parse(body) } catch {}
-    vlmRequests.push({ method: req.method, url: req.url, body: json, raw: body })
+    virviRequests.push({ method: req.method, url: req.url, body: json, raw: body })
     res.setHeader('content-type', 'application/json')
     if (req.url !== '/api/hyperfy/pairings/vouch' && req.url !== REDIRECTED) return res.writeHead(404).end('{}')
     if (json?.pendingPairingId === 'pair-500') return res.writeHead(500).end('{"error":"boom"}')
@@ -316,16 +316,16 @@ const fakeVlm = createServer((req, res) => {
     res.end(JSON.stringify({ status: 'linked', pass: 'PASS', passExpiresAt: 'x', pairingId: 'pair-1', sceneId: 'scene-1', user: { id: 'u1', displayName: 'Ada', email: 'leak@example' }, extra: 'junk' }))
   })
 })
-await new Promise((r) => fakeVlm.listen(VLM_PORT, '127.0.0.1', r))
+await new Promise((r) => fakeVirvi.listen(VIRVI_PORT, '127.0.0.1', r))
 const LINKED = JSON.stringify({ status: 'linked', pass: 'PASS', passExpiresAt: 'x', pairingId: 'pair-1', sceneId: 'scene-1', user: { id: 'u1', displayName: 'Ada' } })
 
 // --- the patch module on its own -----------------------------------------------------------------------------------
 
-// Bundles src/server/vlm.js (packages left external, resolved from the Hyperfy tree) and imports a fresh copy.
-async function loadVlmModule() {
+// Bundles src/server/virvi.js (packages left external, resolved from the Hyperfy tree) and imports a fresh copy.
+async function loadVirviModule() {
   const { build } = createRequire(path.join(srcDir, 'package.json'))('esbuild')
-  const out = path.join(srcDir, `.vlm-unit-${randomBytes(4).toString('hex')}.mjs`)
-  await build({ entryPoints: [path.join(srcDir, 'src/server/vlm.js')], bundle: true, platform: 'node', format: 'esm', packages: 'external', outfile: out, logLevel: 'silent' })
+  const out = path.join(srcDir, `.virvi-unit-${randomBytes(4).toString('hex')}.mjs`)
+  await build({ entryPoints: [path.join(srcDir, 'src/server/virvi.js')], bundle: true, platform: 'node', format: 'esm', packages: 'external', outfile: out, logLevel: 'silent' })
   try {
     return await import(pathToFileURL(out).href)
   } finally {
@@ -359,10 +359,10 @@ function ok(cond, what) {
   if (!cond) throw new Error(what)
 }
 
-const world = `world-vlm-test-${randomBytes(3).toString('hex')}`
+const world = `world-virvi-test-${randomBytes(3).toString('hex')}`
 const worldDir = path.join(srcDir, world)
-const KEY1 = `vlmw_${randomBytes(12).toString('hex')}`
-const KEY2 = `vlmw_${randomBytes(12).toString('hex')}`
+const KEY1 = `virviw_${randomBytes(12).toString('hex')}`
+const KEY2 = `virviw_${randomBytes(12).toString('hex')}`
 const now = new Date().toISOString()
 const userBlueprint = { id: 'user-box', version: 3, name: 'Box', model: 'asset://box.glb', script: null, props: { a: 1 } }
 const userEntity = { id: 'userbox001', type: 'app', blueprint: 'user-box', position: [4, 0, 2], quaternion: [0, 0, 0, 1], scale: [1, 1, 1], mover: null, uploader: null, pinned: false, state: {} }
@@ -370,8 +370,8 @@ const userEntity = { id: 'userbox001', type: 'app', blueprint: 'user-box', posit
 console.log(`test-world: ${srcDir}`)
 try {
   await test('unit: the option bags the patch hands Worker, postMessage and fetch have no prototype', async () => {
-    const m = await loadVlmModule()
-    const w = m.vouchWorkerOptions({ secret: 'vlmws_FAKE_UNIT', feedUrl: VLM_URL, worldKey: 'vlmw_unit' })
+    const m = await loadVirviModule()
+    const w = m.vouchWorkerOptions({ secret: 'virviws_FAKE_UNIT', feedUrl: VIRVI_URL, worldKey: 'virviw_unit' })
     eq(Object.getPrototypeOf(w), null, 'Worker options prototype')
     for (const k of ['env', 'resourceLimits', 'workerData']) eq(Object.getPrototypeOf(w[k]), null, `Worker options.${k} prototype`)
     eq([w.eval, w.execArgv, w.stdin, w.stdout, w.stderr], [true, [], false, false, false], 'Worker options set explicitly')
@@ -383,7 +383,7 @@ try {
     // only the request's own fields are read: one inherited from its prototype is not
     const inherited = Object.assign(Object.create({ pendingPairingId: 'inherited' }), { hyperfyPlayerId: 'p1', playerName: 'Pip' })
     eq({ ...m.vouchMessage(8, inherited) }, { id: 8, hyperfyPlayerId: 'p1', playerName: 'Pip' }, 'postMessage payload from a request with an inherited field')
-    // vlmVouch reads the script's request through vouchRequestFields: own fields only, and nothing from a non-object
+    // virviVouch reads the script's request through vouchRequestFields: own fields only, and nothing from a non-object
     const fields = (r) => ({ ...m.vouchRequestFields(r) })
     eq(Object.getPrototypeOf(m.vouchRequestFields({ hyperfyPlayerId: 'p1' })), null, 'request fields prototype')
     eq(fields({ hyperfyPlayerId: 'p1', playerName: 'Pip', pendingPairingId: 'pair-1' }), { hyperfyPlayerId: 'p1', playerName: 'Pip', pendingPairingId: 'pair-1' }, 'own request fields')
@@ -391,9 +391,9 @@ try {
     eq(fields(inheritedAll), {}, 'a request whose fields are all inherited')
     eq(fields(Object.assign(Object.create({ pendingPairingId: 'inherited' }), { hyperfyPlayerId: 'p1' })), { hyperfyPlayerId: 'p1' }, 'a request with an inherited pendingPairingId')
     for (const r of [null, undefined, 'p1', 42, true, () => {}]) eq(fields(r), {}, `a non-object request (${typeof r})`)
-    const vouchSrc = m.vlmVouchFor.toString()
-    ok(!/\.\s*(hyperfyPlayerId|playerName|pendingPairingId)\b/.test(vouchSrc), 'vlmVouchFor reads a request field by ordinary lookup')
-    ok(/vouchRequestFields\(/.test(vouchSrc), 'vlmVouchFor reads the request through vouchRequestFields')
+    const vouchSrc = m.virviVouchFor.toString()
+    ok(!/\.\s*(hyperfyPlayerId|playerName|pendingPairingId)\b/.test(vouchSrc), 'virviVouchFor reads a request field by ordinary lookup')
+    ok(/vouchRequestFields\(/.test(vouchSrc), 'virviVouchFor reads the request through vouchRequestFields')
     // names are cut at 256 UTF-16 units without splitting a surrogate pair
     eq(m.truncateName('x'.repeat(300)), 'x'.repeat(256), 'a long name')
     eq(m.truncateName('x'.repeat(255) + '\u{1F600}y'), 'x'.repeat(255), 'a name whose 256th unit starts a surrogate pair')
@@ -406,24 +406,24 @@ try {
   })
 
   await test('unit: starting the vouch worker takes the world secret out of the main thread\'s env, and the worker still vouches with it', async () => {
-    const m = await loadVlmModule()
-    const UNIT_SECRET = `vlmws_FAKE_UNIT_${randomBytes(6).toString('hex')}`
+    const m = await loadVirviModule()
+    const UNIT_SECRET = `virviws_FAKE_UNIT_${randomBytes(6).toString('hex')}`
     const saved = { ...process.env }
-    Object.assign(process.env, { VLM_WORLD_SECRET: UNIT_SECRET, VLM_FEED_URL: VLM_URL, VLM_WORLD_KEY: 'vlmw_unit' })
+    Object.assign(process.env, { VIRVI_WORLD_SECRET: UNIT_SECRET, VIRVI_FEED_URL: VIRVI_URL, VIRVI_WORLD_KEY: 'virviw_unit' })
     try {
-      vlmRequests.length = 0
+      virviRequests.length = 0
       m.startVouchWorker()
-      eq('VLM_WORLD_SECRET' in process.env, false, 'VLM_WORLD_SECRET still in the main thread\'s env')
+      eq('VIRVI_WORLD_SECRET' in process.env, false, 'VIRVI_WORLD_SECRET still in the main thread\'s env')
       eq(m.vouchHosted(), true, 'hosted')
       eq(JSON.stringify(await m.askVouchWorker({ hyperfyPlayerId: 'p1', playerName: 'Pip' })), LINKED, 'the worker\'s vouch')
-      eq(vlmRequests.map((r) => r.body), [{ worldKey: 'vlmw_unit', worldSecret: UNIT_SECRET, hyperfyPlayerId: 'p1', playerName: 'Pip' }], 'what VLM got')
+      eq(virviRequests.map((r) => r.body), [{ worldKey: 'virviw_unit', worldSecret: UNIT_SECRET, hyperfyPlayerId: 'p1', playerName: 'Pip' }], 'what Virvi got')
       eq(await m.askVouchWorker({ hyperfyPlayerId: 'p1', playerName: 'Pip', pendingPairingId: 'pair-401' }), { status: 'unauthorized' }, 'a 401')
       eq(await m.askVouchWorker({ hyperfyPlayerId: 'p1', playerName: 'Pip', pendingPairingId: 'pair-302' }), { status: 'error' }, 'a redirect')
-      eq(vlmRequests.filter((r) => r.url === REDIRECTED), [], 'requests to the redirect target')
+      eq(virviRequests.filter((r) => r.url === REDIRECTED), [], 'requests to the redirect target')
       // a worker that exits is respawned with the very option bag built at startup (never rebuilt once scripts run)
       await m.endVouchWorkerForTest()
       eq(JSON.stringify(await m.askVouchWorker({ hyperfyPlayerId: 'p2', playerName: 'Bo' })), LINKED, 'the vouch after the worker exited')
-      eq(vlmRequests.at(-1).body, { worldKey: 'vlmw_unit', worldSecret: UNIT_SECRET, hyperfyPlayerId: 'p2', playerName: 'Bo' }, 'what VLM got from the respawned worker')
+      eq(virviRequests.at(-1).body, { worldKey: 'virviw_unit', worldSecret: UNIT_SECRET, hyperfyPlayerId: 'p2', playerName: 'Bo' }, 'what Virvi got from the respawned worker')
       eq(m.vouchWorkerStats(), { optionsBuilt: 1, spawns: 2 }, 'option bags built (once, at startup) and workers spawned')
     } finally {
       m.stopVouchWorker()
@@ -432,74 +432,74 @@ try {
     }
   })
 
-  await test('fresh boot: blueprint vlm exists with the env\'s feedUrl and worldKey, one vlm entity, $scene is the default', async () => {
-    await boot(world, { VLM_WORLD_KEY: KEY1 })
-    const [bp] = rowsOf(sqlite(world, `select * from blueprints where id = 'vlm'`))
-    ok(bp, 'no vlm blueprint row')
-    eq(bp.data.props, { ...vlmHyp.blueprint.props, feedUrl: FEED_URL, worldKey: KEY1 }, 'vlm props')
-    eq(bp.data.script, vlmHyp.blueprint.script, 'vlm script')
-    eq(bp.data.model, vlmHyp.blueprint.model, 'vlm model')
-    const ents = rowsOf(sqlite(world, `select * from entities`)).filter((e) => e.data.blueprint === 'vlm')
-    eq(ents.length, 1, 'vlm entity count')
-    eq([ents[0].data.position, ents[0].data.quaternion, ents[0].data.scale], [[0, 0, 0], [0, 0, 0, 1], [1, 1, 1]], 'vlm entity transform')
+  await test('fresh boot: blueprint virvi exists with the env\'s feedUrl and worldKey, one virvi entity, $scene is the default', async () => {
+    await boot(world, { VIRVI_WORLD_KEY: KEY1 })
+    const [bp] = rowsOf(sqlite(world, `select * from blueprints where id = 'virvi'`))
+    ok(bp, 'no virvi blueprint row')
+    eq(bp.data.props, { ...virviHyp.blueprint.props, feedUrl: FEED_URL, worldKey: KEY1 }, 'virvi props')
+    eq(bp.data.script, virviHyp.blueprint.script, 'virvi script')
+    eq(bp.data.model, virviHyp.blueprint.model, 'virvi model')
+    const ents = rowsOf(sqlite(world, `select * from entities`)).filter((e) => e.data.blueprint === 'virvi')
+    eq(ents.length, 1, 'virvi entity count')
+    eq([ents[0].data.position, ents[0].data.quaternion, ents[0].data.scale], [[0, 0, 0], [0, 0, 0, 1], [1, 1, 1]], 'virvi entity transform')
     const [scene] = rowsOf(sqlite(world, `select * from blueprints where id = '$scene'`))
     ok(scene, 'no $scene blueprint')
     eq([scene.data.model, scene.data.script, scene.data.scene], [sceneHyp.blueprint.model, sceneHyp.blueprint.script, true], '$scene is the default scene.hyp')
     eq(rowsOf(sqlite(world, `select * from entities`)).filter((e) => e.data.blueprint === '$scene').length, 1, '$scene entity count')
     const seen = await probe(base, inspectWorld)
     ok(seen?.ready, `the world in Chrome did not show both apps: ${JSON.stringify(seen)}`)
-    eq(seen.vlmProps.worldKey === KEY1 && seen.vlmProps.feedUrl === FEED_URL, true, 'vlm props as seen by the client')
+    eq(seen.virviProps.worldKey === KEY1 && seen.virviProps.feedUrl === FEED_URL, true, 'virvi props as seen by the client')
     eq(seen.sceneModel, sceneHyp.blueprint.model, '$scene model as seen by the client')
-    eq(seen.vlmEntities, [[0, 0, 0]], 'vlm entities as seen by the client')
+    eq(seen.virviEntities, [[0, 0, 0]], 'virvi entities as seen by the client')
   })
 
-  await test('second boot with a new VLM_WORLD_KEY: blueprint vlm props updated, still one entity, user-built apps untouched', async () => {
+  await test('second boot with a new VIRVI_WORLD_KEY: blueprint virvi props updated, still one entity, user-built apps untouched', async () => {
     ok(existsSync(path.join(worldDir, 'db.sqlite')), 'no world from the first boot')
     sqlite(world, `insert into blueprints (id,data,createdAt,updatedAt) values ('user-box','${esc(JSON.stringify(userBlueprint))}','${now}','${now}')`)
     sqlite(world, `insert into entities (id,data,createdAt,updatedAt) values ('userbox001','${esc(JSON.stringify(userEntity))}','${now}','${now}')`)
     const before = sqlite(world, `select * from blueprints where id = 'user-box' union all select * from entities where id = 'userbox001'`)
-    const [first] = rowsOf(sqlite(world, `select * from blueprints where id = 'vlm'`))
+    const [first] = rowsOf(sqlite(world, `select * from blueprints where id = 'virvi'`))
     const sceneBefore = sqlite(world, `select * from blueprints where id = '$scene'`)
-    await boot(world, { VLM_WORLD_KEY: KEY2 })
-    const [bp] = rowsOf(sqlite(world, `select * from blueprints where id = 'vlm'`))
-    eq(bp.data.props, { ...vlmHyp.blueprint.props, feedUrl: FEED_URL, worldKey: KEY2 }, 'vlm props after rotation')
-    ok(bp.data.version > first.data.version, `vlm blueprint version should go up (${first.data.version} -> ${bp.data.version})`)
-    eq(rowsOf(sqlite(world, `select * from entities`)).filter((e) => e.data.blueprint === 'vlm').length, 1, 'vlm entity count')
+    await boot(world, { VIRVI_WORLD_KEY: KEY2 })
+    const [bp] = rowsOf(sqlite(world, `select * from blueprints where id = 'virvi'`))
+    eq(bp.data.props, { ...virviHyp.blueprint.props, feedUrl: FEED_URL, worldKey: KEY2 }, 'virvi props after rotation')
+    ok(bp.data.version > first.data.version, `virvi blueprint version should go up (${first.data.version} -> ${bp.data.version})`)
+    eq(rowsOf(sqlite(world, `select * from entities`)).filter((e) => e.data.blueprint === 'virvi').length, 1, 'virvi entity count')
     eq(sqlite(world, `select * from blueprints where id = 'user-box' union all select * from entities where id = 'userbox001'`), before, 'user-built app rows')
     eq(sqlite(world, `select * from blueprints where id = '$scene'`), sceneBefore, '$scene row')
   })
 
-  await test('the vlm app\'s assets are served by the world', async () => {
-    await boot(world, { VLM_WORLD_KEY: KEY2 })
-    ok(vlmHyp.files.length > 0, 'vlm.hyp has no assets')
-    for (const f of vlmHyp.files) {
+  await test('the virvi app\'s assets are served by the world', async () => {
+    await boot(world, { VIRVI_WORLD_KEY: KEY2 })
+    ok(virviHyp.files.length > 0, 'virvi.hyp has no assets')
+    for (const f of virviHyp.files) {
       const res = await fetch(`${base}/assets/${f.name}`)
       eq(res.status, 200, `GET /assets/${f.name}`)
-      ok(Buffer.from(await res.arrayBuffer()).equals(f.bytes), `served bytes of ${f.name} differ from vlm.hyp`)
+      ok(Buffer.from(await res.arrayBuffer()).equals(f.bytes), `served bytes of ${f.name} differ from virvi.hyp`)
     }
   })
 
   const sworld = `${world}-secret`
-  const SECRET = `vlmws_FAKE_TEST_SECRET_${randomBytes(8).toString('hex')}`
-  const secretEnv = { VLM_APP_PATH: probeHypPath, VLM_FEED_URL: VLM_URL, VLM_WORLD_KEY: KEY1, VLM_WORLD_SECRET: SECRET }
+  const SECRET = `virviws_FAKE_TEST_SECRET_${randomBytes(8).toString('hex')}`
+  const secretEnv = { VIRVI_APP_PATH: probeHypPath, VIRVI_FEED_URL: VIRVI_URL, VIRVI_WORLD_KEY: KEY1, VIRVI_WORLD_SECRET: SECRET }
   // the Chrome player's id, as the server saw it enter
-  const enteredId = () => vlmRequests.find((r) => r.url === '/api/hyperfy/pairings/vouch')?.body?.hyperfyPlayerId
+  const enteredId = () => virviRequests.find((r) => r.url === '/api/hyperfy/pairings/vouch')?.body?.hyperfyPlayerId
 
-  await test('the shipped vlm server script can vouch: Node posts the world secret to VLM and hands back only the expected fields', async () => {
-    vlmRequests.length = 0
+  await test('the shipped virvi server script can vouch: Node posts the world secret to Virvi and hands back only the expected fields', async () => {
+    virviRequests.length = 0
     await boot(sworld, secretEnv)
     await until(() => probeReads('shipped', 'server').length, 'the shipped probe on the server')
-    eq(probeReads('shipped', 'server'), ['function undefined'], 'typeof app.vlmVouch / app.vlmWorld in the vlm app\'s server script')
+    eq(probeReads('shipped', 'server'), ['function undefined'], 'typeof app.virviVouch / app.virviWorld in the virvi app\'s server script')
     await session(base, async ({ waitFor }) => {
       await waitFor(worldReady)
       await until(() => probeReads('vouch-long', 'server').length, 'the probe\'s vouches')
     })
-    const vouches = vlmRequests.filter((r) => r.url === '/api/hyperfy/pairings/vouch')
-    eq(vlmRequests.length, vouches.length, 'only vouch requests reach VLM')
+    const vouches = virviRequests.filter((r) => r.url === '/api/hyperfy/pairings/vouch')
+    eq(virviRequests.length, vouches.length, 'only vouch requests reach Virvi')
     eq(vouches.length, 5, 'vouch requests (the absent player id is refused without one)')
     const lines = log.join('').split('\n')
-    const started = lines.findIndex((l) => l.startsWith('[vlm] vouch worker started'))
-    ok(started >= 0 && started < lines.findIndex((l) => l.startsWith('[vlm-probe]')), 'the vouch worker did not start before the first app script ran')
+    const started = lines.findIndex((l) => l.startsWith('[virvi] vouch worker started'))
+    ok(started >= 0 && started < lines.findIndex((l) => l.startsWith('[virvi-probe]')), 'the vouch worker did not start before the first app script ran')
     const id = enteredId()
     ok(typeof id === 'string' && id.length > 0, `no player id in the vouch: ${JSON.stringify(vouches[0]?.body)}`)
     eq(vouches[0].method, 'POST', 'vouch method')
@@ -507,16 +507,16 @@ try {
     eq(vouches[1].body, { worldKey: KEY1, worldSecret: SECRET, hyperfyPlayerId: id, playerName: 'Probe Player', pendingPairingId: 'pair-500' }, 'polling vouch body')
     eq(probeReads('vouch', 'server'), [LINKED], 'the vouch answer the script gets (unexpected fields stripped)')
     eq(probeReads('vouch-nobody', 'server'), ['{"status":"error"}'], 'a player id that isn\'t in the world')
-    eq(probeReads('vouch-500', 'server'), ['{"status":"error"}'], 'VLM answering 500')
-    eq(probeReads('vouch-401', 'server'), ['{"status":"unauthorized"}'], 'VLM refusing the world secret (401)')
-    eq(probeReads('vouch-302', 'server'), ['{"status":"error"}'], 'VLM answering with a redirect (not followed)')
-    eq(vlmRequests.filter((r) => r.url === REDIRECTED), [], 'requests to the redirect target')
+    eq(probeReads('vouch-500', 'server'), ['{"status":"error"}'], 'Virvi answering 500')
+    eq(probeReads('vouch-401', 'server'), ['{"status":"unauthorized"}'], 'Virvi refusing the world secret (401)')
+    eq(probeReads('vouch-302', 'server'), ['{"status":"error"}'], 'Virvi answering with a redirect (not followed)')
+    eq(virviRequests.filter((r) => r.url === REDIRECTED), [], 'requests to the redirect target')
     eq(vouches[4].body, { worldKey: KEY1, worldSecret: SECRET, hyperfyPlayerId: id, playerName: 'x'.repeat(256) }, 'a 300-character name is truncated to 256')
     eq(probeReads('vouch-long', 'server'), [LINKED], 'the vouch with a long name')
   })
 
-  await test('client scripts and other apps see app.vlmVouch undefined', async () => {
-    const otherBp = { id: 'user-probe', version: 1, name: 'Probe', model: vlmHyp.blueprint.model, script: otherProbe.url, props: {} }
+  await test('client scripts and other apps see app.virviVouch undefined', async () => {
+    const otherBp = { id: 'user-probe', version: 1, name: 'Probe', model: virviHyp.blueprint.model, script: otherProbe.url, props: {} }
     const otherEnt = { ...userEntity, id: 'userprobe01', blueprint: 'user-probe' }
     sqlite(sworld, `insert into blueprints (id,data,createdAt,updatedAt) values ('user-probe','${esc(JSON.stringify(otherBp))}','${now}','${now}')`)
     sqlite(sworld, `insert into entities (id,data,createdAt,updatedAt) values ('userprobe01','${esc(JSON.stringify(otherEnt))}','${now}','${now}')`)
@@ -525,17 +525,17 @@ try {
     await boot(sworld, secretEnv)
     await until(() => probeReads('other', 'server').length && probeReads('shipped', 'server').length, 'both probes on the server')
     eq(probeReads('other', 'server'), ['undefined undefined'], 'another app\'s server script')
-    eq(probeReads('shipped', 'server'), ['function undefined'], 'the vlm app\'s server script')
+    eq(probeReads('shipped', 'server'), ['function undefined'], 'the virvi app\'s server script')
     await session(base, async ({ waitFor, consoles }) => {
       await waitFor(worldReady)
       await until(() => pageReads(consoles, 'shipped').length && pageReads(consoles, 'other').length, 'both probes in the page')
-      eq(pageReads(consoles, 'shipped'), ['undefined undefined'], 'the vlm app\'s client script')
+      eq(pageReads(consoles, 'shipped'), ['undefined undefined'], 'the virvi app\'s client script')
       eq(pageReads(consoles, 'other'), ['undefined undefined'], 'another app\'s client script')
     })
   })
 
-  await test('a player who is neither admin nor builder is refused without calling VLM', async () => {
-    vlmRequests.length = 0
+  await test('a player who is neither admin nor builder is refused without calling Virvi', async () => {
+    virviRequests.length = 0
     // with an admin code, a new player is a visitor
     await boot(sworld, { ...secretEnv, ADMIN_CODE: `fake-admin-code-${randomBytes(4).toString('hex')}` })
     await session(base, async ({ waitFor }) => {
@@ -546,12 +546,12 @@ try {
     eq(probeReads('vouch', 'server'), ['{"status":"error"}'], 'vouch for a visitor')
     eq(probeReads('vouch-500', 'server'), ['{"status":"error"}'], 'polling vouch for a visitor')
     eq(probeReads('vouch-long', 'server'), ['{"status":"error"}'], 'long-named vouch for a visitor')
-    eq(vlmRequests, [], 'requests to VLM')
+    eq(virviRequests, [], 'requests to Virvi')
   })
 
   await test('the secret never appears in any client frame, the page, /env.js, console output or the world\'s rows, nor to an app hooking JSON', async () => {
-    vlmRequests.length = 0
-    const hookBp = { id: 'user-hook', version: 1, name: 'Hook', model: vlmHyp.blueprint.model, script: hookProbe.url, props: {} }
+    virviRequests.length = 0
+    const hookBp = { id: 'user-hook', version: 1, name: 'Hook', model: virviHyp.blueprint.model, script: hookProbe.url, props: {} }
     const hookEnt = { ...userEntity, id: 'userhook001', blueprint: 'user-hook' }
     sqlite(sworld, `insert into blueprints (id,data,createdAt,updatedAt) values ('user-hook','${esc(JSON.stringify(hookBp))}','${now}','${now}')`)
     sqlite(sworld, `insert into entities (id,data,createdAt,updatedAt) values ('userhook001','${esc(JSON.stringify(hookEnt))}','${now}','${now}')`)
@@ -570,11 +570,11 @@ try {
         await until(() => probeReads('vouch-long', 'server').length, 'the probe\'s vouches')
         await wait(2000)
       })
-      ok(vlmRequests.some((r) => r.raw.includes(SECRET)), 'VLM never got the secret, so this proves nothing')
+      ok(virviRequests.some((r) => r.raw.includes(SECRET)), 'Virvi never got the secret, so this proves nothing')
       eq(probeReads('vouch', 'server'), [LINKED], 'the vouch answer with the hooking app running')
       eq(probeReads('stolen', 'server'), [], 'what the hooking app stole')
       ok(frames.length > 0 && frames[0].length > 1000, `no client snapshot captured (${frames.length} frames, first ${frames[0]?.length} bytes)`)
-      ok(frames[0].includes(Buffer.from(KEY1)), 'the captured snapshot does not carry blueprint vlm\'s props (is it the snapshot?)')
+      ok(frames[0].includes(Buffer.from(KEY1)), 'the captured snapshot does not carry blueprint virvi\'s props (is it the snapshot?)')
       ok(!frames.some((f) => f.includes(Buffer.from(SECRET))), 'the secret is in a packet the client received')
       ok(consoles.length > 0 && !consoles.some((l) => l.includes(SECRET)), 'the secret is in the page\'s console')
       ok(!log.join('').includes(SECRET), 'the secret is in the world\'s console output')
@@ -589,7 +589,7 @@ try {
     }
   })
 
-  await test('an edited vlm script sees app.vlmVouch undefined, even from callbacks that outlive it once the shipped script is back', async () => {
+  await test('an edited virvi script sees app.virviVouch undefined, even from callbacks that outlive it once the shipped script is back', async () => {
     const hold = createServer(() => {}) // never answers; the rebuild aborts the request
     await new Promise((r) => hold.listen(HOLD_PORT, '127.0.0.1', r))
     try {
@@ -605,10 +605,10 @@ try {
           const file = new File([bytes], hash + '.js', { type: 'text/javascript' })
           const url = 'asset://' + hash + '.js'
           world.loader.insert('script', url, file)
-          const version = world.blueprints.get('vlm').version + 1
-          world.blueprints.modify({ id: 'vlm', version, script: url })
+          const version = world.blueprints.get('virvi').version + 1
+          world.blueprints.modify({ id: 'virvi', version, script: url })
           await world.network.upload(file)
-          world.network.send('blueprintModified', { id: 'vlm', version, script: url })
+          world.network.send('blueprintModified', { id: 'virvi', version, script: url })
           return url
         })()`
         eq(await evaluate(edit(editedProbe.bytes.toString())), editedProbe.url, 'edited script url')
@@ -626,15 +626,15 @@ try {
     }
   })
 
-  await test('self-run (no VLM_WORLD_SECRET): the vlm app\'s server script sees app.vlmVouch undefined', async () => {
-    const { VLM_WORLD_SECRET, ...selfRun } = secretEnv
+  await test('self-run (no VIRVI_WORLD_SECRET): the virvi app\'s server script sees app.virviVouch undefined', async () => {
+    const { VIRVI_WORLD_SECRET, ...selfRun } = secretEnv
     await boot(sworld, selfRun)
     await until(() => probeReads('shipped', 'server').length, 'the shipped probe on the server')
-    eq(probeReads('shipped', 'server'), ['undefined undefined'], 'without VLM_WORLD_SECRET')
-    ok(!log.join('').includes('[vlm] vouch worker started'), 'a self-run world started the vouch worker')
+    eq(probeReads('shipped', 'server'), ['undefined undefined'], 'without VIRVI_WORLD_SECRET')
+    ok(!log.join('').includes('[virvi] vouch worker started'), 'a self-run world started the vouch worker')
   })
 
-  await test('boots on Postgres as a world role that cannot CREATE on the database, and installs vlm in its schema', async () => {
+  await test('boots on Postgres as a world role that cannot CREATE on the database, and installs virvi in its schema', async () => {
     const adminUrl = process.env.TEST_DATABASE_URL ||
       readFileSync(path.join(repoRoot, 'apps/server/vitest.config.ts'), 'utf8').match(/TEST_DATABASE_URL \|\| '([^']+)'/)[1]
     const u = new URL(adminUrl)
@@ -650,12 +650,12 @@ try {
       const { dbUri, schema } = await worldsDb.createWorldDatabase(slug, worldsDb.directRunner(adminUrl))
       const [{ c }] = await admin`SELECT has_database_privilege(${schema}, current_database(), 'CREATE') AS c`
       eq(c, false, 'world role has CREATE on the database')
-      await boot(`${world}-pg`, { VLM_WORLD_KEY: KEY1, DB_URI: dbUri, DB_SCHEMA: schema })
-      const rows = await admin.unsafe(`SELECT data FROM "${schema}".blueprints WHERE id = 'vlm'`)
-      eq(rows.length, 1, `vlm blueprint rows in ${schema}`)
-      eq(JSON.parse(rows[0].data).props.worldKey === KEY1, true, 'vlm worldKey in Postgres')
-      const ents = (await admin.unsafe(`SELECT data FROM "${schema}".entities`)).filter((r) => JSON.parse(r.data).blueprint === 'vlm')
-      eq(ents.length, 1, 'vlm entity count in Postgres')
+      await boot(`${world}-pg`, { VIRVI_WORLD_KEY: KEY1, DB_URI: dbUri, DB_SCHEMA: schema })
+      const rows = await admin.unsafe(`SELECT data FROM "${schema}".blueprints WHERE id = 'virvi'`)
+      eq(rows.length, 1, `virvi blueprint rows in ${schema}`)
+      eq(JSON.parse(rows[0].data).props.worldKey === KEY1, true, 'virvi worldKey in Postgres')
+      const ents = (await admin.unsafe(`SELECT data FROM "${schema}".entities`)).filter((r) => JSON.parse(r.data).blueprint === 'virvi')
+      eq(ents.length, 1, 'virvi entity count in Postgres')
     } finally {
       await stop()
       await worldsDb.dropWorldDatabase(slug, worldsDb.directRunner(adminUrl)).catch((e) => console.log(`        cleanup: ${e.message}`))
@@ -668,8 +668,8 @@ try {
   rmSync(worldDir, { recursive: true, force: true })
   rmSync(path.join(srcDir, `${world}-secret`), { recursive: true, force: true })
   rmSync(probeDir, { recursive: true, force: true })
-  fakeVlm.closeAllConnections()
-  fakeVlm.close()
+  fakeVirvi.closeAllConnections()
+  fakeVirvi.close()
 }
 
 const failed = results.filter(([pass]) => !pass).length

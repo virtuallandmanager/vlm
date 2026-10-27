@@ -1,4 +1,4 @@
-"""The worker's client for VLM's API (CONTRACT.md). Standard library only.
+"""The worker's client for Virvi's API (CONTRACT.md). Standard library only.
 
 Calls are retried 3 times on 5xx and connection errors; posting a job's result is retried until it succeeds or
 RESULT_RETRY_SEC pass, because a lost result leaves the design waiting. Errors never carry the token."""

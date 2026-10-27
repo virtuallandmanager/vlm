@@ -1,6 +1,6 @@
 // Catalog packs with their model counts, for the admin switches and the public credits list.
 import { eq, sql } from 'drizzle-orm'
-import type { CatalogPack } from 'vlm-shared'
+import type { CatalogPack } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { assetLibraryItems, catalogPacks } from '../db/schema.js'
 

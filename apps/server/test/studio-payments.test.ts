@@ -327,7 +327,7 @@ describe('studio payments', () => {
       const u = await createUser()
       const { d, entitlement } = await revised(u)
       // an earlier attempt reached Stripe but its answer was lost
-      stripe.made.push({ id: 're_earlier', payment_intent: 'pi_rev', amount: 1000, metadata: { vlm_studio_entitlement_id: entitlement.id } })
+      stripe.made.push({ id: 're_earlier', payment_intent: 'pi_rev', amount: 1000, metadata: { virvi_studio_entitlement_id: entitlement.id } })
       const res = await report(u, d.id, 'hat', 2)
       expect(res.statusCode).toBe(200)
       expect(stripe.calls.refunds).toHaveLength(0)

@@ -6,9 +6,9 @@ import ImageIO
 import RealityKit
 import UIKit
 
-/// Builds and updates RealityKit entities for a VLM scene plan. `root` is the VLM scene frame (already mapped to
+/// Builds and updates RealityKit entities for a Virvi scene plan. `root` is the Virvi scene frame (already mapped to
 /// RealityKit axes): its origin is the parcel's south-west corner at ground level. Like the Hyperfy app, each item
-/// gets its own entity carrying the mapped transform; planes and sounds take no scale (a plane's VLM scale is its
+/// gets its own entity carrying the mapped transform; planes and sounds take no scale (a plane's Virvi scale is its
 /// width and height), models take the scale and turn half a turn inside it (MODEL_TURN).
 @MainActor
 final class SceneRenderer {
@@ -28,7 +28,7 @@ final class SceneRenderer {
     private var tokens: [String: UUID] = [:]
     private var players: [String: (AVPlayer, AVPlayerLooper?)] = [:]
 
-    init() { root.name = "vlm-scene" }
+    init() { root.name = "virvi-scene" }
 
     func apply(_ next: [RenderItem]) {
         let d = diffPlans(plan, next)
@@ -130,7 +130,7 @@ final class SceneRenderer {
                 mat.faceCulling = .none
                 entity.model?.materials = [mat]
             } catch {
-                print("[vlm] image failed: \(item.key) \(error.localizedDescription)")
+                print("[virvi] image failed: \(item.key) \(error.localizedDescription)")
             }
         }
     }
@@ -171,7 +171,7 @@ final class SceneRenderer {
                 self.onVisualsReady?(item.key, group)
                 for anim in model.availableAnimations { model.playAnimation(anim.repeat()) }
             } catch {
-                print("[vlm] model failed, showing placeholder: \(item.key) \(error.localizedDescription)")
+                print("[virvi] model failed, showing placeholder: \(item.key) \(error.localizedDescription)")
                 guard alive() else { return }
                 turn.addChild(Self.placeholderBox(named: URL(string: item.src)?.lastPathComponent ?? item.src))
                 self.onVisualsReady?(item.key, group)
@@ -189,7 +189,7 @@ final class SceneRenderer {
                 group.components.set(SpatialAudioComponent(gain: 20 * log10(max(item.volume, 0.001))))
                 group.playAudio(res)
             } catch {
-                print("[vlm] sound failed: \(item.key) \(error.localizedDescription)")
+                print("[virvi] sound failed: \(item.key) \(error.localizedDescription)")
             }
         }
     }

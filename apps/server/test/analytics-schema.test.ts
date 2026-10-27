@@ -38,11 +38,11 @@ describe('analytics schema and access', () => {
     expect(await getAnalyticsAccess(actor(stranger), s.id)).toMatchObject({ canRead: false, canManage: false, canDelete: false })
     expect(await getAnalyticsAccess(actor(host, { verified: false }), s.id)).toMatchObject({ canRead: false })
 
-    const unset = await createAnalyticsScene({ vlmSceneId: scene.id })
+    const unset = await createAnalyticsScene({ virviSceneId: scene.id })
     expect(await getAnalyticsAccess(actor(host), unset.id)).toMatchObject({ canRead: false, canManage: false })
   })
 
-  it('linked VLM scene owner manages, collaborators read', async () => {
+  it('linked Virvi scene owner manages, collaborators read', async () => {
     const owner = await createUser()
     const viewer = await createUser()
     const { scene } = await createScene(owner)
@@ -61,7 +61,7 @@ describe('analytics schema and access', () => {
     await db.insert(sceneCollaborators).values({ sceneId: scene.id, userId: viewer.id, role: 'viewer' })
     const startedAt = new Date(Date.now() - 40 * 86400_000)
     const endedAt = new Date(Date.now() - 10 * 86400_000)
-    const s = await createAnalyticsScene({ vlmSceneId: scene.id })
+    const s = await createAnalyticsScene({ virviSceneId: scene.id })
     await createSetup(s.id, scene.id, { startedAt, endedAt })
     const ex = await getAnalyticsAccess(actor(owner), s.id)
     expect(ex).toMatchObject({ canRead: true, canManage: false, canDelete: false })

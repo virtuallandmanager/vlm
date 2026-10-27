@@ -1,19 +1,19 @@
 /**
- * Server configuration — driven by VLM_MODE with per-variable overrides.
+ * Server configuration — driven by VIRVI_MODE with per-variable overrides.
  *
  * Modes:
  *   single   — Self-hosted, one server, in-memory Colyseus presence
  *   scalable — Self-hosted, multiple servers + Redis presence
- *   cloud    — Hosted vlm.gg SaaS, multi-tenant, billing enabled
+ *   cloud    — Hosted virvi.io SaaS, multi-tenant, billing enabled
  */
 
-export type VLMMode = 'single' | 'scalable' | 'cloud'
+export type VirviMode = 'single' | 'scalable' | 'cloud'
 
 function env(key: string): string | undefined {
   return process.env[key]
 }
 
-const mode: VLMMode = (env('VLM_MODE') as VLMMode) || 'single'
+const mode: VirviMode = (env('VIRVI_MODE') as VirviMode) || 'single'
 
 /**
  * True when Colyseus runs on Redis presence and driver, so a scene's rooms can live in other processes. Process-local
@@ -44,7 +44,7 @@ export function studioPricesFrom(e: Record<string, string | undefined>) {
 }
 
 /** Refuse to start a production-like server on the well-known development JWT secret. */
-export function assertProductionSecrets(c: { mode: VLMMode; nodeEnv?: string; jwtSecret: string }): void {
+export function assertProductionSecrets(c: { mode: VirviMode; nodeEnv?: string; jwtSecret: string }): void {
   const production = c.mode === 'cloud' || c.nodeEnv === 'production'
   if (production && (!c.jwtSecret || c.jwtSecret === 'dev-secret-change-me')) {
     throw new Error('JWT_SECRET must be set in production')
@@ -61,7 +61,7 @@ export function normalizeCertFingerprints(raw: string): string[] {
     const hex = entry.replace(/[\s:]/g, '').toUpperCase()
     if (!hex) return
     if (!/^[0-9A-F]{64}$/.test(hex)) {
-      console.warn(`[vlm-config] ANDROID_CERT_SHA256 entry ${i} is not a SHA-256 fingerprint, ignoring it`)
+      console.warn(`[virvi-config] ANDROID_CERT_SHA256 entry ${i} is not a SHA-256 fingerprint, ignoring it`)
       return
     }
     out.push(hex.match(/../g)!.join(':'))
@@ -84,7 +84,7 @@ export function validDeployKey(raw: string | undefined): string | null {
     const n = BigInt(`0x${hex}`)
     if (n > 0n && n < SECP256K1_N) return `0x${hex}`
   }
-  console.warn('[vlm-config] VIRVI_DCL_DEPLOY_KEY is not a valid private key (32 bytes of hex); Virvi deploys are off until it is fixed')
+  console.warn('[virvi-config] VIRVI_DCL_DEPLOY_KEY is not a valid private key (32 bytes of hex); Virvi deploys are off until it is fixed')
   return null
 }
 
@@ -98,13 +98,13 @@ export const config = {
   logLevel: env('LOG_LEVEL') || (env('NODE_ENV') === 'production' ? 'info' : 'debug'),
 
   // ── Android app links (/.well-known/assetlinks.json) ─────────────────────
-  androidAppPackage: env('ANDROID_APP_PACKAGE') || 'gg.vlm.spaces',
+  androidAppPackage: env('ANDROID_APP_PACKAGE') || 'io.virvi.ar',
   // Release-key SHA-256 fingerprints, comma-separated; empty until the app is signed
   androidCertSha256: normalizeCertFingerprints(env('ANDROID_CERT_SHA256') || ''),
 
-  // ── VLM Spaces reports ───────────────────────────────────────────────────
+  // ── Virvi Spaces reports ───────────────────────────────────────────────────
   // Where a visitor's "Report this space" is emailed (best-effort; reports are always stored and shown on /admin)
-  arReportsEmail: env('AR_REPORTS_EMAIL') || 'support@vlm.gg',
+  arReportsEmail: env('AR_REPORTS_EMAIL') || 'support@virvi.io',
 
   // ── Database ────────────────────────────────────────────────────────────
   databaseUrl: env('DATABASE_URL')!,
@@ -192,14 +192,14 @@ export const config = {
   hyperfyWorldsDbUrlTemplate: env('HYPERFY_WORLDS_DB_URL_TEMPLATE'), // what worlds connect with; {user} and {password}
   hyperfyAssetsS3Uri: env('HYPERFY_ASSETS_S3_URI'), // s3://<key>:<secret>@<account>.r2.cloudflarestorage.com/<bucket>
   hyperfyAssetsBaseUrl: env('HYPERFY_ASSETS_BASE_URL'), // the bucket's CDN origin
-  hyperfyRouterDomain: env('HYPERFY_ROUTER_DOMAIN'), // worlds.vlm.gg
+  hyperfyRouterDomain: env('HYPERFY_ROUTER_DOMAIN'), // worlds.virvi.io
   hyperfySecretKey: env('HYPERFY_SECRET_KEY'), // 32-byte hex, encrypts admin codes
 
   // ── Design Studio (cloud only; see src/studio/README.md) ───────────────
   studioWorkerImage: env('STUDIO_WORKER_IMAGE'), // registry.fly.io/vlm-studio-worker:<git-sha>
   studioS3Uri: env('STUDIO_S3_URI'), // private bucket, s3://<key>:<secret>@<account>.r2.cloudflarestorage.com/<bucket>, or file://<dir>
   studioFlyApp: env('STUDIO_FLY_APP') || 'vlm-studio-worker',
-  // `external`: VLM never creates or starts worker machines; a worker is run by hand (local development)
+  // `external`: Virvi never creates or starts worker machines; a worker is run by hand (local development)
   studioMachines: (env('STUDIO_MACHINES') === 'external' ? 'external' : 'fly') as 'fly' | 'external',
   studioClaudeModel: env('STUDIO_CLAUDE_MODEL') || 'claude-opus-5-5',
   studioCodexModel: env('STUDIO_CODEX_MODEL') || 'gpt-6.1-sol',
@@ -229,7 +229,7 @@ export const config = {
   smtpPort: parseInt(env('SMTP_PORT') || '587'),
   smtpUser: env('SMTP_USER'),
   smtpPass: env('SMTP_PASS'),
-  emailFrom: env('EMAIL_FROM') || 'noreply@vlm.gg',
+  emailFrom: env('EMAIL_FROM') || 'noreply@virvi.io',
 
   // ── Limits ──────────────────────────────────────────────────────────────
   maxRoomsPerServer: parseInt(env('MAX_ROOMS') || (mode === 'single' ? '50' : '500')),

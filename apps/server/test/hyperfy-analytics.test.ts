@@ -79,15 +79,15 @@ describe('POST /api/hyperfy/analytics', () => {
     await post({ v: 1, events: [{ type: 'enter', playerId: 'p2', t: T + 100 }] })
     const scenes = await db.select().from(analyticsScenes)
     expect(scenes).toHaveLength(1)
-    expect(scenes[0]).toMatchObject({ kind: 'hyperfy', locationKey: `hyperfy:${worldId}`, title: 'Moon Base', vlmSceneId: sceneId })
+    expect(scenes[0]).toMatchObject({ kind: 'hyperfy', locationKey: `hyperfy:${worldId}`, title: 'Moon Base', virviSceneId: sceneId })
     const setups = await db.select().from(locationSetups).where(eq(locationSetups.analyticsSceneId, scenes[0].id))
     expect(setups).toHaveLength(1)
-    expect(setups[0].vlmSceneId).toBe(sceneId)
+    expect(setups[0].virviSceneId).toBe(sceneId)
     expect(await db.select().from(analyticsSessions)).toHaveLength(2)
   })
 
   it('401 for a bad key', async () => {
-    expect((await post(goodBatch(), 'vlmw_nope')).statusCode).toBe(401)
+    expect((await post(goodBatch(), 'virviw_nope')).statusCode).toBe(401)
     expect((await post(goodBatch(), null)).statusCode).toBe(401)
     expect(await db.select().from(analyticsScenes)).toHaveLength(0)
   })

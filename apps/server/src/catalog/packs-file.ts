@@ -1,6 +1,6 @@
 // catalog/packs.json: every pack's id, name, source, license, attribution and source link. No database here, so
 // `catalog:import --check` runs without one.
-import type { CatalogLicense, CatalogSource } from 'vlm-shared'
+import type { CatalogLicense, CatalogSource } from '@virvixr/shared'
 
 /** One entry of catalog/packs.json. `enabled` (default true) only applies when the pack is first created. */
 export type PackDef = { id: string; name: string; source: CatalogSource; license: CatalogLicense; attribution: string; sourceUrl: string; enabled?: boolean }

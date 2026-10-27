@@ -9,9 +9,9 @@ struct TestMarker: Identifiable {
 
     static let all = [TestMarker(code: "TEST12", width: 0.12), TestMarker(code: "TEST17", width: 0.17)]
 
-    /// The marker code in a marker QR payload (`HTTPS://VLM.GG/S/<CODE>`), or nil for any other link.
+    /// The marker code in a marker QR payload (`HTTPS://VIRVI.IO/S/<CODE>`), or nil for any other link.
     static func code(fromQR payload: String) -> String? {
-        let prefix = "HTTPS://VLM.GG/S/"
+        let prefix = "HTTPS://VIRVI.IO/S/"
         let p = payload.uppercased()
         guard p.hasPrefix(prefix) else { return nil }
         let code = String(p.dropFirst(prefix.count))

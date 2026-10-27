@@ -42,9 +42,9 @@ export default async function apiKeyRoutes(app: FastifyInstance) {
         if (!member) return reply.status(400).send({ error: 'Not a member of that organization' })
       }
 
-      // Generate the raw key: vlm_k1_ + 32 random hex chars
+      // Generate the raw key: virvi_k1_ + 32 random hex chars
       const randomPart = randomBytes(16).toString('hex') // 32 hex chars
-      const rawKey = `vlm_k1_${randomPart}`
+      const rawKey = `virvi_k1_${randomPart}`
 
       // Hash for storage
       const keyHash = createHash('sha256').update(rawKey).digest('hex')

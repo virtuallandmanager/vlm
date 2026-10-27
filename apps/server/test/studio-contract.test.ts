@@ -42,7 +42,7 @@ describe.skipIf(!hasPython)('the studio worker contract', () => {
     await presence.subscribe(studioTopic(design.id), (e: any) => events.push(e))
 
     const worker = spawn('python3', [DRIVER], {
-      env: { ...process.env, VLM_API_URL: url, STUDIO_WORKER_TOKEN: token, STUDIO_DESIGN_ID: design.id, STUDIO_IDLE_EXIT_SEC: '5' },
+      env: { ...process.env, VIRVI_API_URL: url, STUDIO_WORKER_TOKEN: token, STUDIO_DESIGN_ID: design.id, STUDIO_IDLE_EXIT_SEC: '5' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let log = ''
@@ -98,7 +98,7 @@ describe.skipIf(!hasPython)('the studio worker contract', () => {
       const token = await issueWorker(design)
       await queueJob(design, PROMPT_PAYLOAD)
       const worker = spawn('python3', [DRIVER], {
-        env: { ...process.env, VLM_API_URL: url, STUDIO_WORKER_TOKEN: token, STUDIO_DESIGN_ID: design.id, STUDIO_IDLE_EXIT_SEC: '8', STUDIO_FAKE_TOOLS: '1' },
+        env: { ...process.env, VIRVI_API_URL: url, STUDIO_WORKER_TOKEN: token, STUDIO_DESIGN_ID: design.id, STUDIO_IDLE_EXIT_SEC: '8', STUDIO_FAKE_TOOLS: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
       })
       let log = ''

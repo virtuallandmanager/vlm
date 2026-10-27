@@ -12,7 +12,7 @@ import { countLabel, plural } from '@/lib/format'
 
 type Scene = { id: string; name: string; description?: string | null; thumbnailUrl?: string | null; relationship?: string }
 const RELATIONSHIP_LABEL: Record<string, string> = { cohost: 'Co-host', editor: 'Editor', viewer: 'Viewer' }
-const VIEW_KEY = 'vlm.scenes.view'
+const VIEW_KEY = 'virvi.scenes.view'
 /** PrimaryButton's look, on a link to the New Scene Wizard. */
 const NEW_SCENE_CLASS = 'clip-corner inline-flex items-center gap-1.5 bg-accent px-4 py-2.5 text-sm font-semibold text-accent-ink transition-colors hover:bg-accent-hover'
 /** Only owners and co-hosts can change a scene's details. */

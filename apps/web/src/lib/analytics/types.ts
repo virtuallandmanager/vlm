@@ -2,7 +2,7 @@
 export interface AnalyticsLocation {
   id: string; locationKey: string; kind: 'parcels' | 'world' | 'preview' | 'hyperfy' | 'ar'; title: string | null
   walletVisibility: boolean; verifiedSessionShare: number; since: string | null; until: string | null
-  vlmSceneId: string | null; baseParcel: string | null; parcels: string[]; canManage: boolean
+  virviSceneId: string | null; baseParcel: string | null; parcels: string[]; canManage: boolean
 }
 export interface AnalyticsSummary {
   sessions: number; uniqueVisitors: number; newVisitors: number; returningVisitors: number

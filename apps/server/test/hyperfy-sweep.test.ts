@@ -13,11 +13,11 @@ import { createUser, createScene, type TestUser } from './helpers/factories.js'
 
 const CONFIG = {
   hyperfyImage: 'registry.fly.io/vlm-hyperfy-image:abc123',
-  hyperfyAssetsS3Uri: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/vlm-hyperfy',
-  hyperfyAssetsBaseUrl: 'https://worlds-cdn.vlm.gg',
-  hyperfyRouterDomain: 'worlds.vlm.gg',
+  hyperfyAssetsS3Uri: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/virvi-hyperfy',
+  hyperfyAssetsBaseUrl: 'https://worlds-cdn.virvi.io',
+  hyperfyRouterDomain: 'worlds.virvi.io',
   hyperfySecretKey: 'ab'.repeat(32),
-  publicUrl: 'https://api.vlm.gg',
+  publicUrl: 'https://api.virvi.io',
   allFeaturesUnlocked: false,
 }
 const MIN = 60_000
@@ -40,7 +40,7 @@ function fakes(opts: { failStop?: Set<string>; failDestroy?: Set<string>; failDr
   const deps: Partial<SweepDeps> = {
     fly: {
       async listMachines(app: string) { listCalls++; opts.onList?.(app); return [{ ...machine(app) }] },
-      async getMachineEnv() { return { VLM_WORLD_KEY: 'k' } },
+      async getMachineEnv() { return { VIRVI_WORLD_KEY: 'k' } },
       async updateMachine(app: string, _id: string, m: { image: string; env: Record<string, string>; autostart?: boolean }) {
         if (opts.failUpdate?.has(app) && m.autostart === false) throw new Error('fly down')
         updates.push({ app, autostart: m.autostart, env: m.env, image: m.image })
@@ -122,7 +122,7 @@ describe('hosted world sweep', () => {
     expect(ended.endedAt).toEqual(now)
     expect(ended.purgeAfter).toEqual(new Date(now.getTime() + 30 * DAY))
     expect(f.stopped).toEqual(['vlm-w-due-world/m-vlm-w-due-world'])
-    expect(f.updates).toEqual([{ app: 'vlm-w-due-world', autostart: false, env: { VLM_WORLD_KEY: 'k' }, image: CONFIG.hyperfyImage }])
+    expect(f.updates).toEqual([{ app: 'vlm-w-due-world', autostart: false, env: { VIRVI_WORLD_KEY: 'k' }, image: CONFIG.hyperfyImage }])
     expect((await row(later.id)).status).toBe('running')
     expect((await row(forever.id)).status).toBe('running')
     expect(await hostedWorldSlots(owner.id)).toMatchObject({ used: 2 })
@@ -234,7 +234,7 @@ describe('hosted world sweep', () => {
     const w = await insert('back-secret', { status: 'ended', endedAt: now, purgeAfter: new Date(Date.now() + DAY), worldSecretHash: 'h'.repeat(64) })
     const f = fakes()
     await restoreHostedWorld(w.id, f.deps)
-    expect(f.updates[0].env).toEqual({ VLM_WORLD_KEY: 'k' })
+    expect(f.updates[0].env).toEqual({ VIRVI_WORLD_KEY: 'k' })
     expect((await row(w.id)).worldSecretHash).toBe('h'.repeat(64))
   })
 
@@ -251,8 +251,8 @@ describe('hosted world sweep', () => {
     await restoreHostedWorld(w.id, f.deps)
     // An existing world with no secret yet gets one on this update (ruling R7)
     const stored = (await row(w.id)).worldSecretHash
-    expect(f.updates).toEqual([{ app: 'vlm-w-back-world', autostart: true, env: { VLM_WORLD_KEY: 'k', VLM_WORLD_SECRET: expect.stringMatching(/^[0-9a-f]{64}$/) }, image: CONFIG.hyperfyImage }])
-    expect(stored).toBe(createHash('sha256').update(f.updates[0].env.VLM_WORLD_SECRET).digest('hex'))
+    expect(f.updates).toEqual([{ app: 'vlm-w-back-world', autostart: true, env: { VIRVI_WORLD_KEY: 'k', VIRVI_WORLD_SECRET: expect.stringMatching(/^[0-9a-f]{64}$/) }, image: CONFIG.hyperfyImage }])
+    expect(stored).toBe(createHash('sha256').update(f.updates[0].env.VIRVI_WORLD_SECRET).digest('hex'))
     expect(f.started).toEqual(['vlm-w-back-world'])
     expect((await row(w.id)).status).toBe('running')
   })

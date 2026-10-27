@@ -23,12 +23,12 @@ struct SettingsForm: View {
 
     var body: some View {
         Form {
-            Section("VLM feed") {
+            Section("Virvi feed") {
                 TextField("Feed URL", text: $feedUrl)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
-                SecureField("World key (vlmw_…)", text: $worldKey)
+                SecureField("World key (virviw_…)", text: $worldKey)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                 Toggle("Sound (videos and sounds)", isOn: $soundOn)
@@ -38,7 +38,7 @@ struct SettingsForm: View {
                 StatusLine(feed: model.feed)
             }
             Section {
-                Text("Get a world key from vlm.gg → Deploy → Your Hyperfy worlds → Connect a world. Spike: the key is stored in UserDefaults.")
+                Text("Get a world key from virvi.io → Deploy → Your Hyperfy worlds → Connect a world. Spike: the key is stored in UserDefaults.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

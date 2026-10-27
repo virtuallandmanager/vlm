@@ -6,9 +6,11 @@
 # drizzle-kit exits 0 within a timeout (an interactive rename prompt would hang or fail instead).
 # Drops the scratch database afterwards.
 #
+# Run it with BASE_REF=main as well: that base still has vlm_scene_id, so it checks the Virvi column rename. (virvi-rename: keep)
+#
 # Usage: scripts/check-upgrade-push.sh [--skip-presync]
 #   PG_ADMIN_URL   admin connection (default postgres://vlm:vlm_dev@localhost:5432/postgres)
-#   CHECK_DB       scratch database name (default vlm_upgrade_check)
+#   CHECK_DB       scratch database name (default virvi_upgrade_check)
 #   BASE_REF       git ref holding the old schema (default 73f1efe)
 #   PUSH_TIMEOUT   seconds before the head push counts as hung (default 120)
 set -eu
@@ -16,7 +18,7 @@ set -eu
 cd "$(dirname "$0")/.."
 SERVER_DIR=$(pwd)
 ADMIN_URL=${PG_ADMIN_URL:-postgres://vlm:vlm_dev@localhost:5432/postgres}
-CHECK_DB=${CHECK_DB:-vlm_upgrade_check}
+CHECK_DB=${CHECK_DB:-virvi_upgrade_check}
 BASE_REF=${BASE_REF:-73f1efe}
 PUSH_TIMEOUT=${PUSH_TIMEOUT:-120}
 SKIP_PRESYNC=0
@@ -69,8 +71,10 @@ DATABASE_URL="$DB_URL" with_timeout "$PUSH_TIMEOUT" npx drizzle-kit push --force
   echo "FAIL: could not push the base schema"
   exit 1
 }
-run_sql "$DB_URL" "SELECT user_id FROM analytics_sessions LIMIT 0; SELECT name FROM analytics_actions LIMIT 0"
-echo "   base schema in place (legacy analytics_sessions.user_id + analytics_actions)"
+if [ "$BASE_REF" = 73f1efe ]; then
+  run_sql "$DB_URL" "SELECT user_id FROM analytics_sessions LIMIT 0; SELECT name FROM analytics_actions LIMIT 0"
+  echo "   base schema in place (legacy analytics_sessions.user_id + analytics_actions)"
+fi
 
 if [ "$SKIP_PRESYNC" = 1 ]; then
   echo "== skipping pre-push upgrade SQL (--skip-presync)"
@@ -119,4 +123,10 @@ fi
 echo "== verifying the head tables exist"
 run_sql "$DB_URL" "SELECT location_key FROM analytics_scenes LIMIT 0; SELECT visitor_hash, last_seen_at FROM analytics_sessions LIMIT 0" ||
   { echo "FAIL: head analytics tables missing after push"; exit 1; }
+echo "== verifying the Virvi column and index names"
+run_sql "$DB_URL" "DO \$\$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND column_name = 'vlm_scene_id') THEN RAISE EXCEPTION 'vlm_scene_id still exists'; END IF; -- virvi-rename: keep
+  IF (SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND column_name = 'virvi_scene_id' AND table_name IN ('analytics_scenes', 'location_setups')) <> 2 THEN RAISE EXCEPTION 'virvi_scene_id missing'; END IF;
+  IF to_regclass('analytics_scenes_virvi_scene_idx') IS NULL OR to_regclass('location_setups_virvi_scene_idx') IS NULL THEN RAISE EXCEPTION 'virvi_scene indexes missing'; END IF;
+END \$\$" || { echo "FAIL: Virvi column or index names missing after push"; exit 1; }
 echo "PASS: upgrade push completed non-interactively (exit 0)"

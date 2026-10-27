@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { and, eq, inArray } from 'drizzle-orm'
-import { localModelFile, validateSceneRef, type AnalyticsSceneRef } from 'vlm-shared'
+import { localModelFile, validateSceneRef, type AnalyticsSceneRef } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { analyticsScenes, mediaAssets, sceneElements, scenes } from '../db/schema.js'
 import { hasDclAuthHeaders, verifyDclSignedFetch } from '../middleware/dcl-auth.js'
@@ -70,13 +70,13 @@ export default async function setupRoutes(app: FastifyInstance) {
       const { resolved, scene, setup } = await locate(ref, wallet)
       if (!scene) return reply.send({ state: !resolved.ok && resolved.status === 503 ? 'unavailable' : 'none' })
       if (setup) {
-        const role = await roleOf(setup.vlmSceneId, wallet)
-        if (role) return reply.send({ state: 'member', sceneId: setup.vlmSceneId, role })
+        const role = await roleOf(setup.virviSceneId, wallet)
+        if (role) return reply.send({ state: 'member', sceneId: setup.virviSceneId, role })
         // Non-members still get the sceneId so the client can connect content-only (no HUD).
         return reply.send(
           (await controls(scene, wallet))
-            ? { state: 'taken', host: await hostShort(setup.vlmSceneId), sceneId: setup.vlmSceneId }
-            : { state: 'none', sceneId: setup.vlmSceneId },
+            ? { state: 'taken', host: await hostShort(setup.virviSceneId), sceneId: setup.virviSceneId }
+            : { state: 'none', sceneId: setup.virviSceneId },
         )
       }
       return reply.send({ state: (await controls(scene, wallet)) ? 'eligible' : 'none' })
@@ -104,15 +104,15 @@ export default async function setupRoutes(app: FastifyInstance) {
         if (resolved.ok) throw new Error('unreachable')
         return reply.status(resolved.status).send(resolved.status === 503 ? { error: 'upstream_unavailable', retryAfter: 30 } : { error: resolved.error })
       }
-      if (setup) return reply.status(409).send({ error: 'already_set_up', host: await hostShort(setup.vlmSceneId) })
+      if (setup) return reply.status(409).send({ error: 'already_set_up', host: await hostShort(setup.virviSceneId) })
       if (!(await controls(scene, wallet))) return reply.status(403).send({ error: 'not_eligible' })
       const created = await setUpLocation(scene, wallet)
-      return reply.send({ sceneId: created.vlmSceneId })
+      return reply.send({ sceneId: created.virviSceneId })
     } catch (err) {
       if (err instanceof DirectoryUnavailableError) return reply.status(503).send({ error: 'upstream_unavailable', retryAfter: 30 })
       if (err instanceof SetupError) {
         const active = scene ? await getActiveSetup(scene.id) : null
-        return reply.status(err.status).send({ error: err.code, host: active ? await hostShort(active.vlmSceneId) : undefined })
+        return reply.status(err.status).send({ error: err.code, host: active ? await hostShort(active.virviSceneId) : undefined })
       }
       throw err
     }
@@ -146,18 +146,18 @@ export default async function setupRoutes(app: FastifyInstance) {
     return setup
   }
 
-  /** Public: the VLM scene for a set-up location, so guests (no signed fetch) can connect content-only. */
+  /** Public: the Virvi scene for a set-up location, so guests (no signed fetch) can connect content-only. */
   app.get<{ Querystring: { location?: string } }>('/api/setup/scene', async (request, reply) => {
     const setup = await publicSetupFor(request, reply)
     if (!setup) return reply
-    return reply.send({ sceneId: setup.vlmSceneId })
+    return reply.send({ sceneId: setup.virviSceneId })
   })
 
-  /** Public: the hosted (.glb) models a set-up location's active preset uses, for `npx vlm-dcl sync`. */
+  /** Public: the hosted (.glb) models a set-up location's active preset uses, for `npx @virvixr/dcl sync`. */
   app.get<{ Querystring: { location?: string } }>('/api/setup/models', async (request, reply) => {
     const setup = await publicSetupFor(request, reply)
     if (!setup) return reply
-    const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, setup.vlmSceneId) })
+    const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, setup.virviSceneId) })
     const elements = scene?.activePresetId
       ? await db.select().from(sceneElements).where(and(eq(sceneElements.presetId, scene.activePresetId), eq(sceneElements.type, 'model')))
       : []
@@ -174,6 +174,6 @@ export default async function setupRoutes(app: FastifyInstance) {
         .where(inArray(mediaAssets.publicUrl, [...new Set(hosted.map((m) => m.url))]))
       for (const r of rows) if (r.url) sizes.set(r.url, r.size)
     }
-    return reply.send({ sceneId: setup.vlmSceneId, models: hosted.map((m) => ({ ...m, sizeBytes: sizes.get(m.url) ?? null })) })
+    return reply.send({ sceneId: setup.virviSceneId, models: hosted.map((m) => ({ ...m, sizeBytes: sizes.get(m.url) ?? null })) })
   })
 }

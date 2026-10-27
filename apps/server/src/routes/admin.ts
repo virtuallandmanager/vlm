@@ -47,7 +47,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     return reply.send({ pack })
   })
 
-  // ── VLM Spaces reports: what visitors sent from the Quest menu ──
+  // ── Virvi Spaces reports: what visitors sent from the Quest menu ──
 
   app.get<{ Querystring: { status?: string } }>('/api/admin/ar-reports', async (request, reply) => {
     const status = request.query.status ?? 'open'

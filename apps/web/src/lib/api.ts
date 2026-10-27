@@ -3,10 +3,10 @@ import { useCallback } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
 import { requestHeaders } from './request-headers'
-import type { Plot } from 'vlm-shared'
+import type { Plot } from '@virvixr/shared'
 import type { AuthChain } from '@dcl/crypto'
 import type { ArFileFormat, ArMounting } from './ar'
-import type { ArDeviceKind, ArDeviceSummary, ArPairApprovalInfo, ArFloorView, ArMarkerView, ArSpaceView, AdminAd, AdminAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyPairingSummary, HyperfyWorldSummary } from 'vlm-shared'
+import type { ArDeviceKind, ArDeviceSummary, ArPairApprovalInfo, ArFloorView, ArMarkerView, ArSpaceView, AdminAd, AdminAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyPairingSummary, HyperfyWorldSummary } from '@virvixr/shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
 // ── New Scene Wizard and Decentraland Worlds ────────────────────────────────
@@ -139,9 +139,9 @@ export function mediaContentType(file: File): string {
   return file.name.toLowerCase().endsWith('.glb') ? 'model/gltf-binary' : 'application/octet-stream'
 }
 
-export type { AdminAdSpace } from 'vlm-shared'
+export type { AdminAdSpace } from '@virvixr/shared'
 
-/** A visitor's report of a VLM Spaces space, as the admin page lists it. */
+/** A visitor's report of a Virvi Spaces space, as the admin page lists it. */
 export interface AdminArReport {
   id: string
   spaceId: string
@@ -245,7 +245,7 @@ export function useApi() {
         throw Object.assign(new Error(err.error || `API error ${res.status}`), { status: res.status, body: err })
       }
       const m = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')
-      return { blob: await res.blob(), filename: m?.[1] ?? `vlm-ring-${id}.${format}` }
+      return { blob: await res.blob(), filename: m?.[1] ?? `virvi-ring-${id}.${format}` }
     },
 
     // Scene roles (wallet-based)
@@ -392,7 +392,7 @@ export function useApi() {
     /** Pass `plot` (and `spawn`) to build a new scene there, or omit both to adopt the live scene. 409 `world_in_use` carries `sceneId`. */
     createDclDestination: (data: { sceneId: string; world: string; mode: DclDestinationMode; plot?: Plot; spawn?: { x: number; z: number } }) =>
       apiFetch<{ destination: DclDestination; replaces?: { parcels: string[] } }>('/api/dcl/destinations', { method: 'POST', body: JSON.stringify(data) }),
-    /** The scene's World destinations, and Worlds set up in-world for it (Creator Hub `vlm-dcl` scenes) it can adopt. */
+    /** The scene's World destinations, and Worlds set up in-world for it (Creator Hub `@virvixr/dcl` scenes) it can adopt. */
     getSceneDclDestinations: (sceneId: string) =>
       apiFetch<{ destinations: DclDestination[]; adoptable: Array<{ world: string }> }>(`/api/scenes/${sceneId}/dcl/destinations`),
     getDclDestination: (id: string) =>
@@ -439,7 +439,7 @@ export function useApi() {
     getHeadsets: () => apiFetch<ArDeviceSummary[]>('/api/ar/devices'),
     revokeHeadset: (id: string) => apiFetch<void>(`/api/ar/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
-    // Hyperfy worlds (self-run and VLM-hosted)
+    // Hyperfy worlds (self-run and Virvi-hosted)
     getHyperfyWorlds: (sceneId: string) =>
       apiFetch<{ worlds: HyperfyWorldSummary[] }>(`/api/hyperfy/worlds?sceneId=${encodeURIComponent(sceneId)}`),
     createHyperfyWorld: (data: { sceneId: string; name: string }) =>

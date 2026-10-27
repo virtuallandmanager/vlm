@@ -115,7 +115,7 @@ def test_render_job_renders_requested_view(api, tmp_path):
 
 
 def test_idle_exit(api, tmp_path, monkeypatch):
-    env = {'VLM_API_URL': api.url, 'STUDIO_WORKER_TOKEN': TOKEN, 'STUDIO_DESIGN_ID': 'design-1',
+    env = {'VIRVI_API_URL': api.url, 'STUDIO_WORKER_TOKEN': TOKEN, 'STUDIO_DESIGN_ID': 'design-1',
            'STUDIO_IDLE_EXIT_SEC': '1'}
     import time
     start = time.monotonic()
@@ -129,7 +129,7 @@ def test_workspace_restored_on_start(api, tmp_path):
     (src / 'out/hat/piece.json').write_text('{}')
     save_state(tmp_path / 'src-state', State())
     api.workspace = pack(src, tmp_path / 'src-state')
-    env = {'VLM_API_URL': api.url, 'STUDIO_WORKER_TOKEN': TOKEN, 'STUDIO_DESIGN_ID': 'design-1',
+    env = {'VIRVI_API_URL': api.url, 'STUDIO_WORKER_TOKEN': TOKEN, 'STUDIO_DESIGN_ID': 'design-1',
            'STUDIO_IDLE_EXIT_SEC': '0'}
     assert jobs.main(env, design=tmp_path / 'design', poll_sec=0.1) == 0
     assert (tmp_path / 'design/out/hat/piece.json').exists()
@@ -138,7 +138,7 @@ def test_workspace_restored_on_start(api, tmp_path):
 def test_token_never_logged(api, tmp_path, capsys, skills):
     api.jobs.append(prompt_job())
     api.fail[('PUT', '/workspace')] = 500  # the error path too
-    env = {'VLM_API_URL': api.url, 'STUDIO_WORKER_TOKEN': TOKEN, 'STUDIO_DESIGN_ID': 'design-1',
+    env = {'VIRVI_API_URL': api.url, 'STUDIO_WORKER_TOKEN': TOKEN, 'STUDIO_DESIGN_ID': 'design-1',
            'STUDIO_IDLE_EXIT_SEC': '1'}
     assert jobs.main(env, design=tmp_path / 'design', poll_sec=0.2, render_fn=fake_render([]),
                      command=fake_command('claude_builds_hat.jsonl'), as_user=None) == 0

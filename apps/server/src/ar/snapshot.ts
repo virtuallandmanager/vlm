@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { ArSpaceWire, SerializedScene } from 'vlm-shared'
+import type { ArSpaceWire, SerializedScene } from '@virvixr/shared'
 import { sceneSnapshot } from '../hyperfy/snapshot.js'
 import { adjustmentsOf, applyAdjustments } from './adjustments.js'
 import { getSpace } from './spaces.js'

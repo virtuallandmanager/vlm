@@ -1,4 +1,4 @@
-# Setting up VLM-hosted Hyperfy worlds
+# Setting up Virvi-hosted Hyperfy worlds
 
 A one-time runbook for the Fly, Cloudflare, DNS and Railway pieces behind hosted Hyperfy worlds. The code is in
 `apps/server/src/hyperfy/`; the server offers hosted worlds only once every variable in step 7 is set
@@ -8,7 +8,7 @@ token, password or key into a repo, a ticket or a chat.
 Every world runs in `iad`, in the Fly org `vlm-worlds`, in an app named `vlm-w-<slug>`. The Fly org is separate from
 `vlm-streaming`, and the server's token must not reach that one.
 
-You need: `flyctl`, `docker`, `railway`, a Cloudflare account, and access to your DNS provider for `vlm.gg`.
+You need: `flyctl`, `docker`, `railway`, a Cloudflare account, and access to your DNS provider for `virvi.io`.
 
 ## 1. The Fly org and token
 
@@ -16,7 +16,7 @@ You need: `flyctl`, `docker`, `railway`, a Cloudflare account, and access to you
 2. Create an org-scoped token for the server (long-lived, named so it can be found and revoked):
 
    ```sh
-   fly tokens create org -o vlm-worlds -n vlm-server-worlds -x 8760h
+   fly tokens create org -o vlm-worlds -n virvi-server-worlds -x 8760h
    ```
 
    Store it in a password manager. It becomes `FLY_API_TOKEN` in step 7. It is valid for a year, so put the renewal date in a calendar. When it expires, create a new one, update Railway and redeploy.
@@ -36,15 +36,15 @@ You need: `flyctl`, `docker`, `railway`, a Cloudflare account, and access to you
 
 Every world gets a schema `world_<slug>` and a Postgres role of the same name that can use only that schema. All worlds share one cluster.
 
-The database is the self-run Fly Postgres app `vlm-worlds-pg` (Postgres 18, database `worlds`). It is reachable only inside Fly's private network, so the VLM server (on Railway) never connects to it. Database admin SQL runs in Fly job machines (`vlm-worlds-db-jobs`, `HYPERFY_WORLDS_DB_MODE=fly-job`). The server
+The database is the self-run Fly Postgres app `vlm-worlds-pg` (Postgres 18, database `worlds`). It is reachable only inside Fly's private network, so the Virvi server (on Railway) never connects to it. Database admin SQL runs in Fly job machines (`vlm-worlds-db-jobs`, `HYPERFY_WORLDS_DB_MODE=fly-job`). The server
 builds the SQL for a world's role and schema and runs it in a one-shot machine of `vlm-worlds-db-jobs`, using the world
-image (`node /app/vlm/db-job.mjs`). Each create or drop runs as one transaction. The job exits 0 when it committed, 1
+image (`node /app/virvi/db-job.mjs`). Each create or drop runs as one transaction. The job exits 0 when it committed, 1
 when a statement failed and the whole batch rolled back (nothing changed), and 2 when COMMIT itself failed, so the outcome
-is unknown. After exit 2 (or a Fly error or timeout) VLM drops the world's role and schema to be safe.
+is unknown. After exit 2 (or a Fly error or timeout) Virvi drops the world's role and schema to be safe.
 
 1. Run the Postgres app `vlm-worlds-pg` **in the org `vlm-worlds`** (the job machines and worlds reach it only over that org's private network), region `iad`, with database `worlds`. It is Postgres 18, and must be **Postgres 15 or newer**: the server refuses older versions with `worlds database must run Postgres 15 or newer`.
 2. Take two connection strings for the app:
-   - **Admin URL**: the cluster's **private** address with its admin user, which can create and drop roles and schemas. That user needs `CREATEROLE` and `CREATE` on the database, not superuser. On Postgres 16+ a `CREATEROLE` user isn't a member of the roles it creates, and `CREATE SCHEMA … AUTHORIZATION` needs it to be, so VLM's statements grant the admin each world's role (`GRANT … TO CURRENT_USER`) before creating the world's schema, and again before dropping it. It is stored only as a Fly secret of the jobs app, which Fly injects into every job machine; the VLM server never sees it:
+   - **Admin URL**: the cluster's **private** address with its admin user, which can create and drop roles and schemas. That user needs `CREATEROLE` and `CREATE` on the database, not superuser. On Postgres 16+ a `CREATEROLE` user isn't a member of the roles it creates, and `CREATE SCHEMA … AUTHORIZATION` needs it to be, so Virvi's statements grant the admin each world's role (`GRANT … TO CURRENT_USER`) before creating the world's schema, and again before dropping it. It is stored only as a Fly secret of the jobs app, which Fly injects into every job machine; the Virvi server never sees it:
 
      ```sh
      fly secrets set -a vlm-worlds-db-jobs DB_ADMIN_URL='<admin url>'
@@ -66,12 +66,12 @@ World files (models, images, uploads) live in R2 under the prefix `<slug>/`, and
    ```
 
    Give it without a trailing slash and without a world name. The server appends `/<slug>` for each world. R2 access key IDs and secrets are hex, so paste them as they are: don't URL-encode anything (Hyperfy reads the key and secret out of the URI without decoding them).
-3. In the bucket's settings, add a public **custom domain** for the CDN, for example `worlds-cdn.vlm.gg`. Its origin, `https://worlds-cdn.vlm.gg`, becomes `HYPERFY_ASSETS_BASE_URL` (no trailing slash; the server appends `/<slug>`).
-4. Add a **CORS rule** on the bucket: allow `GET` and `HEAD` from `*` (the files are public anyway). If you'd rather restrict it, list explicit origins instead, `https://*.worlds.vlm.gg` and `https://vlm-w-*.fly.dev`, if R2 accepts wildcards inside origins.
+3. In the bucket's settings, add a public **custom domain** for the CDN, for example `worlds-cdn.virvi.io`. Its origin, `https://worlds-cdn.virvi.io`, becomes `HYPERFY_ASSETS_BASE_URL` (no trailing slash; the server appends `/<slug>`).
+4. Add a **CORS rule** on the bucket: allow `GET` and `HEAD` from `*` (the files are public anyway). If you'd rather restrict it, list explicit origins instead, `https://*.worlds.virvi.io` and `https://vlm-w-*.fly.dev`, if R2 accepts wildcards inside origins.
 
 ## 4. DNS and the router certificate
 
-Worlds on Pro and above live at `<slug>.worlds.vlm.gg`. One router app answers for all of them (step 5), so there is one wildcard certificate and one wildcard DNS record, and nothing to do per world.
+Worlds on Pro and above live at `<slug>.worlds.virvi.io`. One router app answers for all of them (step 5), so there is one wildcard certificate and one wildcard DNS record, and nothing to do per world.
 
 1. Create the router app and give it addresses:
 
@@ -84,12 +84,12 @@ Worlds on Pro and above live at `<slug>.worlds.vlm.gg`. One router app answers f
 2. Request the wildcard certificate:
 
    ```sh
-   fly certs add "*.worlds.vlm.gg" -a vlm-worlds-router
-   fly certs show "*.worlds.vlm.gg" -a vlm-worlds-router
+   fly certs add "*.worlds.virvi.io" -a vlm-worlds-router
+   fly certs show "*.worlds.virvi.io" -a vlm-worlds-router
    ```
-3. At your DNS provider, add the records Fly asks for. That includes the `_acme-challenge` CNAME for the wildcard (it points under `_acme-challenge.worlds.vlm.gg`; copy the exact name and target from `fly certs show`).
-4. Add a wildcard record `*.worlds.vlm.gg` pointing at the router's IPs from `fly ips list`: an `A` record for the IPv4 and an `AAAA` record for the IPv6.
-5. Re-run `fly certs show "*.worlds.vlm.gg" -a vlm-worlds-router` until the certificate reports as issued.
+3. At your DNS provider, add the records Fly asks for. That includes the `_acme-challenge` CNAME for the wildcard (it points under `_acme-challenge.worlds.virvi.io`; copy the exact name and target from `fly certs show`).
+4. Add a wildcard record `*.worlds.virvi.io` pointing at the router's IPs from `fly ips list`: an `A` record for the IPv4 and an `AAAA` record for the IPv6.
+5. Re-run `fly certs show "*.worlds.virvi.io" -a vlm-worlds-router` until the certificate reports as issued.
 
 Worlds on Creator get `vlm-w-<slug>.fly.dev` instead, which needs no DNS or certificate.
 
@@ -102,30 +102,30 @@ cd infra/hyperfy-router
 fly deploy -a vlm-worlds-router
 ```
 
-`fly.toml` keeps one machine always running (`min_machines_running = 1`, no autostop) in `iad` and sets `ROUTER_DOMAIN=worlds.vlm.gg`. Check it with:
+`fly.toml` keeps one machine always running (`min_machines_running = 1`, no autostop) in `iad` and sets `ROUTER_DOMAIN=worlds.virvi.io`. Check it with:
 
 ```sh
-curl -i https://anything.worlds.vlm.gg/   # 404 "No world here" while no such world exists
+curl -i https://anything.worlds.virvi.io/   # 404 "No world here" while no such world exists
 ```
 
 ## 6. Build and push the world image
 
-The image is Hyperfy `dev` at `b4081eb` with `infra/hyperfy/patches/` applied in order, plus the VLM app (see `infra/hyperfy/patches/README.md`). Hyperfy is pinned; upgrading it is a deliberate change that re-runs `infra/hyperfy/test-world.mjs`.
+The image is Hyperfy `dev` at `b4081eb` with `infra/hyperfy/patches/` applied in order, plus the Virvi app (see `infra/hyperfy/patches/README.md`). Hyperfy is pinned; upgrading it is a deliberate change that re-runs `infra/hyperfy/test-world.mjs`.
 
 ```sh
 fly auth docker
 infra/hyperfy/build.sh
 ```
 
-Build the VLM app first so `packages/vlm-hyperfy-app/dist/vlm.hyp` exists and is committed (the script refuses to run with uncommitted changes in `infra/hyperfy` or that `dist`, so the tag matches what is in the image). It builds for `linux/amd64`, pushes `registry.fly.io/vlm-hyperfy-image:<git-sha>` and prints that tag. That tag is `HYPERFY_IMAGE`.
+Build the Virvi app first so `packages/hyperfy-app/dist/virvi.hyp` exists and is committed (the script refuses to run with uncommitted changes in `infra/hyperfy` or that `dist`, so the tag matches what is in the image). It builds for `linux/amd64`, pushes `registry.fly.io/vlm-hyperfy-image:<git-sha>` and prints that tag. That tag is `HYPERFY_IMAGE`.
 
 New worlds use the current `HYPERFY_IMAGE`. Existing worlds keep their image until their next key rotation or restore, either of which moves them to the current one.
 
-Hosted worlds get `VLM_WORLD_SECRET` automatically when they are created. It lets the world's server half vouch for builders who press **Link to VLM** in the HUD. Worlds that already exist get it on their next key rotation or restore. Patch 0003 keeps the secret out of app scripts: vouching runs in a Node worker, so scripts never see it.
+Hosted worlds get `VIRVI_WORLD_SECRET` automatically when they are created. It lets the world's server half vouch for builders who press **Link to Virvi** in the HUD. Worlds that already exist get it on their next key rotation or restore. Patch 0003 keeps the secret out of app scripts: vouching runs in a Node worker, so scripts never see it.
 
 ## 7. Railway variables
 
-Set these on the `vlm-server` service:
+Set these on the `virvi-server` service:
 
 | Variable | Value |
 |---|---|
@@ -135,29 +135,29 @@ Set these on the `vlm-server` service:
 | `HYPERFY_IMAGE` | the tag printed in step 6 |
 | `HYPERFY_WORLDS_DB_URL_TEMPLATE` | the pooled URL with `{user}` and `{password}` |
 | `HYPERFY_ASSETS_S3_URI` | `s3://<key>:<secret>@<account-id>.r2.cloudflarestorage.com/vlm-hyperfy` |
-| `HYPERFY_ASSETS_BASE_URL` | `https://worlds-cdn.vlm.gg` |
-| `HYPERFY_ROUTER_DOMAIN` | `worlds.vlm.gg` |
+| `HYPERFY_ASSETS_BASE_URL` | `https://worlds-cdn.virvi.io` |
+| `HYPERFY_ROUTER_DOMAIN` | `worlds.virvi.io` |
 | `HYPERFY_SECRET_KEY` | 32 random bytes as 64 hex characters (`openssl rand -hex 32`); it encrypts the worlds' admin codes. Don't lose or change it, or stored admin codes become unreadable. |
 | `HYPERFY_DB_JOB_APP` | optional, default `vlm-worlds-db-jobs` (the app from step 1) |
 | `HYPERFY_WORLDS_DB_MODE` | optional, default `fly-job`. Leave it unset in production. `direct` makes the server connect to `HYPERFY_WORLDS_DATABASE_URL` itself (an admin URL it can reach, so local dev only); that variable is needed only in direct mode, and production doesn't set it. |
 
 ```sh
-railway variables -s vlm-server --set "HYPERFY_INFRA_PROVIDER=fly" --set "FLY_WORLDS_ORG=vlm-worlds" # …and the rest
+railway variables -s virvi-server --set "HYPERFY_INFRA_PROVIDER=fly" --set "FLY_WORLDS_ORG=vlm-worlds" # …and the rest
 ```
 
 Enter the secret values in the Railway dashboard instead if you don't want them in your shell history.
 
-Also add every one of these names (and `HYPERFY_WORLDS_DATABASE_URL`, which stays unset in production) to the `env` of `vlm-server` in `.railway/railway.ts`, each as `NAME: preserve()`. `railway config apply` deletes any variable that file doesn't list, so unlisted ones would vanish on the next apply. Run `railway config plan` before any apply.
+Also add every one of these names (and `HYPERFY_WORLDS_DATABASE_URL`, which stays unset in production) to the `env` of `virvi-server` in `.railway/railway.ts`, each as `NAME: preserve()`. `railway config apply` deletes any variable that file doesn't list, so unlisted ones would vanish on the next apply. Run `railway config plan` before any apply.
 
 Deploy the server (and only this way):
 
 ```sh
-railway up <path-to-the-worktree> --path-as-root -s vlm-server --ci
+railway up <path-to-the-worktree> --path-as-root -s virvi-server --ci
 ```
 
 ## 8. Verify
 
-1. `GET https://api.vlm.gg/api/deploy/platforms` (signed in) reports `"hyperfy": true`. If it is `false`, a variable from step 7 is missing or `HYPERFY_INFRA_PROVIDER` isn't `fly`.
+1. `GET https://api.virvi.io/api/deploy/platforms` (signed in) reports `"hyperfy": true`. If it is `false`, a variable from step 7 is missing or `HYPERFY_INFRA_PROVIDER` isn't `fly`.
 2. In the dashboard, open **Deploy**, pick a scene on a plan that has hosted worlds, and create a hosted world.
 3. Its row goes from **Setting up…** to **Live** within 3 minutes (the server waits up to 180 seconds for the address to answer 200). The first visit to a world that was asleep takes longer.
 4. Open the address, type the admin code shown on creation as `/admin <code>`, and check the scene shows.

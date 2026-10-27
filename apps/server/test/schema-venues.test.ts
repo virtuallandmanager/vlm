@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { VENUE_SCOPES, VENUE_ROLES, DEFAULT_VENUE_RULES } from 'vlm-shared'
+import { VENUE_SCOPES, VENUE_ROLES, DEFAULT_VENUE_RULES } from '@virvixr/shared'
 import { db } from '../src/db/connection.js'
 import { venues, bookings, accessGrants, venueScopeEnum, venueRoleEnum } from '../src/db/schema.js'
 import { resetDb } from './helpers/db.js'
@@ -34,7 +34,7 @@ function bookingValues(venueId: string, renterUserId: string, start: Date, end: 
 describe('venue schema', () => {
   beforeEach(resetDb)
 
-  it('DB enums match vlm-shared constants', () => {
+  it('DB enums match @virvixr/shared constants', () => {
     expect(venueScopeEnum.enumValues).toEqual([...VENUE_SCOPES])
     expect(venueRoleEnum.enumValues).toEqual([...VENUE_ROLES])
   })

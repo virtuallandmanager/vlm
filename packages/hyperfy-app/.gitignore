@@ -1,0 +1,4 @@
+# dist/virvi.hyp is the shipped app file and is committed
+!dist/
+dist/*
+!dist/virvi.hyp

@@ -15,7 +15,7 @@ export function resolveView(locations: AnalyticsLocation[], params: { location: 
     return loc ? { view: 'dashboard', location: loc } : { view: 'no-access' }
   }
   if (params.scene) {
-    const loc = locations.find((l) => l.vlmSceneId === params.scene)
+    const loc = locations.find((l) => l.virviSceneId === params.scene)
     return loc ? { view: 'redirect', locationId: loc.id } : { view: 'list', note: NO_SCENE_NOTE }
   }
   if (locations.length === 1) return { view: 'redirect', locationId: locations[0].id }

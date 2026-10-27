@@ -1,4 +1,4 @@
-/** Where "Advertise with VLM" goes. Null opens the early-access form; set to '/advertise' when ad step 3 ships. */
+/** Where "Advertise with Virvi" goes. Null opens the early-access form; set to '/advertise' when ad step 3 ships. */
 export const ADVERTISE_PAGE: string | null = null
 
 /** Public links on the landing page. Docs and Discord are null (and left out) until their URL is configured; privacy is the app's own page. */

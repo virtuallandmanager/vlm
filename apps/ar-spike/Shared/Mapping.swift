@@ -1,9 +1,9 @@
 import Foundation
 import simd
 
-/// Port of packages/vlm-hyperfy-app/src/transform.ts.
+/// Port of packages/hyperfy-app/src/transform.ts.
 ///
-/// VLM (Decentraland, left-handed, Y-up, +Z forward) to RealityKit (right-handed, Y-up, -Z forward), which is
+/// Virvi (Decentraland, left-handed, Y-up, +Z forward) to RealityKit (right-handed, Y-up, -Z forward), which is
 /// the same frame as three.js/Hyperfy. Position z is mirrored; rotation goes degrees to radians with x and y
 /// negated (a z-mirror flips turns about x and y), applied in Decentraland's yaw-pitch-roll order, which is
 /// three.js 'YXZ'. Scale is unchanged.
@@ -45,5 +45,5 @@ func quaternionYXZ(_ r: SIMD3<Double>) -> simd_quatd {
     return qy * qx * qz
 }
 
-/// Where the scene's middle sits in VLM coordinates: the centre of a single 16 m parcel, at ground level.
-let VLM_SCENE_CENTER = Vec3(x: 8, y: 0, z: 8)
+/// Where the scene's middle sits in Virvi coordinates: the centre of a single 16 m parcel, at ground level.
+let VIRVI_SCENE_CENTER = Vec3(x: 8, y: 0, z: 8)

@@ -48,7 +48,7 @@
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
-import { plotParcels, validPlot, type Plot } from 'vlm-shared'
+import { plotParcels, validPlot, type Plot } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { analyticsScenes, dclWorldDestinations, locationSetups, sceneDeployments } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
@@ -350,7 +350,7 @@ export default async function dclDestinationRoutes(app: FastifyInstance) {
       if (!entities.length) throw new RouteError(400, 'no_live_scene')
       const loc = await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.locationKey, `world:${world}`) })
       const setup = loc ? await getActiveSetup(loc.id) : null
-      if (!loc || setup?.vlmSceneId !== sceneId) throw new RouteError(400, 'not_connected')
+      if (!loc || setup?.virviSceneId !== sceneId) throw new RouteError(400, 'not_connected')
       const live =
         entities.find((e) => e.id === setup.deploymentEntityId) ??
         entities.find((e) => !!loc.baseParcel && e.pointers.includes(loc.baseParcel)) ??
@@ -476,7 +476,7 @@ export default async function dclDestinationRoutes(app: FastifyInstance) {
     return reply.send({ destination: await reload(dest.id) })
   }))
 
-  // `adoptable`: Worlds whose active location setup is this scene (a Creator Hub `vlm-dcl` scene) and that no
+  // `adoptable`: Worlds whose active location setup is this scene (a Creator Hub `@virvixr/dcl` scene) and that no
   // destination uses yet. Adopting one is POST /api/dcl/destinations without a plot.
   app.get<{ Params: { sceneId: string } }>('/api/scenes/:sceneId/dcl/destinations', async (request, reply) => handle(reply, async () => {
     const { sceneId } = request.params
@@ -491,7 +491,7 @@ export default async function dclDestinationRoutes(app: FastifyInstance) {
       .select({ world: analyticsScenes.worldName })
       .from(locationSetups)
       .innerJoin(analyticsScenes, eq(analyticsScenes.id, locationSetups.analyticsSceneId))
-      .where(and(eq(locationSetups.vlmSceneId, sceneId), isNull(locationSetups.endedAt), eq(analyticsScenes.kind, 'world')))
+      .where(and(eq(locationSetups.virviSceneId, sceneId), isNull(locationSetups.endedAt), eq(analyticsScenes.kind, 'world')))
     const worlds = unique(setUp.map((r) => r.world?.toLowerCase()).filter((w): w is string => !!w))
     const taken = worlds.length
       ? new Set((await db.query.dclWorldDestinations.findMany({ where: inArray(dclWorldDestinations.worldName, worlds), columns: { worldName: true } })).map((d) => d.worldName))

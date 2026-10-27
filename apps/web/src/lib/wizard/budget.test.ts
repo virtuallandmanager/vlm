@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Plot } from 'vlm-shared'
+import type { Plot } from '@virvixr/shared'
 import type { WizardAsset } from '../api'
 import { budgetStatus, fitToBudget } from './budget'
 import type { PlacedItem } from './placement'

@@ -1,4 +1,4 @@
-import type { HyperfyAnalyticsBatch } from 'vlm-shared'
+import type { HyperfyAnalyticsBatch } from '@virvixr/shared'
 import { recordVisitBatch } from '../hyperfy/analytics.js'
 
 /** The headset apps that report visits. The Apple plan adds `ar-ios` and `ar-visionos`. */

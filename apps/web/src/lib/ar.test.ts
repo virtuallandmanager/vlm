@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { ArMarkerView, ArSpaceView } from 'vlm-shared'
+import type { ArMarkerView, ArSpaceView } from '@virvixr/shared'
 import { alignmentStatus, friendlyArError, reportReasonLabel, resizeNote, shareUrl, spaceCodeFromPath, spaceReadiness } from './ar'
 
 const marker = (pose: ArMarkerView['pose']): ArMarkerView => ({ id: 'm', ringId: 1, code: '2E3D4C5', diameterMm: 140, whereText: null, pose })
@@ -37,8 +37,8 @@ describe('spaceReadiness', () => {
 })
 
 describe('shareUrl', () => {
-  it('builds the vlm.gg link', () => {
-    expect(shareUrl('2E3D4C5')).toBe('https://vlm.gg/s/2E3D4C5')
+  it('builds the virvi.io link', () => {
+    expect(shareUrl('2E3D4C5')).toBe('https://virvi.io/s/2E3D4C5')
   })
 })
 

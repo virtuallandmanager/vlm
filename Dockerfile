@@ -1,5 +1,5 @@
 # =============================================================================
-# VLM V2 — Production Dockerfile
+# Virvi V2 — Production Dockerfile
 # One image for all modes (single / scalable / cloud). Behavior controlled by
 # environment variables at runtime. See .env.example for full reference.
 # =============================================================================
@@ -17,12 +17,12 @@ COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY apps/streaming/package.json apps/streaming/
 COPY apps/docs/package.json apps/docs/
-COPY packages/vlm-shared/package.json packages/vlm-shared/
-COPY packages/vlm-core/package.json packages/vlm-core/
-COPY packages/vlm-client/package.json packages/vlm-client/
-COPY packages/vlm-hud/package.json packages/vlm-hud/
-COPY packages/vlm-adapter-dcl/package.json packages/vlm-adapter-dcl/
-COPY packages/vlm-hyperfy-app/package.json packages/vlm-hyperfy-app/
+COPY packages/shared/package.json packages/shared/
+COPY packages/core/package.json packages/core/
+COPY packages/client/package.json packages/client/
+COPY packages/hud/package.json packages/hud/
+COPY packages/adapter-dcl/package.json packages/adapter-dcl/
+COPY packages/hyperfy-app/package.json packages/hyperfy-app/
 
 RUN pnpm install --frozen-lockfile
 

@@ -26,7 +26,7 @@ function CallbackHandler() {
       }
 
       localStorage.setItem(
-        'vlm_auth',
+        'virvi_auth',
         JSON.stringify({ token, refresh, user }),
       )
 

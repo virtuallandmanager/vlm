@@ -1,9 +1,9 @@
-"""The worker's job loop: restore the design's workspace, take jobs from VLM's API until it has been idle for
+"""The worker's job loop: restore the design's workspace, take jobs from Virvi's API until it has been idle for
 STUDIO_IDLE_EXIT_SEC, then exit so the machine stops. See CONTRACT.md for the API.
 
 A prompt job runs the agent, checks and renders what changed, uploads it, saves the workspace, and only then posts
 its result. A render job renders a view of the workspace's current pieces and saves nothing. A finalize job builds
-paid packages from VLM's copies of the paid files (finalize.py) and saves nothing either.
+paid packages from Virvi's copies of the paid files (finalize.py) and saves nothing either.
 """
 import copy
 import mimetypes
@@ -109,7 +109,7 @@ def _prompt_job(job, client, design, render_fn, command, as_user, result):
         if run.session_total:
             state.totals[agent] = asdict(run.session_total)
         state.last_agent = agent
-        # only what reached VLM counts as the design's current pieces
+        # only what reached Virvi counts as the design's current pieces
         state.hashes.update({c: h for c, h in new_hashes(pieces).items() if c in uploaded})
         save_state(state_path, state)
         try:
@@ -206,7 +206,7 @@ def main(env: Mapping[str, str] | None = None, design: Path | None = None, poll_
          **run_kwargs) -> int:
     env = os.environ if env is None else env
     design = Path(design or DESIGN)
-    client = Api(env['VLM_API_URL'], env['STUDIO_WORKER_TOKEN'], env['STUDIO_DESIGN_ID'])
+    client = Api(env['VIRVI_API_URL'], env['STUDIO_WORKER_TOKEN'], env['STUDIO_DESIGN_ID'])
     idle_exit = float(env.get('STUDIO_IDLE_EXIT_SEC', IDLE_EXIT_SEC))
     data = client.get_workspace()
     if data:

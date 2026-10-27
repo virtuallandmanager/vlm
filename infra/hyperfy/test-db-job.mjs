@@ -24,7 +24,7 @@ if (!process.argv[2] || !existsSync(path.join(srcDir, 'node_modules/pg'))) {
 const adminUrl = process.env.TEST_DATABASE_URL ||
   readFileSync(path.join(repoRoot, 'apps/server/vitest.config.ts'), 'utf8').match(/TEST_DATABASE_URL \|\| '([^']+)'/)[1]
 
-const work = mkdtempSync(path.join(tmpdir(), 'vlm-db-job-'))
+const work = mkdtempSync(path.join(tmpdir(), 'virvi-db-job-'))
 symlinkSync(path.join(srcDir, 'node_modules'), path.join(work, 'node_modules'))
 copyFileSync(path.join(here, 'db-job.mjs'), path.join(work, 'db-job.mjs'))
 const { Client } = createRequire(path.join(srcDir, 'package.json'))('pg')

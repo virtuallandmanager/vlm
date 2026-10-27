@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { eq } from 'drizzle-orm'
-import { VENUE_ROLE_SCOPES, isVenueRole } from 'vlm-shared'
+import { VENUE_ROLE_SCOPES, isVenueRole } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { scenes, venues } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'

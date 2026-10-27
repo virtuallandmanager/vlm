@@ -1,5 +1,5 @@
 /**
- * Hyperfy HUD pairing: a player's HUD gets a code, a VLM user approves it on vlm.gg, the HUD trades it for a scene pass.
+ * Hyperfy HUD pairing: a player's HUD gets a code, a Virvi user approves it on virvi.io, the HUD trades it for a scene pass.
  *
  * POST   /api/hyperfy/pair                  — (public, world key) Start a pairing; returns the code, approve link and QR
  * GET    /api/hyperfy/pair/:code/qr.png     — (public) QR of the approve link
@@ -7,7 +7,7 @@
  * POST   /api/hyperfy/pair/:code/approve    — (signed in) Approve (or, without editing access, refuse) a code
  * POST   /api/hyperfy/pair/:code/claim      — (public, browser secret) Trade an approved code for a pass
  * POST   /api/hyperfy/pairings/:id/renew    — (public, browser secret) A fresh pass for a live pairing
- * POST   /api/hyperfy/pairings/vouch        — (public, world key + VLM_WORLD_SECRET) A hosted world speaks for a player: pass, a new code, or (with
+ * POST   /api/hyperfy/pairings/vouch        — (public, world key + VIRVI_WORLD_SECRET) A hosted world speaks for a player: pass, a new code, or (with
  *                                             pendingPairingId) the state of that player's pending pairing
  * GET    /api/hyperfy/pairings              — (signed in) My live pairings
  * DELETE /api/hyperfy/pairings/:id          — (signed in) Revoke one of my pairings
@@ -17,7 +17,7 @@
 
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import QRCode from 'qrcode'
-import { normalizePairingCode, type PairStartResponse } from 'vlm-shared'
+import { normalizePairingCode, type PairStartResponse } from '@virvixr/shared'
 import { config } from '../config.js'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
@@ -125,7 +125,7 @@ export default async function hyperfyPairingRoutes(app: FastifyInstance) {
     return reply.send(result)
   })
 
-  // The world's own server calls this with VLM_WORLD_SECRET; the player id is trusted only because of that proof.
+  // The world's own server calls this with VIRVI_WORLD_SECRET; the player id is trusted only because of that proof.
   // Not under the app-wide IP limit: a generous per-IP cap comes first, then the secret, then each world's own window.
   app.post('/api/hyperfy/pairings/vouch', { config: { rateLimit: false } }, async (request, reply) => {
     if (!windowAllowed(vouchIpWindows, request.ip, vouchIpLimiter)) return reply.status(429).send({ error: 'rate_limited' })

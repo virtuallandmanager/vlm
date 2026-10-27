@@ -1,5 +1,5 @@
 """A finalize job: builds the package of each paid revision listed in the job, from that revision's own files (read
-from VLM with `inputs`, never from the workspace), and uploads it as final/<category>/package.zip. See CONTRACT.md,
+from Virvi with `inputs`, never from the workspace), and uploads it as final/<category>/package.zip. See CONTRACT.md,
 "Package". No agent runs and no workspace is saved.
 
 Checks that fail (thumbnail, listing, clipping) go in the package's REPORT.md, plainly: the customer has paid. A tool

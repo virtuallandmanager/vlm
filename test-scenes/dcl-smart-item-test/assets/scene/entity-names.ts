@@ -5,5 +5,5 @@
  * Object containing all entity names in the scene for autocomplete support.
  */
 export enum EntityNames {
-  VLM_Manager = "VLM Manager",
+  VIRVI_Manager = "Virvi Manager",
 } 

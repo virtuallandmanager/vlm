@@ -17,7 +17,7 @@ async function mkAd(kind: 'house' | 'partner', shape = '1:1', creativeKind: 'ima
   return { ad, c }
 }
 
-/** A VLM scene set up at SCENE_META's parcel, recorded as that signed deployment, so a signed request binds to it. */
+/** A Virvi scene set up at SCENE_META's parcel, recorded as that signed deployment, so a signed request binds to it. */
 async function boundScene() {
   const owner = await createUser()
   const { scene, preset } = await createScene(owner)

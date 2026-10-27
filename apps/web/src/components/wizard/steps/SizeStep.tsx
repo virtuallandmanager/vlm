@@ -1,6 +1,6 @@
 'use client'
 import { useState, type Dispatch } from 'react'
-import { dclBudget, plotParcels, type Plot } from 'vlm-shared'
+import { dclBudget, plotParcels, type Plot } from '@virvixr/shared'
 import { clampSide, MAX_PLOT_SIDE, PLOT_CHOICES, storageLine } from '@/lib/wizard/helpers'
 import { GUIDE_PLOT, stateBudget, type WizardAction, type WizardState } from '@/lib/wizard/state'
 

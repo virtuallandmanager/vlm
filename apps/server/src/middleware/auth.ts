@@ -42,7 +42,7 @@ declare module '@fastify/jwt' {
  * Fastify preHandler that verifies the JWT from the Authorization header
  * and attaches the decoded user to request.user.
  *
- * Also supports API key authentication via `Bearer vlm_...` tokens.
+ * Also supports API key authentication via `Bearer virvi_...` tokens.
  */
 export async function authenticate(request: FastifyRequest, reply: FastifyReply) {
   try {
@@ -54,7 +54,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     const token = authHeader.slice(7)
 
     // ── API Key auth ──────────────────────────────────────────────────────
-    if (token.startsWith('vlm_')) {
+    if (token.startsWith('virvi_')) {
       const keyHash = createHash('sha256').update(token).digest('hex')
 
       const [apiKey] = await db

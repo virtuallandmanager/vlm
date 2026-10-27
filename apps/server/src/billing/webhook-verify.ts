@@ -1,4 +1,4 @@
-import type { VLMMode } from '../config.js'
+import type { VirviMode } from '../config.js'
 
 export type WebhookVerification =
   | { ok: true; event: unknown }
@@ -13,7 +13,7 @@ const SIGNATURE_FAILED = { ok: false, status: 400, error: 'Webhook signature ver
 export async function verifyWebhookEvent(
   rawBody: string | undefined,
   sig: string | undefined,
-  opts: { secret: string | undefined; stripeKey: string; mode: VLMMode; nodeEnv: string | undefined },
+  opts: { secret: string | undefined; stripeKey: string; mode: VirviMode; nodeEnv: string | undefined },
 ): Promise<WebhookVerification> {
   if (opts.secret) {
     if (!sig) return { ok: false, status: 400, error: 'Missing Stripe signature' }

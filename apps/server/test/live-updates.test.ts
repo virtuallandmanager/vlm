@@ -32,7 +32,7 @@ describe('REST edits broadcast live updates to scene rooms', () => {
       method: 'POST',
       url: `/api/presets/${preset.id}/elements`,
       headers: { authorization: `Bearer ${tokenFor(host)}` },
-      payload: { type: 'image', name: 'Poster', properties: { textureSrc: 'https://cdn.vlm.gg/u1/a.png' } },
+      payload: { type: 'image', name: 'Poster', properties: { textureSrc: 'https://cdn.virvi.io/u1/a.png' } },
     })
     expect(created.statusCode).toBe(201)
     for (const c of [v, g]) {
@@ -51,7 +51,7 @@ describe('REST edits broadcast live updates to scene rooms', () => {
       method: 'POST',
       url: `/api/presets/${preset.id}/elements`,
       headers,
-      payload: { type: 'image', name: 'Poster', properties: { textureSrc: 'https://cdn.vlm.gg/u1/a.png' } },
+      payload: { type: 'image', name: 'Poster', properties: { textureSrc: 'https://cdn.virvi.io/u1/a.png' } },
     })
     expect(created.statusCode).toBe(201)
     const elementId = created.json().element.id
@@ -59,7 +59,7 @@ describe('REST edits broadcast live updates to scene rooms', () => {
     expect(msg).toMatchObject({
       action: 'upsert',
       element: 'image',
-      elementData: { sk: elementId, textureSrc: 'https://cdn.vlm.gg/u1/a.png', instances: [] },
+      elementData: { sk: elementId, textureSrc: 'https://cdn.virvi.io/u1/a.png', instances: [] },
     })
 
     const inst = await app.inject({
@@ -114,7 +114,7 @@ describe('REST edits broadcast live updates to scene rooms', () => {
       method: 'POST',
       url: `/api/presets/${other.id}/elements`,
       headers: { authorization: `Bearer ${tokenFor(host)}` },
-      payload: { type: 'image', name: 'Hidden', properties: { textureSrc: 'https://cdn.vlm.gg/u1/b.png' } },
+      payload: { type: 'image', name: 'Hidden', properties: { textureSrc: 'https://cdn.virvi.io/u1/b.png' } },
     })
     expect(res.statusCode).toBe(201)
     await c.expectNone('scene_preset_update', 300)

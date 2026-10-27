@@ -14,6 +14,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "VLMSpaces"
+rootProject.name = "VirviAR"
 
 include(":app")

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { DEFAULT_VENUE_RULES, VENUE_ROLE_SCOPES } from 'vlm-shared'
+import { DEFAULT_VENUE_RULES, VENUE_ROLE_SCOPES } from '@virvixr/shared'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import { venues, bookings, accessGrants, sceneCollaborators, organizations, orgMembers, scenes } from '../src/db/schema.js'
@@ -91,7 +91,7 @@ describe('getSceneAccess', () => {
 
   it('org membership grants no scene access, whatever the org role', async () => {
     const s = await seed()
-    const [org] = await db.insert(organizations).values({ name: 'VLM', slug: `vlm-${crypto.randomUUID()}` }).returning()
+    const [org] = await db.insert(organizations).values({ name: 'Virvi', slug: `virvi-${crypto.randomUUID()}` }).returning()
     await db.update(scenes).set({ orgId: org.id }).where(eq(scenes.id, s.scene.id))
     const orgAdmin = await createUser()
     const member = await createUser()

@@ -1,13 +1,13 @@
 import Foundation
 
-/// Port of packages/vlm-hyperfy-app/src/plan.ts: which nodes to show for a VLM scene snapshot.
+/// Port of packages/hyperfy-app/src/plan.ts: which nodes to show for a Virvi scene snapshot.
 /// The scene is untyped JSON (from JSONSerialization), so the JS `typeof` checks are mirrored by hand.
 struct RenderItem: Equatable {
     enum Kind: String { case video, image, model, audio }
 
     /// "\(elementSk):\(instanceSk)"
     var key: String
-    /// The element's name in VLM, or the media file name when it has none.
+    /// The element's name in Virvi, or the media file name when it has none.
     var name: String
     var kind: Kind
     /// For video, image and model, the URL to show; for audio, the sound.

@@ -1,8 +1,8 @@
 import { asc, eq, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { ads, adCreatives, adPlacements, sceneElements } from '../db/schema.js'
-import { VideoSourceType, AD_SHAPES } from 'vlm-shared'
-import type { AdItem, AdServeResponse, AdShape, AdFormats } from 'vlm-shared'
+import { VideoSourceType, AD_SHAPES } from '@virvixr/shared'
+import type { AdItem, AdServeResponse, AdShape, AdFormats } from '@virvixr/shared'
 import { isUnderActiveBooking } from './booking.js'
 
 type Space = { shape: AdShape; formats: AdFormats }

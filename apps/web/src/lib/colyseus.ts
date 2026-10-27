@@ -17,7 +17,7 @@ export function useSceneRoom(sceneId: string | null, token: string | null) {
         const client = new Client(WSS_URL)
         clientRef.current = client
 
-        const newRoom = await client.joinOrCreate('vlm_scene', {
+        const newRoom = await client.joinOrCreate('virvi_scene', {
           sceneId,
           sessionToken: token,
           clientType: 'host',
@@ -106,7 +106,7 @@ export function useCommandCenterRoom(eventId: string | null, token: string | nul
         const client = new Client(WSS_URL)
         clientRef.current = client
 
-        const newRoom = await client.joinOrCreate('vlm_command_center', {
+        const newRoom = await client.joinOrCreate('virvi_command_center', {
           eventId,
           sessionToken: token,
           clientType: 'host',

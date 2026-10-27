@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
-import { HYPERFY_FEED, checkHyperfyAnalyticsBatch, type HyperfyFeedResponse } from 'vlm-shared'
+import { HYPERFY_FEED, checkHyperfyAnalyticsBatch, type HyperfyFeedResponse } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { hyperfyWorlds } from '../db/schema.js'
 import { findWorldByKey } from '../hyperfy/worlds.js'

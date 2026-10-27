@@ -1,0 +1,126 @@
+From 2f5d9a6294b852ffd15112ec349f3168f15dc04b Mon Sep 17 00:00:00 2001
+From: Virvi <noreply@virvi.io>
+Date: Tue, 20 Oct 2026 17:01:04 -0400
+Subject: [PATCH] feat(server): install the Virvi app as blueprint virvi on every
+ boot
+
+Reads /app/virvi/virvi.hyp (VIRVI_APP_PATH), uploads its assets, upserts blueprint
+virvi with feedUrl/worldKey from VIRVI_FEED_URL/VIRVI_WORLD_KEY and keeps one virvi
+entity. Postgres: skip CREATE SCHEMA when the schema already exists, since
+world roles have no CREATE on the database.
+---
+ src/server/db.js  |  7 ++++-
+ src/server/virvi.js | 65 +++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 71 insertions(+), 1 deletion(-)
+ create mode 100644 src/server/virvi.js
+
+diff --git a/src/server/db.js b/src/server/db.js
+index 0c5660d..bec74f0 100644
+--- a/src/server/db.js
++++ b/src/server/db.js
+@@ -7,6 +7,7 @@ import { importApp } from '../core/extras/appTools'
+ import { defaults } from 'lodash-es'
+ import { Ranks } from '../core/extras/ranks'
+ import { assets } from './assets'
++import { installVirviApp } from './virvi'
+ 
+ let db
+ 
+@@ -23,7 +24,10 @@ export async function getDB({ worldDir }) {
+         useNullAsDefault: true,
+       })
+       if (schema !== 'public') {
+-        await db.raw(`CREATE SCHEMA IF NOT EXISTS ??`, [schema])
++        // Virvi: worlds run as a role without CREATE on the database, in a schema Virvi made for them, so only create it
++        // when it is missing
++        const { rows } = await db.raw(`SELECT 1 FROM pg_namespace WHERE nspname = ?`, [schema])
++        if (!rows.length) await db.raw(`CREATE SCHEMA IF NOT EXISTS ??`, [schema])
+       }
+     } else {
+       db = Knex({
+@@ -35,6 +39,7 @@ export async function getDB({ worldDir }) {
+       })
+     }
+     await migrate(db)
++    await installVirviApp(db)
+   }
+   return db
+ }
+diff --git a/src/server/virvi.js b/src/server/virvi.js
+new file mode 100644
+index 0000000..efad187
+--- /dev/null
++++ b/src/server/virvi.js
+@@ -0,0 +1,69 @@
++import moment from 'moment'
++import fs from 'fs-extra'
++import { isEqual } from 'lodash-es'
++import { uuid } from '../core/utils'
++import { importApp } from '../core/extras/appTools'
++import { assets } from './assets'
++
++const BLUEPRINT_ID = 'virvi'
++
++/**
++ * Virvi: installs the Virvi app (built into the image at /app/virvi/virvi.hyp) as blueprint `virvi` on every boot, with
++ * `feedUrl` and `worldKey` from VIRVI_FEED_URL and VIRVI_WORLD_KEY, and keeps exactly one `virvi` entity (created at the
++ * origin). App updates and key rotation reach existing worlds on their next start. `$scene` and every other app
++ * are left alone.
++ */
++export async function installVirviApp(db) {
++  const hypPath = process.env.VIRVI_APP_PATH || '/app/virvi/virvi.hyp'
++  const buffer = await fs.readFile(hypPath)
++  const app = await importApp(new File([buffer], 'virvi.hyp', { type: 'application/octet-stream' }))
++  for (const asset of app.assets) {
++    const filename = asset.url.split('asset://').pop()
++    const bytes = Buffer.from(await asset.file.arrayBuffer())
++    await assets.upload(new File([bytes], filename, { type: 'application/octet-stream' }))
++  }
++  const now = moment().toISOString()
++  const props = { ...app.blueprint.props }
++  if (process.env.VIRVI_FEED_URL !== undefined) props.feedUrl = process.env.VIRVI_FEED_URL
++  if (process.env.VIRVI_WORLD_KEY !== undefined) props.worldKey = process.env.VIRVI_WORLD_KEY
++  // Before the rename the app was blueprint `vlm`: drop it and its entities so a world runs one copy. (virvi-rename: keep)
++  const legacy = (await db('entities')).filter(e => JSON.parse(e.data).blueprint === 'vlm').map(e => e.id) // virvi-rename: keep
++  if (legacy.length) await db('entities').whereIn('id', legacy).delete()
++  await db('blueprints').where('id', 'vlm').delete() // virvi-rename: keep
++  const row = await db('blueprints').where('id', BLUEPRINT_ID).first()
++  if (!row) {
++    const data = { ...app.blueprint, id: BLUEPRINT_ID, version: 0, props }
++    await db('blueprints').insert({ id: BLUEPRINT_ID, data: JSON.stringify(data), createdAt: now, updatedAt: now })
++  } else {
++    const current = JSON.parse(row.data)
++    const data = { ...app.blueprint, id: BLUEPRINT_ID, version: current.version, props }
++    if (!isEqual(data, current)) {
++      data.version = (current.version || 0) + 1
++      await db('blueprints')
++        .where('id', BLUEPRINT_ID)
++        .update({ data: JSON.stringify(data), updatedAt: now })
++    }
++  }
++  const entities = (await db('entities').orderBy('createdAt')).filter(e => JSON.parse(e.data).blueprint === BLUEPRINT_ID)
++  if (entities.length === 0) {
++    const id = uuid()
++    const data = {
++      id,
++      type: 'app',
++      blueprint: BLUEPRINT_ID,
++      position: [0, 0, 0],
++      quaternion: [0, 0, 0, 1],
++      scale: [1, 1, 1],
++      mover: null,
++      uploader: null,
++      pinned: false,
++      state: {},
++    }
++    await db('entities').insert({ id, data: JSON.stringify(data), createdAt: now, updatedAt: now })
++  } else if (entities.length > 1) {
++    await db('entities')
++      .whereIn('id', entities.slice(1).map(e => e.id))
++      .delete()
++  }
++  console.log(`[virvi] app installed (blueprint ${BLUEPRINT_ID})`)
++}
+-- 
+2.41.0
+

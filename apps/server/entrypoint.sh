@@ -3,14 +3,14 @@ set -e
 
 # Auto-create/update database tables on first boot
 if [ -n "$DATABASE_URL" ]; then
-  echo "[vlm-server] Running drizzle-kit push to sync schema..."
+  echo "[virvi-server] Running drizzle-kit push to sync schema..."
   cd /app/apps/server
   # Drop the legacy (never-populated) analytics tables first, or push stops at a rename prompt.
-  node scripts/pre-push-upgrade.mjs 2>&1 || echo "[vlm-server] pre-push upgrade SQL failed"
-  yes | npx drizzle-kit push 2>&1 || echo "[vlm-server] drizzle-kit push failed, trying raw SQL fallback..."
+  node scripts/pre-push-upgrade.mjs 2>&1 || echo "[virvi-server] pre-push upgrade SQL failed"
+  yes | npx drizzle-kit push 2>&1 || echo "[virvi-server] drizzle-kit push failed, trying raw SQL fallback..."
 
   # Fallback: ensure critical columns exist even if drizzle-kit push fails
-  echo "[vlm-server] Ensuring critical schema columns exist..."
+  echo "[virvi-server] Ensuring critical schema columns exist..."
   node -e "
     const postgres = require('postgres');
     const sql = postgres(process.env.DATABASE_URL);
@@ -19,14 +19,14 @@ if [ -n "$DATABASE_URL" ]; then
       try {
         await sql\`DO \$\$ BEGIN CREATE TYPE org_role AS ENUM ('owner','admin','member'); EXCEPTION WHEN duplicate_object THEN NULL; END \$\$\`;
         await sql\`DO \$\$ BEGIN CREATE TYPE invite_status AS ENUM ('pending','accepted','declined','expired'); EXCEPTION WHEN duplicate_object THEN NULL; END \$\$\`;
-        console.log('[vlm-server] enums ensured');
-      } catch(e) { console.log('[vlm-server] enums:', e.message); }
+        console.log('[virvi-server] enums ensured');
+      } catch(e) { console.log('[virvi-server] enums:', e.message); }
 
       // Organizations table
       try {
         await sql\`CREATE TABLE IF NOT EXISTS organizations (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, billing_owner_id UUID, logo_url TEXT, metadata JSONB, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())\`;
-        console.log('[vlm-server] organizations table ensured');
-      } catch(e) { console.log('[vlm-server] organizations:', e.message); }
+        console.log('[virvi-server] organizations table ensured');
+      } catch(e) { console.log('[virvi-server] organizations:', e.message); }
 
       // org_id columns on all data tables
       const orgIdTables = ['users', 'scenes', 'media_assets', 'events', 'giveaways', 'subscriptions', 'streaming_servers'];
@@ -34,8 +34,8 @@ if [ -n "$DATABASE_URL" ]; then
         const col = table === 'users' ? 'active_org_id' : 'org_id';
         try {
           await sql.unsafe(\`ALTER TABLE \${table} ADD COLUMN IF NOT EXISTS \${col} UUID\`);
-          console.log('[vlm-server] ' + col + ' on ' + table + ' ensured');
-        } catch(e) { console.log('[vlm-server] ' + table + '.' + col + ':', e.message); }
+          console.log('[virvi-server] ' + col + ' on ' + table + ' ensured');
+        } catch(e) { console.log('[virvi-server] ' + table + '.' + col + ':', e.message); }
       }
 
       // Other new tables
@@ -44,8 +44,8 @@ if [ -n "$DATABASE_URL" ]; then
         await sql\`CREATE TABLE IF NOT EXISTS org_invites (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), org_id UUID NOT NULL, email TEXT NOT NULL, role org_role NOT NULL DEFAULT 'member', invited_by UUID NOT NULL, status invite_status NOT NULL DEFAULT 'pending', token TEXT UNIQUE NOT NULL, expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW())\`;
         await sql\`CREATE TABLE IF NOT EXISTS api_keys (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL, org_id UUID, name TEXT NOT NULL, key_hash TEXT NOT NULL, key_prefix TEXT NOT NULL, scopes TEXT[], last_used_at TIMESTAMPTZ, expires_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW())\`;
         await sql\`CREATE TABLE IF NOT EXISTS password_reset_tokens (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL, token TEXT UNIQUE NOT NULL, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW())\`;
-        console.log('[vlm-server] new tables ensured');
-      } catch(e) { console.log('[vlm-server] new tables:', e.message); }
+        console.log('[virvi-server] new tables ensured');
+      } catch(e) { console.log('[virvi-server] new tables:', e.message); }
 
       // Hand-off codes (HUD Stats tab sign-in); matches authHandoffCodes in src/db/schema.ts
       try {
@@ -54,8 +54,8 @@ if [ -n "$DATABASE_URL" ]; then
         await sql\`ALTER TABLE auth_handoff_codes ADD COLUMN IF NOT EXISTS scene_id UUID REFERENCES scenes(id) ON DELETE CASCADE\`;
         await sql\`ALTER TABLE auth_handoff_codes ADD COLUMN IF NOT EXISTS location_id UUID REFERENCES analytics_scenes(id) ON DELETE CASCADE\`;
         await sql\`ALTER TABLE auth_handoff_codes ADD COLUMN IF NOT EXISTS pass_expires_at TIMESTAMPTZ\`;
-        console.log('[vlm-server] auth_handoff_codes table ensured');
-      } catch(e) { console.log('[vlm-server] auth_handoff_codes:', e.message); }
+        console.log('[virvi-server] auth_handoff_codes table ensured');
+      } catch(e) { console.log('[virvi-server] auth_handoff_codes:', e.message); }
 
       // Per-scene media library; matches sceneLibrary in src/db/schema.ts
       try {
@@ -63,8 +63,8 @@ if [ -n "$DATABASE_URL" ]; then
         await sql\`CREATE UNIQUE INDEX IF NOT EXISTS scene_library_media_uq ON scene_library (scene_id, media_asset_id) WHERE media_asset_id IS NOT NULL\`;
         await sql\`CREATE UNIQUE INDEX IF NOT EXISTS scene_library_asset_uq ON scene_library (scene_id, asset_item_id) WHERE asset_item_id IS NOT NULL\`;
         await sql\`CREATE INDEX IF NOT EXISTS scene_library_scene_idx ON scene_library (scene_id)\`;
-        console.log('[vlm-server] scene_library table ensured');
-      } catch(e) { console.log('[vlm-server] scene_library:', e.message); }
+        console.log('[virvi-server] scene_library table ensured');
+      } catch(e) { console.log('[virvi-server] scene_library:', e.message); }
 
       // Catalog packs; matches catalogPacks / assetLibraryItems in src/db/schema.ts
       try {
@@ -76,8 +76,8 @@ if [ -n "$DATABASE_URL" ]; then
         await sql\`ALTER TABLE asset_library_items ADD COLUMN IF NOT EXISTS content_hash TEXT\`;
         await sql\`CREATE UNIQUE INDEX IF NOT EXISTS asset_library_items_pack_ref ON asset_library_items (pack_id, source_ref)\`;
         await sql\`CREATE INDEX IF NOT EXISTS asset_library_items_content_hash_idx ON asset_library_items (content_hash)\`;
-        console.log('[vlm-server] catalog packs ensured');
-      } catch(e) { console.log('[vlm-server] catalog packs:', e.message); }
+        console.log('[virvi-server] catalog packs ensured');
+      } catch(e) { console.log('[virvi-server] catalog packs:', e.message); }
 
       // Hyperfy worlds; matches hyperfyWorlds in src/db/schema.ts
       try {
@@ -86,8 +86,8 @@ if [ -n "$DATABASE_URL" ]; then
         await sql\`ALTER TABLE hyperfy_worlds ADD COLUMN IF NOT EXISTS slug TEXT, ADD COLUMN IF NOT EXISTS address TEXT, ADD COLUMN IF NOT EXISTS fly_app TEXT, ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'running', ADD COLUMN IF NOT EXISTS error_message TEXT, ADD COLUMN IF NOT EXISTS admin_code_enc TEXT, ADD COLUMN IF NOT EXISTS ends_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS purge_after TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS purged_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS purge_claimed_at TIMESTAMPTZ, ADD COLUMN IF NOT EXISTS quiesced_at TIMESTAMPTZ\`;
         await sql\`ALTER TABLE hyperfy_worlds ADD COLUMN IF NOT EXISTS world_secret_hash TEXT\`;
         await sql\`CREATE UNIQUE INDEX IF NOT EXISTS hyperfy_worlds_slug_uq ON hyperfy_worlds (slug) WHERE purged_at IS NULL\`;
-        console.log('[vlm-server] hyperfy worlds ensured');
-      } catch(e) { console.log('[vlm-server] hyperfy worlds:', e.message); }
+        console.log('[virvi-server] hyperfy worlds ensured');
+      } catch(e) { console.log('[virvi-server] hyperfy worlds:', e.message); }
       // Ads; matches ads / adCreatives / adPlacements / adEvents in src/db/schema.ts
       try {
         await sql\`ALTER TYPE element_type ADD VALUE IF NOT EXISTS 'ad_space'\`;
@@ -98,8 +98,8 @@ if [ -n "$DATABASE_URL" ]; then
         await sql\`DROP INDEX IF EXISTS ad_events_unique_view\`;
         await sql\`CREATE UNIQUE INDEX IF NOT EXISTS ad_events_unique_space_view ON ad_events (ad_id, element_id, level, day, viewer_key)\`;
         await sql\`CREATE INDEX IF NOT EXISTS ad_events_ad_day_idx ON ad_events (ad_id, day)\`;
-        console.log('[vlm-server] ads ensured');
-      } catch(e) { console.log('[vlm-server] ads:', e.message); }
+        console.log('[virvi-server] ads ensured');
+      } catch(e) { console.log('[virvi-server] ads:', e.message); }
 
       // Upload status (two-step companion uploads); matches mediaAssets / uploadTokens in src/db/schema.ts
       try {
@@ -109,20 +109,20 @@ if [ -n "$DATABASE_URL" ]; then
         await sql\`ALTER TABLE upload_tokens ADD COLUMN IF NOT EXISTS kinds TEXT[]\`;
         await sql\`ALTER TABLE upload_tokens ADD COLUMN IF NOT EXISTS minter_wallet TEXT\`;
         await sql\`ALTER TABLE upload_tokens ADD COLUMN IF NOT EXISTS minter_verified BOOLEAN NOT NULL DEFAULT false\`;
-        console.log('[vlm-server] media status columns ensured');
-      } catch(e) { console.log('[vlm-server] media status columns:', e.message); }
+        console.log('[virvi-server] media status columns ensured');
+      } catch(e) { console.log('[virvi-server] media status columns:', e.message); }
 
       // One-time startup job markers; matches systemFlags in src/db/schema.ts
       try {
         await sql\`CREATE TABLE IF NOT EXISTS system_flags (key TEXT PRIMARY KEY, set_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
-        console.log('[vlm-server] system_flags table ensured');
-      } catch(e) { console.log('[vlm-server] system_flags:', e.message); }
+        console.log('[virvi-server] system_flags table ensured');
+      } catch(e) { console.log('[virvi-server] system_flags:', e.message); }
 
       // Advertiser early-access list; matches advertiserLeads in src/db/schema.ts
       try {
         await sql\`CREATE TABLE IF NOT EXISTS advertiser_leads (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), email TEXT NOT NULL UNIQUE, name TEXT, company TEXT, website TEXT, message TEXT, consent_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
-        console.log('[vlm-server] advertiser_leads table ensured');
-      } catch(e) { console.log('[vlm-server] advertiser_leads:', e.message); }
+        console.log('[virvi-server] advertiser_leads table ensured');
+      } catch(e) { console.log('[virvi-server] advertiser_leads:', e.message); }
 
       // Hyperfy HUD pairings; matches hyperfyPairings in src/db/schema.ts
       try {
@@ -131,29 +131,29 @@ if [ -n "$DATABASE_URL" ]; then
         await sql\`CREATE INDEX IF NOT EXISTS hyperfy_pairings_world_idx ON hyperfy_pairings (world_id)\`;
         await sql\`ALTER TABLE hyperfy_pairings DROP CONSTRAINT IF EXISTS hyperfy_pairings_kind_check\`;
         await sql\`ALTER TABLE hyperfy_pairings ADD CONSTRAINT hyperfy_pairings_kind_check CHECK ((secret_hash IS NOT NULL) <> (hyperfy_player_id IS NOT NULL))\`;
-        console.log('[vlm-server] hyperfy_pairings table ensured');
-      } catch(e) { console.log('[vlm-server] hyperfy_pairings:', e.message); }
+        console.log('[virvi-server] hyperfy_pairings table ensured');
+      } catch(e) { console.log('[virvi-server] hyperfy_pairings:', e.message); }
 
       // model enum value
       try {
         await sql\`ALTER TYPE element_type ADD VALUE IF NOT EXISTS 'model'\`;
-        console.log('[vlm-server] model enum value ensured');
-      } catch(e) { console.log('[vlm-server] model enum:', e.message); }
+        console.log('[virvi-server] model enum value ensured');
+      } catch(e) { console.log('[virvi-server] model enum:', e.message); }
       // Hyperfy analytics location kind
       try {
         await sql\`ALTER TYPE analytics_scene_kind ADD VALUE IF NOT EXISTS 'hyperfy'\`;
-        console.log('[vlm-server] hyperfy analytics kind ensured');
-      } catch(e) { console.log('[vlm-server] hyperfy analytics kind:', e.message); }
+        console.log('[virvi-server] hyperfy analytics kind ensured');
+      } catch(e) { console.log('[virvi-server] hyperfy analytics kind:', e.message); }
       await sql.end();
     })();
-  " 2>&1 || echo "[vlm-server] SQL fallback had errors"
+  " 2>&1 || echo "[virvi-server] SQL fallback had errors"
   cd /app
 fi
 
 # Debug: verify dashboard exists
-echo "[vlm-server] CWD: $(pwd)"
-echo "[vlm-server] DASHBOARD_DIR: $DASHBOARD_DIR"
-ls -la "${DASHBOARD_DIR:-./dashboard}/" 2>&1 | head -5 || echo "[vlm-server] WARNING: dashboard dir missing!"
+echo "[virvi-server] CWD: $(pwd)"
+echo "[virvi-server] DASHBOARD_DIR: $DASHBOARD_DIR"
+ls -la "${DASHBOARD_DIR:-./dashboard}/" 2>&1 | head -5 || echo "[virvi-server] WARNING: dashboard dir missing!"
 
 # Start the server
 exec node apps/server/dist/index.js

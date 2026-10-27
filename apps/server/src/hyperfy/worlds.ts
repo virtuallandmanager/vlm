@@ -1,6 +1,6 @@
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { HYPERFY_FEED, type HyperfyWorldSummary } from 'vlm-shared'
+import { HYPERFY_FEED, type HyperfyWorldSummary } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { hyperfyWorlds } from '../db/schema.js'
 
@@ -10,7 +10,7 @@ export function hashWorldKey(raw: string): string {
   return createHash('sha256').update(raw).digest('hex')
 }
 
-/** A world key: `vlmw_` + 32 random bytes as hex. Only the hash is stored; the raw key is shown once. */
+/** A world key: `virviw_` + 32 random bytes as hex. Only the hash is stored; the raw key is shown once. */
 export function createWorldKey(): { raw: string; hash: string; prefix: string } {
   const raw = `${HYPERFY_FEED.keyPrefix}${randomBytes(32).toString('hex')}`
   return { raw, hash: hashWorldKey(raw), prefix: raw.slice(0, 12) }
@@ -24,7 +24,7 @@ export async function findWorldByKey(raw: string): Promise<HyperfyWorldRow | nul
   return row && row.status !== 'ended' && row.status !== 'failed' ? row : null
 }
 
-/** A random 32-byte world secret (hex). A hosted world's server holds it in VLM_WORLD_SECRET; only its hash is stored. */
+/** A random 32-byte world secret (hex). A hosted world's server holds it in VIRVI_WORLD_SECRET; only its hash is stored. */
 export function createWorldSecret(): { raw: string; hash: string } {
   const raw = randomBytes(32).toString('hex')
   return { raw, hash: hashWorldKey(raw) }

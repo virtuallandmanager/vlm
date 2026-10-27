@@ -246,9 +246,9 @@ export async function settleRefund(paymentId: string): Promise<void> {
   try {
     const stripe = await getStripe()
     const made = (await stripe.refunds.list({ payment_intent: pay.stripePaymentIntent, limit: 100 })).data as { metadata?: Record<string, string> }[]
-    if (!made.some((r) => r.metadata?.vlm_studio_owed_by === pay.id)) {
+    if (!made.some((r) => r.metadata?.virvi_studio_owed_by === pay.id)) {
       await stripe.refunds.create(
-        { payment_intent: pay.stripePaymentIntent, amount: due, metadata: { vlm_studio_payment_id: pay.id, vlm_studio_owed_by: pay.id } },
+        { payment_intent: pay.stripePaymentIntent, amount: due, metadata: { vlm_studio_payment_id: pay.id, virvi_studio_owed_by: pay.id } },
         { idempotencyKey: `studio-refund-${pay.id}-${pay.refundAttempts}` },
       )
     }
@@ -277,7 +277,7 @@ export async function handleStudioSession(event: { type: string; data?: { object
 
 /**
  * The customer says a paid revision fixed the agent's own mistake: its line is refunded in full through Stripe, at
- * once and without review (VLM reviews the log afterwards). A pending report row is the lock, so two clicks refund
+ * once and without review (Virvi reviews the log afterwards). A pending report row is the lock, so two clicks refund
  * once; a refund Stripe already made for this entitlement (an answer that was lost) is recorded, not repeated; a
  * refused refund removes the row so the customer can try again, under a new key (Stripe replays a key's first
  * answer, errors included).
@@ -315,9 +315,9 @@ export async function reportMistake(
   try {
     const stripe = await getStripe()
     const made = (await stripe.refunds.list({ payment_intent: pay.stripePaymentIntent, limit: 100 })).data as { id: string; metadata?: Record<string, string> }[]
-    const earlier = made.find((r) => r.metadata?.vlm_studio_entitlement_id === e.id)
+    const earlier = made.find((r) => r.metadata?.virvi_studio_entitlement_id === e.id)
     refundId = earlier?.id ?? (await stripe.refunds.create(
-      { payment_intent: pay.stripePaymentIntent, amount: e.amountCents, metadata: { vlm_studio_entitlement_id: e.id, reason: 'agent_mistake' } },
+      { payment_intent: pay.stripePaymentIntent, amount: e.amountCents, metadata: { virvi_studio_entitlement_id: e.id, reason: 'agent_mistake' } },
       { idempotencyKey: `studio-report-${e.id}-${lock.id}` },
     )).id
   } catch (err) {

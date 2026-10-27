@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import { eq } from 'drizzle-orm'
-import { HYPERFY_FEED } from 'vlm-shared'
+import { HYPERFY_FEED } from '@virvixr/shared'
 import { db } from '../src/db/connection.js'
 import { hyperfyWorlds, scenes } from '../src/db/schema.js'
 import { initBus, sceneFeedTopic } from '../src/realtime/bus.js'
@@ -49,7 +49,7 @@ describe('GET /api/hyperfy/feed', () => {
     app.inject({
       method: 'GET',
       url: `/api/hyperfy/feed${since ? `?since=${since}` : ''}`,
-      headers: { ...(k ? { authorization: `Bearer ${k}` } : {}), 'x-vlm-app-version': '1' },
+      headers: { ...(k ? { authorization: `Bearer ${k}` } : {}), 'x-virvi-app-version': '1' },
     })
   const edit = (url: string) =>
     app.inject({
@@ -170,10 +170,10 @@ describe('GET /api/hyperfy/feed', () => {
 
   it('a burst of polls from one IP gets 429, bad keys included', async () => {
     const codes: number[] = []
-    for (let i = 0; i < FEED_LIMIT.capacity + 5; i++) codes.push((await feed(undefined, i % 2 ? key : 'vlmw_nope')).statusCode)
+    for (let i = 0; i < FEED_LIMIT.capacity + 5; i++) codes.push((await feed(undefined, i % 2 ? key : 'virviw_nope')).statusCode)
     expect(codes.slice(0, FEED_LIMIT.capacity).every((c) => c === 200 || c === 401)).toBe(true)
     expect(codes[codes.length - 1]).toBe(429)
-    const over = await feed(undefined, 'vlmw_nope')
+    const over = await feed(undefined, 'virviw_nope')
     expect(over.statusCode).toBe(429)
     expect(over.json().retryAfter).toBeGreaterThan(0)
   })
@@ -190,7 +190,7 @@ describe('GET /api/hyperfy/feed', () => {
 
   it('401 for a bad key and after rotate-key', async () => {
     expect((await feed(undefined, null)).statusCode).toBe(401)
-    const bad = await feed(undefined, 'vlmw_nope')
+    const bad = await feed(undefined, 'virviw_nope')
     expect(bad.statusCode).toBe(401)
     expect(bad.json()).toEqual({ error: 'invalid_world_key' })
     expect((await feed(undefined, 'something')).statusCode).toBe(401)

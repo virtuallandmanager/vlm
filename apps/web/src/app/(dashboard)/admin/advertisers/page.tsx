@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { AdminAdvertiserLead } from 'vlm-shared'
+import type { AdminAdvertiserLead } from '@virvixr/shared'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/lib/api'
 import { PageHeader, PrimaryButton, Skeleton, tableHeadBand } from '@/components/ui'
@@ -39,7 +39,7 @@ export default function AdminAdvertisersPage() {
         crumbs={['System', { label: 'Admin', href: '/admin' }, 'Advertisers']}
         title="Advertisers"
         count={leads ? String(leads.length) : undefined}
-        subtitle="People who asked for advertising early access from the landing page. Each agreed to be contacted about advertising on VLM."
+        subtitle="People who asked for advertising early access from the landing page. Each agreed to be contacted about advertising on Virvi."
         actions={leads?.length ? <PrimaryButton onClick={copyEmails}>{copied ? 'Copied' : 'Copy emails'}</PrimaryButton> : undefined}
       />
       {error && <p className="mb-4 text-sm text-red-400">{error}</p>}

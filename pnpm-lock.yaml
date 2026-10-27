@@ -92,6 +92,9 @@ importers:
       '@gltf-transform/functions':
         specifier: 4.2.1
         version: 4.2.1(@types/node@22.19.15)
+      '@virvixr/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3
@@ -140,9 +143,6 @@ importers:
       undici:
         specifier: 6.21.3
         version: 6.21.3
-      vlm-shared:
-        specifier: workspace:*
-        version: link:../../packages/vlm-shared
     devDependencies:
       '@dcl/crypto':
         specifier: 3.7.0
@@ -202,6 +202,9 @@ importers:
       '@react-three/fiber':
         specifier: 9.8.2
         version: 9.8.2(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(three@0.186.1)
+      '@virvixr/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       colyseus.js:
         specifier: ^0.15.26
         version: 0.15.28
@@ -217,9 +220,6 @@ importers:
       three:
         specifier: 0.186.1
         version: 0.186.1
-      vlm-shared:
-        specifier: workspace:*
-        version: link:../../packages/vlm-shared
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4.0.0
@@ -249,7 +249,7 @@ importers:
         specifier: 3.2.7
         version: 3.2.7(@types/debug@4.1.13)(@types/node@22.19.15)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
 
-  packages/vlm-adapter-dcl:
+  packages/adapter-dcl:
     dependencies:
       colyseus.js:
         specifier: ^0.15.26
@@ -258,69 +258,102 @@ importers:
       '@dcl/sdk':
         specifier: 7.30.1
         version: 7.30.1(@well-known-components/interfaces@1.5.2)
+      '@virvixr/client':
+        specifier: workspace:*
+        version: link:../client
+      '@virvixr/core':
+        specifier: workspace:*
+        version: link:../core
+      '@virvixr/shared':
+        specifier: workspace:*
+        version: link:../shared
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
-      vlm-client:
-        specifier: workspace:*
-        version: link:../vlm-client
-      vlm-core:
-        specifier: workspace:*
-        version: link:../vlm-core
-      vlm-shared:
-        specifier: workspace:*
-        version: link:../vlm-shared
 
-  packages/vlm-client:
+  packages/client:
     dependencies:
       colyseus.js:
         specifier: ^0.15.26
         version: 0.15.28
     devDependencies:
+      '@virvixr/shared':
+        specifier: workspace:*
+        version: link:../shared
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
-      vlm-shared:
-        specifier: workspace:*
-        version: link:../vlm-shared
 
-  packages/vlm-core:
+  packages/core:
     dependencies:
-      vlm-hud:
+      '@virvixr/hud':
         specifier: workspace:*
-        version: link:../vlm-hud
+        version: link:../hud
     devDependencies:
+      '@virvixr/client':
+        specifier: workspace:*
+        version: link:../client
+      '@virvixr/shared':
+        specifier: workspace:*
+        version: link:../shared
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
       vitest:
         specifier: 3.2.7
         version: 3.2.7(@types/debug@4.1.13)(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
-      vlm-client:
-        specifier: workspace:*
-        version: link:../vlm-client
-      vlm-shared:
-        specifier: workspace:*
-        version: link:../vlm-shared
 
-  packages/vlm-hud:
+  packages/dcl:
+    devDependencies:
+      '@dcl/sdk':
+        specifier: 7.30.1
+        version: 7.30.1(@well-known-components/interfaces@1.5.2)
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.15
+      '@virvixr/adapter-dcl':
+        specifier: workspace:*
+        version: link:../adapter-dcl
+      '@virvixr/client':
+        specifier: workspace:*
+        version: link:../client
+      '@virvixr/core':
+        specifier: workspace:*
+        version: link:../core
+      '@virvixr/hud':
+        specifier: workspace:*
+        version: link:../hud
+      '@virvixr/shared':
+        specifier: workspace:*
+        version: link:../shared
+      colyseus.js:
+        specifier: ^0.15.26
+        version: 0.15.28
+      esbuild:
+        specifier: ^0.27.4
+        version: 0.27.4
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/hud:
     dependencies:
-      vlm-client:
+      '@virvixr/client':
         specifier: workspace:*
-        version: link:../vlm-client
-      vlm-shared:
+        version: link:../client
+      '@virvixr/shared':
         specifier: workspace:*
-        version: link:../vlm-shared
+        version: link:../shared
     devDependencies:
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
 
-  packages/vlm-hyperfy-app:
+  packages/hyperfy-app:
     dependencies:
-      vlm-shared:
+      '@virvixr/shared':
         specifier: workspace:*
-        version: link:../vlm-shared
+        version: link:../shared
     devDependencies:
       '@types/three':
         specifier: 0.170.0
@@ -338,44 +371,11 @@ importers:
         specifier: 3.2.7
         version: 3.2.7(@types/debug@4.1.13)(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
 
-  packages/vlm-shared:
+  packages/shared:
     devDependencies:
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
-
-  packages/vlm-smart-item-dcl:
-    devDependencies:
-      '@dcl/sdk':
-        specifier: 7.30.1
-        version: 7.30.1(@well-known-components/interfaces@1.5.2)
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.15
-      colyseus.js:
-        specifier: ^0.15.26
-        version: 0.15.28
-      esbuild:
-        specifier: ^0.27.4
-        version: 0.27.4
-      typescript:
-        specifier: ^5.7.0
-        version: 5.9.3
-      vlm-adapter-dcl:
-        specifier: workspace:*
-        version: link:../vlm-adapter-dcl
-      vlm-client:
-        specifier: workspace:*
-        version: link:../vlm-client
-      vlm-core:
-        specifier: workspace:*
-        version: link:../vlm-core
-      vlm-hud:
-        specifier: workspace:*
-        version: link:../vlm-hud
-      vlm-shared:
-        specifier: workspace:*
-        version: link:../vlm-shared
 
 packages:
 

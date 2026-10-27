@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { resolveView, dashboardHref, isNoAccess, NO_SCENE_NOTE } from './view'
 import type { AnalyticsLocation } from './types'
 
-const loc = (id: string, vlmSceneId: string | null): AnalyticsLocation => ({
+const loc = (id: string, virviSceneId: string | null): AnalyticsLocation => ({
   id, locationKey: `key-${id}`, kind: 'parcels', title: null, walletVisibility: false, verifiedSessionShare: 0,
-  since: null, until: null, vlmSceneId, baseParcel: '0,0', parcels: ['0,0'], canManage: false,
+  since: null, until: null, virviSceneId, baseParcel: '0,0', parcels: ['0,0'], canManage: false,
 })
 const none = { location: null, scene: null }
 

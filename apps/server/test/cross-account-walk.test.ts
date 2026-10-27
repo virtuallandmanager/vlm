@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { ringCodeOf } from 'vlm-shared'
+import { ringCodeOf } from '@virvixr/shared'
 import { db } from '../src/db/connection.js'
 import {
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
@@ -44,7 +44,7 @@ async function fixtures() {
   }).returning()
   const [stream] = await db.insert(streamingServers).values({
     ownerId: b.id, name: 'B stream', status: 'ready', streamKey: 'b-key', playbackId: 'b-pb', sceneId: scene.id,
-    rtmpUrl: 'rtmp://ingest.vlm.gg/live/b-key', hlsPlaylistUrl: 'https://live.vlm.gg/streams/b-pb/playlist.m3u8',
+    rtmpUrl: 'rtmp://ingest.virvi.io/live/b-key', hlsPlaylistUrl: 'https://live.virvi.io/streams/b-pb/playlist.m3u8',
   }).returning()
   const [event] = await db.insert(events).values({ ownerId: b.id, name: 'B event' }).returning()
   const [giveaway] = await db.insert(giveaways).values({ ownerId: b.id, name: 'B giveaway' }).returning()
@@ -67,7 +67,7 @@ async function fixtures() {
   const [hook] = await db.insert(platformCallbacks).values({ sceneId: scene.id, platform: 'secondlife', callbackUrl: 'https://1.1.1.1/cb' }).returning()
   const location = await createAnalyticsScene({ claimedByUserId: b.id, claimStatus: 'active' })
   await createSetup(location.id, scene.id)
-  const [world] = await db.insert(hyperfyWorlds).values({ sceneId: scene.id, ownerId: b.id, name: 'B world', keyHash: 'b-world-hash', keyPrefix: 'vlmw_b' }).returning()
+  const [world] = await db.insert(hyperfyWorlds).values({ sceneId: scene.id, ownerId: b.id, name: 'B world', keyHash: 'b-world-hash', keyPrefix: 'virviw_b' }).returning()
   const [pairing] = await db.insert(hyperfyPairings).values({
     worldId: world.id, userId: b.id, secretHash: 'b-secret-hash', status: 'claimed', codeExpiresAt: new Date(Date.now() + H), expiresAt: new Date(Date.now() + H),
   }).returning()
@@ -84,7 +84,7 @@ async function fixtures() {
   const [signDeploy] = await db.insert(sceneDeployments).values({
     sceneId: scene.id, platform: 'decentraland', deploymentType: 'world', destinationId: destination.id, target: { world: 'b-world.dcl.eth' }, status: 'awaiting_signature', deployedBy: b.id,
   }).returning()
-  const [bKey] = await db.insert(apiKeys).values({ userId: b.id, name: 'B key', keyHash: 'b-hash', keyPrefix: 'vlm_k1_b' }).returning()
+  const [bKey] = await db.insert(apiKeys).values({ userId: b.id, name: 'B key', keyHash: 'b-hash', keyPrefix: 'virvi_k1' }).returning()
 
   const [design] = await db.insert(studioDesigns).values({ ownerId: b.id, name: 'B cap', kind: 'wearable', agent: 'claude' }).returning()
   const [designJob] = await db.insert(studioJobs).values({ designId: design.id, type: 'prompt', status: 'done', payload: {} }).returning()

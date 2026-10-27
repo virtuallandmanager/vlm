@@ -1,9 +1,9 @@
 ---
 title: API Reference
-description: VLM class methods and VLMPlatformAdapter interface
+description: Virvi class methods and VirviPlatformAdapter interface
 ---
 
-## VLMPlatformAdapter Interface
+## VirviPlatformAdapter Interface
 
 Every platform adapter implements this interface. You only need this if you're building a new adapter.
 
@@ -70,4 +70,4 @@ Every platform adapter implements this interface. You only need this if you're b
 }
 ```
 
-Managers in vlm-core check these before attempting operations. If `capabilities.video` is `false`, the VideoManager skips all video elements — no errors, no empty renders.
+Managers in @virvixr/core check these before attempting operations. If `capabilities.video` is `false`, the VideoManager skips all video elements — no errors, no empty renders.

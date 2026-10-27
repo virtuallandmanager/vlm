@@ -1,4 +1,4 @@
-import { ringCodeOf, ringPlaqueSizeMm, ringShapes, type RingShape } from 'vlm-shared'
+import { ringCodeOf, ringPlaqueSizeMm, ringShapes, type RingShape } from '@virvixr/shared'
 import { zip } from './zip.js'
 
 /**
@@ -397,7 +397,7 @@ export function buildMarkerMeshes(markerId: number, diameterMm: number, mounting
 // File formats
 
 /** Binary STL. */
-export function stl(mesh: Mesh, name = 'VLM ring marker'): Buffer {
+export function stl(mesh: Mesh, name = 'Virvi ring marker'): Buffer {
   const buf = Buffer.alloc(84 + 50 * mesh.tris.length)
   buf.write(name.slice(0, 80), 0, 'latin1')
   buf.writeUInt32LE(mesh.tris.length, 80)
@@ -482,7 +482,7 @@ export function paperPdf(markerId: number, diameterMm: number): Buffer {
   const cy = pageH - (top + side / 2) * k
   const poly = (pts: P[]) => pts.map(([x, y], i) => `${num(cx + x * k)} ${num(cy + y * k)} ${i ? 'l' : 'm'}`).join(' ') + ' h'
 
-  text(15, 14, 16, `VLM ring marker  ${code}`, 'F2')
+  text(15, 14, 16, `Virvi ring marker  ${code}`, 'F2')
   ops.push('0 G 0.6 w', `${X(left)} ${Y(top + side)} ${num(side * k)} ${num(side * k)} re S`)
   ops.push('0 g')
   for (const s of ringShapes(markerId, diameterMm)) {
@@ -508,7 +508,7 @@ export function paperPdf(markerId: number, diameterMm: number): Buffer {
   ops.push('0 g', `${X(15)} ${Y(barY + 3)} ${num(100 * k)} ${num(3 * k)} re f`)
   for (let t = 0; t <= 100; t += 10) ops.push(`${X(15 + t)} ${Y(barY)} m ${X(15 + t)} ${Y(barY - 2)} l S`)
   text(118, barY + 2.5, 11, '100 mm')
-  text(15, barY + 12, 11, `${code}   vlm.gg/s/${code}`)
+  text(15, barY + 12, 11, `${code}   virvi.io/s/${code}`)
 
   const content = ops.join('\n')
   const objects = [

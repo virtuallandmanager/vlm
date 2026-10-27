@@ -1,4 +1,4 @@
-import { plotSizeM, type Plot } from 'vlm-shared'
+import { plotSizeM, type Plot } from '@virvixr/shared'
 import type { WizardAsset } from '../api'
 
 /** An asset placed on the plot. Metres, plot-relative, y = 0; x east, z north from the south-west corner. */

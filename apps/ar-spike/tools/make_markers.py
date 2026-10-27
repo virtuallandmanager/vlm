@@ -2,7 +2,7 @@
 """Test registration markers for the Vision Pro / iPhone detection-range check (spike, not the real generator).
 
 Layout follows docs/superpowers/specs/2026-10-21-ar-spaces-design.md (branch feature/ar-spaces-design):
-QR code (version 2, error correction M) of HTTPS://VLM.GG/S/<CODE>, a 2-module quiet zone, then a 2-module
+QR code (version 2, error correction M) of HTTPS://VIRVI.IO/S/<CODE>, a 2-module quiet zone, then a 2-module
 border ring of black and white blocks taken from SHA-256(code), solid in the corners. The ring's outer square is
 the tracked image: 33 modules across, 120 mm or 170 mm wide.
 
@@ -38,7 +38,7 @@ DPI = 600
 
 def qr_matrix(code: str) -> list[list[bool]]:
     q = qrcode.QRCode(version=2, error_correction=qrcode.constants.ERROR_CORRECT_M, border=0)
-    q.add_data(f"HTTPS://VLM.GG/S/{code}", optimize=0)
+    q.add_data(f"HTTPS://VIRVI.IO/S/{code}", optimize=0)
     q.make(fit=False)
     return q.get_matrix()
 
@@ -97,7 +97,7 @@ def paper_pdf(grid, code: str, width_mm: float, path: Path) -> None:
                 y0 = top + mm(y * width_mm / n)
                 d.rectangle([x0, y0, left + mm((x + 1) * width_mm / n) - 1, top + mm((y + 1) * width_mm / n) - 1], fill=0)
     big, small = font(mm(5)), font(mm(3.5))
-    d.text((mm(15), mm(12)), f"VLM marker test {code} - {width_mm:.0f} mm", font=big, fill=0)
+    d.text((mm(15), mm(12)), f"Virvi marker test {code} - {width_mm:.0f} mm", font=big, fill=0)
     y = top + mm(width_mm) + mm(12)
     d.text((mm(15), y), "Print at 100% / Actual size (no 'fit to page'). The bar below must measure 100 mm;", font=small, fill=0)
     d.text((mm(15), y + mm(5)), f"if it doesn't, the marker isn't {width_mm:.0f} mm and the test distances will be off.", font=small, fill=0)
@@ -231,8 +231,8 @@ def main() -> None:
         raised = Mesh()
         raised.grid(grid, -width / 2, width / 2, step, BASE_MM, BASE_MM + RAISED_MM)
         raised.frame(half, half - RIM_MM, BASE_MM, BASE_MM + RAISED_MM)
-        write_stl(base, out / f"{code}-base.stl", f"VLM marker {code} base")
-        write_stl(raised, out / f"{code}-raised.stl", f"VLM marker {code} raised")
+        write_stl(base, out / f"{code}-base.stl", f"Virvi marker {code} base")
+        write_stl(raised, out / f"{code}-raised.stl", f"Virvi marker {code} raised")
         write_3mf([("base (light)", base, "#F2F2F2"), ("raised (dark)", raised, "#1A1A1A")], out / f"{code}.3mf")
         print(f"{code}: tracked {width:.0f} mm, {n} modules of {step:.2f} mm, plaque {2 * half:.0f} mm, files in {out}")
 

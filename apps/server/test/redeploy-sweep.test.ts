@@ -112,7 +112,7 @@ describe('sweepRedeploys', () => {
     expect(fake.deployed).toHaveLength(1)
     const d = await destRow(dest.id)
     expect(d.pendingSince).toBeNull()
-    expect(d.deployedFiles).toContain('models/vlm/a.glb')
+    expect(d.deployedFiles).toContain('models/virvi/a.glb')
     expect(BATCH_WINDOW_MS).toBe(60_000)
   })
 
@@ -135,7 +135,7 @@ describe('sweepRedeploys', () => {
     expect(fake.deployed).toHaveLength(2)
     const sent = fake.deployed[1]
     const files = JSON.parse(dec(sent.files.get(sent.entityId)!)).content.map((c: { file: string }) => c.file)
-    expect(files).toEqual(expect.arrayContaining(['models/vlm/a.glb', 'models/vlm/b.glb', 'models/vlm/c.glb']))
+    expect(files).toEqual(expect.arrayContaining(['models/virvi/a.glb', 'models/virvi/b.glb', 'models/virvi/c.glb']))
     expect(await deps()).toHaveLength(2)
   })
 
@@ -389,10 +389,10 @@ describe('stale deployment reconcile (start of each sweep)', () => {
     const { dest } = await setup()
     const live: LiveEntity = { id: 'bafyaccepted', pointers: ['0,0', '1,0'], content: [], metadata: {} as LiveEntity['metadata'] }
     fake.entities.set(WORLD, [live])
-    const row = await stale(dest, 'deploying', DEPLOY_WINDOW_MS + 1000, { entityId: 'bafyaccepted', deployedFiles: ['scene.json', 'Models/VLM/a.glb'] })
+    const row = await stale(dest, 'deploying', DEPLOY_WINDOW_MS + 1000, { entityId: 'bafyaccepted', deployedFiles: ['scene.json', 'Models/Virvi/a.glb'] })
     await sweepAndSettle(at(0))
     expect(await depRow(row.id)).toMatchObject({ status: 'deployed', catalystEntityId: 'bafyaccepted' })
-    expect(await destRow(dest.id)).toMatchObject({ lastEntityId: 'bafyaccepted', deployedFiles: ['scene.json', 'models/vlm/a.glb'] })
+    expect(await destRow(dest.id)).toMatchObject({ lastEntityId: 'bafyaccepted', deployedFiles: ['scene.json', 'models/virvi/a.glb'] })
   })
 
   it('a stuck row whose entity is not live fails in plain words', async () => {

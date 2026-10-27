@@ -26,7 +26,7 @@ const PUBLIC_EXACT = [
   'POST /api/auth/handoff/exchange', // single-use code in body
   'POST /api/setup', // DCL signed fetch (location setup)
   'POST /api/setup/status', // DCL signed fetch (location setup status)
-  'GET /api/setup/scene', // public: VLM scene for a set-up location (guest content-only connect)
+  'GET /api/setup/scene', // public: Virvi scene for a set-up location (guest content-only connect)
   'GET /api/setup/models', // public: model list for a set-up location
   'GET /api/hyperfy/feed', // world-key auth
   'POST /api/hyperfy/analytics', // world-key auth
@@ -35,7 +35,7 @@ const PUBLIC_EXACT = [
   'POST /api/hyperfy/pair/:code/claim', // the code plus the browser secret is the auth
   'POST /api/hyperfy/pairings/:id/renew', // the pairing's browser secret is the auth
   'POST /api/hyperfy/pairings/vouch', // world-secret auth; a hosted world speaks for its player
-  'GET /api/hyperfy/app.hyp', // public: the built VLM Hyperfy app download
+  'GET /api/hyperfy/app.hyp', // public: the built Virvi Hyperfy app download
   'POST /api/ar/spaces/:id/analytics', // public for a published space (visits from a headset)
   'POST /api/ar/spaces/:id/report', // public for a published space (a visitor reports it from the headset menu)
   'POST /api/ar/pair', // public: a headset starts a pairing with the hash of its secret
@@ -284,7 +284,7 @@ describe('scene pass guard', () => {
   })
 
   describe('Hyperfy passes (refused unless the route opts in)', () => {
-    // The HUD's routes (packages/vlm-hyperfy-app/src/vlm-api.ts); nothing else accepts a Hyperfy pass.
+    // The HUD's routes (packages/hyperfy-app/src/virvi-api.ts); nothing else accepts a Hyperfy pass.
     const HUD_ROUTES = [
       'GET /api/scenes/:sceneId',
       'PUT /api/scenes/:sceneId',
@@ -304,7 +304,7 @@ describe('scene pass guard', () => {
       const { scene, preset } = await createScene(owner)
       const element = await createElement(preset.id)
       const instance = await createInstance(element.id)
-      const [world] = await db.insert(hyperfyWorlds).values({ sceneId: scene.id, ownerId: owner.id, name: 'W', keyHash: 'guard-world-hash', keyPrefix: 'vlmw_g' }).returning()
+      const [world] = await db.insert(hyperfyWorlds).values({ sceneId: scene.id, ownerId: owner.id, name: 'W', keyHash: 'guard-world-hash', keyPrefix: 'virviw_g' }).returning()
       const [pairing] = await db.insert(hyperfyPairings).values({
         worldId: world.id, userId: owner.id, secretHash: 'guard-secret-hash', status: 'claimed', codeExpiresAt: new Date(Date.now() + 3600_000), expiresAt: new Date(Date.now() + 3600_000),
       }).returning()

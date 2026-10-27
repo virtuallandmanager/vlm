@@ -109,7 +109,7 @@ export function startLifecycleSweep(intervalMs: number): () => void {
     try {
       await runLifecycleSweep()
     } catch (err) {
-      console.error('[vlm-server] Lifecycle sweep failed:', err)
+      console.error('[virvi-server] Lifecycle sweep failed:', err)
     } finally {
       running = false
     }

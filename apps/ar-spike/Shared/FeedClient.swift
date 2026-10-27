@@ -8,7 +8,7 @@ struct FeedStatus: Equatable {
     var lastError: String?
 }
 
-/// Long-polls `GET {feedUrl}/api/hyperfy/feed?since=<version>` (see packages/vlm-hyperfy-app/src/poller.ts).
+/// Long-polls `GET {feedUrl}/api/hyperfy/feed?since=<version>` (see packages/hyperfy-app/src/poller.ts).
 /// Each answer is a whole snapshot; `onSnapshot` fires only when the version changes. Failures back off
 /// (doubling, 1 s to 30 s) and keep the last snapshot, except a 404 (scene gone), which clears it once.
 /// The world key is only ever put in the Authorization header; it is never logged or shown.
@@ -55,7 +55,7 @@ final class FeedClient: ObservableObject {
             comps.queryItems = [URLQueryItem(name: "since", value: version)]
             var req = URLRequest(url: comps.url!)
             req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-            req.setValue("1", forHTTPHeaderField: "X-VLM-App-Version")
+            req.setValue("1", forHTTPHeaderField: "X-Virvi-App-Version")
 
             var failure: String
             do {

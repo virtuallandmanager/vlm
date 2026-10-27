@@ -1,5 +1,5 @@
-// Worlds DB job: runs the VLM server's worlds-database admin statements inside Fly's private network, where the Managed
-// Postgres is reachable. The server starts it as a one-shot machine of the world image (/app/vlm/db-job.mjs) with:
+// Worlds DB job: runs the Virvi server's worlds-database admin statements inside Fly's private network, where the Managed
+// Postgres is reachable. The server starts it as a one-shot machine of the world image (/app/virvi/db-job.mjs) with:
 //   DB_ADMIN_URL   the cluster's admin URL
 //   DB_STATEMENTS  base64 JSON [{ sql, params? }], run in order in one transaction
 // Exits 0 when every statement committed (even if something fails afterwards); 1 when nothing was changed (bad input, no

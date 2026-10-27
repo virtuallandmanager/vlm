@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { randomInt } from 'node:crypto'
 import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm'
-import { AR_PAIRING, HYPERFY_PAIRING, type ArDeviceKind, type ArDeviceSpace, type ArDeviceStatus, type ArDeviceSummary, type ArPairClaimResponse } from 'vlm-shared'
+import { AR_PAIRING, HYPERFY_PAIRING, type ArDeviceKind, type ArDeviceSpace, type ArDeviceStatus, type ArDeviceSummary, type ArPairClaimResponse } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { arDevices, arFloors, arMarkers, arSpaces, sceneCollaborators, sceneRoles, scenes, users } from '../db/schema.js'
 import { getSceneAccess } from '../auth/permissions.js'
@@ -13,7 +13,7 @@ import { verifiedWalletsOf } from '../analytics/claims.js'
 import { mayBuild, spaceScene } from './access.js'
 
 /**
- * Pairing an AR headset to a VLM user: the headset sends the sha256 of a secret only it knows and gets a short code;
+ * Pairing an AR headset to a Virvi user: the headset sends the sha256 of a secret only it knows and gets a short code;
  * the user approves the code on the website as a personal or a shared headset; the headset trades code and secret for
  * a device id, then mints short-lived AR passes with id and secret. The approver's build access is checked at each
  * mint, never at approval. Codes and secrets are credentials: only their sha256 is stored and they are never logged.

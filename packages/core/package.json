@@ -1,0 +1,29 @@
+{
+  "name": "@virvixr/core",
+  "version": "2.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "devDependencies": {
+    "@virvixr/shared": "workspace:*",
+    "@virvixr/client": "workspace:*",
+    "typescript": "^5.7.0",
+    "vitest": "3.2.7"
+  },
+  "peerDependencies": {
+    "@virvixr/shared": "workspace:*",
+    "@virvixr/client": "workspace:*",
+    "@virvixr/hud": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@virvixr/hud": {
+      "optional": true
+    }
+  }
+}

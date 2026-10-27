@@ -231,7 +231,7 @@ describe('worlds database through Fly job machines', () => {
     const [app, spec] = runJob.mock.calls[0] as unknown as [string, { image: string; env: Record<string, string>; cmd: string[] }]
     expect(app).toBe('vlm-worlds-db-jobs')
     expect(spec.image).toBe(opts.image)
-    expect(spec.cmd).toEqual(['node', '/app/vlm/db-job.mjs'])
+    expect(spec.cmd).toEqual(['node', '/app/virvi/db-job.mjs'])
     expect(Object.keys(spec.env)).toEqual(['DB_STATEMENTS'])
     expect(JSON.stringify(spec)).not.toContain('adminpw_x')
     expect(JSON.parse(Buffer.from(spec.env.DB_STATEMENTS, 'base64').toString('utf8'))).toEqual(stmts)

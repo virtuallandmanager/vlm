@@ -10,7 +10,7 @@ import { applyResult, parseResult } from '../studio/results.js'
 import { publishStudio } from '../studio/events.js'
 
 /**
- * VLM's side of apps/studio-worker/CONTRACT.md. Each design's machine authenticates with its own worker token; a token
+ * Virvi's side of apps/studio-worker/CONTRACT.md. Each design's machine authenticates with its own worker token; a token
  * reaches only its design and that design's jobs. Workers upload dozens of files a job, so the global rate limit is off.
  */
 

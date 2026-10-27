@@ -1,11 +1,11 @@
 services:
   - type: web
-    name: vlm
+    name: virvi
     runtime: docker
     plan: starter
     healthCheckPath: /api/health
     envVars:
-      - key: VLM_MODE
+      - key: VIRVI_MODE
         value: single
       - key: JWT_SECRET
         generateValue: true

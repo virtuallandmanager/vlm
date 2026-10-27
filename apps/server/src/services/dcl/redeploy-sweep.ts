@@ -135,7 +135,7 @@ export function startDclRedeploySweep(ms: number): () => void {
     try {
       await sweepRedeploys()
     } catch (err) {
-      console.error('[vlm-server] Redeploy sweep failed:', err)
+      console.error('[virvi-server] Redeploy sweep failed:', err)
     } finally {
       running = false
     }

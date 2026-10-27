@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { RING_MAX_DIAMETER_MM, ringMarkerSvg } from 'vlm-shared'
+import { RING_MAX_DIAMETER_MM, ringMarkerSvg } from '@virvixr/shared'
 import { authenticate } from '../middleware/auth.js'
 import { actorFromClaims } from '../auth/actor.js'
 import { getSceneAccess } from '../auth/permissions.js'
@@ -156,13 +156,13 @@ export default async function arSpaceRoutes(app: FastifyInstance) {
         throw err
       }
       const { base, raised } = meshes
-      body = format === '3mf' ? threeMf(base, raised) : stl(format === 'stl-base' ? base : raised, `VLM ring marker ${marker.code} ${format === 'stl-base' ? 'base' : 'raised'}`)
+      body = format === '3mf' ? threeMf(base, raised) : stl(format === 'stl-base' ? base : raised, `Virvi ring marker ${marker.code} ${format === 'stl-base' ? 'base' : 'raised'}`)
     }
     const { ext, type } = FILE_FORMATS[format]
     const suffix = format === 'stl-base' ? '-base' : format === 'stl-raised' ? '-raised' : ''
     return reply
       .header('content-type', type)
-      .header('content-disposition', `attachment; filename="vlm-ring-${marker.code}-${diameterMm}mm${suffix}.${ext}"`)
+      .header('content-disposition', `attachment; filename="virvi-ring-${marker.code}-${diameterMm}mm${suffix}.${ext}"`)
       .send(body)
   })
 }

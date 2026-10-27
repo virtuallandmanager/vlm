@@ -3,7 +3,7 @@ import { destinationHistory } from '@/lib/deploy'
 import { useApi, type DclDeployment, type DclDestination } from '@/lib/api'
 import { API_URL } from '@/lib/config'
 import { destroyWorldPrompt, hyperfyErrorMessage, lastSeenLabel, noSlotsLine, removeWorldPrompt, setupSteps, shortDate, slotLine, worldStatusLabel } from '@/lib/hyperfy'
-import type { HyperfyWorldSummary } from 'vlm-shared'
+import type { HyperfyWorldSummary } from '@virvixr/shared'
 import { useAuth } from '@/lib/auth'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -20,7 +20,7 @@ export default function DeployPage() {
   )
 }
 
-// -- Your Hyperfy worlds (self-run and VLM-hosted) -----------------------------
+// -- Your Hyperfy worlds (self-run and Virvi-hosted) -----------------------------
 
 const POLL_MS = 5000
 
@@ -217,7 +217,7 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold">Your Hyperfy worlds</h2>
-        <p className="text-sm text-gray-500">Have VLM host a world for this scene, or connect one you run yourself. Either way it follows your edits.</p>
+        <p className="text-sm text-gray-500">Have Virvi host a world for this scene, or connect one you run yourself. Either way it follows your edits.</p>
       </div>
 
       {error && <p className="rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300" role="alert">{error}</p>}
@@ -231,7 +231,7 @@ function HyperfyWorlds({ sceneId }: { sceneId: string }) {
             <button onClick={() => copy(shown.key)} className="rounded-md bg-gray-800 px-3 py-2 text-sm text-blue-400 hover:bg-gray-700">{copied ? 'Copied' : 'Copy'}</button>
           </div>
           <p className="text-sm text-yellow-400">You won&apos;t see this key again.</p>
-          <a href={`${API_URL}/api/hyperfy/app.hyp`} className="inline-block rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Download VLM app (.hyp)</a>
+          <a href={`${API_URL}/api/hyperfy/app.hyp`} className="inline-block rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Download Virvi app (.hyp)</a>
           <ol className="list-decimal space-y-1 pl-5 text-sm text-gray-300">
             {setupSteps(API_URL).map((step) => <li key={step}>{step}</li>)}
           </ol>
@@ -510,7 +510,7 @@ function DeployContent() {
             <div className="rounded-lg border border-gray-800 bg-gray-900 py-6 text-center text-sm text-gray-500">
               <p>This scene isn&apos;t deployed to a Decentraland World.</p>
               <p className="mt-1">
-                <Link href="/scenes/new" className="text-blue-400 hover:text-blue-300">Make a new scene</Link> to deploy one, or set this scene up in your own Creator Hub scene with vlm-dcl.
+                <Link href="/scenes/new" className="text-blue-400 hover:text-blue-300">Make a new scene</Link> to deploy one, or set this scene up in your own Creator Hub scene with virvi-dcl.
               </p>
             </div>
           ) : (

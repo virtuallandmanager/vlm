@@ -33,11 +33,11 @@ const HOSTING_CONFIG = {
   hyperfyImage: 'registry.fly.io/vlm-hyperfy-image:abc123',
   hyperfyWorldsDatabaseUrl: 'postgres://admin:adminpw@worlds-db.internal/worlds',
   hyperfyWorldsDbUrlTemplate: 'postgres://{user}:{password}@worlds-db.flycast:5432/worlds',
-  hyperfyAssetsS3Uri: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/vlm-hyperfy',
-  hyperfyAssetsBaseUrl: 'https://worlds-cdn.vlm.gg',
-  hyperfyRouterDomain: 'worlds.vlm.gg',
+  hyperfyAssetsS3Uri: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/virvi-hyperfy',
+  hyperfyAssetsBaseUrl: 'https://worlds-cdn.virvi.io',
+  hyperfyRouterDomain: 'worlds.virvi.io',
   hyperfySecretKey: 'ab'.repeat(32),
-  publicUrl: 'https://api.vlm.gg',
+  publicUrl: 'https://api.virvi.io',
   allFeaturesUnlocked: false,
 }
 
@@ -141,12 +141,12 @@ describe('hosted Hyperfy worlds', () => {
   })
 
   it('create inserts provisioning, then running after health, with the exact env (no secrets in logs)', async () => {
-    ;(config as any).publicUrl = 'https://api.staging.vlm.gg'
+    ;(config as any).publicUrl = 'https://api.staging.virvi.io'
     await setTier(owner.id, 'pro')
     const gate = deferred()
     const f = fakes({ dbGate: gate.promise })
     const { world, adminCode } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Moon Base!', endsAt: null }, f.deps)
-    expect(world).toMatchObject({ kind: 'hosted', status: 'provisioning', address: 'moon-base.worlds.vlm.gg', sceneId, name: 'Moon Base!' })
+    expect(world).toMatchObject({ kind: 'hosted', status: 'provisioning', address: 'moon-base.worlds.virvi.io', sceneId, name: 'Moon Base!' })
     expect((await row(world.id)).status).toBe('provisioning')
     expect((await row(world.id)).flyApp).toBe('vlm-w-moon-base')
     gate.resolve()
@@ -154,61 +154,92 @@ describe('hosted Hyperfy worlds', () => {
 
     expect((await row(world.id)).status).toBe('running')
     expect(f.healthUrls.length).toBeGreaterThanOrEqual(2)
-    expect(new Set(f.healthUrls)).toEqual(new Set(['https://moon-base.worlds.vlm.gg/']))
+    expect(new Set(f.healthUrls)).toEqual(new Set(['https://moon-base.worlds.virvi.io/']))
     const machine = f.machines.get('vlm-w-moon-base')!
     expect(machine.image).toBe('registry.fly.io/vlm-hyperfy-image:abc123')
     expect(machine.env).toEqual({
       PORT: '3000',
       WORLD: 'world',
-      PUBLIC_WS_URL: 'wss://moon-base.worlds.vlm.gg/ws',
-      PUBLIC_API_URL: 'https://moon-base.worlds.vlm.gg/api',
+      PUBLIC_WS_URL: 'wss://moon-base.worlds.virvi.io/ws',
+      PUBLIC_API_URL: 'https://moon-base.worlds.virvi.io/api',
       ASSETS: 's3',
-      ASSETS_S3_URI: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/vlm-hyperfy/moon-base',
-      ASSETS_BASE_URL: 'https://worlds-cdn.vlm.gg/moon-base',
+      ASSETS_S3_URI: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/virvi-hyperfy/moon-base',
+      ASSETS_BASE_URL: 'https://worlds-cdn.virvi.io/moon-base',
       DB_URI: 'postgres://world_moon_base:dbpw_moon-base_s3cr3t@worlds-db.flycast:5432/worlds',
       DB_SCHEMA: 'world_moon_base',
       JWT_SECRET: expect.stringMatching(/^[0-9a-f]{64}$/),
       ADMIN_CODE: adminCode,
       SAVE_INTERVAL: '60',
       CLEAN: 'true',
-      PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: 'wss://api.staging.vlm.gg',
+      PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: 'wss://api.staging.virvi.io',
       PUBLIC_MAX_UPLOAD_SIZE: '12',
-      VLM_FEED_URL: 'https://api.staging.vlm.gg',
-      VLM_WORLD_KEY: expect.stringMatching(/^vlmw_[0-9a-f]{64}$/),
-      VLM_WORLD_SECRET: expect.stringMatching(/^[0-9a-f]{64}$/),
+      VIRVI_FEED_URL: 'https://api.staging.virvi.io',
+      VIRVI_WORLD_KEY: expect.stringMatching(/^virviw_[0-9a-f]{64}$/),
+      VIRVI_WORLD_SECRET: expect.stringMatching(/^[0-9a-f]{64}$/),
     })
-    expect((await findWorldByKey(machine.env.VLM_WORLD_KEY))?.id).toBe(world.id)
+    expect((await findWorldByKey(machine.env.VIRVI_WORLD_KEY))?.id).toBe(world.id)
     // Hyperfy keys files under the URI's prefix; the CDN serves them at ASSETS_BASE_URL/<file>.
-    expect(hyperfyS3Prefix(machine.env.ASSETS_S3_URI)).toEqual({ bucket: 'vlm-hyperfy', prefix: 'moon-base/' })
+    expect(hyperfyS3Prefix(machine.env.ASSETS_S3_URI)).toEqual({ bucket: 'virvi-hyperfy', prefix: 'moon-base/' })
 
     expect(f.logs.length).toBeGreaterThan(0)
     const logText = f.logs.join('\n')
-    for (const secret of [machine.env.JWT_SECRET, adminCode, machine.env.VLM_WORLD_KEY, machine.env.VLM_WORLD_SECRET, 'dbpw_moon-base_s3cr3t', 'r2s3cr3t', 'fm2_token_s3cr3t', 'adminpw']) {
+    for (const secret of [machine.env.JWT_SECRET, adminCode, machine.env.VIRVI_WORLD_KEY, machine.env.VIRVI_WORLD_SECRET, 'dbpw_moon-base_s3cr3t', 'r2s3cr3t', 'fm2_token_s3cr3t', 'adminpw']) {
       expect(logText).not.toContain(secret)
     }
   })
 
-  it('world secret is stored only as a hash, and create sets VLM_WORLD_SECRET in the machine env', async () => {
+  it('world secret is stored only as a hash, and create sets VIRVI_WORLD_SECRET in the machine env', async () => {
     await setTier(owner.id, 'pro')
     const f = fakes()
     const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Secret World', endsAt: null }, f.deps)
     await hostedWorldSettled(world.id)
-    const secret = f.machines.get('vlm-w-secret-world')!.env.VLM_WORLD_SECRET
+    const secret = f.machines.get('vlm-w-secret-world')!.env.VIRVI_WORLD_SECRET
     expect(secret).toMatch(/^[0-9a-f]{64}$/)
     const stored = await row(world.id)
     expect(stored.worldSecretHash).toBe(createHash('sha256').update(secret).digest('hex'))
     expect(JSON.stringify(stored)).not.toContain(secret)
-    const key = f.machines.get('vlm-w-secret-world')!.env.VLM_WORLD_KEY
+    const key = f.machines.get('vlm-w-secret-world')!.env.VIRVI_WORLD_KEY
     expect((await findWorldBySecret(key, secret))?.id).toBe(world.id)
     expect(await findWorldBySecret(key, 'wrong')).toBeNull()
-    expect(await findWorldBySecret('vlmw_other', secret)).toBeNull()
+    expect(await findWorldBySecret('virviw_other', secret)).toBeNull()
     // rotating the key leaves the secret alone
     await rotateHostedWorldKey(world.id, f.deps)
-    expect(f.machines.get('vlm-w-secret-world')!.env.VLM_WORLD_SECRET).toBe(secret)
+    expect(f.machines.get('vlm-w-secret-world')!.env.VIRVI_WORLD_SECRET).toBe(secret)
     expect((await row(world.id)).worldSecretHash).toBe(stored.worldSecretHash)
   })
 
-  it('creator gets a fly.dev address and public IPs; pro gets a worlds.vlm.gg address and no IPs', async () => {
+  it('rotating the key moves a pre-rename machine onto Virvi settings and hosts, keeping its secret', async () => {
+    await setTier(owner.id, 'pro')
+    const f = fakes()
+    const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Old World', endsAt: null }, f.deps)
+    await hostedWorldSettled(world.id)
+    const m = f.machines.get('vlm-w-old-world')!
+    const old = ['vlm', 'gg'].join('.') // virvi-rename: keep
+    const { VIRVI_WORLD_KEY, VIRVI_WORLD_SECRET, VIRVI_FEED_URL, ...rest } = m.env
+    m.env = {
+      ...rest,
+      PUBLIC_WS_URL: `wss://old-world.worlds.${old}/ws`,
+      PUBLIC_API_URL: `https://old-world.worlds.${old}/api`,
+      ASSETS_BASE_URL: `https://worlds-cdn.${old}/old-world`,
+      PUBLIC_SCRIPT_WEBSOCKET_ORIGINS: `wss://api.${old}`,
+      ['VLM_FEED_URL']: `https://api.${old}`, // virvi-rename: keep
+      ['VLM_WORLD_KEY']: VIRVI_WORLD_KEY, // virvi-rename: keep
+      ['VLM_WORLD_SECRET']: VIRVI_WORLD_SECRET, // virvi-rename: keep
+    }
+    await rotateHostedWorldKey(world.id, f.deps)
+    const env = f.machines.get('vlm-w-old-world')!.env
+    expect(Object.keys(env).filter((k) => k.startsWith('VLM_'))).toEqual([]) // virvi-rename: keep
+    expect(env.VIRVI_WORLD_SECRET).toBe(VIRVI_WORLD_SECRET)
+    expect(env.VIRVI_FEED_URL).toBe('https://api.virvi.io')
+    expect(env.VIRVI_WORLD_KEY).toMatch(/^virviw_/)
+    expect(env.PUBLIC_WS_URL).toBe('wss://old-world.worlds.virvi.io/ws')
+    expect(env.PUBLIC_API_URL).toBe('https://old-world.worlds.virvi.io/api')
+    expect(env.ASSETS_BASE_URL).toBe('https://worlds-cdn.virvi.io/old-world')
+    expect(env.PUBLIC_SCRIPT_WEBSOCKET_ORIGINS).toBe('wss://api.virvi.io')
+    void VIRVI_FEED_URL
+  })
+
+  it('creator gets a fly.dev address and public IPs; pro gets a worlds.virvi.io address and no IPs', async () => {
     await setTier(owner.id, 'creator')
     const c = fakes()
     const { world: small } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Small World', endsAt: null }, c.deps)
@@ -225,7 +256,7 @@ describe('hosted Hyperfy worlds', () => {
     const p = fakes()
     const { world: big } = await createHostedWorld({ ownerId: pro.id, sceneId: proScene, name: 'Big World', endsAt: null }, p.deps)
     await hostedWorldSettled(big.id)
-    expect(big.address).toBe('big-world.worlds.vlm.gg')
+    expect(big.address).toBe('big-world.worlds.virvi.io')
     expect(p.calls.some((x) => x.startsWith('allocatePublicIps'))).toBe(false)
     // Router-addressed worlds get one private Flycast address, for the router's large-body proxying.
     expect(p.calls.filter((x) => x.startsWith('allocatePrivateIp'))).toEqual(['allocatePrivateIp vlm-w-big-world'])
@@ -235,7 +266,7 @@ describe('hosted Hyperfy worlds', () => {
   it('create past the slot limit throws world_limit_reached and creates nothing', async () => {
     await setTier(owner.id, 'creator')
     await db.insert(hyperfyWorlds).values({
-      sceneId, ownerId: owner.id, name: 'Existing', kind: 'hosted', slug: 'existing', status: 'running', keyHash: 'h1', keyPrefix: 'vlmw_x',
+      sceneId, ownerId: owner.id, name: 'Existing', kind: 'hosted', slug: 'existing', status: 'running', keyHash: 'h1', keyPrefix: 'virviw_x',
     })
     const f = fakes()
     await expect(createHostedWorld({ ownerId: owner.id, sceneId, name: 'Second', endsAt: null }, f.deps))
@@ -279,7 +310,7 @@ describe('hosted Hyperfy worlds', () => {
     expect((await row(a.world.id)).slug).toBe('moon')
     expect((await row(b.world.id)).slug).toBe('moon-2')
     expect((await row(c.world.id)).slug).toBe('moon-3')
-    expect(b.world.address).toBe('moon-2.worlds.vlm.gg')
+    expect(b.world.address).toBe('moon-2.worlds.virvi.io')
 
     // Names that slug to too little, or too much, still give a slug the router accepts.
     const d = await createHostedWorld({ ownerId: other.id, sceneId: otherScene, name: '!!', endsAt: null }, f.deps)
@@ -422,21 +453,21 @@ describe('hosted Hyperfy worlds', () => {
     expect(f.machines.get('vlm-w-local')!.env.PUBLIC_SCRIPT_WEBSOCKET_ORIGINS).toBe('ws://localhost:3010')
   })
 
-  it('rotate-key on a world with no secret yet sets a hash and VLM_WORLD_SECRET; with a secret it leaves both alone', async () => {
+  it('rotate-key on a world with no secret yet sets a hash and VIRVI_WORLD_SECRET; with a secret it leaves both alone', async () => {
     await setTier(owner.id, 'pro')
     const f = fakes()
     const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Legacy', endsAt: null }, f.deps)
     await hostedWorldSettled(world.id)
     // make it a pre-secret world
     await db.update(hyperfyWorlds).set({ worldSecretHash: null }).where(eq(hyperfyWorlds.id, world.id))
-    delete f.machines.get('vlm-w-legacy')!.env.VLM_WORLD_SECRET
+    delete f.machines.get('vlm-w-legacy')!.env.VIRVI_WORLD_SECRET
     await rotateHostedWorldKey(world.id, f.deps)
-    const secret = f.machines.get('vlm-w-legacy')!.env.VLM_WORLD_SECRET
+    const secret = f.machines.get('vlm-w-legacy')!.env.VIRVI_WORLD_SECRET
     expect(secret).toMatch(/^[0-9a-f]{64}$/)
     const hash = (await row(world.id)).worldSecretHash
     expect(hash).toBe(createHash('sha256').update(secret).digest('hex'))
     await rotateHostedWorldKey(world.id, f.deps)
-    expect(f.machines.get('vlm-w-legacy')!.env.VLM_WORLD_SECRET).toBe(secret)
+    expect(f.machines.get('vlm-w-legacy')!.env.VIRVI_WORLD_SECRET).toBe(secret)
     expect((await row(world.id)).worldSecretHash).toBe(hash)
   })
 
@@ -446,7 +477,7 @@ describe('hosted Hyperfy worlds', () => {
     const { world } = await createHostedWorld({ ownerId: owner.id, sceneId, name: 'Flaky', endsAt: null }, f.deps)
     await hostedWorldSettled(world.id)
     await db.update(hyperfyWorlds).set({ worldSecretHash: null }).where(eq(hyperfyWorlds.id, world.id))
-    delete f.machines.get('vlm-w-flaky')!.env.VLM_WORLD_SECRET
+    delete f.machines.get('vlm-w-flaky')!.env.VIRVI_WORLD_SECRET
     const real = f.deps.fly!.updateMachine
     f.deps.fly!.updateMachine = async () => { throw new Error('fly down') }
     await expect(rotateHostedWorldKey(world.id, f.deps)).rejects.toThrow()
@@ -463,11 +494,11 @@ describe('hosted Hyperfy worlds', () => {
     await hostedWorldSettled(world.id)
     const before = { ...f.machines.get('vlm-w-keys')!.env }
     const { key } = await rotateHostedWorldKey(world.id, f.deps)
-    expect(key).toMatch(/^vlmw_[0-9a-f]{64}$/)
-    expect(key).not.toBe(before.VLM_WORLD_KEY)
+    expect(key).toMatch(/^virviw_[0-9a-f]{64}$/)
+    expect(key).not.toBe(before.VIRVI_WORLD_KEY)
     expect(f.calls).toContain('updateMachine vlm-w-keys m-vlm-w-keys')
-    expect(f.machines.get('vlm-w-keys')!.env).toEqual({ ...before, VLM_WORLD_KEY: key })
-    expect(await findWorldByKey(before.VLM_WORLD_KEY)).toBeNull()
+    expect(f.machines.get('vlm-w-keys')!.env).toEqual({ ...before, VIRVI_WORLD_KEY: key })
+    expect(await findWorldByKey(before.VIRVI_WORLD_KEY)).toBeNull()
     expect((await findWorldByKey(key))?.id).toBe(world.id)
     expect((await row(world.id)).keyPrefix).toBe(key.slice(0, 12))
   })
@@ -483,7 +514,7 @@ describe('hosted Hyperfy worlds', () => {
     expect(err).toMatchObject({ code: 'world_update_failed' })
     expect(err.message).toMatch(/key was changed/i)
     expect(err.message).toMatch(/rotate .*again/i)
-    expect(err.message).not.toContain('vlmw_')
+    expect(err.message).not.toContain('virviw_')
   })
 
   it("a rotate's failed machine update is logged without the world's secrets", async () => {
@@ -495,7 +526,7 @@ describe('hosted Hyperfy worlds', () => {
     let sentKey = ''
     // Fly can echo the machine config back in its error.
     f.deps.fly!.updateMachine = async (_app: string, _id: string, m: WorldMachineSpec) => {
-      sentKey = m.env.VLM_WORLD_KEY
+      sentKey = m.env.VIRVI_WORLD_KEY
       throw new FlyError(`Fly POST returned 422: invalid config ${JSON.stringify(m.env)}`, 422, '')
     }
     f.logs.length = 0
@@ -503,7 +534,7 @@ describe('hosted Hyperfy worlds', () => {
     const logText = f.logs.join('\n')
     expect(logText).toContain('machine update failed')
     expect(logText).toContain('[redacted]')
-    for (const secret of [sentKey, env.VLM_WORLD_KEY, env.DB_URI, 'dbpw_leaky_s3cr3t', env.JWT_SECRET, adminCode, 'r2s3cr3t']) {
+    for (const secret of [sentKey, env.VIRVI_WORLD_KEY, env.DB_URI, 'dbpw_leaky_s3cr3t', env.JWT_SECRET, adminCode, 'r2s3cr3t']) {
       expect(secret.length).toBeGreaterThan(5)
       expect(logText).not.toContain(secret)
     }

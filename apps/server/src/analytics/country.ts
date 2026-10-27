@@ -23,7 +23,7 @@ export async function createCountryLookup(dbPath: string | undefined = process.e
       const maxmind = await import('maxmind')
       reader = (await maxmind.open(dbPath)) as unknown as Reader
     } catch (err) {
-      console.warn('[vlm-server] Country database could not be opened; countries will be header-only:', (err as Error).message)
+      console.warn('[virvi-server] Country database could not be opened; countries will be header-only:', (err as Error).message)
     }
   }
   return {

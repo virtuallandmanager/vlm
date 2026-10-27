@@ -6,15 +6,15 @@ agents' calls to Anthropic or OpenAI, which spend real money (about $0.15 for on
 1. **A database.** With the dev Postgres running:
 
    ```bash
-   docker exec vlm-dev-postgres-1 psql -U vlm -d postgres -c 'CREATE DATABASE vlm_studio_local'
-   cd apps/server && DATABASE_URL=postgres://vlm:vlm_dev@localhost:5432/vlm_studio_local pnpm exec drizzle-kit push --force
+   docker exec vlm-dev-postgres-1 psql -U vlm -d postgres -c 'CREATE DATABASE virvi_studio_local'
+   cd apps/server && DATABASE_URL=postgres://vlm:vlm_dev@localhost:5432/virvi_studio_local pnpm exec drizzle-kit push --force
    ```
 
 2. **The server**, in cloud mode with a file store and no Fly (`STUDIO_MACHINES=external`: you run the worker):
 
    ```bash
-   cd apps/server && VLM_MODE=cloud PORT=3010 JWT_SECRET=studio-local-secret STORAGE_PROVIDER=local \
-     DATABASE_URL=postgres://vlm:vlm_dev@localhost:5432/vlm_studio_local \
+   cd apps/server && VIRVI_MODE=cloud PORT=3010 JWT_SECRET=studio-local-secret STORAGE_PROVIDER=local \
+     DATABASE_URL=postgres://vlm:vlm_dev@localhost:5432/virvi_studio_local \
      STUDIO_WORKER_IMAGE=vlm-studio-worker:dev STUDIO_S3_URI=file:///tmp/studio-store STUDIO_MACHINES=external \
      PUBLIC_URL=http://host.docker.internal:3010 pnpm exec tsx src/index.ts
    ```
@@ -22,8 +22,8 @@ agents' calls to Anthropic or OpenAI, which spend real money (about $0.15 for on
 3. **A design and its worker token:**
 
    ```bash
-   cd apps/server && DATABASE_URL=postgres://vlm:vlm_dev@localhost:5432/vlm_studio_local JWT_SECRET=studio-local-secret \
-     PUBLIC_URL=http://host.docker.internal:3010 VLM_MODE=cloud pnpm exec tsx scripts/studio-local-design.ts wearable codex
+   cd apps/server && DATABASE_URL=postgres://vlm:vlm_dev@localhost:5432/virvi_studio_local JWT_SECRET=studio-local-secret \
+     PUBLIC_URL=http://host.docker.internal:3010 VIRVI_MODE=cloud pnpm exec tsx scripts/studio-local-design.ts wearable codex
    ```
 
    It prints `{designId, workerToken, accessToken}`.
@@ -33,7 +33,7 @@ agents' calls to Anthropic or OpenAI, which spend real money (about $0.15 for on
 
    ```bash
    docker run --rm --platform linux/amd64 --cap-add NET_ADMIN --env-file apps/studio-worker/.env \
-     -e VLM_API_URL=http://host.docker.internal:3010 -e STUDIO_WORKER_TOKEN=<workerToken> \
+     -e VIRVI_API_URL=http://host.docker.internal:3010 -e STUDIO_WORKER_TOKEN=<workerToken> \
      -e STUDIO_DESIGN_ID=<designId> -e STUDIO_IDLE_EXIT_SEC=900 vlm-studio-worker:dev
    ```
 
@@ -46,4 +46,4 @@ agents' calls to Anthropic or OpenAI, which spend real money (about $0.15 for on
    ```
 
    Then `GET /api/studio/designs/<designId>` shows the reply, the hat's revision and its render URLs (swap
-   `host.docker.internal` for `localhost` to open them from your machine). The `vlm_studio` room carries the progress.
+   `host.docker.internal` for `localhost` to open them from your machine). The `virvi_studio` room carries the progress.

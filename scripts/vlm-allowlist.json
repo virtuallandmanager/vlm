@@ -1,0 +1,35 @@
+{
+  "paths": [
+    "docs/superpowers/**",
+    "VLM_V2_*.md",
+    "pnpm-lock.yaml",
+    "**/package-lock.json",
+    "scripts/vlm-allowlist.json",
+    "scripts/check-no-vlm*.mjs",
+    "apps/ar-spike/docs/visionos-controls.png",
+    "apps/ar-spike/docs/visionos-window-missing-key.png",
+    "test-scenes/dcl-test/bin/**",
+    "test-scenes/dcl-test/main.crdt",
+    "test-scenes/dcl-smart-item-test/bin/**"
+  ],
+  "tokens": [
+    "vlm-w-",
+    "vlm-worlds(-router|-pg|-db-jobs)?",
+    "vlm-hyperfy-image",
+    "vlm-studio-(worker|spike)",
+    "vlm-streaming",
+    "vlm-media",
+    "vlm-quest(-release\\.jks)?",
+    "\\bvlm_(test|dev|prod|main|next)\\b",
+    "postgres(ql)?://vlm:",
+    "@[\\w.-]+:\\d+/vlm\\b",
+    "virvi-xr/vlm-(api|ui|jobs|scenes|dcl-qc|proxy|dcl-sdk6|dcl-sdk7|hyperfy-sdk2)",
+    "VLM_V2_\\w+",
+    "vlm_streams",
+    "vlm-hyperfy(?![-\\w])",
+    "vlm-studio(?![-\\w])",
+    "vlm-dev-postgres-1",
+    "-U vlm\\b",
+    "vlm_(user_id|studio_payment_id)"
+  ]
+}

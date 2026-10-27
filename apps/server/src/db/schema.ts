@@ -20,7 +20,7 @@ import {
   bigint,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
-import type { VenueRules, Vec3 } from 'vlm-shared'
+import type { VenueRules, Vec3 } from '@virvixr/shared'
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 
@@ -326,7 +326,7 @@ export const analyticsScenes = pgTable('analytics_scenes', {
   claimStatus: analyticsClaimStatusEnum('claim_status'),
   claimedAt: timestamp('claimed_at', { withTimezone: true }),
   lapsedAt: timestamp('lapsed_at', { withTimezone: true }),
-  vlmSceneId: uuid('vlm_scene_id').references(() => scenes.id, { onDelete: 'set null' }),
+  virviSceneId: uuid('virvi_scene_id').references(() => scenes.id, { onDelete: 'set null' }),
   walletVisibility: boolean('wallet_visibility').notNull().default(false),
   isPreview: boolean('is_preview').notNull().default(false),
   verifiedSessionShare: real('verified_session_share').notNull().default(0),
@@ -335,7 +335,7 @@ export const analyticsScenes = pgTable('analytics_scenes', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
-  vlmSceneIdx: index('analytics_scenes_vlm_scene_idx').on(t.vlmSceneId),
+  virviSceneIdx: index('analytics_scenes_virvi_scene_idx').on(t.virviSceneId),
   claimerIdx: index('analytics_scenes_claimer_idx').on(t.claimedByUserId),
   lastActivityIdx: index('analytics_scenes_last_activity_idx').on(t.lastActivityAt),
 }))
@@ -778,10 +778,10 @@ export const streamingServers = pgTable('streaming_servers', {
   name: text('name').notNull(),
   type: streamingServerTypeEnum('type').notNull().default('shared'),
   status: streamingServerStatusEnum('status').notNull().default('provisioning'),
-  rtmpUrl: text('rtmp_url'), // e.g. rtmp://ingest.vlm.gg/live
+  rtmpUrl: text('rtmp_url'), // e.g. rtmp://ingest.virvi.io/live
   streamKey: text('stream_key'), // unique key for this stream — secret: only the owner and the media server see it
   playbackId: text('playback_id'), // public id (128-bit random) in the playback URL and HLS folder — never the stream key
-  hlsPlaylistUrl: text('hls_playlist_url'), // e.g. https://cdn.vlm.gg/streams/{id}/playlist.m3u8
+  hlsPlaylistUrl: text('hls_playlist_url'), // e.g. https://cdn.virvi.io/streams/{id}/playlist.m3u8
   region: text('region').default('us-east-1'),
   infrastructureId: text('infrastructure_id'), // ECS task ARN, Fly machine ID, etc.
   sceneId: uuid('scene_id').references(() => scenes.id), // optional: auto-link to a scene's video
@@ -876,7 +876,7 @@ export const apiKeys = pgTable('api_keys', {
   orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   keyHash: text('key_hash').notNull(), // SHA-256 hash of the key
-  keyPrefix: text('key_prefix').notNull(), // first 8 chars for identification (e.g., "vlm_k1_a")
+  keyPrefix: text('key_prefix').notNull(), // first 8 chars for identification (e.g., "virvi_k1")
   scopes: text('scopes').array(), // ['scenes:read', 'scenes:write', 'media:read', 'media:write']
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
@@ -904,7 +904,7 @@ export const hyperfyWorlds = pgTable('hyperfy_worlds', {
   kind: text('kind').notNull().default('self'),
   keyHash: text('key_hash').notNull().unique(), // SHA-256 hash of the world key
   keyPrefix: text('key_prefix').notNull(), // first 12 chars, for display
-  // SHA-256 of VLM_WORLD_SECRET (hosted worlds only): proves a vouch comes from the world's own server. Never rotated with the key.
+  // SHA-256 of VIRVI_WORLD_SECRET (hosted worlds only): proves a vouch comes from the world's own server. Never rotated with the key.
   worldSecretHash: text('world_secret_hash'),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -929,7 +929,7 @@ export const hyperfyWorlds = pgTable('hyperfy_worlds', {
   slugUq: uniqueIndex('hyperfy_worlds_slug_uq').on(t.slug).where(sql`${t.purgedAt} IS NULL`),
 }))
 
-// ── Hyperfy HUD pairings (a Hyperfy player is paired to a VLM user, who approves on vlm.gg) ──
+// ── Hyperfy HUD pairings (a Hyperfy player is paired to a Virvi user, who approves on virvi.io) ──
 
 export const hyperfyPairings = pgTable('hyperfy_pairings', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1007,7 +1007,7 @@ export const arAdjustments = pgTable('ar_adjustments', {
   spaceInstanceUnique: uniqueIndex('ar_adjustments_space_instance_unique').on(t.spaceId, t.instanceId),
 }))
 
-// A headset paired to a VLM user. The headset holds a secret (only its sha256 is stored) and shows a code; the user
+// A headset paired to a Virvi user. The headset holds a secret (only its sha256 is stored) and shows a code; the user
 // approves the code on the website as personal or shared. Codes and secrets are credentials: never logged.
 export const arDevices = pgTable('ar_devices', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1025,7 +1025,7 @@ export const arDevices = pgTable('ar_devices', {
   userIdx: index('ar_devices_user_idx').on(t.userId),
 }))
 
-// A visitor's report of a published space (VLM Spaces menu → Report this space). Stores no identity: no IP, no device.
+// A visitor's report of a published space (Virvi Spaces menu → Report this space). Stores no identity: no IP, no device.
 export const arReports = pgTable('ar_reports', {
   id: uuid('id').primaryKey().defaultRandom(),
   spaceId: uuid('space_id').notNull().references(() => arSpaces.id, { onDelete: 'cascade' }),
@@ -1095,7 +1095,7 @@ const tstzrange = customType<{ data: string }>({
 
 export const venueKindEnum = pgEnum('venue_kind', ['permanent', 'popup'])
 export const bookingStatusEnum = pgEnum('booking_status', ['pending', 'confirmed', 'live', 'ended', 'canceled'])
-// Must match VENUE_SCOPES / VENUE_ROLES in vlm-shared (asserted in test/schema-venues.test.ts)
+// Must match VENUE_SCOPES / VENUE_ROLES in @virvixr/shared (asserted in test/schema-venues.test.ts)
 export const venueScopeEnum = pgEnum('venue_scope', [
   'screens',
   'playlist',
@@ -1210,13 +1210,13 @@ export const sceneRoles = pgTable(
   }),
 )
 
-/** One tenure of a location being set up in VLM. At most one active (ended_at IS NULL) per location. */
+/** One tenure of a location being set up in Virvi. At most one active (ended_at IS NULL) per location. */
 export const locationSetups = pgTable(
   'location_setups',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     analyticsSceneId: uuid('analytics_scene_id').notNull().references(() => analyticsScenes.id, { onDelete: 'cascade' }),
-    vlmSceneId: uuid('vlm_scene_id').notNull().references(() => scenes.id, { onDelete: 'cascade' }),
+    virviSceneId: uuid('virvi_scene_id').notNull().references(() => scenes.id, { onDelete: 'cascade' }),
     hostUserId: uuid('host_user_id').references(() => users.id, { onDelete: 'set null' }),
     deploymentEntityId: text('deployment_entity_id'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1225,7 +1225,7 @@ export const locationSetups = pgTable(
   },
   (t) => ({
     oneActive: uniqueIndex('location_setups_one_active_uq').on(t.analyticsSceneId).where(sql`${t.endedAt} IS NULL`),
-    byScene: index('location_setups_vlm_scene_idx').on(t.vlmSceneId),
+    byScene: index('location_setups_virvi_scene_idx').on(t.virviSceneId),
   }),
 )
 

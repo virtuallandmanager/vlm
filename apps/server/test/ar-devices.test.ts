@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { AR_PAIRING, DEFAULT_VENUE_RULES, VENUE_ROLE_SCOPES, ringCodeOf } from 'vlm-shared'
+import { AR_PAIRING, DEFAULT_VENUE_RULES, VENUE_ROLE_SCOPES, ringCodeOf } from '@virvixr/shared'
 import { db } from '../src/db/connection.js'
 import { accessGrants, arDevices, arFloors, arMarkers, arSpaces, bookings, sceneCollaborators, venues } from '../src/db/schema.js'
 import { redactPairingCode } from '../src/app.js'

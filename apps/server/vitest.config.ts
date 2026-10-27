@@ -10,7 +10,7 @@ export const TEST_DATABASE_URL =
 export default defineConfig({
   resolve: {
     alias: {
-      'vlm-shared': resolve(here, '../../packages/vlm-shared/src/index.ts'),
+      '@virvixr/shared': resolve(here, '../../packages/shared/src/index.ts'),
     },
   },
   test: {
@@ -21,7 +21,7 @@ export default defineConfig({
     env: {
       DATABASE_URL: TEST_DATABASE_URL,
       JWT_SECRET: 'test-secret',
-      VLM_MODE: 'single',
+      VIRVI_MODE: 'single',
       LOG_LEVEL: 'silent',
       LIFECYCLE_SWEEP_MS: '0',
       DCL_REDEPLOY_SWEEP_MS: '0',

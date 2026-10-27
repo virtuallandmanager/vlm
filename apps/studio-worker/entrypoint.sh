@@ -6,7 +6,7 @@ set -euo pipefail
 filter=/etc/tinyproxy/filter
 {
   sed -e 's/#.*//' -e 's/[[:space:]]//g' /opt/allowlist.txt
-  if [ -n "${VLM_API_URL:-}" ]; then echo "$VLM_API_URL" | sed -E 's#^[a-z]+://##; s#[:/].*$##'; fi
+  if [ -n "${VIRVI_API_URL:-}" ]; then echo "$VIRVI_API_URL" | sed -E 's#^[a-z]+://##; s#[:/].*$##'; fi
 } | grep -v '^$' | sort -u | sed -e 's/\./\\./g' -e 's/^/^/' -e 's/$/$/' > "$filter"
 
 mkdir -p /var/log/tinyproxy /run/tinyproxy

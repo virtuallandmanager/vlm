@@ -1,5 +1,5 @@
 import { and, eq, isNull, ne, or, sql } from 'drizzle-orm'
-import type { IngestBatch } from 'vlm-shared'
+import type { IngestBatch } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { analyticsDirtyHours, analyticsScenes, analyticsEvents, analyticsPositions, analyticsSessions } from '../db/schema.js'
 import type { AnalyticsSceneRow } from './registry.js'

@@ -1,4 +1,4 @@
-# Hosts the studio worker may reach, one per line; everything else is denied. entrypoint.sh adds VLM_API_URL's host.
+# Hosts the studio worker may reach, one per line; everything else is denied. entrypoint.sh adds VIRVI_API_URL's host.
 # Checked with e2e/network.sh: the preview renders with only these. It also asks for decentraland.org,
 # t.contentsquare.net (analytics) and Chrome's own Google hosts, and works with them denied.
 api.anthropic.com  # Claude Code's model API

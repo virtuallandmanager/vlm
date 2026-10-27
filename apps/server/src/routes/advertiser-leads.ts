@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { desc } from 'drizzle-orm'
-import type { AdminAdvertiserLead, AdvertiserLeadInput } from 'vlm-shared'
+import type { AdminAdvertiserLead, AdvertiserLeadInput } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { advertiserLeads } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'

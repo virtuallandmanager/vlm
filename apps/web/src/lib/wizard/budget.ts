@@ -1,4 +1,4 @@
-import { dclBudget, plotParcels, type Plot } from 'vlm-shared'
+import { dclBudget, plotParcels, type Plot } from '@virvixr/shared'
 import type { PlacedItem } from './placement'
 
 export interface BudgetStatus {

@@ -12,7 +12,7 @@ export function EarnBand() {
           <p className="mb-3 text-sm font-medium text-blue-300">Earn from your scene</p>
           <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Your scene can pay you</h2>
           <p className="mt-4 max-w-md leading-relaxed text-gray-300">
-            Turn your screens into ad spaces and you're paid for the campaigns we place in your scene. When there's no campaign, VLM's own
+            Turn your screens into ad spaces and you're paid for the campaigns we place in your scene. When there's no campaign, Virvi's own
             ads fill the slot, so it's never a blank panel.
           </p>
         </div>

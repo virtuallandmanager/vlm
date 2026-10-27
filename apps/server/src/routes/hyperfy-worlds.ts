@@ -1,5 +1,5 @@
 /**
- * Hyperfy worlds: connect your own, or have VLM host one on Fly.
+ * Hyperfy worlds: connect your own, or have Virvi host one on Fly.
  *
  * POST   /api/hyperfy/worlds                — Connect a world (kind 'self', default; returns its key once) or host one
  *                                             (kind 'hosted'; 202 with the admin code once)
@@ -39,7 +39,7 @@ import { hostedWorldSlots } from '../hyperfy/slots.js'
 import { hyperfyHosting } from '../services/hyperfy/infrastructure.js'
 
 // Same depth from src/routes (dev, tests) and dist/routes (Docker): apps/server/<src|dist>/routes -> repo root.
-const APP_HYP = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../packages/vlm-hyperfy-app/dist/vlm.hyp')
+const APP_HYP = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../packages/hyperfy-app/dist/virvi.hyp')
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MAX_NAME = 100
@@ -90,18 +90,18 @@ export default async function hyperfyWorldRoutes(app: FastifyInstance) {
   const createPreHandler = [authenticate, requireFeature('deployment')]
   const preHandler = [authenticate]
 
-  // Public: the built VLM app, to drop into a Hyperfy world. Read per request so a rebuilt file is served without a restart.
+  // Public: the built Virvi app, to drop into a Hyperfy world. Read per request so a rebuilt file is served without a restart.
   app.get('/api/hyperfy/app.hyp', async (request, reply) => {
     let file: Buffer
     try {
       file = await readFile(APP_HYP)
     } catch (err) {
-      request.log.error({ err, path: APP_HYP }, 'hyperfy app.hyp is missing; run the vlm-hyperfy-app build')
+      request.log.error({ err, path: APP_HYP }, 'hyperfy app.hyp is missing; run the @virvixr/hyperfy-app build')
       return reply.code(503).send({ error: 'app_unavailable' })
     }
     return reply
       .header('Content-Type', 'application/octet-stream')
-      .header('Content-Disposition', 'attachment; filename="vlm.hyp"')
+      .header('Content-Disposition', 'attachment; filename="virvi.hyp"')
       .send(file)
   })
 

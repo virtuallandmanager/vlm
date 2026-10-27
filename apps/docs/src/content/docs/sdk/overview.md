@@ -1,43 +1,43 @@
 ---
 title: SDK Overview
-description: How the VLM SDK works across platforms
+description: How the Virvi SDK works across platforms
 ---
 
-The VLM SDK is split into layered packages:
+The Virvi SDK is split into layered packages:
 
 | Package | Purpose |
 |---------|---------|
-| `vlm-shared` | Types, enums, `VLMPlatformAdapter` interface, protocol types |
-| `vlm-client` | HTTP client + Colyseus WebSocket manager |
-| `vlm-core` | `VLM` class, `SceneManager`, element managers (Video, Image, Mesh, Sound) |
-| `vlm-hud` | In-world management HUD (optional) |
-| `vlm-adapter-dcl` | Decentraland SDK 7 adapter |
-| `vlm-hyperfy-app` | VLM app for self-run Hyperfy worlds (see [Hyperfy Setup](/sdk/hyperfy/install)) |
+| `@virvixr/shared` | Types, enums, `VirviPlatformAdapter` interface, protocol types |
+| `@virvixr/client` | HTTP client + Colyseus WebSocket manager |
+| `@virvixr/core` | `Virvi` class, `SceneManager`, element managers (Video, Image, Mesh, Sound) |
+| `@virvixr/hud` | In-world management HUD (optional) |
+| `@virvixr/adapter-dcl` | Decentraland SDK 7 adapter |
+| `@virvixr/hyperfy-app` | Virvi app for self-run Hyperfy worlds (see [Hyperfy Setup](/sdk/hyperfy/install)) |
 
 ## How It Works
 
-1. Your scene imports the platform-specific adapter (e.g., `vlm-adapter-dcl`)
-2. The adapter creates a `VLM` instance with itself as the platform implementation
-3. `VLM.init()` authenticates with the server, joins the Colyseus room, and receives the scene data
-4. vlm-core's element managers call adapter methods to render everything
-5. When the dashboard sends an update, vlm-core receives it and calls the adapter to apply changes
+1. Your scene imports the platform-specific adapter (e.g., `@virvixr/adapter-dcl`)
+2. The adapter creates a `Virvi` instance with itself as the platform implementation
+3. `Virvi.init()` authenticates with the server, joins the Colyseus room, and receives the scene data
+4. @virvixr/core's element managers call adapter methods to render everything
+5. When the dashboard sends an update, @virvixr/core receives it and calls the adapter to apply changes
 
 ```typescript
 // Decentraland scene
-import { createVLM } from 'vlm-adapter-dcl'
+import { createVirvi } from '@virvixr/adapter-dcl'
 
-const vlm = await createVLM()
+const virvi = await createVirvi()
 
 // Everything renders automatically. Developer APIs:
-vlm.sendMessage('game-event', { score: 100 })
-vlm.onMessage('game-event', (data) => console.log(data))
-vlm.setState('high-score', 9999)
-vlm.recordAction('level-complete', { level: 3 })
+virvi.sendMessage('game-event', { score: 100 })
+virvi.onMessage('game-event', (data) => console.log(data))
+virvi.setState('high-score', 9999)
+virvi.recordAction('level-complete', { level: 3 })
 ```
 
-## The VLM Class
+## The Virvi Class
 
-The `VLM` class is the main entry point. After `init()`:
+The `Virvi` class is the main entry point. After `init()`:
 
 | Method | Purpose |
 |--------|---------|
@@ -51,11 +51,11 @@ The `VLM` class is the main entry point. After `init()`:
 
 ## Storage
 
-`vlm.storage` provides read-only access to all scene elements:
+`virvi.storage` provides read-only access to all scene elements:
 
 ```typescript
-vlm.storage.videos.configs['my-screen']   // video element by customId
-vlm.storage.images.configs['banner']       // image element
-vlm.storage.models.configs['trophy']       // 3D model element
-vlm.storage.sounds.configs['ambient']      // sound element
+virvi.storage.videos.configs['my-screen']   // video element by customId
+virvi.storage.images.configs['banner']       // image element
+virvi.storage.models.configs['trophy']       // 3D model element
+virvi.storage.sounds.configs['ambient']      // sound element
 ```

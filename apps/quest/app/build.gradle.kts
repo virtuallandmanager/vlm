@@ -6,12 +6,12 @@ plugins {
 }
 
 android {
-  namespace = "gg.vlm.spaces"
+  namespace = "io.virvi.ar"
   //noinspection GradleDependency
   compileSdk = 34
 
   defaultConfig {
-    applicationId = "gg.vlm.spaces"
+    applicationId = "io.virvi.ar"
     minSdk = 34
     // Horizon OS is Android 14 (API level 34)
     //noinspection OldTargetApi,ExpiredTargetSdkVersion
@@ -20,12 +20,12 @@ android {
     versionName = "0.1.0"
   }
 
-  // Release signing: the four VLM_QUEST_* properties live in ~/.gradle/gradle.properties (see STORE.md), never in the repo.
+  // Release signing: the four VIRVI_QUEST_* properties live in ~/.gradle/gradle.properties (see STORE.md), never in the repo.
   // Without them the release build still assembles, unsigned, and warns.
-  val keystorePath = providers.gradleProperty("VLM_QUEST_KEYSTORE").orNull
-  val keystorePassword = providers.gradleProperty("VLM_QUEST_KEYSTORE_PASSWORD").orNull
-  val keyAlias = providers.gradleProperty("VLM_QUEST_KEY_ALIAS").orNull
-  val keyPassword = providers.gradleProperty("VLM_QUEST_KEY_PASSWORD").orNull
+  val keystorePath = providers.gradleProperty("VIRVI_QUEST_KEYSTORE").orNull
+  val keystorePassword = providers.gradleProperty("VIRVI_QUEST_KEYSTORE_PASSWORD").orNull
+  val keyAlias = providers.gradleProperty("VIRVI_QUEST_KEY_ALIAS").orNull
+  val keyPassword = providers.gradleProperty("VIRVI_QUEST_KEY_PASSWORD").orNull
   val releaseSigned =
       keystorePath != null && keystorePassword != null && keyAlias != null && keyPassword != null
 
@@ -72,13 +72,13 @@ android {
 
 // Warn about a missing key only when a release task is going to run, not on every Gradle run.
 gradle.taskGraph.whenReady {
-  val releaseSigned = providers.gradleProperty("VLM_QUEST_KEYSTORE").isPresent &&
-      providers.gradleProperty("VLM_QUEST_KEYSTORE_PASSWORD").isPresent &&
-      providers.gradleProperty("VLM_QUEST_KEY_ALIAS").isPresent &&
-      providers.gradleProperty("VLM_QUEST_KEY_PASSWORD").isPresent
+  val releaseSigned = providers.gradleProperty("VIRVI_QUEST_KEYSTORE").isPresent &&
+      providers.gradleProperty("VIRVI_QUEST_KEYSTORE_PASSWORD").isPresent &&
+      providers.gradleProperty("VIRVI_QUEST_KEY_ALIAS").isPresent &&
+      providers.gradleProperty("VIRVI_QUEST_KEY_PASSWORD").isPresent
   if (!releaseSigned && allTasks.any { it.project == project && it.name.contains("Release") }) {
     logger.warn(
-        "VLM Quest: the VLM_QUEST_KEYSTORE* properties are not all set in ~/.gradle/gradle.properties; the release build is UNSIGNED (see apps/quest/STORE.md)."
+        "Virvi Quest: the VIRVI_QUEST_KEYSTORE* properties are not all set in ~/.gradle/gradle.properties; the release build is UNSIGNED (see apps/quest/STORE.md)."
     )
   }
 }

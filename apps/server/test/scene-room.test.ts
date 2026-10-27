@@ -16,7 +16,7 @@ const update = (id: string, props: Record<string, unknown>) => ({
 const propsOf = async (id: string) =>
   (await db.query.sceneElements.findFirst({ where: eq(sceneElements.id, id) }))!.properties as Record<string, unknown>
 
-describe('VLMSceneRoom auth', () => {
+describe('VirviSceneRoom auth', () => {
   let gs: Awaited<ReturnType<typeof startGameServer>>
   beforeEach(async () => {
     await resetDb()
@@ -40,7 +40,7 @@ describe('VLMSceneRoom auth', () => {
     expect((await anon.waitFor('scene_preset_update')).action).toBe('init')
 
     anon.room.send('scene_preset_update', update(s.screen.id, { liveSrc: 'https://evil/x.m3u8' }))
-    expect((await anon.waitFor('vlm_error')).code).toBe('forbidden')
+    expect((await anon.waitFor('virvi_error')).code).toBe('forbidden')
     await watcher.expectNone('scene_preset_update')
     expect((await propsOf(s.screen.id)).liveSrc).toBe('https://old.example/live.m3u8')
   })
@@ -60,7 +60,7 @@ describe('VLMSceneRoom auth', () => {
     const c = await joinScene(gs.url, s.scene.id, expiredTokenFor(s.owner))
     expect((await c.waitFor('auth_status')).authenticated).toBe(false)
     c.room.send('scene_change_preset', { presetId: s.preset.id })
-    expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+    expect((await c.waitFor('virvi_error')).code).toBe('forbidden')
   })
 
   it('owner of scene A cannot edit scene B elements through room A', async () => {
@@ -69,7 +69,7 @@ describe('VLMSceneRoom auth', () => {
     await db.insert(sceneCollaborators).values({ sceneId: a.scene.id, userId: b.owner.id, role: 'editor' })
     const c = await joinScene(gs.url, a.scene.id, tokenFor(b.owner))
     c.room.send('scene_preset_update', update(b.screen.id, { liveSrc: 'x' }))
-    expect((await c.waitFor('vlm_error')).code).toBe('not_found')
+    expect((await c.waitFor('virvi_error')).code).toBe('not_found')
   })
 
   it('instance create cannot be redirected to another scene element', async () => {
@@ -84,7 +84,7 @@ describe('VLMSceneRoom auth', () => {
       instanceData: { elementId: a.screen.id, position: { x: 2, y: 2, z: 2 } },
       elementData: { sk: b.screen.id },
     })
-    for (let i = 0; i < 150 && !c.inbox.some((m) => m.type === 'scene_preset_update_ack' || m.type === 'vlm_error'); i++) {
+    for (let i = 0; i < 150 && !c.inbox.some((m) => m.type === 'scene_preset_update_ack' || m.type === 'virvi_error'); i++) {
       await new Promise((r) => setTimeout(r, 20))
     }
     const underB = await db.select().from(sceneElementInstances).where(eq(sceneElementInstances.elementId, b.screen.id))
@@ -112,7 +112,7 @@ describe('VLMSceneRoom auth', () => {
     // non-editors still can't send them
     const stranger = await joinScene(gs.url, s.scene.id, tokenFor(await createUser()))
     stranger.room.send('scene_preset_update', { action: 'delete_element', element: 'widget', elementData: { id: widget.id } })
-    expect((await stranger.waitFor('vlm_error')).code).toBe('forbidden')
+    expect((await stranger.waitFor('virvi_error')).code).toBe('forbidden')
     await visitor.expectNone('scene_preset_update')
   })
 
@@ -183,7 +183,7 @@ describe('VLMSceneRoom auth', () => {
       expect((await db.query.sceneElements.findFirst({ where: eq(sceneElements.id, v.clone.id) }))!.enabled).toBe(false)
 
       c.room.send('scene_preset_update', { action: 'update', element: 'video', elementData: { sk: v.clone.id, properties: { playlist: [{ url: 'x' }] } } })
-      expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+      expect((await c.waitFor('virvi_error')).code).toBe('forbidden')
       expect((await propsOf(v.clone.id)).playlist).toEqual([])
     })
 
@@ -191,14 +191,14 @@ describe('VLMSceneRoom auth', () => {
       const v = await venueWithCrew()
       const c = await joinScene(gs.url, v.scene.id, tokenFor(v.crew))
       c.room.send('scene_preset_update', update(v.screen.id, { liveSrc: 'x' }))
-      expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+      expect((await c.waitFor('virvi_error')).code).toBe('forbidden')
     })
 
     it('crew without moderation cannot send moderator messages', async () => {
       const v = await venueWithCrew()
       const c = await joinScene(gs.url, v.scene.id, tokenFor(v.crew))
       c.room.send('scene_moderator_message', { message: 'hi' })
-      expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+      expect((await c.waitFor('virvi_error')).code).toBe('forbidden')
     })
 
     it('live crew can switch only to the booking preset or the venue default', async () => {
@@ -208,7 +208,7 @@ describe('VLMSceneRoom auth', () => {
       expect((await c.waitFor('venue_access')).window).toBe('live')
 
       c.room.send('scene_change_preset', { presetId: privatePreset.id })
-      expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+      expect((await c.waitFor('virvi_error')).code).toBe('forbidden')
       expect((await db.query.scenes.findFirst({ where: eq(scenes.id, v.scene.id) }))!.activePresetId).toBe(v.preset.id)
 
       c.room.send('scene_change_preset', { presetId: v.booking.bookingPresetId })
@@ -229,10 +229,10 @@ describe('VLMSceneRoom auth', () => {
 
       for (const sk of [v.sideClone.id, v.screen.id, v.sideScreen.id]) {
         c.room.send('scene_video_update', { sk, url: 'https://evil/x.m3u8', isLive: true })
-        expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+        expect((await c.waitFor('virvi_error')).code).toBe('forbidden')
       }
       c.room.send('scene_video_update', { sk: crypto.randomUUID(), url: 'https://evil/x.m3u8' })
-      expect((await c.waitFor('vlm_error')).code).toBe('not_found')
+      expect((await c.waitFor('virvi_error')).code).toBe('not_found')
       await visitor.expectNone('scene_video_status')
 
       c.room.send('scene_video_update', { sk: v.clone.id, url: 'https://dj/live.m3u8', isLive: true })
@@ -249,7 +249,7 @@ describe('VLMSceneRoom auth', () => {
       await revokeGrant(v.grant.id)
       expect((await c.waitFor('access_revoked')).reason).toBe('revoked')
       c.room.send('scene_preset_update', update(v.clone.id, { liveSrc: 'b' }))
-      expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+      expect((await c.waitFor('virvi_error')).code).toBe('forbidden')
     })
 
     it('an access lookup in flight during a revoke does not repopulate the cache', async () => {
@@ -284,7 +284,7 @@ describe('VLMSceneRoom auth', () => {
       await c.waitFor('scene_preset_update_ack') // the in-flight call may use its (stale) result once
 
       c.room.send('scene_preset_update', update(v.clone.id, { liveSrc: 'b' }))
-      expect((await c.waitFor('vlm_error')).code).toBe('forbidden')
+      expect((await c.waitFor('virvi_error')).code).toBe('forbidden')
     })
   })
   it('host_joined is broadcast only when a client with edit access joins as host', async () => {
@@ -294,10 +294,10 @@ describe('VLMSceneRoom auth', () => {
     const watcher = await joinScene(gs.url, scene.id)
     const stranger = await createUser()
     const c1 = new Client(gs.url)
-    const r1 = await c1.joinOrCreate('vlm_scene', { sceneId: scene.id, sessionToken: tokenFor(stranger), clientType: 'host' })
+    const r1 = await c1.joinOrCreate('virvi_scene', { sceneId: scene.id, sessionToken: tokenFor(stranger), clientType: 'host' })
     await watcher.expectNone('host_joined')
     const c2 = new Client(gs.url)
-    const r2 = await c2.joinOrCreate('vlm_scene', { sceneId: scene.id, sessionToken: tokenFor(owner), clientType: 'host' })
+    const r2 = await c2.joinOrCreate('virvi_scene', { sceneId: scene.id, sessionToken: tokenFor(owner), clientType: 'host' })
     await watcher.waitFor('host_joined')
     r1.leave()
     r2.leave()
@@ -312,7 +312,7 @@ describe('VLMSceneRoom auth', () => {
     const { Client } = await import('colyseus.js')
     const watcher = await joinScene(gs.url, scene.id)
     const c = new Client(gs.url)
-    const r = await c.joinOrCreate('vlm_scene', { sceneId: scene.id, sessionToken: tokenFor(cohost), clientType: 'host' })
+    const r = await c.joinOrCreate('virvi_scene', { sceneId: scene.id, sessionToken: tokenFor(cohost), clientType: 'host' })
     await watcher.waitFor('host_joined')
     r.leave()
   })

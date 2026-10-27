@@ -1,6 +1,6 @@
 import { publishOnBus } from '../realtime/bus.js'
 
-/** What a design's page hears, through the vlm_studio room. A `job` event that is done or failed means "re-read the design". */
+/** What a design's page hears, through the virvi_studio room. A `job` event that is done or failed means "re-read the design". */
 export type StudioEvent =
   | { type: 'progress'; jobId: string; text: string }
   | { type: 'phase'; jobId: string; phase: string }

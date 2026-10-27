@@ -19,7 +19,7 @@ const validDbUrlTemplate = (t: string | undefined) =>
 const validSecretKey = (k: string | undefined) => !!k && /^[0-9a-f]{64}$/i.test(k)
 
 /**
- * Whether VLM-hosted Hyperfy worlds are offered: only on Fly, and only once every variable hosting needs is set (and the
+ * Whether Virvi-hosted Hyperfy worlds are offered: only on Fly, and only once every variable hosting needs is set (and the
  * DB URL template and secret key are well formed). Self-run worlds never consult this.
  */
 export function hyperfyHosting(): { available: boolean; provider: string } {

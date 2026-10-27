@@ -3,9 +3,9 @@ title: Ad Spaces
 description: Panels in your scene that show ads, how to place them, and what visitors see.
 ---
 
-An **ad space** is a flat panel in your scene that shows ads from VLM. Ads are images or videos. Visitors can click an ad to open its link. Every ad carries a small **Ad** label.
+An **ad space** is a flat panel in your scene that shows ads from Virvi. Ads are images or videos. Visitors can click an ad to open its link. Every ad carries a small **Ad** label.
 
-Buying ads, owner payouts and per-space content rules are coming later. For now, ads are set up by VLM admins.
+Buying ads, owner payouts and per-space content rules are coming later. For now, ads are set up by Virvi admins.
 
 ## Adding an ad space
 
@@ -43,7 +43,7 @@ Image ads show for 10 seconds each. Ads in a space take turns.
 The fallback image is what the space shows when it has no ad to show. That includes:
 
 - no ad fits the shape;
-- VLM can't be reached;
+- Virvi can't be reached;
 - a stream is live and the space is video only;
 - a venue booking is running.
 
@@ -86,7 +86,7 @@ While a venue is booked, ads on that venue's rentable screens pause. Those scree
 
 ## What gets counted
 
-VLM measures ads at four levels: in the scene, on screen, looked at, and clicked. The paid number is **on screen**: the ad was in clear view for at least a second.
+Virvi measures ads at four levels: in the scene, on screen, looked at, and clicked. The paid number is **on screen**: the ad was in clear view for at least a second.
 
 - Only players with a verified wallet count towards paid numbers.
 - Each wallet counts once per ad per day at each level.
@@ -96,7 +96,7 @@ VLM measures ads at four levels: in the scene, on screen, looked at, and clicked
 ## House ads and partner ads
 
 - **Partner ads** run only on the spaces an admin places them on.
-- **House ads** are VLM's own. They fill any space with no partner ad.
+- **House ads** are Virvi's own. They fill any space with no partner ad.
 
 House ads pay owners nothing. For now, owners are paid for partner ads manually, using the per-space numbers in the report.
 

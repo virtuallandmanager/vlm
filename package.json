@@ -1,8 +1,8 @@
 {
-  "name": "vlm",
+  "name": "virvi",
   "version": "2.0.0",
   "private": true,
-  "description": "Virtual Land Manager — Manage virtual metaverse scenes across platforms",
+  "description": "Virvi \u2014 manage virtual metaverse scenes across platforms",
   "license": "AGPL-3.0",
   "scripts": {
     "dev": "turbo dev",

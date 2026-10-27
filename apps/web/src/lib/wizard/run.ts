@@ -1,7 +1,7 @@
 // The wizard's "Create and deploy" run: scene, World destination, permission or signature, the extra
 // destinations, then polling until Decentraland has accepted the deployment. Everything it has created
 // is kept in `RunMemory`, so "Try again" picks up where it stopped and never makes a second scene.
-import type { Plot } from 'vlm-shared'
+import type { Plot } from '@virvixr/shared'
 import type { Eip1193Provider } from '../auth'
 import type { AuthChain, SignSession } from '../dcl-sign'
 import { hyperfyErrorMessage } from '../hyperfy'

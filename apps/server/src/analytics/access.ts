@@ -16,23 +16,23 @@ export interface AnalyticsAccess {
   since?: Date
   /** Only data before this instant (an ended tenure). */
   until?: Date
-  /** The VLM scene of the tenure that granted read access. */
-  vlmSceneId?: string
+  /** The Virvi scene of the tenure that granted read access. */
+  virviSceneId?: string
 }
 
 const NONE = (scene: AnalyticsAccess['scene']): AnalyticsAccess => ({ canRead: false, canManage: false, canDelete: false, scene })
 
 /**
- * Analytics belong to setup tenures: a VLM scene's team reads the data recorded while its setup was active.
- * `onlyVlmSceneId` (set for a scene pass) limits access to tenures of that one VLM scene — no admin shortcut,
+ * Analytics belong to setup tenures: a Virvi scene's team reads the data recorded while its setup was active.
+ * `onlyVirviSceneId` (set for a scene pass) limits access to tenures of that one Virvi scene — no admin shortcut,
  * no reach through another scene's past setup at the same location.
  */
-export async function getAnalyticsAccess(actor: Actor, analyticsSceneId: string, now = new Date(), onlyVlmSceneId?: string | null): Promise<AnalyticsAccess> {
-  const restricted = onlyVlmSceneId !== undefined
+export async function getAnalyticsAccess(actor: Actor, analyticsSceneId: string, now = new Date(), onlyVirviSceneId?: string | null): Promise<AnalyticsAccess> {
+  const restricted = onlyVirviSceneId !== undefined
   const scene = (await db.query.analyticsScenes.findFirst({ where: eq(analyticsScenes.id, analyticsSceneId) })) ?? null
   if (!scene || !actor.userId || !actor.verified) return NONE(scene)
-  if (restricted && !onlyVlmSceneId) return NONE(scene)
-  if (actor.role === 'admin' && !restricted) return { canRead: true, canManage: true, canDelete: true, scene, vlmSceneId: scene.vlmSceneId ?? undefined }
+  if (restricted && !onlyVirviSceneId) return NONE(scene)
+  if (actor.role === 'admin' && !restricted) return { canRead: true, canManage: true, canDelete: true, scene, virviSceneId: scene.virviSceneId ?? undefined }
 
   let active = (await db.query.locationSetups.findFirst({ where: and(eq(locationSetups.analyticsSceneId, scene.id), isNull(locationSetups.endedAt)) })) ?? null
   // Ingest recorded a different live deployment than the setup's: check for a foreign redeploy here too,
@@ -45,10 +45,10 @@ export async function getAnalyticsAccess(actor: Actor, analyticsSceneId: string,
       // Directory down: treat the setup as still active; the next read rechecks.
     }
   }
-  if (active && (!restricted || active.vlmSceneId === onlyVlmSceneId)) {
-    const access = await getSceneAccess(actor, active.vlmSceneId, now)
+  if (active && (!restricted || active.virviSceneId === onlyVirviSceneId)) {
+    const access = await getSceneAccess(actor, active.virviSceneId, now)
     if (hasScope(access, 'analytics.view')) {
-      return { canRead: true, canManage: isFullAccess(access), canDelete: isHostAccess(access), scene, since: active.startedAt, vlmSceneId: active.vlmSceneId }
+      return { canRead: true, canManage: isFullAccess(access), canDelete: isHostAccess(access), scene, since: active.startedAt, virviSceneId: active.virviSceneId }
     }
   }
   const ended = await db.query.locationSetups.findMany({
@@ -56,9 +56,9 @@ export async function getAnalyticsAccess(actor: Actor, analyticsSceneId: string,
     orderBy: [desc(locationSetups.endedAt)],
   })
   for (const s of ended) {
-    if (restricted && s.vlmSceneId !== onlyVlmSceneId) continue
-    const access = await getSceneAccess(actor, s.vlmSceneId, now)
-    if (hasScope(access, 'analytics.view')) return { canRead: true, canManage: false, canDelete: false, scene, since: s.startedAt, until: s.endedAt!, vlmSceneId: s.vlmSceneId }
+    if (restricted && s.virviSceneId !== onlyVirviSceneId) continue
+    const access = await getSceneAccess(actor, s.virviSceneId, now)
+    if (hasScope(access, 'analytics.view')) return { canRead: true, canManage: false, canDelete: false, scene, since: s.startedAt, until: s.endedAt!, virviSceneId: s.virviSceneId }
   }
   return NONE(scene)
 }

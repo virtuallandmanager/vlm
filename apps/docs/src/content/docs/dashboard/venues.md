@@ -1,6 +1,6 @@
 ---
 title: Venues & Bookings
-description: Rent time-boxed control of a VLM scene to an organizer and their crew.
+description: Rent time-boxed control of a Virvi scene to an organizer and their crew.
 ---
 
 A **venue** is a scene whose owner lets others control parts of it for a booked time slot.
@@ -16,11 +16,11 @@ Admins create bookings with `POST /api/venues/:venueId/bookings` (`renterWallet`
 - At the end, the venue switches back to its default preset and access ends.
 
 ## Crew
-The renter (host) adds crew by wallet with a role — `cohost`, `vj`, `lighting`, `performer`, `door` — and can toggle individual scopes. Crew don't need a VLM account; access attaches when their wallet signs in from Decentraland. Revoked crew can be added again; their old grant is restored with the new role and scopes.
+The renter (host) adds crew by wallet with a role — `cohost`, `vj`, `lighting`, `performer`, `door` — and can toggle individual scopes. Crew don't need a Virvi account; access attaches when their wallet signs in from Decentraland. Revoked crew can be added again; their old grant is restored with the new role and scopes.
 
 ## Upgrading an existing instance
 
-Before deploying to any running VLM instance, review wallet users who got `admin` role from the old auto-promote bug. The following queries list users and auth methods to review by hand. **Nothing should be deleted automatically** — review, understand the context, and make deliberate choices about role corrections.
+Before deploying to any running Virvi instance, review wallet users who got `admin` role from the old auto-promote bug. The following queries list users and auth methods to review by hand. **Nothing should be deleted automatically** — review, understand the context, and make deliberate choices about role corrections.
 
 ### Rotate JWT_SECRET
 

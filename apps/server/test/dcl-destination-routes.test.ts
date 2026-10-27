@@ -234,7 +234,7 @@ describe('World destination routes', () => {
       const { scene, preset } = await createScene(user)
       await createElement(preset.id, { type: 'model', name: 'Tree', properties: { modelSrc: `${CDN}/m/tree.glb` } })
       await createElement(preset.id, { type: 'model', name: 'Bench', properties: { modelSrc: `${CDN}/m/bench.glb` } })
-      const dest = await insertDest(scene.id, { deployedFiles: ['models/vlm/tree.glb'] })
+      const dest = await insertDest(scene.id, { deployedFiles: ['models/virvi/tree.glb'] })
       const [dep] = await db.insert(sceneDeployments).values({
         sceneId: scene.id, platform: 'decentraland', deploymentType: 'world', destinationId: dest.id, target: {}, status: 'deployed',
         assetBundle: { refused: [{ name: 'Big', reason: 'too big' }] },
@@ -243,7 +243,7 @@ describe('World destination routes', () => {
       expect(res.statusCode).toBe(200)
       const body = res.json()
       expect(body.destination.id).toBe(dest.id)
-      expect(body.pending.map((p: any) => p.file)).toEqual(['models/vlm/bench.glb'])
+      expect(body.pending.map((p: any) => p.file)).toEqual(['models/virvi/bench.glb'])
       expect(body.refused).toEqual([{ name: 'Big', reason: 'too big' }])
       expect(body.lastDeployment.id).toBe(dep.id)
 
@@ -559,11 +559,11 @@ describe('World destination routes', () => {
   it('rebase takes the live entity as the new base', async () => {
     const { scene } = await createScene(user)
     const dest = await insertDest(scene.id, { lastEntityId: 'old', status: 'needs_review', statusDetail: 'changed' })
-    worlds.entities.set(WORLD, [liveEntity('new', ['0,0', '1,0'], ['bin/index.js', 'scene.json', 'models/vlm/A.glb'])])
+    worlds.entities.set(WORLD, [liveEntity('new', ['0,0', '1,0'], ['bin/index.js', 'scene.json', 'models/virvi/A.glb'])])
     const res = await req('POST', `/api/dcl/destinations/${dest.id}/rebase`, {})
     expect(res.statusCode).toBe(200)
     expect(await destRow(dest.id)).toMatchObject({
-      lastEntityId: 'new', deployedFiles: ['bin/index.js', 'scene.json', 'models/vlm/a.glb'], status: 'ok', statusDetail: null,
+      lastEntityId: 'new', deployedFiles: ['bin/index.js', 'scene.json', 'models/virvi/a.glb'], status: 'ok', statusDetail: null,
     })
     worlds.entities.set(WORLD, [])
     expect((await req('POST', `/api/dcl/destinations/${dest.id}/rebase`, {})).json().error).toBe('no_live_scene')

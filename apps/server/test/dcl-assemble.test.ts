@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { DCL_MAX_FILE_BYTES } from 'vlm-shared'
+import { DCL_MAX_FILE_BYTES } from '@virvixr/shared'
 import { config } from '../src/config.js'
 import { db } from '../src/db/connection.js'
 import { assetLibraryItems } from '../src/db/schema.js'
@@ -15,7 +15,7 @@ import { createUser, createScene, createElement, createInstance } from './helper
 const CDN = 'https://cdn.virvi.test'
 const enc = (s: string) => new TextEncoder().encode(s)
 const need = (n: string, url = `${CDN}/m/${n}.glb`): ModelNeed => ({
-  elementId: n, name: n, url, file: `models/vlm/${n}.glb`, triangles: 100, bytes: 10, instances: 1,
+  elementId: n, name: n, url, file: `models/virvi/${n}.glb`, triangles: 100, bytes: 10, instances: 1,
 })
 
 let savedCdn: string | null
@@ -24,9 +24,12 @@ afterEach(() => { (config as { cdnUrl: string | null }).cdnUrl = savedCdn })
 
 const fetcher = () => vi.fn(async (url: string) => enc(`bytes of ${url}`))
 
-/** A live wizard World on runtime `runtime` (default: the current one), with that version's runtime files. */
+/**
+ * A live wizard World on runtime `runtime` (default: the current one). The current version carries its real runtime
+ * files; an older one (no longer shipped) carries a stand-in bin/index.js only, as v1 Worlds did.
+ */
 async function live(over: Partial<LiveEntity['metadata']> = {}, runtime = DCL_RUNTIME_VERSION): Promise<LiveEntity> {
-  const rt = await runtimeFiles(Math.max(1, runtime))
+  const rt = runtime === DCL_RUNTIME_VERSION ? await runtimeFiles() : new Map([['bin/index.js', enc(`runtime v${runtime}`)]])
   const meta = { ...wizardSceneJson({ title: 'T', world: 'w.dcl.eth', base: '0,0', parcels: ['0,0'], spawn: { x: 8, y: 0, z: 8 } }), ...over }
   if (meta.virvi) meta.virvi = { ...meta.virvi, runtime }
   return {
@@ -34,7 +37,7 @@ async function live(over: Partial<LiveEntity['metadata']> = {}, runtime = DCL_RU
     content: [
       ...(await Promise.all([...rt].map(async ([file, bytes]) => ({ file, hash: await dclHash(bytes) })))),
       { file: 'scene.json', hash: await dclHash(enc('scene')) },
-      { file: 'models/vlm/a.glb', hash: await dclHash(enc('a')) },
+      { file: 'models/virvi/a.glb', hash: await dclHash(enc('a')) },
     ],
   }
 }
@@ -45,11 +48,11 @@ describe('assembleRedeploy', () => {
     const f = fetcher()
     const r = await assembleRedeploy({ live: l, adopted: false, models: [need('a'), need('b')], timestamp: 1, fetch: f })
     expect(f).toHaveBeenCalledTimes(1)
-    expect(r.added).toEqual(['models/vlm/b.glb'])
+    expect(r.added).toEqual(['models/virvi/b.glb'])
     expect(r.pointers).toEqual(['0,0'])
-    expect(r.deployedFiles).toEqual(['bin/index.js', 'images/virvi/hud-v.png', 'models/vlm/a.glb', 'models/vlm/b.glb', 'scene.json'])
+    expect(r.deployedFiles).toEqual(['bin/index.js', 'images/virvi/hud-v.png', 'models/virvi/a.glb', 'models/virvi/b.glb', 'scene.json'])
     for (const c of l.content) expect(r.existing).toContainEqual(c)
-    expect(r.newFileSources).toEqual([{ file: 'models/vlm/b.glb', hash: await dclHash(enc(`bytes of ${CDN}/m/b.glb`)), url: `${CDN}/m/b.glb` }])
+    expect(r.newFileSources).toEqual([{ file: 'models/virvi/b.glb', hash: await dclHash(enc(`bytes of ${CDN}/m/b.glb`)), url: `${CDN}/m/b.glb` }])
     expect(r.files.size).toBe(2) // entity file + b
     expect(r.triangles).toBe(200)
   })
@@ -72,7 +75,7 @@ describe('assembleRedeploy', () => {
     const r = await assembleRedeploy({ live: l, adopted: false, models: [need('a'), need('b')], timestamp: 1, fetch: fetcher() })
     expect(r.existing.find((c) => c.file === 'bin/index.js')).toEqual(l.content[0])
     expect(JSON.stringify(r.metadata)).toBe(before)
-    expect(r.added).toEqual(['models/vlm/b.glb'])
+    expect(r.added).toEqual(['models/virvi/b.glb'])
   })
 
   it('says whether anything would change: a new model or a runtime upgrade', async () => {
@@ -103,10 +106,28 @@ describe('assembleRedeploy', () => {
     expect(l.content.map((c) => c.file)).not.toContain('images/virvi/hud-v.png')
     const r = await assembleRedeploy({ live: l, adopted: false, models: [need('a')], timestamp: 1, fetch: fetcher() })
     expect(r.changed).toBe(true)
-    expect(r.deployedFiles).toEqual(['bin/index.js', 'images/virvi/hud-v.png', 'models/vlm/a.glb', 'scene.json'])
+    expect(r.deployedFiles).toEqual(['bin/index.js', 'images/virvi/hud-v.png', 'models/virvi/a.glb', 'scene.json'])
     for (const [, bytes] of await runtimeFiles()) expect(r.files.has(await dclHash(bytes))).toBe(true)
-    expect(r.existing.map((c) => c.file).sort()).toEqual(['models/vlm/a.glb', 'scene.json'])
-    expect(r.metadata.virvi?.runtime).toBe(2)
+    expect(r.existing.map((c) => c.file).sort()).toEqual(['models/virvi/a.glb', 'scene.json'])
+    expect(r.metadata.virvi?.runtime).toBe(DCL_RUNTIME_VERSION)
+  })
+
+  it('upgrading a World built before the rename points it at the current API and drops the old model folder', async () => {
+    const old = ['vlm', 'gg'].join('.') // virvi-rename: keep
+    const l = await live({}, 1)
+    l.metadata.virvi = { ...l.metadata.virvi!, apiUrl: `https://api.${old}`, wssUrl: `wss://api.${old}` }
+    l.content.push({ file: 'models/vlm/old.glb', hash: await dclHash(enc('old')) }) // virvi-rename: keep
+    const r = await assembleRedeploy({ live: l, adopted: false, models: [need('a')], timestamp: 1, fetch: fetcher() })
+    expect(r.metadata.virvi?.apiUrl).toBe(config.publicUrl)
+    expect(r.metadata.virvi?.wssUrl).toBe(config.publicUrl.replace(/^http/i, 'ws'))
+    expect(r.deployedFiles.some((f) => f.startsWith('models/vlm/'))).toBe(false) // virvi-rename: keep
+  })
+
+  it('upgrading keeps a self-hosted API address', async () => {
+    const l = await live({}, 1)
+    l.metadata.virvi = { ...l.metadata.virvi!, apiUrl: 'https://virvi.example.org', wssUrl: 'wss://virvi.example.org' }
+    const r = await assembleRedeploy({ live: l, adopted: false, models: [need('a')], timestamp: 1, fetch: fetcher() })
+    expect(r.metadata.virvi?.apiUrl).toBe('https://virvi.example.org')
   })
 
   it('refuses foreign and private model hosts without fetching them', async () => {
@@ -118,7 +139,7 @@ describe('assembleRedeploy', () => {
     expect(r.refused.map((x) => x.name)).toEqual(['evil', 'priv', 'http'])
     expect(r.refused.every((x) => x.reason.length > 0)).toBe(true)
     expect(f).toHaveBeenCalledTimes(1)
-    expect(r.added).toEqual(['models/vlm/ok.glb'])
+    expect(r.added).toEqual(['models/virvi/ok.glb'])
   })
 })
 
@@ -126,8 +147,8 @@ describe('assembleFresh', () => {
   it('holds exactly the runtime, scene.json and one file per model', async () => {
     const metadata = wizardSceneJson({ title: 'T', world: 'w.dcl.eth', base: '0,0', parcels: ['0,0', '1,0'], spawn: { x: 8, y: 0, z: 8 } })
     const r = await assembleFresh({ metadata, models: [need('a'), need('b')], timestamp: 1, fetch: fetcher() })
-    expect(r.deployedFiles).toEqual(['bin/index.js', 'images/virvi/hud-v.png', 'models/vlm/a.glb', 'models/vlm/b.glb', 'scene.json'])
-    expect(r.added).toEqual(['models/vlm/a.glb', 'models/vlm/b.glb'])
+    expect(r.deployedFiles).toEqual(['bin/index.js', 'images/virvi/hud-v.png', 'models/virvi/a.glb', 'models/virvi/b.glb', 'scene.json'])
+    expect(r.added).toEqual(['models/virvi/a.glb', 'models/virvi/b.glb'])
     expect(r.pointers).toEqual(['0,0', '1,0'])
     expect(r.existing).toEqual([])
     const sceneHash = await dclHash(enc(JSON.stringify(metadata)))
@@ -194,10 +215,10 @@ describe('modelsInScene / pendingModels', () => {
     await createElement(preset.id, { type: 'model', name: 'Bad', properties: { modelSrc: 'https://x.example/thing.fbx' } })
     await createElement(preset.id, { type: 'model', name: 'Other', properties: { modelSrc: `${CDN}/m/Table.glb` } })
     const models = await modelsInScene(scene.id)
-    expect(models.map((m) => m.file)).toEqual(['models/vlm/Chair.glb', 'models/vlm/Table.glb'])
+    expect(models.map((m) => m.file)).toEqual(['models/virvi/Chair.glb', 'models/virvi/Table.glb'])
     expect(models[0]).toMatchObject({ triangles: 99, bytes: 1234, instances: 3 }) // placed instances of every element using the file
     expect(models[1]).toMatchObject({ triangles: null, bytes: null, instances: 0 })
-    const pending = await pendingModels({ sceneId: scene.id, deployedFiles: ['MODELS/VLM/chair.glb'] })
-    expect(pending.map((m) => m.file)).toEqual(['models/vlm/Table.glb'])
+    const pending = await pendingModels({ sceneId: scene.id, deployedFiles: ['MODELS/Virvi/chair.glb'] })
+    expect(pending.map((m) => m.file)).toEqual(['models/virvi/Table.glb'])
   })
 })

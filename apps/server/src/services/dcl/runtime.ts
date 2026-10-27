@@ -2,22 +2,23 @@
  * The generic Virvi Decentraland runtime: one pre-built scene bundle deployed for every wizard World.
  *
  * Contract: the runtime reads `scene.json`'s `virvi.{apiUrl,wssUrl}` through
- * `getSceneInformation().metadataJson` and calls `createVLM({ apiUrl, wssUrl })` with no `sceneId`.
- * The scene is found through the location setup (created in Task 7), the same path every `vlm-dcl`
+ * `getSceneInformation().metadataJson` and calls `createVirvi({ apiUrl, wssUrl })` with no `sceneId`.
+ * The scene is found through the location setup (created in Task 7), the same path every `@virvixr/dcl`
  * scene uses; that setup is also what grants in-world edit rights, so no separate scene-id file exists.
- * Models load from `models/vlm/<basename>.glb`, as `DclAdapter.resolveModelSrc` does.
+ * Models load from `models/virvi/<basename>.glb`, as `DclAdapter.resolveModelSrc` does.
  *
  * Built output is committed under apps/server/dcl-runtime/<version>/ (rebuild with `bash dcl-runtime/build.sh`):
- * bin/index.js and, from v2, the HUD icon images/virvi/hud-v.png. Every file in the version's directory is a
- * runtime file, deployed at the same scene-relative path. Older versions stay: a deployment waiting to be signed
- * rebuilds its runtime files by version (world-deployer rebuildNewFiles).
+ * bin/index.js and the HUD icon images/virvi/hud-v.png. Every file in the version's directory is a
+ * runtime file, deployed at the same scene-relative path. Versions before 3 spoke the pre-Virvi protocol and were
+ * removed; a deployment waiting to be signed rebuilds its runtime files by version (world-deployer rebuildNewFiles),
+ * so one left over from those versions fails and is started again.
  * Resolved relative to this module, so it works from src/ and dist/services/dcl/.
  */
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const DCL_RUNTIME_VERSION = 2
+export const DCL_RUNTIME_VERSION = 3
 
 const RUNTIME_ROOT = fileURLToPath(new URL('../../../dcl-runtime/', import.meta.url))
 

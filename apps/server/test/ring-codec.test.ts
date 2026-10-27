@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { encodeRing, parseRingCode, randomRingId, ringCodeOf } from 'vlm-shared'
+import { encodeRing, parseRingCode, randomRingId, ringCodeOf } from '@virvixr/shared'
 
 const vectors = JSON.parse(readFileSync(new URL('../../ring-marker/vectors/codec.json', import.meta.url), 'utf8'))
 

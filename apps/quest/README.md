@@ -1,20 +1,20 @@
-# VLM Spaces for Meta Quest
+# Virvi AR for Meta Quest
 
-The Quest app (`gg.vlm.spaces`), promoted from the spike that lived in `apps/quest-spike` (sibling of `apps/ar-spike`, iPhone and Vision Pro). It shows a VLM space life-size in passthrough on a **Meta Quest 3 or 3S**, placed from the ring marker the visitor looks at. Debug builds also run the marker detection-range test. Built with Meta's [Spatial SDK](https://developers.meta.com/horizon/documentation/spatial-sdk/spatial-sdk-explainer) (Kotlin, Android, no Unity).
+The Quest app (`io.virvi.ar`), promoted from the spike that lived in `apps/quest-spike` (sibling of `apps/ar-spike`, iPhone and Vision Pro). It shows a Virvi space life-size in passthrough on a **Meta Quest 3 or 3S**, placed from the ring marker the visitor looks at. Debug builds also run the marker detection-range test. Built with Meta's [Spatial SDK](https://developers.meta.com/horizon/documentation/spatial-sdk/spatial-sdk-explainer) (Kotlin, Android, no Unity).
 
 What it does:
 
 - **Visitor mode.** A hint card (1 m ahead, a little below the eyes, following the head lazily) shows a drawing of a ring and says "Look for a ring like this, at eye level near the entrance." A ring seen but not readable turns it into "Step closer to the ring". A readable ring is looked up (`GET /api/ar/markers/by-code/:code`), the space's feed is long-polled (`GET /api/ar/spaces/:id/feed`), and once the ring is within 1.5 m and its averaged position and wall heading hold still, the scene fades in (400 ms) placed from the ring's saved pose, with a cyan outline flashing on the ring. While it waits the card says "Hold still…" only while one of the space's rings is actually being gathered; with none in view (after a tracking jump, the headset back on, or a space opened from a link before arriving) it shows the standard hint, and a ring too far away or unreadable says "Step closer to the ring". The wall heading must agree with the ring's own tilt (within 20°), so near a corner or a door frame the perpendicular wall isn't taken; when two walls facing different ways agree about as well (within 15° of each other, as at an inside corner seen at about 45°) there is no heading until the visitor moves. A heading counts only within 30° of head-on, by both the wall it picks and the ring's own tilt, so a perpendicular wall can't stand in for an unscanned one; a steeper view says "Stand in front of the ring". Any other ring of the same space re-anchors it, and so does a newer snapshot that moves the saved pose of the ring the scene was placed from (if that ring isn't steady in view, or its printed size changed, the scene hides until it locks again); a tracking jump (the head moving faster than 2.5 m/s or turning faster than 300°/s) hides it until a ring is seen again. Taking the headset off ends the visit (back to the hint card, nothing loaded). The code is in `visitor/`: `VisitorFlow` (the state machine), `VisitorController` (the glue to the headset), `HintCard`, `VisitorMenu`, `RingOutline`; the space itself (feed, scene, ring locks, outline, placement), which builder mode will share, is `space/SpaceSession`.
 - **Menu:** the left controller's menu button at any time, or the small "⋯" button below the hint card's place whenever a space is up (shown, locking, not set up, or failed after its lookup; not on the plain hint card). **Look at the ring again**, occlusion (**Hide behind walls** / **Live depth** / **Off**), **Spaces** and **Builder** (builder mode, below). While builder mode is on, or whenever the headset is paired, the menu also has the owner's **Keep the scene loaded between visitors** switch (`AppPrefs.keepLoadedBetweenVisitors`) and **Sign out**. Debug builds add **Developer**: the old control panel, with the feed status, occlusion and the marker readings.
 - **Builder mode** (`builder/BuilderController`, the counterpart of `VisitorController`). The menu's **Builder** pairs a signed-out headset first (the pairing panel: the code, a QR of the approval page, **Cancel**), then finds the space: the one whose ring is in view (its code matched against `POST /api/ar/devices/:id/spaces`), otherwise a pick list of the account's spaces. Entering pauses visitor mode and follows the space's feed on the same space session with the space's AR pass (re-asked for every 30 s, so a pass about to run out is minted again). The scene is placed from a steady ring with a saved pose; a ring on a floor with no saved pose opens the **Align** panel first (sticks nudge the scene, one step every 100 ms while held; **Save alignment**, then **Done**). Then the HUD (banner, booking and several-places warnings, Layout and Assets, Save / Revert / Done), the pointer, gizmo and carries, and a ring panel for the floor's other rings (check, **Record** / **Re-record**). Builder mode doesn't re-anchor from other rings, so the ring check measures them against where the scene was placed. Taking the headset off hides the scene; back on, it is placed afresh from a ring, with the drafts kept (a personal headset off for over 10 minutes drops them; a shared one off for over 2 minutes signs out, back at the hint card with nothing loaded, even while still off). **Done** returns to visitor mode with a published space still shown, as a visit, following its published feed as a visitor would; an unpublished one goes back to the hint card with nothing loaded. **Sign out** and a headset revoked on the website return to the hint card with nothing loaded; a revoked headset is asked to pair again straight away. **A shared headset signs out whenever builder mode closes**, for any reason (Done, Cancel, a refused pass, the space gone, the headset off), and a shared pairing never outlives the app: one restored at startup is ended at once. A space link (or the Spaces list) while building says "Finish building first (Done) to open another space".
-- **Server:** always `https://vlm.gg` in release builds. Debug builds take a `baseUrl` intent extra and remember it.
+- **Server:** always `https://virvi.io` in release builds. Debug builds take a `baseUrl` intent extra and remember it.
 - **Images** are unlit, double-sided textured quads. **Videos** are video panels (ExoPlayer, muted, mp4 and HLS). **Models** load straight from their URL; only `.glb` works, anything else shows a pink box. **Sounds** aren't played yet.
 - **Hide behind real things:** a menu choice. **Walls** draws the room scan's wall faces and ceiling (MRUK `AnchorProceduralMesh`) with the hole-punch material (`AlphaMode.HOLE_PUNCH`, `HOLE_PUNCH_SHADER`; `SceneMaterial.passthrough()` showed the room but didn't hide what was behind it), so they show the real room and hide anything virtual behind them. **Live depth** turns on Spatial SDK's environment depth occlusion (`EnvironmentDepthMode.OCCLUSION`), which also hides behind furniture and people; it's the default, and looked better on the headset. The choice is remembered. **Show scanned walls** tints the same surfaces, to check the room scan against the real walls.
-- **Marker test:** VLM's ring markers (`../ring-marker`) are found in the left passthrough camera's frames (Camera2, 1280 × 960, Horizon OS v74+). The distance comes from the ring's size in the image, the position from that and the head pose, and the heading from the scanned wall the marker is on. The panel shows, per test marker, where tracking started ("found at"), where it stopped, the current distance, the position and the wall heading.
+- **Marker test:** Virvi's ring markers (`../ring-marker`) are found in the left passthrough camera's frames (Camera2, 1280 × 960, Horizon OS v74+). The distance comes from the ring's size in the image, the position from that and the head pose, and the heading from the scanned wall the marker is on. The panel shows, per test marker, where tracking started ("found at"), where it stopped, the current distance, the position and the wall heading.
 
 Code:
 
-- `ScenePlan.kt` ports `packages/vlm-hyperfy-app/src/plan.ts` (via the Swift spike). `Mapping.kt` is the transform. Spatial SDK is left-handed, Y up, +Z forward, the same frame as Decentraland, so positions and scales carry over unchanged and rotations are Decentraland's Euler degrees in YXZ order. `MappingTest` checks that Spatial SDK's own `Quaternion` agrees.
+- `ScenePlan.kt` ports `packages/hyperfy-app/src/plan.ts` (via the Swift spike). `Mapping.kt` is the transform. Spatial SDK is left-handed, Y up, +Z forward, the same frame as Decentraland, so positions and scales carry over unchanged and rotations are Decentraland's Euler degrees in YXZ order. `MappingTest` checks that Spatial SDK's own `Quaternion` agrees.
 - `api/` (`ArApi`, `ArFeed`), `space/SpaceAlignment.kt` (scene root from a ring's saved pose), `SceneRenderer.kt`, `MainActivity.kt` (lifecycle, camera, room scan, panels), `AppPrefs.kt`, `ControlPanel.kt` (the Developer panel), `MarkerReadings.kt`.
 - `ring/`: `RingCodec.kt` and `RingDetector.kt` port `../ring-marker/ringmarker/codec.py` and `detect.py`, and their tests run against that folder's vectors and synthetic test set. `RingTracker.kt` trusts an ID after 3 frames in a row. `PassthroughCamera.kt` is the camera. `RingPose.kt` turns a detection into a position and finds the wall heading.
 
@@ -33,8 +33,8 @@ Shortcuts and open questions:
 Added in the whole-branch review fixes, so a visitor is never left without an instruction. They show on the hint card, and on the space page when it is open. The camera, spatial data and room scan lines take precedence over everything but a shown scene.
 
 - Room scan missing, or failed to load after its retries: "Set up your space on this headset first: Settings → Physical space → Space setup."
-- Camera permission denied: "VLM Spaces needs camera access to find rings. Allow it in Settings → Apps → VLM Spaces."
-- Spatial data permission denied (the room scan can't be read): "VLM Spaces needs spatial data access to line spaces up with the room. Allow it in Settings → Apps → VLM Spaces."
+- Camera permission denied: "Virvi AR needs camera access to find rings. Allow it in Settings → Apps → Virvi AR."
+- Spatial data permission denied (the room scan can't be read): "Virvi AR needs spatial data access to line spaces up with the room. Allow it in Settings → Apps → Virvi AR."
 - A ring that holds still with its wall found, but seen more than 30° from head-on (one ring's outline can't tell its own wall from a perpendicular one that steeply): "Stand in front of the ring"
 - A ring that holds still but has had no wall heading for over 3 s (the scan missed its wall, or the wall disagrees with the ring's tilt): "Can't see the wall behind this ring. Look around the room so the headset can map it."
 
@@ -42,13 +42,13 @@ Added in the whole-branch review fixes, so a visitor is never left without an in
 
 The align panel's refusals (`AlignCopy` in `builder/Alignment.kt`). "Step closer to the ring to save" and "This account can't edit this scene" are the plan's copy.
 
-- Save failed because the headset is offline: "Can't reach vlm.gg: check the connection and save again"
+- Save failed because the headset is offline: "Can't reach virvi.io: check the connection and save again"
 - Save failed for any other reason: "Couldn't save the alignment: try again"
 
 Builder mode's own panels (`BuilderCopy` in `builder/BuilderController.kt`) and the menu:
 
 - While the spaces load: "Finding your spaces…"; the pick list: "Choose a space to build"; none: "This account has no spaces to build on yet"
-- Offline: "Can't reach vlm.gg: check the connection and try again"; any other failure: "Couldn't load your spaces: try again"; the space's pass refused for another reason: "Couldn't open this space for building: try again"
+- Offline: "Can't reach virvi.io: check the connection and try again"; any other failure: "Couldn't load your spaces: try again"; the space's pass refused for another reason: "Couldn't open this space for building: try again"
 - Pairing ended without an approval (code expired or refused): "Pairing didn't finish: tap Builder to try again"
 - These notices, and "This account can't edit this scene" when the space's pass is refused, show on the builder panel with a **Close** button
 - Waiting to place the scene: "Look at a ring of <space>"; a ring with no saved pose on a floor that already has one: "Look at a ring that is already lined up on this floor"
@@ -85,17 +85,17 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties   # once
 3. **Install and start:**
    ```sh
    adb install -r app/build/outputs/apk/debug/app-debug.apk
-   adb shell am start -n gg.vlm.spaces/.MainActivity
+   adb shell am start -n io.virvi.ar/.MainActivity
    ```
-   The app is also listed in the headset's library under **Unknown sources**, as "VLM Spaces". If the old spike (`gg.vlm.spaces.quest`) is still installed, remove it with `adb uninstall gg.vlm.spaces.quest`.
+   The app is also listed in the headset's library under **Unknown sources**, as "Virvi AR". If the old spike (`io.virvi.ar.quest`) is still installed, remove it with `adb uninstall io.virvi.ar.quest`.
 4. On first launch, allow the **camera** (marker detection) and **spatial data** (the room's walls, for heading). Heading also needs a room scan: if the panel says "No room scan", set up your space in the Quest settings (**Physical space** → **Space setup**) and restart the app.
-5. **Look at a ring** of a published, aligned space. A debug build can point at another server (saved for next launches; pass `https://vlm.gg` to go back):
+5. **Look at a ring** of a published, aligned space. A debug build can point at another server (saved for next launches; pass `https://virvi.io` to go back):
    ```sh
-   adb shell am start -n gg.vlm.spaces/.MainActivity --es baseUrl http://192.168.1.20:3000
+   adb shell am start -n io.virvi.ar/.MainActivity --es baseUrl http://192.168.1.20:3000
    ```
 6. Point the controller at a panel and pull the trigger to press buttons. The Developer panel can be grabbed and moved.
 
-Logs: `adb logcat -s VLMSpaces`.
+Logs: `adb logcat -s VirviAR`.
 
 ## Ring marker test
 
@@ -108,7 +108,7 @@ In a debug build, the Developer panel (menu → **Developer**) shows, per marker
 - **at (x, y, z) m ±N cm over K:** the marker's world position, averaged over its last 15 camera frames, and the spread (the largest distance of one frame's position from that mean). It clears when the marker is lost.
 - **wall faces …° / no wall:** the heading of the scanned wall within 10 cm of the marker, or "no wall".
 
-Logs worth checking (`adb logcat -s VLMSpaces`): the camera's raw and scaled intrinsics, the lens pose and its reference, the room scan's wall count, tracking jumps.
+Logs worth checking (`adb logcat -s VirviAR`): the camera's raw and scaled intrinsics, the lens pose and its reference, the room scan's wall count, tracking jumps.
 
 ### Headset check
 
@@ -140,7 +140,7 @@ Headset check on a Quest 3, 2026-10-22: `RING140` (paper) was tracked within sec
 
 Not yet run (no headset was connected when visitor mode was built). Record the results here and in the plan's ledger.
 
-Prepare a published test space with plan 1's dashboard, or with a direct API call on a local or staging server (never the shared dev database `vlm`): one floor, `RING140`, and an alignment set with a temporary admin call or by hand-entering a pose that matches the room. Tape `RING140` at eye level on a scanned wall. For a local server, start the app with `--es baseUrl http://<mac's address>:<port>` (debug build).
+Prepare a published test space with plan 1's dashboard, or with a direct API call on a local or staging server (never the shared dev database `virvi`): one floor, `RING140`, and an alignment set with a temporary admin call or by hand-entering a pose that matches the room. Tape `RING140` at eye level on a scanned wall. For a local server, start the app with `--es baseUrl http://<mac's address>:<port>` (debug build).
 
 - [ ] Opening the app shows only the hint card.
 - [ ] Far away (about 3 m), the hint changes to "Step closer to the ring". (The unreadable band is narrow, so it may read the ring instead: then "Opening …" and "Step closer to the ring" while it's beyond 1.5 m.)
@@ -148,7 +148,7 @@ Prepare a published test space with plan 1's dashboard, or with a direct API cal
 - [ ] Live depth hides the scene behind a hand and furniture.
 - [ ] Taking the headset off and on hides the scene; looking at the ring shows it again.
 - [ ] Menu → **Look at the ring again** clears it and returns to the hint.
-- [ ] Open a space from a link. A verified link from the browser needs plan 3's `assetlinks.json` with the release key's fingerprint, so until then use the intent: `adb shell am start -a android.intent.action.VIEW -d "https://vlm.gg/s/<code>"`. The app opens on the space page: the space's name, where to find it, "Look at the ring when you get there" and **Close**. Looking at that space's ring then shows the scene. Sent while the app is already open, it replaces the current space.
+- [ ] Open a space from a link. A verified link from the browser needs plan 3's `assetlinks.json` with the release key's fingerprint, so until then use the intent: `adb shell am start -a android.intent.action.VIEW -d "https://virvi.io/s/<code>"`. The app opens on the space page: the space's name, where to find it, "Look at the ring when you get there" and **Close**. Looking at that space's ring then shows the scene. Sent while the app is already open, it replaces the current space.
 - [ ] Menu → **Spaces** lists the spaces opened or visited, newest first; picking one opens its page.
 - [ ] Analytics: after a visit (scene shown, walk around for 30 s, take the headset off), the space's analytics on plan 1's dashboard show one visit on platform `ar-quest` with a path of positions in scene coordinates. A tracking-jump re-show within the visit does not count a second visit; looking at the ring again afterwards, or putting the headset back on, does. Nothing identifying the device is sent.
 
@@ -254,7 +254,7 @@ Not yet run (no headset was connected). The ring panel shows while building when
 
 ### Owner checks (builder HUD, picking and the transform bar, plan 3 Task 7)
 
-Not yet run (no headset was connected). The HUD (`R.id.builder_hud`, `BuilderHud`), `Picking`, `Gizmo`, `PickOutline` and `BuilderEditor` are wired into builder mode (`BuilderController`, `HeadsetBuilderTools`). The transform math is a port of `packages/vlm-core/src/transform/session.ts` and its tests; what follows is what only the headset can show.
+Not yet run (no headset was connected). The HUD (`R.id.builder_hud`, `BuilderHud`), `Picking`, `Gizmo`, `PickOutline` and `BuilderEditor` are wired into builder mode (`BuilderController`, `HeadsetBuilderTools`). The transform math is a port of `packages/core/src/transform/session.ts` and its tests; what follows is what only the headset can show.
 
 Unverified from the 0.14.0 jars and docs (confirmed there: `SemanticType.X.id` and `PointerEventType.X.id` are `getId()`, so `.id` is right; `IsdkSystem.registerObserver`, `PointerEvent.source / hitInfo.entity`, `Pose.forward()`, `ButtonBits.ButtonSqueezeL/R`):
 
@@ -299,7 +299,7 @@ Before you start: a scene you can edit with one AR space (a floor with two print
 
 1. **Pair as personal.**
    - [ ] Open the menu, tap **Builder**: the pairing panel shows a code (ABC-123 style) and a QR code.
-   - [ ] Scan the QR (or type the code on vlm.gg), choose **This is my headset** and approve: the panel closes by itself within a few seconds.
+   - [ ] Scan the QR (or type the code on virvi.io), choose **This is my headset** and approve: the panel closes by itself within a few seconds.
    - [ ] With the first ring in view, the space opens straight away; with no ring in view, a list of your spaces shows (pick yours). The banner "Builder: visitors don't see your changes until you save" isn't up yet; the builder panel says "Look at a ring of <space>".
    - [ ] **Cancel** on the pairing panel (try it once before approving) closes it; approving that code on the website afterwards pairs nothing (the headset stopped asking).
 2. **Align a floor.**

@@ -3,7 +3,7 @@ title: Analytics
 description: Zero-config visitor analytics for Decentraland LANDs and Worlds.
 ---
 
-VLM analytics start collecting as soon as a scene calls `startVLMAnalytics()` or `createVLM()`. No account is needed to collect; sign in with the wallet that owns the LAND or World to see the data.
+Virvi analytics start collecting as soon as a scene calls `startVirviAnalytics()` or `createVirvi()`. No account is needed to collect; sign in with the wallet that owns the LAND or World to see the data.
 
 ## What you get
 - **Summary:** visits, unique visitors, session length and top countries.
@@ -14,7 +14,7 @@ VLM analytics start collecting as soon as a scene calls `startVLMAnalytics()` or
 - **Wallet visibility:** optionally store wallet addresses and display names. Visitors see a notice when this is on. See [Privacy](/privacy/).
 
 ## The dashboard
-Open it from vlm.gg (**Analytics** in the sidebar) or press **Stats** in the in-world HUD, which opens your scene's page. Pick a location to see:
+Open it from virvi.io (**Analytics** in the sidebar) or press **Stats** in the in-world HUD, which opens your scene's page. Pick a location to see:
 
 - **Summary cards:** visitors, new vs returning, sessions, peak at once and average time in the scene.
 - **Visitors over time:** a chart you can switch between visitors, sessions and peak at once, over 24 hours, 7 days, 30 days or a custom range. Day buckets are UTC days.

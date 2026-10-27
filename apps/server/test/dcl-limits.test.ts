@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { plotParcels, parseParcel, dclBudget, validPlot } from 'vlm-shared'
+import { plotParcels, parseParcel, dclBudget, validPlot } from '@virvixr/shared'
 
 describe('Decentraland plot geometry and budget', () => {
   it('plotParcels lists every parcel from the base', () => {

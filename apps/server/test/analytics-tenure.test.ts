@@ -28,14 +28,14 @@ describe('analytics access by setup tenure', () => {
 
   it('host, co-host, editor, viewer and strangers', async () => {
     const host = await createUser({ wallet: randomWallet() })
-    const { scene: vlm } = await createScene(host)
+    const { scene: virvi } = await createScene(host)
     const loc = await createAnalyticsScene({ locationKey: 'gc:1,1', parcels: ['1,1'] })
-    await createSetup(loc.id, vlm.id)
+    await createSetup(loc.id, virvi.id)
     const [co, ed, vi, st] = await Promise.all([1, 2, 3, 4].map(() => createUser({ wallet: randomWallet() })))
     await db.insert(sceneRoles).values([
-      { sceneId: vlm.id, walletAddress: co.wallet!, role: 'cohost' },
-      { sceneId: vlm.id, walletAddress: ed.wallet!, role: 'editor' },
-      { sceneId: vlm.id, walletAddress: vi.wallet!, role: 'viewer' },
+      { sceneId: virvi.id, walletAddress: co.wallet!, role: 'cohost' },
+      { sceneId: virvi.id, walletAddress: ed.wallet!, role: 'editor' },
+      { sceneId: virvi.id, walletAddress: vi.wallet!, role: 'viewer' },
     ])
     expect(await getAnalyticsAccess(actorOf(host), loc.id)).toMatchObject({ canRead: true, canManage: true, canDelete: true })
     expect(await getAnalyticsAccess(actorOf(co), loc.id)).toMatchObject({ canRead: true, canManage: true, canDelete: false })

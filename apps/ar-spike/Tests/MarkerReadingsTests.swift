@@ -33,8 +33,8 @@ final class MarkerReadingsTests: XCTestCase {
     }
 
     func testMarkerForQRPayload() {
-        XCTAssertEqual(TestMarker.code(fromQR: "HTTPS://VLM.GG/S/TEST12"), "TEST12")
-        XCTAssertEqual(TestMarker.code(fromQR: "https://vlm.gg/s/test17"), "TEST17")
+        XCTAssertEqual(TestMarker.code(fromQR: "HTTPS://VIRVI.IO/S/TEST12"), "TEST12")
+        XCTAssertEqual(TestMarker.code(fromQR: "https://virvi.io/s/test17"), "TEST17")
         XCTAssertNil(TestMarker.code(fromQR: "https://example.com/s/TEST12"))
     }
 }

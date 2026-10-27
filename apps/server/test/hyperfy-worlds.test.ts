@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { HYPERFY_FEED } from 'vlm-shared'
+import { HYPERFY_FEED } from '@virvixr/shared'
 import { db } from '../src/db/connection.js'
 import bcrypt from 'bcryptjs'
 import { hyperfyWorlds, subscriptions, sceneCollaborators, scenes, users, userAuthMethods, organizations } from '../src/db/schema.js'
@@ -37,11 +37,11 @@ const HOSTING_CONFIG = {
   hyperfyImage: 'registry.fly.io/vlm-hyperfy-image:abc123',
   hyperfyWorldsDatabaseUrl: 'postgres://admin:adminpw@worlds-db.internal/worlds',
   hyperfyWorldsDbUrlTemplate: 'postgres://{user}:{password}@worlds-db.flycast:5432/worlds',
-  hyperfyAssetsS3Uri: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/vlm-hyperfy',
-  hyperfyAssetsBaseUrl: 'https://worlds-cdn.vlm.gg',
-  hyperfyRouterDomain: 'worlds.vlm.gg',
+  hyperfyAssetsS3Uri: 's3://r2key:r2s3cr3t@acct.r2.cloudflarestorage.com/virvi-hyperfy',
+  hyperfyAssetsBaseUrl: 'https://worlds-cdn.virvi.io',
+  hyperfyRouterDomain: 'worlds.virvi.io',
   hyperfySecretKey: 'ab'.repeat(32),
-  publicUrl: 'https://api.vlm.gg',
+  publicUrl: 'https://api.virvi.io',
 }
 
 function installFakes(opts: { failStart?: boolean; failUpdate?: boolean; failDeleteApp?: boolean } = {}) {
@@ -103,11 +103,11 @@ describe('connect-your-own Hyperfy world', () => {
     app.inject({ method, url, headers: { authorization: `Bearer ${tokenFor(user)}` }, payload: payload as any })
   const connect = (user = owner, name = 'My world') => call(user, 'POST', '/api/hyperfy/worlds', { sceneId, name })
 
-  it('creating a world returns a vlmw_ key once and stores only its hash', async () => {
+  it('creating a world returns a virviw_ key once and stores only its hash', async () => {
     const res = await connect()
     expect(res.statusCode).toBe(201)
     const { world, key } = res.json()
-    expect(key).toMatch(/^vlmw_[0-9a-f]{64}$/)
+    expect(key).toMatch(/^virviw_[0-9a-f]{64}$/)
     expect(world).toMatchObject({ sceneId, name: 'My world', kind: 'self', lastSeenAt: null, keyPrefix: key.slice(0, 12) })
     expect(JSON.stringify(world)).not.toContain(key)
     const [row] = await db.select().from(hyperfyWorlds)
@@ -120,7 +120,7 @@ describe('connect-your-own Hyperfy world', () => {
   it('findWorldByKey finds it, and fails after rotate-key', async () => {
     const { world, key } = (await connect()).json()
     expect((await findWorldByKey(key))?.id).toBe(world.id)
-    expect(await findWorldByKey('vlmw_nope')).toBeNull()
+    expect(await findWorldByKey('virviw_nope')).toBeNull()
     const rotated = await call(owner, 'POST', `/api/hyperfy/worlds/${world.id}/rotate-key`)
     expect(rotated.statusCode).toBe(200)
     const next = rotated.json().key
@@ -163,7 +163,7 @@ describe('connect-your-own Hyperfy world', () => {
     ;(config as any).flyApiToken = undefined
     const res = await connect()
     expect(res.statusCode).toBe(201)
-    expect(res.json().key).toMatch(/^vlmw_/)
+    expect(res.json().key).toMatch(/^virviw_/)
   })
 
   it('free plan is refused by the deployment feature gate', async () => {
@@ -182,7 +182,7 @@ describe('connect-your-own Hyperfy world', () => {
     expect(list.json().worlds.map((w: { id: string }) => w.id)).toEqual([world.id])
     const rotated = await call(owner, 'POST', `/api/hyperfy/worlds/${world.id}/rotate-key`)
     expect(rotated.statusCode).toBe(200)
-    expect(rotated.json().key).toMatch(/^vlmw_/)
+    expect(rotated.json().key).toMatch(/^virviw_/)
     expect((await call(owner, 'DELETE', `/api/hyperfy/worlds/${world.id}`)).json()).toEqual({ deleted: true })
     expect(await db.select().from(hyperfyWorlds)).toHaveLength(0)
   })
@@ -197,7 +197,7 @@ describe('connect-your-own Hyperfy world', () => {
     const res = await app.inject({ method: 'GET', url: '/api/hyperfy/app.hyp' })
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toBe('application/octet-stream')
-    expect(res.headers['content-disposition']).toBe('attachment; filename="vlm.hyp"')
+    expect(res.headers['content-disposition']).toBe('attachment; filename="virvi.hyp"')
     const body = res.rawPayload
     const headerLen = body.readUInt32LE(0)
     expect(headerLen).toBeGreaterThan(0)
@@ -253,7 +253,7 @@ describe('hosted Hyperfy world routes', () => {
     expect(await db.select().from(hyperfyWorlds)).toHaveLength(0)
     const self = await call(owner, 'POST', '/api/hyperfy/worlds', { sceneId, name: 'Mine' })
     expect(self.statusCode).toBe(201)
-    expect(self.json().key).toMatch(/^vlmw_/)
+    expect(self.json().key).toMatch(/^virviw_/)
   })
 
   it('hosted create returns 202 with the admin code once; list never has it', async () => {
@@ -355,7 +355,7 @@ describe('hosted Hyperfy world routes', () => {
     // The slot is taken again by the restored world, so a second ended world can't come back.
     const other = await db
       .insert(hyperfyWorlds)
-      .values({ sceneId, ownerId: owner.id, name: 'Old', kind: 'hosted', keyHash: 'old-hash', keyPrefix: 'vlmw_old', slug: 'old-world', flyApp: 'vlm-w-old-world', address: 'x', status: 'ended', endedAt: new Date(), purgeAfter: new Date(Date.now() + 86_400_000) })
+      .values({ sceneId, ownerId: owner.id, name: 'Old', kind: 'hosted', keyHash: 'old-hash', keyPrefix: 'virviw_old', slug: 'old-world', flyApp: 'vlm-w-old-world', address: 'x', status: 'ended', endedAt: new Date(), purgeAfter: new Date(Date.now() + 86_400_000) })
       .returning()
     const full = await call(owner, 'POST', `/api/hyperfy/worlds/${other[0].id}/restore`)
     expect(full.statusCode).toBe(403)
@@ -388,7 +388,7 @@ describe('hosted Hyperfy world routes', () => {
     await settled(world.id)
     const ok = await call(owner, 'POST', `/api/hyperfy/worlds/${world.id}/rotate-key`)
     expect(ok.statusCode).toBe(200)
-    expect(ok.json().key).toMatch(/^vlmw_/)
+    expect(ok.json().key).toMatch(/^virviw_/)
     installFakes({ failUpdate: true })
     const bad = await call(owner, 'POST', `/api/hyperfy/worlds/${world.id}/rotate-key`)
     expect(bad.statusCode).toBe(502)

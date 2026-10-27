@@ -29,7 +29,7 @@ async function seed() {
     .insert(schema.users)
     .values({
       displayName: 'Test User',
-      email: 'test@vlm.gg',
+      email: 'test@virvi.io',
       role: 'admin',
     })
     .returning()
@@ -37,7 +37,7 @@ async function seed() {
   await db.insert(schema.userAuthMethods).values({
     userId: user.id,
     type: 'email',
-    identifier: 'test@vlm.gg',
+    identifier: 'test@virvi.io',
     credentialHash: passwordHash,
   })
 
@@ -119,7 +119,7 @@ async function seed() {
       enabled: true,
       customId: 'welcome-banner',
       properties: {
-        textureSrc: 'https://via.placeholder.com/1024x512/2d2d44/ffffff?text=Welcome+to+VLM',
+        textureSrc: 'https://via.placeholder.com/1024x512/2d2d44/ffffff?text=Welcome+to+Virvi',
         emission: 1.0,
         isTransparent: false,
       },
@@ -176,7 +176,7 @@ async function seed() {
   console.log('\nSeed complete!')
   console.log(`  Scene ID: ${scene.id}`)
   console.log(`  Preset ID: ${preset.id}`)
-  console.log(`  Login: test@vlm.gg / password123`)
+  console.log(`  Login: test@virvi.io / password123`)
 
   await sql.end()
 }

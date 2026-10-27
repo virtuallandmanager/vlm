@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { CatalogPack } from 'vlm-shared'
+import type { CatalogPack } from '@virvixr/shared'
 import { useApi } from '@/lib/api'
 import { licenseLabel } from '@/lib/catalog'
 
@@ -19,7 +19,7 @@ export default function CreditsPage() {
     <main className="mx-auto max-w-3xl px-4 py-10 space-y-6">
       <h1 className="text-3xl font-bold">Credits</h1>
       <p className="text-gray-400">
-        The 3D models in VLM&apos;s catalog come from these open-source collections. Thank you to every artist who shared their work.
+        The 3D models in Virvi&apos;s catalog come from these open-source collections. Thank you to every artist who shared their work.
       </p>
       {failed && <p className="text-red-400">Couldn&apos;t load the credits. Try again in a moment.</p>}
       {!packs && !failed && <p className="text-gray-500">Loading…</p>}

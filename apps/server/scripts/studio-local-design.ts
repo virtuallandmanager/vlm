@@ -12,7 +12,7 @@ import { users, studioDesigns } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { hashWorkerToken } from '../src/studio/machines.js'
 
-const EMAIL = 'studio-local@vlm.test'
+const EMAIL = 'studio-local@virvi.test'
 const [kind = 'wearable', agent = 'codex'] = process.argv.slice(2)
 
 if (config.mode === 'cloud' && !config.publicUrl.includes('localhost') && !config.publicUrl.includes('host.docker.internal')) {

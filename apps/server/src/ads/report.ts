@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { adEvents, scenes } from '../db/schema.js'
-import type { AdLevel, AdReport, LevelCounts } from 'vlm-shared'
+import type { AdLevel, AdReport, LevelCounts } from '@virvixr/shared'
 
 const LEVELS: AdLevel[] = ['scene', 'screen', 'look', 'click']
 

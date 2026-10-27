@@ -32,7 +32,7 @@ const machineOf = async (id: string) => (await db.select().from(studioDesigns).w
 let designId: string | null = null
 try {
   if (!config.publicUrl.includes('.invalid')) throw new Error('set PUBLIC_URL to an unreachable https://example.invalid')
-  const [u] = await db.insert(users).values({ email: `studio-smoke-${Date.now()}@vlm.test`, displayName: 'Studio smoke' }).returning()
+  const [u] = await db.insert(users).values({ email: `studio-smoke-${Date.now()}@virvi.test`, displayName: 'Studio smoke' }).returning()
   const [d] = await db.insert(studioDesigns).values({ ownerId: u.id, name: 'Fly smoke', kind: 'wearable', agent: 'claude' }).returning()
   designId = d.id
   await ensureWorker(d.id)

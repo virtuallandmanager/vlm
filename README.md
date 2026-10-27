@@ -1,6 +1,6 @@
-# Virtual Land Manager (VLM) v2
+# Virvi
 
-A platform for managing metaverse presence across multiple virtual worlds from a single interface. One person — the Virtual Land Manager — can deploy worlds, run live events, place 3D assets, control video streams, and monitor analytics across Decentraland, Hyperfy, and any future platform.
+A platform for managing metaverse presence across multiple virtual worlds from a single interface. One person can deploy worlds, run live events, place 3D assets, control video streams, and monitor analytics across Decentraland, Hyperfy, and any future platform.
 
 ## What It Does
 
@@ -18,16 +18,16 @@ A platform for managing metaverse presence across multiple virtual worlds from a
 ## Architecture
 
 ```
-Web Dashboard (Next.js)  ──REST/WSS──▶  VLM API Server (Fastify + Colyseus)
+Web Dashboard (Next.js)  ──REST/WSS──▶  Virvi API Server (Fastify + Colyseus)
                                               │
                             ┌─────────┬───────┼───────┬──────────┐
                             ▼         ▼       ▼       ▼          ▼
                         Postgres    Redis   S3/R2   Stripe   Media Server
                                               │
 In-World SDKs + HUD  ──Colyseus WSS──────────┘
-  ├── vlm-core (platform-agnostic logic)
-  ├── vlm-adapter-dcl (Decentraland)
-  └── vlm-hyperfy-app (Hyperfy)
+  ├── @virvixr/core (platform-agnostic logic)
+  ├── @virvixr/adapter-dcl (Decentraland)
+  └── @virvixr/hyperfy-app (Hyperfy)
 ```
 
 ## Monorepo Structure
@@ -38,12 +38,12 @@ In-World SDKs + HUD  ──Colyseus WSS──────────┘
 | `apps/web` | Next.js dashboard (static export) |
 | `apps/streaming` | RTMP ingest + HLS transcoding server |
 | `apps/docs` | Documentation site (Astro/Starlight) |
-| `packages/vlm-shared` | Shared types, enums, platform adapter interface |
-| `packages/vlm-core` | Platform-agnostic scene management, element managers |
-| `packages/vlm-client` | HTTP + WebSocket client SDK |
-| `packages/vlm-hud` | In-world management HUD (spatial UI overlay) |
-| `packages/vlm-adapter-dcl` | Decentraland adapter |
-| `packages/vlm-hyperfy-app` | VLM app (`.hyp`) for self-run Hyperfy worlds |
+| `packages/shared` | Shared types, enums, platform adapter interface |
+| `packages/core` | Platform-agnostic scene management, element managers |
+| `packages/client` | HTTP + WebSocket client SDK |
+| `packages/hud` | In-world management HUD (spatial UI overlay) |
+| `packages/adapter-dcl` | Decentraland adapter |
+| `packages/hyperfy-app` | Virvi app (`.hyp`) for self-run Hyperfy worlds |
 
 ## Quick Start
 
@@ -80,7 +80,7 @@ JWT_SECRET=your-secret-here
 
 ## Deployment Modes
 
-VLM supports three deployment modes via `VLM_MODE`:
+Virvi supports three deployment modes via `VIRVI_MODE`:
 
 | Mode | Use Case | Requirements |
 |------|----------|--------------|
@@ -94,7 +94,7 @@ The project includes a `Dockerfile` (Railway builds it automatically) and `.rail
 
 - `DATABASE_URL` — Railway Postgres connection string
 - `JWT_SECRET` — random 64-char string
-- `NEXT_PUBLIC_API_URL` — your Railway public URL (e.g., `https://vlm-production.up.railway.app`)
+- `NEXT_PUBLIC_API_URL` — your Railway public URL (e.g., `https://virvi-production.up.railway.app`)
 - `NEXT_PUBLIC_WSS_URL` — same URL with `wss://` prefix
 
 ### Docker Compose (Self-Hosted)
@@ -105,7 +105,7 @@ docker compose -f docker-compose.single.yml up -d
 
 # Scalable mode (multiple servers + Postgres + Redis)
 docker compose -f docker-compose.scalable.yml up -d
-docker compose -f docker-compose.scalable.yml up -d --scale vlm=3
+docker compose -f docker-compose.scalable.yml up -d --scale virvi=3
 ```
 
 ## Features
@@ -126,7 +126,7 @@ docker compose -f docker-compose.scalable.yml up -d --scale vlm=3
 - Email/password with bcrypt
 - Google OAuth
 - Discord OAuth
-- API keys (`vlm_k1_...` prefix)
+- API keys (`virvi_k1_...` prefix)
 - Web3 wallet signatures (platform auth)
 
 ### Billing (Cloud Mode)
@@ -148,13 +148,13 @@ When the server is running, Swagger UI is available at `/api/docs`.
 - [VLM_V2_IMPLEMENTATION_PLAN.md](VLM_V2_IMPLEMENTATION_PLAN.md) — phased build plan with current status
 - [VLM_V2_ADAPTER_DESIGNS.md](VLM_V2_ADAPTER_DESIGNS.md) — detailed designs for Decentraland, Hyperfy, and Second Life adapters
 - [VLM_V2_WEBXR_SPEC.md](VLM_V2_WEBXR_SPEC.md) — WebXR "phygital" adapter for AR experiences in physical spaces (iPhone, Vision Pro, Quest)
-- [VLM_V2_DCL_INSPECTOR_INTEGRATION.md](VLM_V2_DCL_INSPECTOR_INTEGRATION.md) — Embed DCL 3D inspector in dashboard + VLM Smart Item for Creator Hub
+- [VLM_V2_DCL_INSPECTOR_INTEGRATION.md](VLM_V2_DCL_INSPECTOR_INTEGRATION.md) — Embed DCL 3D inspector in dashboard + Virvi Smart Item for Creator Hub
 
 ## Testing
 
 nvm use 20
 pnpm docker:dev          # Postgres on :5432
-pnpm --filter vlm-server test
+pnpm --filter @virvixr/server test
 
 ## Tech Stack
 

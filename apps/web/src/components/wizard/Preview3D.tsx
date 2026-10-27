@@ -11,7 +11,7 @@ import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNo
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber'
 import { OrbitControls, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
-import { DCL_PARCEL_M, plotSizeM, type Plot } from 'vlm-shared'
+import { DCL_PARCEL_M, plotSizeM, type Plot } from '@virvixr/shared'
 import { footprint, type PlacedItem } from '@/lib/wizard/placement'
 import { GUIDE_PLOT } from '@/lib/wizard/state'
 

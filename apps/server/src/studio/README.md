@@ -12,7 +12,7 @@ own Fly worker machine (`apps/studio-worker`), which talks to the routes here th
 | `results.ts` | applying a worker's Result once, and failing lost jobs |
 | `designs.ts` | prompts, renders, view keys and the design detail the dashboard reads |
 | `render-urls.ts` | signed, hour-long URLs for render frames: the only files a browser receives |
-| `events.ts` | progress on the bus, relayed to the page by the `vlm_studio` room (`src/ws/VLMStudioRoom.ts`) |
+| `events.ts` | progress on the bus, relayed to the page by the `virvi_studio` room (`src/ws/VirviStudioRoom.ts`) |
 | `pricing.ts` | what finalizing costs: first finalize, extra pieces, half-price revisions, and the checker gate |
 | `payments.ts` | one-time Stripe Checkout for finalizing and top-ups, applied once from the webhook; entitlements, finalize jobs, mistake refunds |
 | `sweep.ts` | every minute: fails lost jobs and refunds them, restarts machines for waiting jobs, destroys idle machines |
@@ -32,7 +32,7 @@ Routes: `src/routes/studio.ts` (the dashboard, `/api/studio`) and `src/routes/st
 
 ## Deploying (the owner's steps)
 
-The studio is on when `VLM_MODE=cloud` and both `STUDIO_WORKER_IMAGE` and `STUDIO_S3_URI` are set.
+The studio is on when `VIRVI_MODE=cloud` and both `STUDIO_WORKER_IMAGE` and `STUDIO_S3_URI` are set.
 
 1. **A private R2 bucket.** In Cloudflare, create a bucket `vlm-studio` with no public access and no custom domain,
    and an R2 API token with Object Read & Write on that bucket only. It must not be the public uploads bucket.

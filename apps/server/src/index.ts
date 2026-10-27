@@ -4,9 +4,7 @@ const { Server: ColyseusServer } = _require('colyseus') as any
 const { WebSocketTransport } = _require('@colyseus/ws-transport') as any
 import { config, assertProductionSecrets, roomsDistributed } from './config.js'
 import { startHookCrons } from './integrations/platform-hooks.js'
-import { VLMSceneRoom } from './ws/VLMSceneRoom.js'
-import { VLMCommandCenterRoom } from './ws/VLMCommandCenterRoom.js'
-import { VLMStudioRoom } from './ws/VLMStudioRoom.js'
+import { defineRooms } from './ws/registry.js'
 import { runMigrations } from './db/migrate.js'
 import { buildApp } from './app.js'
 import { startLifecycleSweep } from './venues/lifecycle.js'
@@ -19,15 +17,15 @@ import { initBus } from './realtime/bus.js'
 
 async function main() {
   assertProductionSecrets({ mode: config.mode, nodeEnv: process.env.NODE_ENV, jwtSecret: config.jwtSecret })
-  console.log(`[vlm-server] Starting in "${config.mode}" mode`)
+  console.log(`[virvi-server] Starting in "${config.mode}" mode`)
 
   // ── Auto-migrate ─────────────────────────────────────────────────────────
   if (config.databaseUrl) {
     try {
       await runMigrations()
     } catch (err) {
-      console.warn('[vlm-server] Migration skipped or failed:', (err as Error).message)
-      console.warn('[vlm-server] Server will continue — run db:migrate manually if needed')
+      console.warn('[virvi-server] Migration skipped or failed:', (err as Error).message)
+      console.warn('[virvi-server] Server will continue — run db:migrate manually if needed')
     }
   }
 
@@ -36,7 +34,7 @@ async function main() {
 
   // ── Start HTTP server ────────────────────────────────────────────────────
   await app.listen({ port: config.port, host: '0.0.0.0' })
-  console.log(`[vlm-server] HTTP listening on port ${config.port}`)
+  console.log(`[virvi-server] HTTP listening on port ${config.port}`)
 
   // ── Colyseus WebSocket server ────────────────────────────────────────────
   const httpServer = app.server
@@ -50,10 +48,10 @@ async function main() {
     const { RedisDriver } = _require('@colyseus/redis-driver') as any
     presence = new RedisPresence(config.redisUrl)
     driver = new RedisDriver(config.redisUrl)
-    console.log(`[vlm-server] Redis presence enabled`)
+    console.log(`[virvi-server] Redis presence enabled`)
   } else {
     presence = new LocalPresence()
-    console.log(`[vlm-server] In-memory presence (single instance)`)
+    console.log(`[virvi-server] In-memory presence (single instance)`)
   }
   initBus(presence)
 
@@ -68,36 +66,34 @@ async function main() {
   })
 
   // Register rooms
-  gameServer.define('vlm_scene', VLMSceneRoom).filterBy(['sceneId'])
-  gameServer.define('vlm_command_center', VLMCommandCenterRoom).filterBy(['eventId'])
-  gameServer.define('vlm_studio', VLMStudioRoom).filterBy(['designId'])
+  defineRooms(gameServer)
 
-  console.log(`[vlm-server] Colyseus WebSocket attached`)
+  console.log(`[virvi-server] Colyseus WebSocket attached`)
 
   // ── Platform hook crons (cleanup stale callbacks + keepalive ping) ─────
   startHookCrons()
-  console.log(`[vlm-server] Platform hook crons started`)
+  console.log(`[virvi-server] Platform hook crons started`)
   startLifecycleSweep(config.lifecycleSweepMs)
-  console.log(`[vlm-server] Venue lifecycle sweep every ${config.lifecycleSweepMs}ms`)
+  console.log(`[virvi-server] Venue lifecycle sweep every ${config.lifecycleSweepMs}ms`)
   if (config.dclRedeploySweepMs > 0) {
     startDclRedeploySweep(config.dclRedeploySweepMs)
-    console.log(`[vlm-server] Decentraland redeploy sweep every ${config.dclRedeploySweepMs}ms`)
+    console.log(`[virvi-server] Decentraland redeploy sweep every ${config.dclRedeploySweepMs}ms`)
   }
   if (hyperfyHosting().available) {
     startHostedWorldSweep(SWEEP_INTERVAL_MS)
-    console.log(`[vlm-server] Hosted Hyperfy world sweep every ${SWEEP_INTERVAL_MS}ms`)
+    console.log(`[virvi-server] Hosted Hyperfy world sweep every ${SWEEP_INTERVAL_MS}ms`)
   }
   if (config.studioEnabled) {
     startStudioSweep(STUDIO_SWEEP_MS)
-    console.log(`[vlm-server] Design Studio sweep every ${STUDIO_SWEEP_MS}ms`)
+    console.log(`[virvi-server] Design Studio sweep every ${STUDIO_SWEEP_MS}ms`)
   }
   startAnalyticsJobs()
-  console.log('[vlm-server] Analytics jobs started')
+  console.log('[virvi-server] Analytics jobs started')
 
-  console.log(`[vlm-server] Ready at ${config.publicUrl}`)
+  console.log(`[virvi-server] Ready at ${config.publicUrl}`)
 }
 
 main().catch((err) => {
-  console.error('[vlm-server] Fatal error:', err)
+  console.error('[virvi-server] Fatal error:', err)
   process.exit(1)
 })

@@ -7,7 +7,7 @@ import { resetDb } from './helpers/db.js'
 import { createUser, createScene, createElement, createInstance, tokenFor, randomWallet } from './helpers/factories.js'
 import { startGameServer, joinScene, serverRoom } from './helpers/game-server.js'
 import { holderOf } from '../src/ws/draft-holds.js'
-import { roomsForScene } from '../src/ws/VLMSceneRoom.js'
+import { roomsForScene } from '../src/ws/VirviSceneRoom.js'
 
 const draft = (sk: string, x = 5) => ({
   element: 'video',
@@ -63,7 +63,7 @@ describe('transform draft relay', () => {
     s.owner.room.send('transform_draft', { ...draft(s.inst.id), element: 'ad_space' })
     const got = await s.editor.waitFor('transform_draft')
     expect(got).toMatchObject({ sk: s.inst.id, element: 'ad_space', holderName: 'Olivia', position: { x: 5, y: 2, z: 3 } })
-    expect(count(s.owner, 'vlm_error')).toBe(0)
+    expect(count(s.owner, 'virvi_error')).toBe(0)
   })
 
   it('uses the account display name from the database, not a client-supplied one', async () => {
@@ -105,19 +105,19 @@ describe('transform draft relay', () => {
   it('rejects malformed drafts and relays nothing', async () => {
     const s = await setup()
     s.owner.room.send('transform_draft', { ...draft(s.inst.id), position: { x: NaN, y: 0, z: 0 } })
-    expect((await s.owner.waitFor('vlm_error')).code).toBe('bad_request')
+    expect((await s.owner.waitFor('virvi_error')).code).toBe('bad_request')
     const { scale, ...noScale } = draft(s.inst.id)
     s.owner.room.send('transform_draft', noScale)
-    expect((await s.owner.waitFor('vlm_error')).code).toBe('bad_request')
+    expect((await s.owner.waitFor('virvi_error')).code).toBe('bad_request')
     s.owner.room.send('transform_draft', { ...draft(s.inst.id), element: 'widget' })
-    expect((await s.owner.waitFor('vlm_error')).code).toBe('bad_request')
+    expect((await s.owner.waitFor('virvi_error')).code).toBe('bad_request')
     await s.editor.expectNone('transform_draft', 200)
   })
 
   it('rejects a viewer collaborator and relays nothing', async () => {
     const s = await setup()
     s.viewer.room.send('transform_draft', draft(s.inst.id))
-    expect((await s.viewer.waitFor('vlm_error')).code).toBe('forbidden')
+    expect((await s.viewer.waitFor('virvi_error')).code).toBe('forbidden')
     await s.owner.expectNone('transform_draft', 200)
     await s.editor.expectNone('transform_draft', 200)
   })
@@ -127,7 +127,7 @@ describe('transform draft relay', () => {
     const other = await createScene(await createUser(), 'Other')
     const otherInst = await createInstance((await createElement(other.preset.id)).id)
     s.owner.room.send('transform_draft', draft(otherInst.id))
-    expect((await s.owner.waitFor('vlm_error')).code).toBe('not_found')
+    expect((await s.owner.waitFor('virvi_error')).code).toBe('not_found')
     await s.editor.expectNone('transform_draft', 200)
   })
 
@@ -147,7 +147,7 @@ describe('transform draft relay', () => {
     await settle(600)
     expect(count(s.editor, 'transform_draft')).toBeLessThanOrEqual(20)
     expect(count(s.editor, 'transform_draft')).toBeGreaterThan(0)
-    expect(count(s.owner, 'vlm_error')).toBe(0)
+    expect(count(s.owner, 'virvi_error')).toBe(0)
   })
 
   it('releases the hold when the holder leaves', async () => {
@@ -295,7 +295,7 @@ describe('transform draft relay', () => {
     expect(cloneInst).toBeTruthy() // the renter's own booking copy
     for (const sk of [inst.id, cloneInst.id]) {
       r.room.send('transform_draft', draft(sk, 9))
-      expect(await r.waitFor('vlm_error')).toEqual({ code: 'forbidden', messageType: 'transform_draft' })
+      expect(await r.waitFor('virvi_error')).toEqual({ code: 'forbidden', messageType: 'transform_draft' })
     }
     await owner.expectNone('transform_draft', 200)
     await settle(100)

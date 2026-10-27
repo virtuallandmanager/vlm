@@ -221,7 +221,7 @@ export function WorldDestinationCard({ destination, history, virviDeploys, offer
   )
 }
 
-/** A Creator Hub `vlm-dcl` scene set up in-world for this scene, with no destination yet. */
+/** A Creator Hub `@virvixr/dcl` scene set up in-world for this scene, with no destination yet. */
 export function AdoptWorldCard({ world, sceneId, onAdopted }: { world: string; sceneId: string; onAdopted: (dest: DclDestination) => void }) {
   const api = useApi()
   const [busy, setBusy] = useState(false)

@@ -1,0 +1,130 @@
+package io.virvi.ar.builder
+
+import io.virvi.ar.IMAGE_EXT
+import io.virvi.ar.VIDEO_EXT
+import io.virvi.ar.Vec3
+import io.virvi.ar.api.BuilderCall
+import io.virvi.ar.extOf
+import io.virvi.ar.space.RootPose
+import io.virvi.ar.space.rotateY
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+
+/**
+ * Where a new item goes: [distanceM] ahead of the head at [head] (world, facing [headYawDeg], degrees from +Z toward
+ * +X), at eye height, turned to face the builder, in scene coordinates (so the item's rotation y is the head's yaw
+ * + 180 − the root's yaw, in [0, 360)). Scale 1.
+ */
+fun placeAhead(head: Vec3, headYawDeg: Double, root: RootPose, distanceM: Double = 1.0): ItemTransform {
+  val yaw = Math.toRadians(headYawDeg)
+  val world = Vec3(head.x + Math.sin(yaw) * distanceM, head.y, head.z + Math.cos(yaw) * distanceM)
+  val d = Vec3(world.x - root.position.x, world.y - root.position.y, world.z - root.position.z)
+  val p = rotateY(-root.yawDeg, d)
+  val turn = headYawDeg + 180.0 - root.yawDeg
+  return ItemTransform(p, Vec3(0.0, turn - Math.floor(turn / 360.0) * 360.0, 0.0), Vec3(1.0, 1.0, 1.0))
+}
+
+/**
+ * The item to pick once the feed shows it: a placed item reaches the editor with the next snapshot, not with the
+ * place call. Main thread only.
+ */
+class PendingPick {
+  private var sk: String? = null
+
+  /** [sk] (the new instance's id) is picked when it appears; a later call replaces an earlier one. */
+  fun expect(sk: String) {
+    this.sk = sk
+  }
+
+  fun clear() {
+    sk = null
+  }
+
+  /** The sk to pick now, once, if [items] has the expected item; null otherwise. */
+  fun resolve(items: List<BuilderItem>): String? {
+    val want = sk ?: return null
+    if (items.none { it.sk == want }) return null
+    sk = null
+    return want
+  }
+}
+
+enum class LibraryKind { IMAGE, VIDEO, MODEL }
+
+/**
+ * A library item. [thumbnailUrl] is set where the library gives one (an image is its own). [drawable] is false for a
+ * format the headset can't draw (it would place, then never show).
+ */
+data class LibraryEntry(
+    val id: String,
+    val kind: LibraryKind,
+    val name: String,
+    val url: String,
+    val thumbnailUrl: String?,
+    val drawable: Boolean = true,
+)
+
+/**
+ * The placeable items of `GET /api/scenes/:id/library` (`{ items }`): ready ones with a url that are models, or media
+ * whose contentType is an image or a video (sounds and untyped files are left out). Formats the headset can't draw
+ * (see [LibraryEntry.drawable]) are kept so the tab can show them disabled.
+ */
+fun libraryEntries(body: JsonObject): List<LibraryEntry> =
+    ((body["items"] as? JsonArray) ?: emptyList<Nothing>()).mapNotNull { e ->
+      val o = e as? JsonObject ?: return@mapNotNull null
+      fun s(k: String) = (o[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
+      val id = s("id") ?: return@mapNotNull null
+      val url = s("url")?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+      if (s("status") != "ready") return@mapNotNull null
+      val type = s("contentType")
+      val kind =
+          when (s("kind")) {
+            "model" -> LibraryKind.MODEL
+            "media" ->
+                when {
+                  type?.startsWith("image/") == true -> LibraryKind.IMAGE
+                  type?.startsWith("video/") == true -> LibraryKind.VIDEO
+                  else -> return@mapNotNull null
+                }
+            else -> return@mapNotNull null
+          }
+      val drawable =
+          when (kind) {
+            LibraryKind.IMAGE -> extOf(url) in IMAGE_EXT
+            LibraryKind.VIDEO -> extOf(url) in VIDEO_EXT
+            LibraryKind.MODEL -> true
+          }
+      LibraryEntry(id, kind, s("name") ?: kind.name.lowercase(), url, url.takeIf { kind == LibraryKind.IMAGE && drawable }, drawable)
+    }
+
+/** The active preset's id from `GET /api/scenes/:id` (`{ scene: { activePresetId } }`). */
+fun activePresetId(body: JsonObject): String? =
+    (((body["scene"] as? JsonObject)?.get("activePresetId")) as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotEmpty() }
+
+/**
+ * Whether the scene's live preset is a booking's copy (`GET /api/scenes/:id`): the server names those
+ * `booking:<booking id>` when it clones the venue's preset for a booking.
+ */
+fun activePresetIsBooking(body: JsonObject): Boolean {
+  val scene = body["scene"] as? JsonObject ?: return false
+  val id = activePresetId(body) ?: return false
+  val preset = (scene["presets"] as? JsonArray)?.firstOrNull { ((it as? JsonObject)?.get("id") as? JsonPrimitive)?.content == id } as? JsonObject
+  val name = (preset?.get("name") as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return false
+  return name.startsWith(BOOKING_PRESET_PREFIX)
+}
+
+private const val BOOKING_PRESET_PREFIX = "booking:"
+
+/**
+ * Creates [entry] in the scene's [presetId] at [t]: always the shared scene, whatever the Everywhere switch says. An
+ * entry the headset can't draw ([LibraryEntry.drawable] false) is refused without a call, as `Failed(0)`.
+ */
+suspend fun BuilderApi.placeEntry(spaceId: String, presetId: String, entry: LibraryEntry, t: ItemTransform): BuilderCall<PlacedItem> =
+    if (!entry.drawable) BuilderCall.Failed(0)
+    else
+        when (entry.kind) {
+      LibraryKind.IMAGE -> placeImage(spaceId, presetId, entry.name, entry.url, t)
+      LibraryKind.VIDEO -> placeVideo(spaceId, presetId, entry.name, entry.url, t)
+      LibraryKind.MODEL -> placeModel(spaceId, presetId, entry.name, entry.url, t)
+    }

@@ -9,7 +9,7 @@
 
 import type { FastifyInstance } from 'fastify'
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
-import { dclBudget, plotParcels, plotSizeM, validPlot, type Plot } from 'vlm-shared'
+import { dclBudget, plotParcels, plotSizeM, validPlot, type Plot } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { assetLibraryItems, sceneElementInstances, sceneElements, sceneLibrary, scenePresets, scenes } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'

@@ -1,5 +1,5 @@
-import { VideoSourceType } from 'vlm-shared'
-import type { AdShape, LevelCounts } from 'vlm-shared'
+import { VideoSourceType } from '@virvixr/shared'
+import type { AdShape, LevelCounts } from '@virvixr/shared'
 
 const SHAPE_LABELS: Record<AdShape, string> = {
   '16:9': '16:9 landscape',

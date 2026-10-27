@@ -10,7 +10,7 @@ import { boundScene, fromInstance, type SceneFrom } from '../auth/scene-from.js'
 import { mayBuild } from '../ar/access.js'
 import { onDeviceEnded } from '../ar/devices.js'
 import { hold, holderOf, release, releaseAll } from '../ws/draft-holds.js'
-import { isValidDraft, roomsForScene } from '../ws/VLMSceneRoom.js'
+import { isValidDraft, roomsForScene } from '../ws/VirviSceneRoom.js'
 
 /**
  * The headset's live drafts. Quest has no Colyseus client, so it posts each draft here and the server relays it into

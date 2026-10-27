@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Privacy — VLM',
-  description: 'What VLM collects in Decentraland scenes and from the advertiser early-access form, and how to have it removed.',
+  title: 'Privacy',
+  description: 'What Virvi collects in Decentraland scenes and from the advertiser early-access form, and how to have it removed.',
 }
 
 // Keep in step with apps/docs/src/content/docs/privacy.md
@@ -10,19 +10,19 @@ export default function PrivacyPage() {
   return (
     <div className="min-h-screen bg-gray-950 px-4 py-12 sm:px-6">
       <article className="mx-auto max-w-2xl text-gray-300 [&_h2]:mb-3 [&_h2]:mt-10 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-white [&_li]:mt-2 [&_p]:leading-relaxed">
-        <a href="/" className="text-sm text-gray-400 hover:text-white">← Back to VLM</a>
+        <a href="/" className="text-sm text-gray-400 hover:text-white">← Back to Virvi</a>
         <h1 className="mt-6 text-3xl font-semibold tracking-tight text-white">Privacy and visitor data</h1>
 
         <h2>What is collected</h2>
         <p>
-          When a scene uses VLM, the scene sends anonymous usage events to VLM while you're inside its parcels: when you arrive and leave, where
+          When a scene uses Virvi, the scene sends anonymous usage events to Virvi while you're inside its parcels: when you arrive and leave, where
           you walk (sampled every few seconds), what you click or hover, videos you play, emotes, and camera mode.
         </p>
 
         <h2>How you're identified</h2>
         <ul className="list-disc pl-5">
           <li>
-            By default VLM stores a <strong>per-scene pseudonym</strong>: a keyed hash of your wallet (or guest id). It can't be linked across
+            By default Virvi stores a <strong>per-scene pseudonym</strong>: a keyed hash of your wallet (or guest id). It can't be linked across
             scenes and it isn't your wallet address.
           </li>
           <li>
@@ -30,7 +30,7 @@ export default function PrivacyPage() {
             scene shows a notice when you enter, and only data collected after that notice includes your wallet and name.
           </li>
           <li>
-            <strong>IP addresses are never stored.</strong> VLM uses them briefly to limit abuse and to look up your country, then discards them.
+            <strong>IP addresses are never stored.</strong> Virvi uses them briefly to limit abuse and to look up your country, then discards them.
           </li>
         </ul>
 
@@ -45,12 +45,12 @@ export default function PrivacyPage() {
           Call <code className="rounded bg-gray-800 px-1.5 py-0.5 text-sm">POST /api/analytics/me/delete</code> with your session token. A
           dashboard control for this is coming. This removes your sessions, events and positions from every scene.
           To ask for your data to be deleted, or for help, email{' '}
-          <a href="mailto:support@vlm.gg" className="text-blue-400 hover:underline">support@vlm.gg</a>.
+          <a href="mailto:support@virvi.io" className="text-blue-400 hover:underline">support@virvi.io</a>.
         </p>
 
-        <h2>VLM Spaces on Quest</h2>
+        <h2>Virvi Spaces on Quest</h2>
         <p>
-          VLM Spaces is the Meta Quest app that shows a VLM space in your room. It talks to vlm.gg. Pictures, videos and 3D models in a space load from wherever its owner hosts them, which may be outside vlm.gg; those hosts see the headset's network address like any website would.
+          Virvi Spaces is the Meta Quest app that shows a Virvi space in your room. It talks to virvi.io. Pictures, videos and 3D models in a space load from wherever its owner hosts them, which may be outside virvi.io; those hosts see the headset's network address like any website would.
         </p>
         <ul className="list-disc pl-5">
           <li>
@@ -65,7 +65,7 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong>Builders also send:</strong> the edits they make to a space, the alignment of a ring, and the pairing of their headset (including the headset model)
-            with a VLM account. The headset proves who it is with a secret kept in its encrypted storage; the server stores only a hash of it.
+            with a Virvi account. The headset proves who it is with a secret kept in its encrypted storage; the server stores only a hash of it.
           </li>
           <li>
             <strong>Never sent:</strong> camera images and room scans. The headset's cameras are used on the headset to find rings, and
@@ -74,19 +74,19 @@ export default function PrivacyPage() {
           </li>
         </ul>
         <p>
-          Visit events follow the same retention as the rest of VLM analytics, above. They carry no identity, so there is nothing to look up
-          or delete for a single visitor. A builder can revoke a paired headset on vlm.gg, which stops it from editing. To ask for your data to be
+          Visit events follow the same retention as the rest of Virvi analytics, above. They carry no identity, so there is nothing to look up
+          or delete for a single visitor. A builder can revoke a paired headset on virvi.io, which stops it from editing. To ask for your data to be
           deleted, or for help, email{' '}
-          <a href="mailto:support@vlm.gg" className="text-blue-400 hover:underline">support@vlm.gg</a>.
+          <a href="mailto:support@virvi.io" className="text-blue-400 hover:underline">support@virvi.io</a>.
         </p>
 
         <h2>Advertiser early access</h2>
         <p>
-          When you ask for advertising early access on vlm.gg, VLM stores the email address, name, company or project, website and message you
-          enter, and the time you sent the form. It's used only to contact you about advertising on VLM. If you send the form again with the same
+          When you ask for advertising early access on virvi.io, Virvi stores the email address, name, company or project, website and message you
+          enter, and the time you sent the form. It's used only to contact you about advertising on Virvi. If you send the form again with the same
           email, the new answers replace the old ones (fields you leave blank keep what you sent before). Your IP address is used briefly to
           limit repeated submissions and is not stored. To be removed from the list, email{' '}
-          <a href="mailto:sales@vlm.gg" className="text-blue-400 hover:underline">sales@vlm.gg</a>.
+          <a href="mailto:sales@virvi.io" className="text-blue-400 hover:underline">sales@virvi.io</a>.
         </p>
       </article>
     </div>
