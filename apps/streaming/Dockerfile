@@ -4,6 +4,7 @@ FROM node:20-slim AS build
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
+COPY patches ./patches
 COPY apps/streaming/package.json apps/streaming/
 RUN pnpm install --frozen-lockfile --filter @virvixr/streaming
 COPY apps/streaming/tsconfig.json apps/streaming/
