@@ -5,10 +5,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useApi } from '@/lib/api'
 import { scenePassAllows } from '@/lib/session'
 import { signinPath } from '@/lib/landing-route'
+import { useStudioAvailable } from '@/lib/use-studio'
 import Link from 'next/link'
 import {
   BroadcastIcon, CalendarIcon, ChartIcon, CubeIcon, GearIcon, GiftIcon, HomeIcon, LayersIcon, LogoutIcon, MediaIcon,
-  ScenesIcon, ShieldIcon,
+  ScenesIcon, ShieldIcon, SparkleIcon,
 } from '@/components/icons'
 
 type NavItem = { href: string; label: string; icon: (p: { size?: number }) => React.ReactElement }
@@ -37,6 +38,8 @@ const baseNavSections: NavSection[] = [
   { label: 'System', items: [{ href: '/settings', label: 'Settings', icon: GearIcon }] },
 ]
 const ADMIN_ITEM: NavItem = { href: '/admin', label: 'Admin', icon: ShieldIcon }
+// Shown only where the studio is on (the server's studio routes answer)
+const STUDIO_ITEM: NavItem = { href: '/studio', label: 'Design Studio', icon: SparkleIcon }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, logout, scenePass } = useAuth()
@@ -45,11 +48,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   const pathname = usePathname()
 
+  const studioOn = useStudioAvailable()
   const navSections = useMemo(() => {
     if (scenePass) return []
-    if (user?.role !== 'admin') return baseNavSections
-    return baseNavSections.map((s) => (s.label === 'System' ? { ...s, items: [...s.items, ADMIN_ITEM] } : s))
-  }, [user?.role, scenePass])
+    return baseNavSections.map((s) => {
+      if (s.label === 'Workspace' && studioOn) return { ...s, items: [...s.items, STUDIO_ITEM] }
+      if (s.label === 'System' && user?.role === 'admin') return { ...s, items: [...s.items, ADMIN_ITEM] }
+      return s
+    })
+  }, [user?.role, scenePass, studioOn])
 
   useEffect(() => {
     if (!loading && !user) {

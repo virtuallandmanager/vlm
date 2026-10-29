@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { AGENTS, designIdFromPath, formatCents, refusalMessage, untilReset } from './studio'
+import { AGENTS, designBadge, designIdFromPath, formatCents, refreshDue, refusalMessage, relativeTime, untilReset, usageLine, type StudioDesign, type StudioUsage } from './studio'
 
 const NOW = new Date('2026-10-29T21:55:00Z')
 const at = (ms: number) => new Date(NOW.getTime() + ms).toISOString()
@@ -85,5 +85,47 @@ describe('designIdFromPath', () => {
   })
   it('prefers a real route param', () => {
     expect(designIdFromPath('/studio/_/', id)).toBe(id)
+  })
+})
+
+describe('refreshDue', () => {
+  it('re-reads frame urls after 45 minutes, well before they expire', () => {
+    const t0 = 1_000_000
+    expect(refreshDue(t0, t0 + 44 * MIN)).toBe(false)
+    expect(refreshDue(t0, t0 + 46 * MIN)).toBe(true)
+  })
+})
+
+describe('designBadge', () => {
+  const d = (over: Partial<StudioDesign>): StudioDesign => ({
+    id: 'd1', name: 'Cap', kind: 'wearable', agent: 'claude', status: 'idle', archivedAt: null, lastJobAt: null,
+    finalizedAt: null, createdAt: NOW.toISOString(), ...over,
+  })
+  it('names each state', () => {
+    expect(designBadge(d({}))).toEqual({ label: 'Draft', tone: 'violet' })
+    expect(designBadge(d({ status: 'building' }))).toEqual({ label: 'Building', tone: 'info' })
+    expect(designBadge(d({ finalizedAt: NOW.toISOString() }))).toEqual({ label: 'Finalized', tone: 'success' })
+    expect(designBadge(d({ archivedAt: NOW.toISOString() }))).toEqual({ label: 'Archived', tone: 'neutral' })
+  })
+  it('lets archived win over finalized', () => {
+    expect(designBadge(d({ archivedAt: NOW.toISOString(), finalizedAt: NOW.toISOString(), status: 'building' })).label).toBe('Archived')
+  })
+})
+
+describe('relativeTime', () => {
+  it('reads as plain words', () => {
+    expect(relativeTime(at(-20 * 1000), NOW)).toBe('just now')
+    expect(relativeTime(at(-5 * MIN), NOW)).toBe('5 min ago')
+    expect(relativeTime(at(-3 * 60 * MIN), NOW)).toBe('3 h ago')
+    expect(relativeTime(at(-50 * 60 * MIN), NOW)).toBe('2 days ago')
+    expect(relativeTime(at(-25 * 60 * MIN), NOW)).toBe('1 day ago')
+  })
+})
+
+describe('usageLine', () => {
+  const u: StudioUsage = { plan: 'free', promptsLeft: 3, credits: 0, allowance: 3, resetsAt: NOW.toISOString(), openDesigns: 0, openDesignLimit: 1, topup: { cents: 500, prompts: 10 } }
+  it('names the plan and the prompts left, and bought prompts when there are any', () => {
+    expect(usageLine(u)).toBe('free plan · 3 prompts left today')
+    expect(usageLine({ ...u, credits: 7 })).toBe('free plan · 3 prompts left today · 7 bought')
   })
 })

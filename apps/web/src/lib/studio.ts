@@ -2,6 +2,7 @@
  * Design Studio: the page's types (the server's JSON, from apps/server/src/routes/studio.ts and studio/*.ts), its
  * copy, and the pure decisions the studio pages make. Kept free of React so it tests in node.
  */
+import type { Tone } from '@/components/ui'
 
 export type StudioKind = 'wearable' | 'emote'
 export type StudioAgent = 'claude' | 'codex'
@@ -165,4 +166,31 @@ export function designIdFromPath(pathname: string, param?: string): string | nul
   if (param && param !== '_' && UUID.test(param)) return param
   const m = /^\/studio\/([^/]+)\/?$/.exec(pathname)
   return m && UUID.test(m[1]) ? m[1] : null
+}
+
+/** Signed frame URLs last at least an hour: the page re-reads the design every 45 minutes it stays open. */
+export const FRAME_REFRESH_MS = 45 * 60_000
+
+export const refreshDue = (fetchedAt: number, now: number) => now - fetchedAt >= FRAME_REFRESH_MS
+
+export function designBadge(d: StudioDesign): { label: string; tone: Tone } {
+  if (d.archivedAt) return { label: 'Archived', tone: 'neutral' }
+  if (d.finalizedAt) return { label: 'Finalized', tone: 'success' }
+  if (d.status === 'building') return { label: 'Building', tone: 'info' }
+  return { label: 'Draft', tone: 'violet' }
+}
+
+/** `5 min ago`, `3 h ago`, `2 days ago`. */
+export function relativeTime(iso: string, now: Date): string {
+  const mins = Math.floor((now.getTime() - new Date(iso).getTime()) / 60_000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} min ago`
+  if (mins < 24 * 60) return `${Math.floor(mins / 60)} h ago`
+  const days = Math.floor(mins / (24 * 60))
+  return `${days} ${days === 1 ? 'day' : 'days'} ago`
+}
+
+/** `free plan · 3 prompts left today`, plus `· 7 bought` with bought prompts. */
+export function usageLine(u: StudioUsage): string {
+  return `${u.plan} plan · ${u.promptsLeft} prompts left today${u.credits > 0 ? ` · ${u.credits} bought` : ''}`
 }
