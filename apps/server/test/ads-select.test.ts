@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { db } from '../src/db/connection.js'
-import { ads, adCreatives, adPlacements, venues, bookings, sceneElements } from '../src/db/schema.js'
+import { ads, adCreatives, adPlacements, adSpaceSettings, adSpaceApprovals, venues, bookings, sceneElements } from '../src/db/schema.js'
 import { DEFAULT_VENUE_RULES } from '@virvixr/shared'
 import { selectAdsForElements } from '../src/ads/select.js'
 import { resetDb } from './helpers/db.js'
@@ -20,7 +20,7 @@ async function mkAd(
   creatives: Array<{ shape: string; kind: 'image' | 'video' }>,
   over: Partial<typeof ads.$inferInsert> = {},
 ) {
-  const [ad] = await db.insert(ads).values({ name: 'A', kind, clickUrl: 'https://x.example', ...over }).returning()
+  const [ad] = await db.insert(ads).values({ name: 'A', kind, clickUrl: 'https://x.example', reviewStatus: 'approved', audience: 'family', ...over }).returning()
   const cs = []
   for (const c of creatives) {
     const [row] = await db.insert(adCreatives).values({ adId: ad.id, shape: c.shape, kind: c.kind, url: `https://cdn.example/${crypto.randomUUID()}` }).returning()
@@ -156,5 +156,76 @@ describe('selectAdsForElements', () => {
     await venueWith(scene.id, preset.id, [original.id], { start: new Date(NOW.getTime() - H), end: new Date(NOW.getTime() + H) })
     const paused = await selectAdsForElements(scene.id, [clone.id], NOW)
     expect(paused[clone.id].paused).toBe(true)
+  })
+  describe('review, audience and the owner setting', () => {
+    const one = [{ shape: '1:1', kind: 'image' as const }]
+    const served = (out: Awaited<ReturnType<typeof selectAdsForElements>>, id: string) => out[id].ads.map((a) => a.adId).sort()
+
+    it('mature and unreviewed ads never reach a family space', async () => {
+      const { scene, preset } = await seed()
+      const el = await space(preset.id, { shape: '1:1', formats: 'both' })
+      await mkAd('house', one, { reviewStatus: 'pending', audience: null })
+      await mkAd('house', one, { reviewStatus: 'approved', audience: 'mature' })
+      const fam = await mkAd('house', one)
+      const out = await selectAdsForElements(scene.id, [el.id], NOW)
+      expect(served(out, el.id)).toEqual([fam.ad.id])
+    })
+
+    it('allow all serves mature ads', async () => {
+      const { scene, preset } = await seed()
+      const el = await space(preset.id, { shape: '1:1', formats: 'both' })
+      await db.insert(adSpaceSettings).values({ elementId: el.id, content: 'all' })
+      await mkAd('house', one, { reviewStatus: 'pending', audience: null })
+      const mature = await mkAd('house', one, { reviewStatus: 'approved', audience: 'mature' })
+      const fam = await mkAd('house', one)
+      const out = await selectAdsForElements(scene.id, [el.id], NOW)
+      expect(served(out, el.id)).toEqual([mature.ad.id, fam.ad.id].sort())
+    })
+
+    it('approve only serves only the ads the owner approved on that element', async () => {
+      const { scene, preset } = await seed()
+      const el = await space(preset.id, { shape: '1:1', formats: 'both' })
+      const other = await space(preset.id, { shape: '1:1', formats: 'both' })
+      await db.insert(adSpaceSettings).values({ elementId: el.id, content: 'approve' })
+      const yes = await mkAd('house', one, { audience: 'mature' })
+      const no = await mkAd('house', one)
+      await mkAd('house', one) // undecided
+      const elsewhere = await mkAd('house', one)
+      await db.insert(adSpaceApprovals).values([
+        { adId: yes.ad.id, elementId: el.id, decision: 'approved' },
+        { adId: no.ad.id, elementId: el.id, decision: 'declined' },
+        { adId: elsewhere.ad.id, elementId: other.id, decision: 'approved' },
+      ])
+      const out = await selectAdsForElements(scene.id, [el.id], NOW)
+      expect(served(out, el.id)).toEqual([yes.ad.id])
+    })
+
+    it("a booking clone uses its original's setting and approvals", async () => {
+      const { scene, preset } = await seed()
+      const original = await space(preset.id, { shape: '1:1', formats: 'both' })
+      const [clone] = await db.insert(sceneElements).values({
+        presetId: preset.id, type: 'ad_space', name: 'clone', properties: { shape: '1:1', formats: 'both' }, clonedFromId: original.id,
+      }).returning()
+      await db.insert(adSpaceSettings).values({ elementId: original.id, content: 'approve' })
+      const a = await mkAd('house', one)
+      await mkAd('house', one)
+      await db.insert(adSpaceApprovals).values({ adId: a.ad.id, elementId: original.id, decision: 'approved' })
+      const out = await selectAdsForElements(scene.id, [clone.id], NOW)
+      expect(served(out, clone.id)).toEqual([a.ad.id])
+    })
+
+    it('partner ads still win over house ads, after filtering', async () => {
+      const { scene, preset } = await seed()
+      const el = await space(preset.id, { shape: '1:1', formats: 'both' })
+      const house = await mkAd('house', one)
+      const mature = await mkAd('partner', one, { audience: 'mature' })
+      await db.insert(adPlacements).values({ adId: mature.ad.id, elementId: el.id })
+      const out = await selectAdsForElements(scene.id, [el.id], NOW)
+      expect(served(out, el.id)).toEqual([house.ad.id])
+      const fam = await mkAd('partner', one)
+      await db.insert(adPlacements).values({ adId: fam.ad.id, elementId: el.id })
+      const out2 = await selectAdsForElements(scene.id, [el.id], NOW)
+      expect(served(out2, el.id)).toEqual([fam.ad.id])
+    })
   })
 })
