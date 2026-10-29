@@ -78,6 +78,12 @@ describe('studio dashboard routes', () => {
     }
   })
 
+  it('usage names the top-up price', async () => {
+    const u = await createUser()
+    const usage = (await app.inject({ method: 'GET', url: `${S}/usage`, headers: as(u) })).json()
+    expect(usage.topup).toEqual({ cents: 500, prompts: 10 })
+  })
+
   it('a finalized design is not open', async () => {
     const u = await createUser()
     const first = (await create(u)).json()

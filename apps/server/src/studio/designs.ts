@@ -54,6 +54,7 @@ export async function usage(userId: string, limit: number, now: Date) {
     resetsAt: s.resetsAt,
     openDesigns: await openDesignCount(userId),
     openDesignLimit: Number.isFinite(limit) ? limit : null,
+    topup: { cents: config.studioPrices.topupCents, prompts: config.studioPrices.topupPrompts },
   }
 }
 
