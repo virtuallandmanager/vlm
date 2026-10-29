@@ -1,4 +1,8 @@
 import { describe, it, expect } from 'vitest'
+import {
+  composerState, initialTicks, nextPoll, progressFor, slotSelection,
+  type StudioDetail, type StudioEvent, type StudioProposal,
+} from './studio'
 import { AGENTS, designBadge, designIdFromPath, formatCents, refreshDue, refusalMessage, relativeTime, untilReset, usageLine, type StudioDesign, type StudioUsage } from './studio'
 
 const NOW = new Date('2026-10-29T21:55:00Z')
@@ -127,5 +131,89 @@ describe('usageLine', () => {
   it('names the plan and the prompts left, and bought prompts when there are any', () => {
     expect(usageLine(u)).toBe('free plan · 3 prompts left today')
     expect(usageLine({ ...u, credits: 7 })).toBe('free plan · 3 prompts left today · 7 bought')
+  })
+})
+
+const usage = (over: Partial<StudioUsage> = {}): StudioUsage => ({
+  plan: 'free', promptsLeft: 3, credits: 0, allowance: 3, resetsAt: at(125 * MIN), openDesigns: 1, openDesignLimit: 1,
+  topup: { cents: 500, prompts: 10 }, ...over,
+})
+const detail = (over: Partial<StudioDetail> = {}): StudioDetail => ({
+  design: { id: 'd1', name: 'Cap', kind: 'wearable', agent: 'claude', status: 'idle', archivedAt: null, lastJobAt: null, finalizedAt: null, createdAt: NOW.toISOString() },
+  pieces: [], messages: [], activeJob: null, lastPrompt: null, ...over,
+})
+
+describe('progressFor', () => {
+  const ev: StudioEvent[] = [
+    { type: 'phase', jobId: 'j1', phase: 'building' },
+    { type: 'progress', jobId: 'j1', text: 'Shaping the brim so it clears the hair' },
+    { type: 'progress', jobId: 'j1', text: 'Running: blender -b /opt/assets/AvatarShape_A.blend --python build_cap.py' },
+    { type: 'progress', jobId: 'other', text: 'Not this job' },
+  ]
+  it('skips the agent’s commands and keeps its note', () => {
+    expect(progressFor(ev, 'j1')).toBe('Shaping the brim so it clears the hair')
+  })
+  it('shortens file paths to their last segment', () => {
+    expect(progressFor([{ type: 'progress', jobId: 'j1', text: 'Wrote /work/design/out/hat/cap.glb and /tmp/x/y.png' }], 'j1'))
+      .toBe('Wrote cap.glb and y.png')
+  })
+  it('falls back to the phase in plain words', () => {
+    expect(progressFor([{ type: 'phase', jobId: 'j1', phase: 'checking' }], 'j1')).toBe('Running the checks…')
+    expect(progressFor([{ type: 'phase', jobId: 'j1', phase: 'packaging' }], 'j1')).toBe('Packaging your files…')
+  })
+  it('shows a later phase over an older note', () => {
+    expect(progressFor([...ev, { type: 'phase', jobId: 'j1', phase: 'rendering' }], 'j1')).toBe('Rendering the preview…')
+  })
+  it('is null with nothing heard for the job', () => {
+    expect(progressFor(ev, 'j9')).toBeNull()
+  })
+})
+
+describe('slot proposals', () => {
+  const proposal: StudioProposal = { slots: [
+    { category: 'hat', recommended: true }, { category: 'eyewear', recommended: true },
+    { category: 'upper_body', recommended: false }, { category: 'feet', recommended: false },
+  ] }
+  it('cannot build with nothing ticked', () => {
+    expect(slotSelection(proposal, new Set())).toEqual({ canBuild: false, slots: [] })
+  })
+  it('builds the ticked slots in the proposal’s order', () => {
+    expect(slotSelection(proposal, new Set(['feet', 'eyewear']))).toEqual({ canBuild: true, slots: ['eyewear', 'feet'] })
+  })
+  it('starts with the recommended slots ticked', () => {
+    expect([...initialTicks(proposal)]).toEqual(['hat', 'eyewear'])
+  })
+})
+
+describe('nextPoll', () => {
+  const active = detail({ activeJob: { id: 'j1', type: 'prompt', status: 'taken' } })
+  it('does not poll an idle design', () => {
+    expect(nextPoll(detail(), false)).toBeNull()
+  })
+  it('polls often while the room is down and rarely while it is up', () => {
+    expect(nextPoll(active, false)).toBe(5000)
+    expect(nextPoll(active, true)).toBe(30000)
+  })
+})
+
+describe('composerState', () => {
+  it('is busy while a prompt runs', () => {
+    expect(composerState(detail({ activeJob: { id: 'j1', type: 'prompt', status: 'queued' } }), usage(), NOW).mode).toBe('busy')
+  })
+  it('offers Continue after the agent stopped at its cost limit', () => {
+    expect(composerState(detail({ lastPrompt: { jobId: 'j1', outcome: 'ceiling', status: 'done' } }), usage(), NOW).mode).toBe('continue')
+  })
+  it('is out of prompts with the allowance copy', () => {
+    expect(composerState(detail(), usage({ promptsLeft: 0 }), NOW)).toEqual({
+      mode: 'out', note: 'You’ve used today’s prompts. More at midnight UTC (in 2 h 5 min).',
+    })
+  })
+  it('sends otherwise, noting the prompts left and the plan', () => {
+    expect(composerState(detail(), usage(), NOW)).toEqual({ mode: 'send', note: '3 prompts left today · free plan' })
+    expect(composerState(detail({ activeJob: { id: 'r1', type: 'render', status: 'queued' } }), usage(), NOW).mode).toBe('send')
+  })
+  it('takes no prompts on an archived design', () => {
+    expect(composerState(detail({ design: { ...detail().design, archivedAt: NOW.toISOString() } }), usage(), NOW))
+      .toEqual({ mode: 'archived', note: 'This design is archived. Unarchive it to keep working on it.' })
   })
 })

@@ -194,3 +194,54 @@ export function relativeTime(iso: string, now: Date): string {
 export function usageLine(u: StudioUsage): string {
   return `${u.plan} plan · ${u.promptsLeft} prompts left today${u.credits > 0 ? ` · ${u.credits} bought` : ''}`
 }
+
+const PHASES: Record<string, string> = {
+  building: 'Building…',
+  checking: 'Running the checks…',
+  rendering: 'Rendering the preview…',
+  saving: 'Saving…',
+  packaging: 'Packaging your files…',
+}
+
+/** A worker path (`/work/…`, `/opt/…`, `/tmp/…`) shortened to its last segment. */
+const shortenPaths = (text: string) => text.replace(/\/(?:work|opt|tmp)\/\S+/g, (p) => p.split('/').filter(Boolean).pop() ?? p)
+
+/**
+ * The line under the "agent is working" bubble: the job's newest event the page shows. The agent's notes show; its
+ * commands (`Running: …`) don't; a phase shows in plain words.
+ */
+export function progressFor(events: StudioEvent[], jobId: string): string | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]
+    if (e.jobId !== jobId) continue
+    if (e.type === 'progress' && e.text.trim() && !e.text.startsWith('Running:')) return shortenPaths(e.text.trim())
+    if (e.type === 'phase' && PHASES[e.phase]) return PHASES[e.phase]
+  }
+  return null
+}
+
+export const initialTicks = (proposal: StudioProposal) =>
+  new Set(proposal.slots.filter((s) => s.recommended).map((s) => s.category))
+
+/** The ticked slots in the proposal's order: the server refuses an empty `selectedSlots`, so none ticked can't build. */
+export function slotSelection(proposal: StudioProposal, ticked: Set<string>): { canBuild: boolean; slots: string[] } {
+  const slots = proposal.slots.map((s) => s.category).filter((c) => ticked.has(c))
+  return { canBuild: slots.length > 0, slots }
+}
+
+/** When to re-read the design: often while a job runs and the room is down, rarely while the room carries it. */
+export function nextPoll(detail: StudioDetail, connected: boolean): number | null {
+  if (!detail.activeJob) return null
+  return connected ? 30_000 : 5_000
+}
+
+export type ComposerMode = 'send' | 'busy' | 'continue' | 'out' | 'archived'
+
+export function composerState(detail: StudioDetail, usage: StudioUsage | null, now: Date): { mode: ComposerMode; note: string } {
+  const note = usage ? `${usage.promptsLeft} prompts left today · ${usage.plan} plan` : ''
+  if (detail.design.archivedAt) return { mode: 'archived', note: 'This design is archived. Unarchive it to keep working on it.' }
+  if (detail.activeJob?.type === 'prompt') return { mode: 'busy', note: 'The agent is still working on your last message.' }
+  if (detail.lastPrompt?.outcome === 'ceiling') return { mode: 'continue', note }
+  if (usage && usage.promptsLeft <= 0) return { mode: 'out', note: refusalMessage({ body: { code: 'allowance', resetsAt: usage.resetsAt } }, now).text }
+  return { mode: 'send', note }
+}

@@ -1,0 +1,130 @@
+'use client'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useParams } from 'next/navigation'
+import Link from 'next/link'
+import { useApi } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
+import { useStudioRoom } from '@/lib/colyseus'
+import { Badge, PageHeader, RowMenu, Skeleton } from '@/components/ui'
+import {
+  designBadge, designIdFromPath, nextPoll, refreshDue, refusalMessage,
+  type Refusal, type StudioDetail, type StudioEvent, type StudioUsage,
+} from '@/lib/studio'
+import Conversation from './Conversation'
+
+/** The events kept for progress lines: enough for any one job's latest note. */
+const MAX_EVENTS = 200
+
+export default function StudioDesignPage() {
+  const params = useParams()
+  const { token } = useAuth()
+  const api = useApi()
+  const apiRef = useRef(api)
+  apiRef.current = api
+
+  const [designId, setDesignId] = useState<string | null>(null)
+  const [missing, setMissing] = useState(false)
+  const [detail, setDetail] = useState<StudioDetail | null>(null)
+  const [usage, setUsage] = useState<StudioUsage | null>(null)
+  const [events, setEvents] = useState<StudioEvent[]>([])
+  const [notice, setNotice] = useState<Refusal | null>(null)
+  const fetchedAt = useRef(0)
+
+  useEffect(() => {
+    const id = designIdFromPath(window.location.pathname, params.designId as string | undefined)
+    if (id) setDesignId(id)
+    else setMissing(true)
+  }, [params.designId])
+
+  /** Re-read the design (with fresh frame URLs) and the prompts left. */
+  const reload = useCallback(async () => {
+    if (!designId) return
+    try {
+      const [d, u] = await Promise.all([apiRef.current.getStudioDesign(designId), apiRef.current.getStudioUsage().catch(() => null)])
+      fetchedAt.current = Date.now()
+      setDetail(d)
+      if (u) setUsage(u)
+    } catch (err) {
+      if ((err as { status?: number }).status === 404) setMissing(true)
+    }
+  }, [designId])
+
+  useEffect(() => {
+    if (token && designId) reload()
+  }, [token, designId, reload])
+
+  const onEvent = useCallback((e: StudioEvent) => {
+    setEvents((prev) => [...prev.slice(-(MAX_EVENTS - 1)), e])
+    if (e.type === 'job' && (e.status === 'done' || e.status === 'failed')) reload()
+  }, [reload])
+  const { connected } = useStudioRoom(designId, token, onEvent)
+
+  // A reconnect may have missed a job ending: re-read
+  const wasConnected = useRef(false)
+  useEffect(() => {
+    if (connected && !wasConnected.current && fetchedAt.current) reload()
+    wasConnected.current = connected
+  }, [connected, reload])
+
+  // While a job runs, poll as a backstop to the room
+  useEffect(() => {
+    if (!detail) return
+    const ms = nextPoll(detail, connected)
+    if (ms === null) return
+    const t = setTimeout(reload, ms)
+    return () => clearTimeout(t)
+  }, [detail, connected, reload])
+
+  // Frame URLs expire: a page left open re-reads before they do
+  useEffect(() => {
+    const check = () => { if (fetchedAt.current && refreshDue(fetchedAt.current, Date.now())) reload() }
+    const t = setInterval(check, 60_000)
+    document.addEventListener('visibilitychange', check)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', check) }
+  }, [reload])
+
+  const setArchived = async (archived: boolean) => {
+    if (!designId) return
+    setNotice(null)
+    try {
+      await api.updateStudioDesign(designId, { archived })
+      await reload()
+    } catch (err) {
+      setNotice(refusalMessage(err as never, new Date()))
+    }
+  }
+
+  if (missing) {
+    return (
+      <div className="mx-auto max-w-7xl">
+        <PageHeader crumbs={[{ label: 'Design Studio', href: '/studio' }, 'Not found']} title="Design not found" />
+        <p className="text-gray-400">This design doesn’t exist or isn’t yours. <Link href="/studio" className="text-blue-300 underline">Back to your designs</Link></p>
+      </div>
+    )
+  }
+  if (!detail || !designId) return <div className="mx-auto max-w-7xl"><Skeleton rows={2} className="h-64" /></div>
+
+  const d = detail.design
+  const badge = designBadge(d)
+  return (
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        crumbs={[{ label: 'Design Studio', href: '/studio' }, d.name]}
+        title={d.name}
+        subtitle={<span className="flex flex-wrap items-center gap-2">{d.kind === 'emote' ? 'Emote' : 'Wearable'} <Badge tone={badge.tone}>{badge.label}</Badge></span>}
+        actions={<RowMenu label="Design actions" items={[d.archivedAt
+          ? { label: 'Unarchive', onSelect: () => setArchived(false) }
+          : { label: 'Archive', onSelect: () => setArchived(true), confirm: 'Archive this design?' }]} />}
+      />
+      {notice && (
+        <p className="mb-4 text-sm text-amber-300" role="alert">
+          {notice.text} {notice.action === 'settings' && <Link href="/settings" className="underline">Settings</Link>}
+        </p>
+      )}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Conversation designId={designId} detail={detail} usage={usage} events={events} onChanged={reload} />
+        <section aria-label="Preview" className="min-w-0" />
+      </div>
+    </div>
+  )
+}
