@@ -170,3 +170,19 @@ export interface AdminAdvertiserLead {
   createdAt: string
   updatedAt: string
 }
+
+export interface OwnerAdCandidate {
+  adId: string
+  name: string
+  clickUrl: string
+  house: boolean
+  audience: AdAudience | null
+  creatives: { id: string; kind: 'image' | 'video'; url: string }[]
+  decision: 'approved' | 'declined' | null
+}
+
+export interface OwnerAdSpace {
+  elementId: string
+  content: AdContent
+  ads: OwnerAdCandidate[]
+}

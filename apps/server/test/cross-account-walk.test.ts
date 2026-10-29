@@ -7,7 +7,7 @@ import {
   sceneDeployments, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
   uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
-  dclWorldDestinations,
+  dclWorldDestinations, adSpaceSettings, adSpaceApprovals,
   studioDesigns, studioPieces, studioRevisions, studioJobs, studioMessages, studioRenders, studioUsageDays,
   studioPayments, studioEntitlements, studioMistakeReports, studioPromptCredits,
 } from '../src/db/schema.js'
@@ -34,6 +34,7 @@ async function fixtures() {
   const { scene, preset } = await createScene(b, 'B scene')
   const element = await createElement(preset.id)
   const instance = await createInstance(element.id)
+  const adSpace = await createElement(preset.id, { type: 'ad_space', properties: { shape: '1:1', formats: 'both' } })
   await db.insert(sceneCollaborators).values({ sceneId: scene.id, userId: collaborator.id, role: 'editor' })
   const roleWallet = randomWallet()
   await db.insert(sceneRoles).values({ sceneId: scene.id, walletAddress: roleWallet, role: 'editor', grantedByUserId: b.id })
@@ -104,7 +105,7 @@ async function fixtures() {
   const aScene = (await createScene(a, 'A scene')).scene
   const [aEvent] = await db.insert(events).values({ ownerId: a.id, name: 'A event' }).returning()
   return {
-    a, b, collaborator, scene, preset, element, instance, roleWallet, dcl, hyperfy, stream, event, giveaway, item,
+    a, b, collaborator, scene, preset, element, adSpace, instance, roleWallet, dcl, hyperfy, stream, event, giveaway, item,
     asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, destination, signDeploy, world, pairing, arSpace, arFloor, arMarker, arDevice, design, aScene, aEvent,
   }
 }
@@ -268,6 +269,9 @@ const CASES: Case[] = [
   { route: 'PUT /api/admin/ads/:id/placements', url: () => `/api/admin/ads/${AD_ID}/placements`, body: () => ({ elementIds: [] }) },
   { route: 'GET /api/admin/ads/:id/report', url: () => `/api/admin/ads/${AD_ID}/report` },
   { route: 'POST /api/admin/ads/:id/review', url: () => `/api/admin/ads/${AD_ID}/review`, body: () => ({ decision: 'rejected', reason: 'x' }) },
+  { route: 'GET /api/ad-spaces/:elementId', url: (f) => `/api/ad-spaces/${f.adSpace.id}` },
+  { route: 'PUT /api/ad-spaces/:elementId/content', url: (f) => `/api/ad-spaces/${f.adSpace.id}/content`, body: () => ({ content: 'all' }) },
+  { route: 'PUT /api/ad-spaces/:elementId/approvals/:adId', url: (f) => `/api/ad-spaces/${f.adSpace.id}/approvals/${AD_ID}`, body: () => ({ decision: 'approved' }) },
 ]
 
 // Collected routes with a `:param` (or a body id) that are not another account's resource, each with its reason.

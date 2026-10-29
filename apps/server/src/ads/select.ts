@@ -6,9 +6,9 @@ import type { AdItem, AdServeResponse, AdShape, AdFormats } from '@virvixr/share
 import { isUnderActiveBooking } from './booking.js'
 import { adAllowed, spaceContentFor } from './content.js'
 
-type Space = { shape: AdShape; formats: AdFormats }
+export type Space = { shape: AdShape; formats: AdFormats }
 
-function spaceFor(el: { type: string; properties: unknown }): Space | null {
+export function spaceFor(el: { type: string; properties: unknown }): Space | null {
   const p = (el.properties ?? {}) as Record<string, unknown>
   if (el.type === 'ad_space') {
     const shape = AD_SHAPES.includes(p.shape as AdShape) ? (p.shape as AdShape) : null
