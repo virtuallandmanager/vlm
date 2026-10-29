@@ -6,6 +6,7 @@ import { requestHeaders } from './request-headers'
 import type { Plot } from '@virvixr/shared'
 import type { AuthChain } from '@dcl/crypto'
 import type { ArFileFormat, ArMounting } from './ar'
+import type { Quote, RenderView, StudioDesign, StudioDetail, StudioKind, StudioUsage } from './studio'
 import type { ArDeviceKind, ArDeviceSummary, ArPairApprovalInfo, ArFloorView, ArMarkerView, ArSpaceView, AdContent, AdAudience, AdminAd, AdminAdSpace, OwnerAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyPairingSummary, HyperfyWorldSummary } from '@virvixr/shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
@@ -571,5 +572,37 @@ export function useApi() {
       apiFetch<{ link: any }>(`/api/events/${eventId}/link-giveaway`, { method: 'POST', body: JSON.stringify({ giveawayId }) }),
     unlinkGiveawayFromEvent: (eventId: string, giveawayId: string) =>
       apiFetch(`/api/events/${eventId}/unlink-giveaway/${giveawayId}`, { method: 'DELETE' }),
+
+    // Design Studio
+    getStudioUsage: () => apiFetch<StudioUsage>('/api/studio/usage'),
+    getStudioDesigns: (archived = false) => apiFetch<StudioDesign[]>(`/api/studio/designs${archived ? '?archived=true' : ''}`),
+    createStudioDesign: (body: { kind: StudioKind; agent: string; name?: string }) =>
+      apiFetch<StudioDesign>('/api/studio/designs', { method: 'POST', body: JSON.stringify(body) }),
+    getStudioDesign: (id: string) => apiFetch<StudioDetail>(`/api/studio/designs/${id}`),
+    updateStudioDesign: (id: string, patch: { name?: string; agent?: string; archived?: boolean }) =>
+      apiFetch<StudioDesign>(`/api/studio/designs/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+    sendStudioPrompt: (id: string, body: { text?: string; selectedSlots?: string[]; continue?: boolean; fixChecks?: boolean }) =>
+      apiFetch<{ jobId: string }>(`/api/studio/designs/${id}/prompts`, { method: 'POST', body: JSON.stringify(body) }),
+    requestStudioRender: (id: string, body: { category: string } & RenderView) =>
+      apiFetch<{ status: 'ready'; frames: number; urls: string[] } | { status: 'queued' }>(`/api/studio/designs/${id}/renders`, { method: 'POST', body: JSON.stringify(body) }),
+    getStudioQuote: (id: string) => apiFetch<Quote>(`/api/studio/designs/${id}/finalize`),
+    finalizeStudio: (id: string, body: { categories?: string[]; reports?: Record<string, string> }) =>
+      apiFetch<{ url: string } | { granted: true; paymentId: string }>(`/api/studio/designs/${id}/finalize`, { method: 'POST', body: JSON.stringify(body) }),
+    buyStudioPrompts: (packs = 1) => apiFetch<{ url: string }>('/api/studio/topups', { method: 'POST', body: JSON.stringify({ packs }) }),
+    reportStudioMistake: (id: string, category: string, n: number, text: string) =>
+      apiFetch<{ status: 'refunded'; refundCents: number }>(`/api/studio/designs/${id}/pieces/${category}/revisions/${n}/report`, { method: 'POST', body: JSON.stringify({ text }) }),
+    retryStudioPackage: (id: string, category: string, n: number) =>
+      apiFetch<{ jobId: string }>(`/api/studio/designs/${id}/pieces/${category}/revisions/${n}/package/retry`, { method: 'POST' }),
+    /** The paid revision's package, through the authenticated route: no package URL is ever put in the page. */
+    downloadStudioPackage: async (id: string, category: string, n: number): Promise<{ blob: Blob; filename: string }> => {
+      const res = await fetch(`${API_URL}/api/studio/designs/${id}/pieces/${category}/revisions/${n}/package`, { headers: requestHeaders(token, {}) })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        dropDeadSession(res.status, err)
+        throw Object.assign(new Error(err.error || `API error ${res.status}`), { status: res.status, body: err })
+      }
+      const m = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')
+      return { blob: await res.blob(), filename: m?.[1] ?? `${category}-r${n}.zip` }
+    },
   }
 }

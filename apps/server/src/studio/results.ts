@@ -86,7 +86,7 @@ function systemNote(r: ContractResult, refunded: boolean): string | null {
     case 'error':
       return `Something went wrong: ${r.error || 'the worker gave no reason'}.${refunded ? ' Your prompt was not counted.' : ''}`
     case 'ceiling':
-      return 'The agent stopped at this prompt’s cost limit. Send “continue” to carry on where it stopped.'
+      return 'The agent stopped at this prompt’s cost limit. Press Continue to carry on where it stopped: it doesn’t use a prompt.'
     case 'timeout':
       return 'The agent ran out of time on this prompt.'
     default:

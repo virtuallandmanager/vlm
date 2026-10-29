@@ -186,10 +186,12 @@ describe('studio finalize jobs and downloads', () => {
 
   it('designDetail lists finalized revisions without links', async () => {
     const u = await createUser()
-    const { d } = await paidHat(u)
+    const { d, pay } = await paidHat(u)
     const res = await app.inject({ method: 'GET', url: `/api/studio/designs/${d.id}`, headers: as(u) })
     const body = res.json()
     expect(body.design.finalizedAt).not.toBeNull()
+    // the page matches Stripe's return (?payment=<id>) to the revision it bought
+    expect(body.pieces.find((p: any) => p.category === 'hat').finalized[0].paymentId).toBe(pay.id)
     const hat = body.pieces.find((p: any) => p.category === 'hat')
     expect(hat.finalized).toEqual([expect.objectContaining({ revision: 1, kind: 'first', status: 'packaging', amountCents: 2900, report: null })])
     expect(hat.finalized[0].paidAt).toBeTruthy()

@@ -78,6 +78,12 @@ describe('studio dashboard routes', () => {
     }
   })
 
+  it('usage names the top-up price', async () => {
+    const u = await createUser()
+    const usage = (await app.inject({ method: 'GET', url: `${S}/usage`, headers: as(u) })).json()
+    expect(usage.topup).toEqual({ cents: 500, prompts: 10 })
+  })
+
   it('a finalized design is not open', async () => {
     const u = await createUser()
     const first = (await create(u)).json()
@@ -179,6 +185,9 @@ describe('studio dashboard routes', () => {
     expect((await prompt(u, d.id, { continue: true })).statusCode).toBe(409)
     const second = (await prompt(u, d.id)).json().jobId
     await finish(second, okResult(second, { outcome: 'ceiling', pieces: [], reply: null }))
+    // the note points at the page's Continue button: typing "continue" would be a counted prompt
+    const note = (await db.select().from(studioMessages)).find((m) => m.role === 'system' && m.jobId === second)
+    expect(note?.text).toBe('The agent stopped at this prompt’s cost limit. Press Continue to carry on where it stopped: it doesn’t use a prompt.')
     const used = (await promptStatus(u.id, new Date())).used
     const res = await prompt(u, d.id, { continue: true })
     expect(res.statusCode).toBe(202)
@@ -294,6 +303,25 @@ describe('studio dashboard routes', () => {
     expect(body.pieces[0].renders['spin-male-default'].urls[0]).toMatch(/\/api\/studio\/render-frames\//)
     expect(body.messages.map((m: any) => m.role)).toEqual(['user', 'agent'])
     expect(res.body).not.toMatch(/pieces\/|checks\/|workerToken|machine/)
+  })
+
+  it("design detail names the last prompt's outcome and when each view rendered", async () => {
+    const u = await createUser()
+    const { design } = await builtHat(u)
+    const first = (await app.inject({ method: 'GET', url: `${S}/designs/${design.id}`, headers: as(u) })).json()
+    expect(first.lastPrompt).toMatchObject({ outcome: 'ok', status: 'done' })
+    expect(new Date(first.pieces[0].renders['spin-male-default'].renderedAt).toISOString())
+      .toBe(first.pieces[0].renders['spin-male-default'].renderedAt)
+    const second = (await prompt(u, design.id)).json().jobId
+    await finish(second, okResult(second, { outcome: 'ceiling', pieces: [], reply: null }))
+    const body = (await app.inject({ method: 'GET', url: `${S}/designs/${design.id}`, headers: as(u) })).json()
+    expect(body.lastPrompt).toEqual({ jobId: second, outcome: 'ceiling', status: 'done' })
+  })
+
+  it('a new design has no last prompt', async () => {
+    const u = await createUser()
+    const d = (await create(u)).json()
+    expect((await app.inject({ method: 'GET', url: `${S}/designs/${d.id}`, headers: as(u) })).json().lastPrompt).toBeNull()
   })
 
   it('render urls only open their own frame', async () => {
