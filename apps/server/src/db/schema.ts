@@ -1505,6 +1505,20 @@ export const studioMessages = pgTable('studio_messages', {
   designIdx: index('studio_messages_design_idx').on(t.designId, t.createdAt),
 }))
 
+// Files the owner gives the agent: images (references, textures, logos) and GLBs. Kept at uploadKey(designId, id).
+export const studioUploads = pgTable('studio_uploads', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  designId: uuid('design_id').notNull().references(() => studioDesigns.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(), // cleaned, unique within the design; the agent sees it as uploads/<name>
+  kind: text('kind').notNull(), // image | model
+  contentType: text('content_type').notNull(),
+  size: integer('size').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  designIdx: index('studio_uploads_design_idx').on(t.designId, t.createdAt),
+  nameUq: uniqueIndex('studio_uploads_design_name_uq').on(t.designId, t.name),
+}))
+
 export const studioRenders = pgTable('studio_renders', {
   id: uuid('id').primaryKey().defaultRandom(),
   revisionId: uuid('revision_id').notNull().references(() => studioRevisions.id, { onDelete: 'cascade' }),

@@ -28,6 +28,8 @@ async function collect(body: Readable): Promise<Buffer> {
 
 export const workspaceKey = (designId: string) => `designs/${designId}/workspace.tar.gz`
 export const jobFileKey = (designId: string, jobId: string, path: string) => `designs/${designId}/jobs/${jobId}/${path}`
+/** A file the owner uploaded (studio/uploads.ts). */
+export const uploadKey = (designId: string, uploadId: string) => `designs/${designId}/uploads/${uploadId}`
 
 // The worker's file paths, from apps/studio-worker/CONTRACT.md
 const FILE_PATH = /^(pieces\/([a-z_]+)\/[A-Za-z0-9._-]+\.(glb|json)|checks\/([a-z_]+)\.txt|renders\/([a-z_]+)\/[a-z0-9-]+\/[0-9]{3}\.webp|final\/([a-z_]+)\/package\.zip)$/

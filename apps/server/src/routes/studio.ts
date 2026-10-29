@@ -5,9 +5,10 @@ import { studioDesigns, studioJobs, studioRenders } from '../db/schema.js'
 import { config } from '../config.js'
 import { authenticate } from '../middleware/auth.js'
 import { getSubscription } from '../integrations/stripe.js'
-import { getStudioStore, jobFileKey } from '../studio/store.js'
+import { getStudioStore, jobFileKey, uploadKey } from '../studio/store.js'
 import { verifyRenderFrame, framePath } from '../studio/render-urls.js'
 import { quoteFinalize, QuoteError } from '../studio/pricing.js'
+import { addUpload, deleteUpload, findUpload, UploadError, UPLOAD_LIMITS } from '../studio/uploads.js'
 import { createFinalizeCheckout, createTopupCheckout, entitlementFor, queueFinalize, reportMistake, PaymentError } from '../studio/payments.js'
 import {
   BASE_EMOTES, BODY_SHAPES, OUTFITS, WEARABLE_CATEGORIES,
@@ -266,6 +267,39 @@ export default async function studioRoutes(app: FastifyInstance) {
     } catch (err) {
       return checkoutRefusal(reply, err)
     }
+  })
+
+  // Files for the agent: the body is the file's bytes, whatever type the browser says (its bytes decide)
+  await app.register(async (files) => {
+    files.removeAllContentTypeParsers()
+    files.addContentTypeParser('*', { parseAs: 'buffer', bodyLimit: UPLOAD_LIMITS.modelBytes + 1024 }, (_req, body, done) => done(null, body))
+    files.post('/api/studio/designs/:id/uploads', { ...auth, bodyLimit: UPLOAD_LIMITS.modelBytes + 1024 }, async (request, reply) => {
+      const d = await ownDesign(request)
+      if (!d) return notFound(reply)
+      const name = (request.query as { name?: unknown }).name
+      try {
+        return reply.status(201).send(await addUpload(d, typeof name === 'string' ? name : '', Buffer.isBuffer(request.body) ? request.body : Buffer.alloc(0)))
+      } catch (err) {
+        if (err instanceof UploadError) return reply.status(err.status).send({ error: err.code, code: err.code })
+        throw err
+      }
+    })
+  })
+
+  app.get('/api/studio/designs/:id/uploads/:uploadId', auth, async (request, reply) => {
+    const d = await ownDesign(request)
+    const uploadId = (request.params as { uploadId: string }).uploadId
+    const u = d && UUID.test(uploadId) ? await findUpload(d.id, uploadId) : null
+    const obj = u ? await getStudioStore().get(uploadKey(u.designId, u.id)) : null
+    if (!u || !obj) return reply.status(404).send({ error: 'upload_not_found' })
+    return reply.type(u.contentType).header('Cache-Control', 'private, max-age=3600').header('X-Content-Type-Options', 'nosniff').send(obj.body)
+  })
+
+  app.delete('/api/studio/designs/:id/uploads/:uploadId', auth, async (request, reply) => {
+    const d = await ownDesign(request)
+    const uploadId = (request.params as { uploadId: string }).uploadId
+    if (!d || !UUID.test(uploadId) || !(await deleteUpload(d.id, uploadId))) return reply.status(404).send({ error: 'upload_not_found' })
+    return reply.status(204).send()
   })
 
   app.post('/api/studio/designs/:id/renders', auth, async (request, reply) => {

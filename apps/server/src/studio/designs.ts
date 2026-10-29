@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { listUploads, publicUpload, uploadPaths } from './uploads.js'
 import { db } from '../db/connection.js'
 import { studioDesigns, studioJobs, studioMessages, studioPieces, studioRenders, studioRevisions } from '../db/schema.js'
 import { config } from '../config.js'
@@ -101,6 +102,7 @@ export async function designDetail(d: Design, now: Date) {
       }
     }),
     messages: messages.map((m) => ({ id: m.id, role: m.role, agent: m.agent, text: m.text, proposal: m.proposal, jobId: m.jobId, createdAt: m.createdAt })),
+    uploads: (await listUploads(d.id)).map(publicUpload),
     activeJob: active ?? null,
     lastPrompt: last
       ? { jobId: last.jobId, outcome: (last.result as { outcome?: string } | null)?.outcome ?? null, status: last.status }
@@ -176,6 +178,7 @@ export async function queuePrompt(
           selectedSlots: input.selectedSlots,
           limits: PROMPT_LIMITS,
           render: null,
+          uploads: await uploadPaths(d.id, tx),
         },
         counted,
         countedDay: r.day,

@@ -5,7 +5,7 @@ import { db } from '../db/connection.js'
 import { studioDesigns, studioJobs } from '../db/schema.js'
 import { config } from '../config.js'
 import { hashWorkerToken } from '../studio/machines.js'
-import { checkFilePath, getStudioStore, jobFileKey, workspaceKey } from '../studio/store.js'
+import { checkFilePath, getStudioStore, jobFileKey, uploadKey, workspaceKey } from '../studio/store.js'
 import { applyResult, parseResult } from '../studio/results.js'
 import { publishStudio } from '../studio/events.js'
 
@@ -98,11 +98,20 @@ export default async function studioWorkerRoutes(app: FastifyInstance) {
     })
 
     // The rest take JSON only
-    // A finalize job reads the paid revision's own stored files, and only the ones its payload lists
+    // A finalize job reads the paid revision's own stored files, and only the ones its payload lists; a prompt job
+    // reads the owner's uploads its payload lists
     scope.get('/api/studio/worker/jobs/:jobId/inputs/*', opts, async (request, reply) => {
       const job = request.studioJob!
       const path = (request.params as { '*': string })['*']
       const missing = () => reply.status(404).send({ error: 'input_not_found' })
+      if (job.type === 'prompt') {
+        const listed = ((job.payload as { uploads?: { path?: unknown }[] }).uploads ?? []).some((u) => u.path === path)
+        const m = /^uploads\/([0-9a-f-]{36})\/[^/]+$/.exec(path)
+        if (job.status !== 'taken' || !listed || !m) return missing()
+        const obj = await getStudioStore().get(uploadKey(job.designId, m[1]))
+        if (!obj) return missing()
+        return reply.type(obj.contentType).send(obj.body)
+      }
       if (job.type !== 'finalize' || job.status !== 'taken' || !checkFilePath(path).ok) return missing()
       const pieces = ((job.payload as { finalize?: { pieces?: { files?: unknown; sourceJobId?: unknown }[] } }).finalize?.pieces) ?? []
       const piece = pieces.find((p) => Array.isArray(p.files) && p.files.includes(path))

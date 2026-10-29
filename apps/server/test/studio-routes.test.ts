@@ -128,7 +128,7 @@ describe('studio dashboard routes', () => {
     const [job] = await db.select().from(studioJobs).where(eq(studioJobs.id, res.json().jobId))
     expect(job.payload).toEqual({
       type: 'prompt', kind: 'wearable', agent: 'claude', model: 'claude-opus-5-5', prompt: 'a neon cap', selectedSlots: ['hat'],
-      limits: { timeoutSec: 1500, maxTurns: 80, costCeilingUsd: 3 }, render: null,
+      limits: { timeoutSec: 1500, maxTurns: 80, costCeilingUsd: 3 }, render: null, uploads: [],
     })
     expect(job).toMatchObject({ status: 'queued', counted: true })
     expect((await app.inject({ method: 'GET', url: `${S}/usage`, headers: as(u) })).json().promptsLeft).toBe(2)

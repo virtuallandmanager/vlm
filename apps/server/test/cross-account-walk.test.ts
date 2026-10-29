@@ -9,10 +9,10 @@ import {
   uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
   dclWorldDestinations, adSpaceSettings, adSpaceApprovals,
   studioDesigns, studioPieces, studioRevisions, studioJobs, studioMessages, studioRenders, studioUsageDays,
-  studioPayments, studioEntitlements, studioMistakeReports, studioPromptCredits,
+  studioPayments, studioEntitlements, studioMistakeReports, studioPromptCredits, studioUploads,
 } from '../src/db/schema.js'
 import { config } from '../src/config.js'
-import { memoryStudioStore, setStudioStore } from '../src/studio/store.js'
+import { memoryStudioStore, setStudioStore, uploadKey } from '../src/studio/store.js'
 import { createVenue, createBooking, addGrant } from '../src/venues/service.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, createScene, createElement, createInstance, tokenFor, randomWallet, type TestUser } from './helpers/factories.js'
@@ -101,12 +101,13 @@ async function fixtures() {
     packageKey: `designs/${design.id}/jobs/${designJob.id}/final/hat/package.zip`,
   }).returning()
   await db.insert(studioPromptCredits).values({ userId: b.id, balance: 3 })
+  const [designUpload] = await db.insert(studioUploads).values({ designId: design.id, name: 'b-logo.png', kind: 'image', contentType: 'image/png', size: 4 }).returning()
 
   const aScene = (await createScene(a, 'A scene')).scene
   const [aEvent] = await db.insert(events).values({ ownerId: a.id, name: 'A event' }).returning()
   return {
     a, b, collaborator, scene, preset, element, adSpace, instance, roleWallet, dcl, hyperfy, stream, event, giveaway, item,
-    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, destination, signDeploy, world, pairing, arSpace, arFloor, arMarker, arDevice, design, aScene, aEvent,
+    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, destination, signDeploy, world, pairing, arSpace, arFloor, arMarker, arDevice, design, designUpload, aScene, aEvent,
   }
 }
 type F = Awaited<ReturnType<typeof fixtures>>
@@ -210,6 +211,9 @@ const CASES: Case[] = [
   { route: 'POST /api/studio/designs/:id/pieces/:category/revisions/:number/report', url: (f) => `/api/studio/designs/${f.design.id}/pieces/hat/revisions/1/report`, body: () => ({ text: 'the agent broke it, refund me' }) },
   { route: 'GET /api/studio/designs/:id/pieces/:category/revisions/:number/package', url: (f) => `/api/studio/designs/${f.design.id}/pieces/hat/revisions/1/package` },
   { route: 'POST /api/studio/designs/:id/pieces/:category/revisions/:number/package/retry', url: (f) => `/api/studio/designs/${f.design.id}/pieces/hat/revisions/1/package/retry` },
+  { route: 'POST /api/studio/designs/:id/uploads', url: (f) => `/api/studio/designs/${f.design.id}/uploads?name=pwned.png`, body: () => ({ not: 'a file' }) },
+  { route: 'GET /api/studio/designs/:id/uploads/:uploadId', url: (f) => `/api/studio/designs/${f.design.id}/uploads/${f.designUpload.id}` },
+  { route: 'DELETE /api/studio/designs/:id/uploads/:uploadId', url: (f) => `/api/studio/designs/${f.design.id}/uploads/${f.designUpload.id}` },
   { route: 'POST /api/studio/designs/:id/renders', url: (f) => `/api/studio/designs/${f.design.id}/renders`, body: () => ({ category: 'hat', bodyShape: 'female', outfit: 'default', emote: null }) },
   { route: 'DELETE /api/hyperfy/worlds/:id', url: (f) => `/api/hyperfy/worlds/${f.world.id}` },
   { route: 'PATCH /api/hyperfy/worlds/:id', url: (f) => `/api/hyperfy/worlds/${f.world.id}`, body: () => ({ endsAt: null }) },
@@ -312,7 +316,7 @@ const TABLES = [
   uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
   dclWorldDestinations,
   studioDesigns, studioPieces, studioRevisions, studioJobs, studioMessages, studioRenders, studioUsageDays,
-  studioPayments, studioEntitlements, studioMistakeReports, studioPromptCredits,
+  studioPayments, studioEntitlements, studioMistakeReports, studioPromptCredits, studioUploads,
 ]
 async function snapshot(f: F) {
   const all = await Promise.all(TABLES.map((t) => db.select().from(t as any)))
@@ -346,6 +350,7 @@ describe('cross-account route walk', () => {
     setStudioStore(store)
     const [paid] = await db.select().from(studioEntitlements)
     await store.put(paid.packageKey!, Buffer.from('PK-b-package'), 'application/zip')
+    await store.put(uploadKey(f.design.id, f.designUpload.id), Buffer.from('b-png'), 'image/png')
     worlds.deployers.set('b-world.dcl.eth', { owner: f.b.wallet, deployers: [] })
   })
   afterEach(async () => {
