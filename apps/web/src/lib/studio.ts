@@ -245,3 +245,37 @@ export function composerState(detail: StudioDetail, usage: StudioUsage | null, n
   if (usage && usage.promptsLeft <= 0) return { mode: 'out', note: refusalMessage({ body: { code: 'allowance', resetsAt: usage.resetsAt } }, now).text }
   return { mode: 'send', note }
 }
+
+/** The server's view key, `<mode>-<bodyShape>-<outfit>[-<emote>]` (apps/server/src/studio/designs.ts `viewKey`). */
+export function viewKey(kind: string, view: RenderView): string {
+  return `${kind === 'emote' ? 'emote' : 'spin'}-${view.bodyShape}-${view.outfit}${view.emote ? `-${view.emote}` : ''}`
+}
+
+const mod = (n: number, m: number) => ((n % m) + m) % m
+
+/** The frame a drag lands on: one stage width is one full turn, and the item turns the way the cursor moves. */
+export function frameAt(start: number, dx: number, width: number, frames: number): number {
+  if (!(width > 0) || !(frames > 0)) return start
+  return mod(start - Math.round((dx / width) * frames), frames)
+}
+
+export type StageState =
+  | { kind: 'frames'; urls: string[]; renderedAt: string }
+  | { kind: 'rendering' }
+  | { kind: 'empty'; text: string }
+
+/** What the stage shows for a piece's view: its frames, a render in progress, or plain words, never a broken image. */
+export function stageState(piece: StudioPiece | undefined, key: string, pending: Set<string>): StageState {
+  if (!piece) return { kind: 'empty', text: 'The agent hasn’t built anything yet. Describe what you want on the left.' }
+  const view = piece.renders[key]
+  if (view?.status === 'ready' && view.urls.length > 0) return { kind: 'frames', urls: view.urls, renderedAt: view.renderedAt }
+  if (pending.has(key) || view?.status === 'queued') return { kind: 'rendering' }
+  if (view) return { kind: 'empty', text: 'That view didn’t render. Pick it again to retry.' }
+  return { kind: 'empty', text: 'This view hasn’t been rendered yet.' }
+}
+
+/** A piece tab's status: any running prompt may change any piece. */
+export function pieceTabStatus(piece: StudioPiece, detail: StudioDetail): 'ready' | 'building' | 'new' {
+  if (detail.activeJob?.type === 'prompt') return 'building'
+  return piece.revision ? 'ready' : 'new'
+}

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  composerState, initialTicks, nextPoll, progressFor, slotSelection,
-  type StudioDetail, type StudioEvent, type StudioProposal,
+  composerState, frameAt, initialTicks, nextPoll, pieceTabStatus, progressFor, slotSelection, stageState, viewKey,
+  type StudioDetail, type StudioPiece, type StudioEvent, type StudioProposal,
 } from './studio'
 import { AGENTS, designBadge, designIdFromPath, formatCents, refreshDue, refusalMessage, relativeTime, untilReset, usageLine, type StudioDesign, type StudioUsage } from './studio'
 
@@ -215,5 +215,67 @@ describe('composerState', () => {
   it('takes no prompts on an archived design', () => {
     expect(composerState(detail({ design: { ...detail().design, archivedAt: NOW.toISOString() } }), usage(), NOW))
       .toEqual({ mode: 'archived', note: 'This design is archived. Unarchive it to keep working on it.' })
+  })
+})
+
+describe('viewKey', () => {
+  it('matches the server’s keys', () => {
+    expect(viewKey('wearable', { bodyShape: 'male', outfit: 'default', emote: null })).toBe('spin-male-default')
+    expect(viewKey('wearable', { bodyShape: 'female', outfit: 'outfit-2', emote: 'dance' })).toBe('spin-female-outfit-2-dance')
+    expect(viewKey('emote', { bodyShape: 'male', outfit: 'default', emote: null })).toBe('emote-male-default')
+  })
+})
+
+describe('frameAt', () => {
+  it('turns one full turn per stage width, the way the cursor moves', () => {
+    expect(frameAt(0, 0, 400, 36)).toBe(0)
+    expect(frameAt(0, 400, 400, 36)).toBe(0)
+    expect(frameAt(0, 100, 400, 36)).toBe(27)
+    expect(frameAt(5, -60, 400, 36)).toBe(10)
+  })
+  it('stays put on a stage with no width', () => {
+    expect(frameAt(7, 50, 0, 36)).toBe(7)
+  })
+})
+
+const piece = (over: Partial<StudioPiece> = {}): StudioPiece => ({
+  id: 'p1', category: 'hat', name: 'Neon Cap',
+  revision: { number: 2, changeKind: 'changed', checker: { pass: true, failures: 0, warnings: 0 }, createdAt: NOW.toISOString() },
+  renders: {}, finalized: [], ...over,
+})
+
+describe('stageState', () => {
+  const key = 'spin-male-default'
+  it('says so when nothing is built yet', () => {
+    expect(stageState(undefined, key, new Set())).toEqual({ kind: 'empty', text: 'The agent hasn’t built anything yet. Describe what you want on the left.' })
+  })
+  it('shows a ready view’s frames', () => {
+    const p = piece({ renders: { [key]: { status: 'ready', frames: 2, urls: ['a', 'b'], renderedAt: NOW.toISOString() } } })
+    expect(stageState(p, key, new Set())).toEqual({ kind: 'frames', urls: ['a', 'b'], renderedAt: NOW.toISOString() })
+  })
+  it('offers a retry for a view that failed', () => {
+    const p = piece({ renders: { [key]: { status: 'failed', frames: 0, urls: [], renderedAt: NOW.toISOString() } } })
+    expect(stageState(p, key, new Set())).toEqual({ kind: 'empty', text: 'That view didn’t render. Pick it again to retry.' })
+    expect(stageState(p, key, new Set([key]))).toEqual({ kind: 'rendering' })
+  })
+  it('is rendering once asked for, or while queued', () => {
+    expect(stageState(piece(), key, new Set([key]))).toEqual({ kind: 'rendering' })
+    const queued = piece({ renders: { [key]: { status: 'queued', frames: 0, urls: [], renderedAt: NOW.toISOString() } } })
+    expect(stageState(queued, key, new Set())).toEqual({ kind: 'rendering' })
+  })
+  it('never shows an empty frame list as a picture', () => {
+    const p = piece({ renders: { [key]: { status: 'ready', frames: 0, urls: [], renderedAt: NOW.toISOString() } } })
+    expect(stageState(p, key, new Set()).kind).toBe('empty')
+  })
+})
+
+describe('pieceTabStatus', () => {
+  it('is building while a prompt runs, ready with a revision, new otherwise', () => {
+    const busy = detail({ activeJob: { id: 'j1', type: 'prompt', status: 'taken' } })
+    expect(pieceTabStatus(piece(), busy)).toBe('building')
+    expect(pieceTabStatus(piece({ revision: null }), busy)).toBe('building')
+    expect(pieceTabStatus(piece(), detail())).toBe('ready')
+    expect(pieceTabStatus(piece({ revision: null }), detail())).toBe('new')
+    expect(pieceTabStatus(piece(), detail({ activeJob: { id: 'r1', type: 'render', status: 'queued' } }))).toBe('ready')
   })
 })

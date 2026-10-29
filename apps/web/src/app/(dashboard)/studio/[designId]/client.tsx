@@ -11,6 +11,7 @@ import {
   type Refusal, type StudioDetail, type StudioEvent, type StudioUsage,
 } from '@/lib/studio'
 import Conversation from './Conversation'
+import Preview from './Preview'
 
 /** The events kept for progress lines: enough for any one job's latest note. */
 const MAX_EVENTS = 200
@@ -28,6 +29,7 @@ export default function StudioDesignPage() {
   const [usage, setUsage] = useState<StudioUsage | null>(null)
   const [events, setEvents] = useState<StudioEvent[]>([])
   const [notice, setNotice] = useState<Refusal | null>(null)
+  const [category, setCategory] = useState<string | null>(null)
   const fetchedAt = useRef(0)
 
   useEffect(() => {
@@ -123,7 +125,7 @@ export default function StudioDesignPage() {
       )}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Conversation designId={designId} detail={detail} usage={usage} events={events} onChanged={reload} />
-        <section aria-label="Preview" className="min-w-0" />
+        <Preview designId={designId} detail={detail} category={category} onSelect={setCategory} onChanged={reload} />
       </div>
     </div>
   )
