@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  checkoutBody, composerState, dialogTotal, finalizeStrip, frameAt, paymentBanner, initialTicks, nextPoll, pieceTabStatus, progressFor, slotSelection, stageState, viewKey,
-  type Quote, type QuoteLine, type StudioDetail, type StudioPiece, type StudioEvent, type StudioProposal,
+  checkoutBody, composerState, revisionActions, dialogTotal, finalizeStrip, frameAt, paymentBanner, initialTicks, nextPoll, pieceTabStatus, progressFor, slotSelection, stageState, viewKey,
+  type FinalizedRevision, type Quote, type QuoteLine, type StudioDetail, type StudioPiece, type StudioEvent, type StudioProposal,
 } from './studio'
 import { AGENTS, designBadge, designIdFromPath, formatCents, refreshDue, refusalMessage, relativeTime, untilReset, usageLine, type StudioDesign, type StudioUsage } from './studio'
 
@@ -349,5 +349,28 @@ describe('paymentBanner', () => {
       revision: 1, kind: 'first', status: 'ready', amountCents: 2900, paidAt: at(-3 * 3600_000), report: null, reportableUntil: null,
     }] })] })
     expect(paymentBanner('pay1', old, started, NOW)?.kind).toBe('packaging')
+  })
+})
+
+describe('revisionActions', () => {
+  const f = (over: Partial<FinalizedRevision> = {}): FinalizedRevision => ({
+    revision: 2, kind: 'revision', status: 'ready', amountCents: 1500, paidAt: at(-3600_000), report: null,
+    reportableUntil: at(13 * 24 * 3600_000), ...over,
+  })
+  it('downloads a ready package, waits on packaging, retries a failed one', () => {
+    expect(revisionActions(f(), NOW)).toEqual({ download: true, retry: false, packaging: false, report: 'open' })
+    expect(revisionActions(f({ status: 'packaging' }), NOW)).toMatchObject({ download: false, retry: false, packaging: true })
+    expect(revisionActions(f({ status: 'failed' }), NOW)).toMatchObject({ download: false, retry: true, packaging: false })
+  })
+  it('closes the report window by date', () => {
+    expect(revisionActions(f({ reportableUntil: at(-1000) }), NOW).report).toBe('closed')
+  })
+  it('offers no report on a first finalize or an uncharged revision', () => {
+    expect(revisionActions(f({ kind: 'first', amountCents: 2900, reportableUntil: null }), NOW).report).toBe('none')
+    expect(revisionActions(f({ amountCents: 0, reportableUntil: null }), NOW).report).toBe('none')
+  })
+  it('shows a report already made', () => {
+    expect(revisionActions(f({ report: { status: 'refunded', createdAt: NOW.toISOString() }, reportableUntil: null }), NOW).report).toBe('done')
+    expect(revisionActions(f({ amountCents: 0, report: { status: 'waived', createdAt: NOW.toISOString() }, reportableUntil: null }), NOW).report).toBe('done')
   })
 })

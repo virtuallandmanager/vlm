@@ -13,6 +13,7 @@ import {
 import Conversation from './Conversation'
 import Preview from './Preview'
 import Finalize from './Finalize'
+import PaidRevisions from './PaidRevisions'
 
 /** The events kept for progress lines: enough for any one job's latest note. */
 const MAX_EVENTS = 200
@@ -152,6 +153,7 @@ export default function StudioDesignPage() {
         <Conversation designId={designId} detail={detail} usage={usage} events={events} onChanged={reload} />
         <Preview designId={designId} detail={detail} category={category} onSelect={setCategory} onChanged={reload}>
           <Finalize designId={designId} kind={d.kind} quote={quote} busy={detail.activeJob?.type === 'prompt'} onChanged={reload} />
+          <PaidRevisions designId={designId} piece={detail.pieces.find((p) => p.category === category) ?? detail.pieces[0]} onChanged={reload} />
         </Preview>
       </div>
     </div>

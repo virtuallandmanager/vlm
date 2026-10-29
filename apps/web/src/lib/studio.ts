@@ -329,3 +329,14 @@ export function paymentBanner(searchPayment: string | null, detail: StudioDetail
   if (fresh.some((f) => f.status === 'failed')) return { kind: 'failed', text: 'Packaging didn’t finish. Try again below: it’s free.' }
   return { kind: 'ready', text: 'Your files are ready below.' }
 }
+
+/** What a paid revision offers: its package (download, packaging or a free retry), and a mistake report while open. */
+export function revisionActions(f: FinalizedRevision, now: Date): {
+  download: boolean; retry: boolean; packaging: boolean; report: 'open' | 'done' | 'closed' | 'none'
+} {
+  const report = f.report ? 'done'
+    : f.kind !== 'revision' || !(f.amountCents > 0) ? 'none'
+      : f.reportableUntil && new Date(f.reportableUntil).getTime() > now.getTime() ? 'open'
+        : 'closed'
+  return { download: f.status === 'ready', retry: f.status === 'failed', packaging: f.status === 'packaging', report }
+}
