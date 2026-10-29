@@ -8,6 +8,7 @@ import {
   type Refusal, type StudioDetail, type StudioEvent, type StudioMessage, type StudioProposal, type StudioUsage,
 } from '@/lib/studio'
 import { AgentPicker } from '../AgentPicker'
+import Markdown from './Markdown'
 
 const MAX_PROMPT = 4000
 
@@ -88,10 +89,10 @@ export default function Conversation({ designId, detail, usage, events, onChange
         {active && (
           <div className="max-w-[85%] self-start rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm" aria-live="polite">
             <p className="mb-1 text-xs text-gray-500">{agentLabel(detail.design.agent)}</p>
-            <p className="flex items-center gap-2 text-gray-300">
-              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-blue-400" aria-hidden="true" />
-              {progressFor(events, active.id) ?? (active.status === 'queued' ? 'Starting the studio…' : 'Working…')}
-            </p>
+            <div className="flex items-start gap-2 text-gray-300">
+              <span className="mt-1.5 inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-blue-400" aria-hidden="true" />
+              <Markdown text={progressFor(events, active.id) ?? (active.status === 'queued' ? 'Starting the studio…' : 'Working…')} />
+            </div>
           </div>
         )}
       </div>
@@ -139,9 +140,9 @@ function Message({ m, children }: { m: StudioMessage; children?: React.ReactNode
   if (m.role === 'system') return <p className="self-center px-4 text-center text-xs text-gray-500">{m.text}</p>
   const mine = m.role === 'user'
   return (
-    <div className={`max-w-[85%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm ${mine ? 'self-end bg-blue-600/20 text-blue-50' : 'self-start border border-gray-800 bg-gray-950 text-gray-200'}`}>
+    <div className={`max-w-[85%] break-words rounded-lg px-3 py-2 text-sm ${mine ? 'self-end whitespace-pre-wrap bg-blue-600/20 text-blue-50' : 'self-start border border-gray-800 bg-gray-950 text-gray-200'}`}>
       {!mine && <p className="mb-1 text-xs text-gray-500">{agentLabel(m.agent)}</p>}
-      {m.text}
+      {mine ? m.text : <Markdown text={m.text} />}
       {children}
     </div>
   )
