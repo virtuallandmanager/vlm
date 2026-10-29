@@ -1,5 +1,5 @@
 import { VideoSourceType } from '@virvixr/shared'
-import type { AdContent, AdShape, AdminAd, LevelCounts } from '@virvixr/shared'
+import type { AdContent, AdShape, AdminAd, LevelCounts, OwnerAdCandidate } from '@virvixr/shared'
 
 const SHAPE_LABELS: Record<AdShape, string> = {
   '16:9': '16:9 landscape',
@@ -61,4 +61,28 @@ export function reviewBadge(r: AdminAd['review']): { text: string; tone: 'pendin
   if (r.status === 'rejected') return { text: 'Rejected', tone: 'bad' }
   if (r.status === 'approved') return { text: r.audience === 'mature' ? 'Approved · Mature' : 'Approved · Family-friendly', tone: 'ok' }
   return { text: 'Awaiting review', tone: 'pending' }
+}
+
+/** Small badges on an owner's candidate ad: who made it, and who it suits (omitted when unset). */
+export function candidateBadges(c: Pick<OwnerAdCandidate, 'house' | 'audience'>): string[] {
+  const out = [c.house ? 'House' : 'Partner']
+  if (c.audience === 'family') out.push('Family-friendly')
+  else if (c.audience === 'mature') out.push('Mature')
+  return out
+}
+
+const AD_SPACE_ERRORS: Record<string, string> = {
+  not_an_ad_space: "This element isn't an ad space.",
+  ad_not_a_candidate: "That ad can't show in this space any more. Refresh and try again.",
+  content_must_be_family_all_or_approve: 'Choose one of the three settings.',
+}
+
+/** Sentence for an ad space settings error from the server; unknown codes get a generic line. */
+export function adSpaceErrorText(e: { message?: string } | null | undefined): string {
+  return AD_SPACE_ERRORS[e?.message ?? ''] ?? 'Something went wrong. Try again.'
+}
+
+/** Changes whenever an element property that decides which ads fit it changes, so the candidate list reloads. */
+export function adSpaceRefreshKey(props: { shape?: string; formats?: string; adShape?: string; offType?: number }): string {
+  return [props.shape, props.formats, props.adShape, props.offType].join('|')
 }

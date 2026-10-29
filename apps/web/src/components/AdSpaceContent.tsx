@@ -3,12 +3,12 @@
 import { useEffect, useState } from 'react'
 import type { AdContent, OwnerAdSpace } from '@virvixr/shared'
 import type { useApi } from '@/lib/api'
-import { contentLabel } from '@/lib/ads'
+import { contentLabel, candidateBadges, adSpaceErrorText } from '@/lib/ads'
 
 const CONTENT_OPTIONS: AdContent[] = ['family', 'all', 'approve']
 
 /** The owner's setting for who can advertise on an ad space, plus per-ad approvals. Renders nothing for callers without full access (403). */
-export default function AdSpaceContent({ elementId, api }: { elementId: string; api: ReturnType<typeof useApi> }) {
+export default function AdSpaceContent({ elementId, refreshKey, api }: { elementId: string; refreshKey: string; api: ReturnType<typeof useApi> }) {
   const [space, setSpace] = useState<OwnerAdSpace | null>(null)
   const [hidden, setHidden] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -29,9 +29,9 @@ export default function AdSpaceContent({ elementId, api }: { elementId: string; 
     )
     return () => { live = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elementId])
+  }, [elementId, refreshKey])
 
-  if (hidden) return null
+  if (hidden || (!space && !error)) return null
 
   const run = async (fn: () => Promise<{ space: OwnerAdSpace }>) => {
     setBusy(true)
@@ -39,7 +39,7 @@ export default function AdSpaceContent({ elementId, api }: { elementId: string; 
     try {
       setSpace((await fn()).space)
     } catch (e: any) {
-      setError(e?.message ?? 'Something went wrong')
+      setError(adSpaceErrorText(e))
     } finally {
       setBusy(false)
     }
@@ -76,6 +76,9 @@ export default function AdSpaceContent({ elementId, api }: { elementId: string; 
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{ad.name}</p>
+                    <div className="flex gap-1">
+                      {candidateBadges(ad).map((b) => <span key={b} className="rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-400">{b}</span>)}
+                    </div>
                     <a href={ad.clickUrl} target="_blank" rel="noopener noreferrer" className="block truncate text-xs text-blue-400 hover:text-blue-300">{ad.clickUrl}</a>
                     {ad.decision && (
                       <p className={`text-xs ${ad.decision === 'approved' ? 'text-green-400' : 'text-gray-500'}`}>

@@ -118,26 +118,6 @@ function ReviewQueue({ ads, onReviewed }: { ads: AdminAd[]; onReviewed: (ad: Adm
 }
 
 function ReviewItem({ ad, onReviewed }: { ad: AdminAd; onReviewed: (ad: AdminAd) => void }) {
-  const api = useApi()
-  const [rejecting, setRejecting] = useState(false)
-  const [reason, setReason] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const submit = async (body: Parameters<typeof api.reviewAdminAd>[1]) => {
-    setBusy(true)
-    setError(null)
-    try {
-      const { ad: next } = await api.reviewAdminAd(ad.id, body)
-      onReviewed(next)
-    } catch (e: any) {
-      setError(errorText(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const btn = 'rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 disabled:opacity-50'
   return (
     <div className="space-y-3 rounded-lg border border-gray-800 bg-gray-900 p-4">
       <div>
@@ -163,6 +143,35 @@ function ReviewItem({ ad, onReviewed }: { ad: AdminAd; onReviewed: (ad: AdminAd)
           ))}
         </div>
       )}
+      <ReviewActions adId={ad.id} onReviewed={onReviewed} />
+    </div>
+  )
+}
+
+/** Approve (Family-friendly or Mature) or reject with a reason. Used for new ads in the queue and to review a decided ad again. */
+function ReviewActions({ adId, onReviewed }: { adId: string; onReviewed: (ad: AdminAd) => void }) {
+  const api = useApi()
+  const [rejecting, setRejecting] = useState(false)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async (body: Parameters<typeof api.reviewAdminAd>[1]) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const { ad: next } = await api.reviewAdminAd(adId, body)
+      onReviewed(next)
+    } catch (e: any) {
+      setError(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const btn = 'rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 disabled:opacity-50'
+  return (
+    <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
         <button disabled={busy} onClick={() => submit({ decision: 'approved', audience: 'family' })} className={btn}>Approve as Family-friendly</button>
         <button disabled={busy} onClick={() => submit({ decision: 'approved', audience: 'mature' })} className={btn}>Approve as Mature</button>
@@ -255,6 +264,7 @@ function AdCard({ ad, spaces, open, backInReview, onEdited, onToggle, onChange }
   const api = useApi()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [reviewing, setReviewing] = useState(false)
   const paused = ad.status === 'paused'
   const badge = reviewBadge(ad.review)
 
@@ -287,13 +297,24 @@ function AdCard({ ad, spaces, open, backInReview, onEdited, onToggle, onChange }
             {ad.kind === 'partner' && ` · ${ad.placements.length} placement${ad.placements.length !== 1 ? 's' : ''}`} · {ad.clickUrl}
           </div>
         </button>
-        <button onClick={toggleStatus} disabled={busy}
-          className="rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 disabled:opacity-50">
-          {paused ? 'Resume' : 'Pause'}
-        </button>
+        <div className="flex gap-2">
+          {ad.review.status !== 'pending' && (
+            <button onClick={() => setReviewing((v) => !v)} aria-expanded={reviewing}
+              className="rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600">Review again</button>
+          )}
+          <button onClick={toggleStatus} disabled={busy}
+            className="rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 disabled:opacity-50">
+            {paused ? 'Resume' : 'Pause'}
+          </button>
+        </div>
       </div>
       {ad.review.status === 'rejected' && ad.review.reason && <p className="px-4 pb-3 text-sm text-red-400">Rejected: {ad.review.reason}</p>}
       {error && <p className="px-4 pb-3 text-sm text-red-400">{error}</p>}
+      {reviewing && ad.review.status !== 'pending' && (
+        <div className="px-4 pb-4">
+          <ReviewActions adId={ad.id} onReviewed={(next) => { setReviewing(false); onChange(next) }} />
+        </div>
+      )}
       {open && (
         <div className="space-y-6 border-t border-gray-800 p-4">
           <Creatives ad={ad} onChange={onChange} onEdited={() => onEdited(ad.id, ad.review.status)} />

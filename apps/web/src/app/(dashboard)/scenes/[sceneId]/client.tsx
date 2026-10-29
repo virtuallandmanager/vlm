@@ -2,7 +2,7 @@
 import { useApi, fileToBase64, mediaContentType, uploadErrorMessage, isGlbAsset } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { AD_SHAPES, type AdFormats } from '@virvixr/shared'
-import { shapeLabel, offImageLabel, adModeHint, isAdsMode } from '@/lib/ads'
+import { shapeLabel, offImageLabel, adModeHint, isAdsMode, adSpaceRefreshKey } from '@/lib/ads'
 import AdSpaceContent from '@/components/AdSpaceContent'
 import { useSceneRoom } from '@/lib/colyseus'
 import { SceneRoles } from './SceneRoles'
@@ -319,7 +319,7 @@ function VideoElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
         <p className="text-xs text-gray-500">{adModeHint(props.offType ?? 0)}</p>
       )}
 
-      {isAdsMode(props.offType ?? 0) && <AdSpaceContent elementId={element.id} api={api} />}
+      {isAdsMode(props.offType ?? 0) && <AdSpaceContent elementId={element.id} refreshKey={adSpaceRefreshKey(props)} api={api} />}
 
       {/* Playlist */}
       <div className="space-y-2">
@@ -663,7 +663,7 @@ function AdSpaceElementEditor({ element, onUpdateElement, onUpdateInstance, onDe
         Only ads made for this exact shape appear here. Video ads pause while a live stream plays.
       </p>
 
-      <AdSpaceContent elementId={element.id} api={api} />
+      <AdSpaceContent elementId={element.id} refreshKey={adSpaceRefreshKey(props)} api={api} />
 
       {props.fallbackImageSrc && (
         <div className="rounded-lg overflow-hidden border border-gray-700 bg-gray-800">
