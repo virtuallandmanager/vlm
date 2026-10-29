@@ -24,9 +24,15 @@ export default function StudioPage() {
   const [usage, setUsage] = useState<StudioUsage | null>(null)
   const [showCreate, setShowCreate] = useState(false)
 
+  // Back from buying prompts (?payment=): the webhook adds them, so re-read usage a few times
+  const [toppedUp, setToppedUp] = useState(false)
   useEffect(() => {
     if (!token) return
     api.getStudioUsage().then(setUsage).catch(() => {})
+    if (!new URLSearchParams(window.location.search).get('payment')) return
+    setToppedUp(true)
+    const timers = [5000, 15000, 45000].map((ms) => setTimeout(() => api.getStudioUsage().then(setUsage).catch(() => {}), ms))
+    return () => timers.forEach(clearTimeout)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
@@ -50,6 +56,12 @@ export default function StudioPage() {
         subtitle={usage ? usageLine(usage) : 'Design Decentraland wearables and emotes with an agent.'}
         actions={<PrimaryButton onClick={() => setShowCreate((v) => !v)}><PlusIcon size={16} /> New design</PrimaryButton>}
       />
+
+      {toppedUp && (
+        <p className="mb-4 rounded-md border border-emerald-500/40 px-4 py-3 text-sm text-emerald-200" role="status">
+          Payment received. Your prompts show up here in a moment.
+        </p>
+      )}
 
       {showCreate && <NewDesign onCancel={() => setShowCreate(false)} />}
 

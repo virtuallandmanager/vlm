@@ -7,14 +7,17 @@ import { useAuth } from '@/lib/auth'
 import { useStudioRoom } from '@/lib/colyseus'
 import { Badge, PageHeader, RowMenu, Skeleton } from '@/components/ui'
 import {
-  designBadge, designIdFromPath, nextPoll, refreshDue, refusalMessage,
-  type Refusal, type StudioDetail, type StudioEvent, type StudioUsage,
+  designBadge, designIdFromPath, nextPoll, paymentBanner, refreshDue, refusalMessage,
+  type Quote, type Refusal, type StudioDetail, type StudioEvent, type StudioUsage,
 } from '@/lib/studio'
 import Conversation from './Conversation'
 import Preview from './Preview'
+import Finalize from './Finalize'
 
 /** The events kept for progress lines: enough for any one job's latest note. */
 const MAX_EVENTS = 200
+/** Back from Stripe: poll this often until the webhook's grant shows. */
+const PAYMENT_POLL_MS = 5000
 
 export default function StudioDesignPage() {
   const params = useParams()
@@ -30,22 +33,31 @@ export default function StudioDesignPage() {
   const [events, setEvents] = useState<StudioEvent[]>([])
   const [notice, setNotice] = useState<Refusal | null>(null)
   const [category, setCategory] = useState<string | null>(null)
+  const [quote, setQuote] = useState<Quote | null>(null)
+  const [payment, setPayment] = useState<{ id: string; startedAt: number } | null>(null)
   const fetchedAt = useRef(0)
 
   useEffect(() => {
     const id = designIdFromPath(window.location.pathname, params.designId as string | undefined)
     if (id) setDesignId(id)
     else setMissing(true)
+    const paid = new URLSearchParams(window.location.search).get('payment')
+    if (paid) setPayment({ id: paid, startedAt: Date.now() })
   }, [params.designId])
 
   /** Re-read the design (with fresh frame URLs) and the prompts left. */
   const reload = useCallback(async () => {
     if (!designId) return
     try {
-      const [d, u] = await Promise.all([apiRef.current.getStudioDesign(designId), apiRef.current.getStudioUsage().catch(() => null)])
+      const [d, u, q] = await Promise.all([
+        apiRef.current.getStudioDesign(designId),
+        apiRef.current.getStudioUsage().catch(() => null),
+        apiRef.current.getStudioQuote(designId).catch(() => null),
+      ])
       fetchedAt.current = Date.now()
       setDetail(d)
       if (u) setUsage(u)
+      setQuote(q)
     } catch (err) {
       if ((err as { status?: number }).status === 404) setMissing(true)
     }
@@ -76,6 +88,14 @@ export default function StudioDesignPage() {
     const t = setTimeout(reload, ms)
     return () => clearTimeout(t)
   }, [detail, connected, reload])
+
+  // Back from Stripe before the webhook: poll until the paid revision shows, then while it is packaged
+  const banner = detail && payment ? paymentBanner(payment.id, detail, payment.startedAt, new Date()) : null
+  useEffect(() => {
+    if (!banner || banner.kind === 'ready' || banner.kind === 'failed') return
+    const t = setTimeout(reload, banner.kind === 'slow' ? 30_000 : PAYMENT_POLL_MS)
+    return () => clearTimeout(t)
+  }, [banner?.kind, detail, reload])
 
   // Frame URLs expire: a page left open re-reads before they do
   useEffect(() => {
@@ -123,9 +143,16 @@ export default function StudioDesignPage() {
           {notice.text} {notice.action === 'settings' && <Link href="/settings" className="underline">Settings</Link>}
         </p>
       )}
+      {banner && (
+        <p className={`mb-4 rounded-md border px-4 py-3 text-sm ${banner.kind === 'ready' ? 'border-emerald-500/40 text-emerald-200' : banner.kind === 'failed' ? 'border-amber-500/40 text-amber-200' : 'border-blue-500/40 text-blue-200'}`} role="status">
+          {banner.text}
+        </p>
+      )}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Conversation designId={designId} detail={detail} usage={usage} events={events} onChanged={reload} />
-        <Preview designId={designId} detail={detail} category={category} onSelect={setCategory} onChanged={reload} />
+        <Preview designId={designId} detail={detail} category={category} onSelect={setCategory} onChanged={reload}>
+          <Finalize designId={designId} kind={d.kind} quote={quote} busy={detail.activeJob?.type === 'prompt'} onChanged={reload} />
+        </Preview>
       </div>
     </div>
   )

@@ -279,3 +279,53 @@ export function pieceTabStatus(piece: StudioPiece, detail: StudioDetail): 'ready
   if (detail.activeJob?.type === 'prompt') return 'building'
   return piece.revision ? 'ready' : 'new'
 }
+
+const UNLOCKS: Record<StudioKind, string> = {
+  wearable: 'Finalize to get the GLBs, thumbnail, Builder settings, listing text, curation report, renders and a promo clip.',
+  emote: 'Finalize to get the GLB, thumbnail, emote report, renders and a promo clip.',
+}
+
+/** The strip under the preview: what finalizing unlocks, its price, and the pieces the checker blocks. */
+export function finalizeStrip(quote: Quote | null, kind: StudioKind): { unlocks: string; button: string | null; blocked: string | null } {
+  return {
+    unlocks: UNLOCKS[kind] ?? UNLOCKS.wearable,
+    button: quote && quote.lines.length > 0 ? `Finalize · ${formatCents(quote.totalCents)}` : null,
+    blocked: quote?.blocked.length ? refusalMessage({ body: { code: 'checks_failed', categories: quote.blocked } }, new Date()).text : null,
+  }
+}
+
+export const REPORT_MIN = 10
+export const REPORT_MAX = 2000
+
+export const reportOk = (text: string) => text.trim().length >= REPORT_MIN && text.length <= REPORT_MAX
+
+/** The checkout covers every payable piece; only reports the server will take are sent. */
+export function checkoutBody(reports: Record<string, string>): { reports?: Record<string, string> } {
+  const ok = Object.entries(reports).filter(([, t]) => reportOk(t)).map(([c, t]) => [c, t.trim()] as const)
+  return ok.length ? { reports: Object.fromEntries(ok) } : {}
+}
+
+/** The dialog's total: a reported line is waived, and waiving one changes no other line's price. */
+export const dialogTotal = (quote: Quote, reported: string[]) =>
+  quote.lines.reduce((n, l) => n + (reported.includes(l.category) ? 0 : l.amountCents), 0)
+
+/** Stripe's return URL carries `?payment=`: until the webhook grants it, the page says what is happening. */
+const BANNER_SLOW_MS = 2 * 60_000
+/** A checkout lasts 31 minutes: a revision paid longer ago than this is not the one just bought. */
+const BANNER_RECENT_MS = 60 * 60_000
+
+export type PaymentBanner = { kind: 'packaging' | 'ready' | 'failed' | 'slow'; text: string }
+
+export function paymentBanner(searchPayment: string | null, detail: StudioDetail, startedAt: number, now: Date): PaymentBanner | null {
+  if (!searchPayment) return null
+  const fresh = detail.pieces.flatMap((p) => p.finalized)
+    .filter((f) => f.paidAt && new Date(f.paidAt).getTime() >= startedAt - BANNER_RECENT_MS)
+  if (!fresh.length) {
+    return now.getTime() - startedAt > BANNER_SLOW_MS
+      ? { kind: 'slow', text: 'Stripe hasn’t confirmed the payment yet. This page will update when it does.' }
+      : { kind: 'packaging', text: 'Payment received. Packaging your files…' }
+  }
+  if (fresh.some((f) => f.status === 'packaging')) return { kind: 'packaging', text: 'Payment received. Packaging your files…' }
+  if (fresh.some((f) => f.status === 'failed')) return { kind: 'failed', text: 'Packaging didn’t finish. Try again below: it’s free.' }
+  return { kind: 'ready', text: 'Your files are ready below.' }
+}

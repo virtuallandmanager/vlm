@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  composerState, frameAt, initialTicks, nextPoll, pieceTabStatus, progressFor, slotSelection, stageState, viewKey,
-  type StudioDetail, type StudioPiece, type StudioEvent, type StudioProposal,
+  checkoutBody, composerState, dialogTotal, finalizeStrip, frameAt, paymentBanner, initialTicks, nextPoll, pieceTabStatus, progressFor, slotSelection, stageState, viewKey,
+  type Quote, type QuoteLine, type StudioDetail, type StudioPiece, type StudioEvent, type StudioProposal,
 } from './studio'
 import { AGENTS, designBadge, designIdFromPath, formatCents, refreshDue, refusalMessage, relativeTime, untilReset, usageLine, type StudioDesign, type StudioUsage } from './studio'
 
@@ -277,5 +277,77 @@ describe('pieceTabStatus', () => {
     expect(pieceTabStatus(piece(), detail())).toBe('ready')
     expect(pieceTabStatus(piece({ revision: null }), detail())).toBe('new')
     expect(pieceTabStatus(piece(), detail({ activeJob: { id: 'r1', type: 'render', status: 'queued' } }))).toBe('ready')
+  })
+})
+
+const line = (over: Partial<QuoteLine>): QuoteLine => ({
+  category: 'hat', revisionId: 'r1', revisionNumber: 1, pieceName: 'Neon Cap', priceKind: 'first', amountCents: 2900, waived: false, ...over,
+})
+const quote = (lines: QuoteLine[], over: Partial<Quote> = {}): Quote => ({
+  pieces: [], lines, totalCents: lines.reduce((n, l) => n + (l.waived ? 0 : l.amountCents), 0), blocked: [], notes: [], ...over,
+})
+
+describe('finalizeStrip', () => {
+  it('prices the finalize and says what it unlocks', () => {
+    expect(finalizeStrip(quote([line({})]), 'wearable')).toEqual({
+      unlocks: 'Finalize to get the GLBs, thumbnail, Builder settings, listing text, curation report, renders and a promo clip.',
+      button: 'Finalize · $29',
+      blocked: null,
+    })
+    expect(finalizeStrip(quote([line({ category: 'emote', amountCents: 1500 })]), 'emote').unlocks)
+      .toBe('Finalize to get the GLB, thumbnail, emote report, renders and a promo clip.')
+  })
+  it('has no button with nothing to pay for', () => {
+    expect(finalizeStrip(quote([]), 'wearable').button).toBeNull()
+    expect(finalizeStrip(null, 'wearable').button).toBeNull()
+  })
+  it('names the pieces the checker blocks', () => {
+    expect(finalizeStrip(quote([], { blocked: ['feet'] }), 'wearable').blocked)
+      .toBe('feet failed the checker. Ask the agent to fix it: it doesn’t use a prompt.')
+  })
+})
+
+describe('checkoutBody', () => {
+  it('sends only reports of 10 to 2000 characters, trimmed', () => {
+    expect(checkoutBody({ hat: '  the brim clips the hair  ', feet: 'bad' })).toEqual({ reports: { hat: 'the brim clips the hair' } })
+    expect(checkoutBody({ feet: 'short' })).toEqual({})
+    expect(checkoutBody({ feet: 'x'.repeat(2001) })).toEqual({})
+  })
+})
+
+describe('dialogTotal', () => {
+  it('leaves out the lines reported as the agent’s mistake', () => {
+    const q = quote([line({ priceKind: 'revision', amountCents: 1500 }), line({ category: 'feet', priceKind: 'revision_extra', amountCents: 1000 })])
+    expect(dialogTotal(q, ['hat'])).toBe(1000)
+    expect(dialogTotal(q, [])).toBe(2500)
+  })
+})
+
+describe('paymentBanner', () => {
+  const started = NOW.getTime()
+  const paid = (status: string) => detail({ pieces: [piece({ finalized: [{
+    revision: 2, kind: 'revision', status, amountCents: 1500, paidAt: at(10_000), report: null, reportableUntil: null,
+  }] })] })
+  it('shows nothing without a payment in the URL', () => {
+    expect(paymentBanner(null, paid('ready'), started, NOW)).toBeNull()
+  })
+  it('says the files are being packaged until they are ready', () => {
+    expect(paymentBanner('pay1', detail(), started, new Date(started + 30_000))).toEqual({ kind: 'packaging', text: 'Payment received. Packaging your files…' })
+    expect(paymentBanner('pay1', paid('packaging'), started, NOW)).toEqual({ kind: 'packaging', text: 'Payment received. Packaging your files…' })
+    expect(paymentBanner('pay1', paid('ready'), started, NOW)).toEqual({ kind: 'ready', text: 'Your files are ready below.' })
+  })
+  it('stops claiming the payment after two minutes with nothing', () => {
+    expect(paymentBanner('pay1', detail(), started, new Date(started + 121_000))).toEqual({
+      kind: 'slow', text: 'Stripe hasn’t confirmed the payment yet. This page will update when it does.',
+    })
+  })
+  it('points at the retry when packaging failed', () => {
+    expect(paymentBanner('pay1', paid('failed'), started, NOW)?.kind).toBe('failed')
+  })
+  it('ignores revisions paid long before', () => {
+    const old = detail({ pieces: [piece({ finalized: [{
+      revision: 1, kind: 'first', status: 'ready', amountCents: 2900, paidAt: at(-3 * 3600_000), report: null, reportableUntil: null,
+    }] })] })
+    expect(paymentBanner('pay1', old, started, NOW)?.kind).toBe('packaging')
   })
 })
