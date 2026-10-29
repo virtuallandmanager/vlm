@@ -43,6 +43,7 @@ Image ads show for 10 seconds each. Ads in a space take turns.
 The fallback image is what the space shows when it has no ad to show. That includes:
 
 - no ad fits the shape;
+- no ad the space's setting allows is available (for example, nothing approved yet on an Approve each ad space);
 - Virvi can't be reached;
 - a stream is live and the space is video only;
 - a venue booking is running.
@@ -121,6 +122,7 @@ If an ad's link or images change, the ad goes back to Virvi's review before it c
 **Admin → Ads** is where ads are made and read.
 
 - **New ad:** give it a name, choose **Partner** or **House**, and set a click URL. The URL must start with `https://`.
+- **Review queue:** a new ad waits in the review queue and shows nowhere until it is approved. Approving needs a **Family-friendly** or **Mature** label. Rejecting needs a reason. Changing an ad's link or creatives sends it back to review. An approved or rejected ad can be reviewed again with **Review again**.
 - **Creatives:** open an ad, pick a shape, and upload an image or video. Add one creative per shape you want to cover. Files that are still processing can't be added yet.
 - **Placements:** partner ads only. Tick the ad spaces and ads-mode screens that should run the ad. A space shows a warning if the ad has no creative in its shape. House ads have no placements.
 - **Pause / Resume:** takes an ad out of rotation and brings it back.
