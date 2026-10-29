@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  checkoutBody, composerState, revisionActions, viewButtonRendering, dialogTotal, finalizeStrip, frameAt, paymentBanner, initialTicks, nextPoll, pieceTabStatus, progressFor, slotSelection, stageState, viewKey,
+  canSend, checkoutBody, composerState, reloadsOn, revisionActions, viewButtonRendering, dialogTotal, finalizeStrip, frameAt, paymentBanner, initialTicks, nextPoll, pieceTabStatus, progressFor, slotSelection, stageState, viewKey,
   type FinalizedRevision, type Quote, type QuoteLine, type StudioDetail, type StudioPiece, type StudioEvent, type StudioProposal,
 } from './studio'
 import { AGENTS, designBadge, designIdFromPath, formatCents, refreshDue, refusalMessage, relativeTime, untilReset, usageLine, type StudioDesign, type StudioUsage } from './studio'
@@ -326,7 +326,7 @@ describe('dialogTotal', () => {
 describe('paymentBanner', () => {
   const started = NOW.getTime()
   const paid = (status: string) => detail({ pieces: [piece({ finalized: [{
-    revision: 2, kind: 'revision', status, amountCents: 1500, paidAt: at(10_000), report: null, reportableUntil: null,
+    revision: 2, kind: 'revision', status, amountCents: 1500, paymentId: 'pay1', paidAt: at(10_000), report: null, reportableUntil: null,
   }] })] })
   it('shows nothing without a payment in the URL', () => {
     expect(paymentBanner(null, paid('ready'), started, NOW)).toBeNull()
@@ -344,17 +344,17 @@ describe('paymentBanner', () => {
   it('points at the retry when packaging failed', () => {
     expect(paymentBanner('pay1', paid('failed'), started, NOW)?.kind).toBe('failed')
   })
-  it('ignores revisions paid long before', () => {
-    const old = detail({ pieces: [piece({ finalized: [{
-      revision: 1, kind: 'first', status: 'ready', amountCents: 2900, paidAt: at(-3 * 3600_000), report: null, reportableUntil: null,
+  it('waits for the revision this payment bought, not one bought earlier', () => {
+    const earlier = detail({ pieces: [piece({ finalized: [{
+      revision: 1, kind: 'first', status: 'ready', amountCents: 2900, paymentId: 'pay0', paidAt: at(-20 * MIN), report: null, reportableUntil: null,
     }] })] })
-    expect(paymentBanner('pay1', old, started, NOW)?.kind).toBe('packaging')
+    expect(paymentBanner('pay1', earlier, started, NOW)?.kind).toBe('packaging')
   })
 })
 
 describe('revisionActions', () => {
   const f = (over: Partial<FinalizedRevision> = {}): FinalizedRevision => ({
-    revision: 2, kind: 'revision', status: 'ready', amountCents: 1500, paidAt: at(-3600_000), report: null,
+    revision: 2, kind: 'revision', status: 'ready', amountCents: 1500, paymentId: 'pay1', paidAt: at(-3600_000), report: null,
     reportableUntil: at(13 * 24 * 3600_000), ...over,
   })
   it('downloads a ready package, waits on packaging, retries a failed one', () => {
@@ -387,5 +387,25 @@ describe('viewButtonRendering', () => {
     const spin = { ...dance, emote: null }
     expect(viewButtonRendering('emote', 'dance', spin, 'bodyShape', rendering)).toBe(true)
     expect(viewButtonRendering('emote', 'wave', spin, 'emote', rendering)).toBe(false)
+  })
+})
+
+describe('canSend', () => {
+  it('lets a new message through after a cost stop, beside Continue', () => {
+    expect(canSend('send')).toBe(true)
+    expect(canSend('continue')).toBe(true)
+    expect(canSend('busy')).toBe(false)
+    expect(canSend('out')).toBe(false)
+    expect(canSend('archived')).toBe(false)
+  })
+})
+
+describe('reloadsOn', () => {
+  it('re-reads the design when a job starts or ends, not on progress', () => {
+    expect(reloadsOn({ type: 'job', jobId: 'j1', status: 'queued' })).toBe(true)
+    expect(reloadsOn({ type: 'job', jobId: 'j1', status: 'done', outcome: 'ok' })).toBe(true)
+    expect(reloadsOn({ type: 'job', jobId: 'j1', status: 'failed' })).toBe(true)
+    expect(reloadsOn({ type: 'job', jobId: 'j1', status: 'taken' })).toBe(false)
+    expect(reloadsOn({ type: 'progress', jobId: 'j1', text: 'hi' })).toBe(false)
   })
 })

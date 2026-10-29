@@ -39,6 +39,7 @@ export type FinalizedRevision = {
   kind: 'first' | 'revision'
   status: 'packaging' | 'ready' | 'failed' | string
   amountCents: number
+  paymentId: string
   paidAt: string | null
   report: { status: 'pending' | 'refunded' | 'waived' | string; createdAt: string } | null
   reportableUntil: string | null
@@ -237,6 +238,13 @@ export function nextPoll(detail: StudioDetail, connected: boolean): number | nul
 
 export type ComposerMode = 'send' | 'busy' | 'continue' | 'out' | 'archived'
 
+/** After a cost stop the person may press Continue (free) or send something new instead. */
+export const canSend = (mode: ComposerMode) => mode === 'send' || mode === 'continue'
+
+/** A job starting (maybe from another tab) or ending changes the design: re-read it. Progress doesn't. */
+export const reloadsOn = (e: StudioEvent) =>
+  e.type === 'job' && (e.status === 'queued' || e.status === 'done' || e.status === 'failed')
+
 export function composerState(detail: StudioDetail, usage: StudioUsage | null, now: Date): { mode: ComposerMode; note: string } {
   const note = usage ? `${usage.promptsLeft} prompts left today · ${usage.plan} plan` : ''
   if (detail.design.archivedAt) return { mode: 'archived', note: 'This design is archived. Unarchive it to keep working on it.' }
@@ -311,15 +319,12 @@ export const dialogTotal = (quote: Quote, reported: string[]) =>
 
 /** Stripe's return URL carries `?payment=`: until the webhook grants it, the page says what is happening. */
 const BANNER_SLOW_MS = 2 * 60_000
-/** A checkout lasts 31 minutes: a revision paid longer ago than this is not the one just bought. */
-const BANNER_RECENT_MS = 60 * 60_000
 
 export type PaymentBanner = { kind: 'packaging' | 'ready' | 'failed' | 'slow'; text: string }
 
 export function paymentBanner(searchPayment: string | null, detail: StudioDetail, startedAt: number, now: Date): PaymentBanner | null {
   if (!searchPayment) return null
-  const fresh = detail.pieces.flatMap((p) => p.finalized)
-    .filter((f) => f.paidAt && new Date(f.paidAt).getTime() >= startedAt - BANNER_RECENT_MS)
+  const fresh = detail.pieces.flatMap((p) => p.finalized).filter((f) => f.paymentId === searchPayment)
   if (!fresh.length) {
     return now.getTime() - startedAt > BANNER_SLOW_MS
       ? { kind: 'slow', text: 'Stripe hasn’t confirmed the payment yet. This page will update when it does.' }

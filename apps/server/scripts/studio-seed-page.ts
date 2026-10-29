@@ -140,7 +140,7 @@ await db.insert(studioMessages).values([
   { designId: wearable.id, role: 'user', text: 'Make the visor brighter and add the sneakers.', jobId: third.id, createdAt: at(31) },
   { designId: wearable.id, role: 'agent', agent: 'codex', text: 'Brighter visor done, and glowing sneakers. The sneakers fail two checks.', jobId: third.id, createdAt: at(29) },
   { designId: wearable.id, role: 'user', text: 'What else would suit the set?', jobId: stopped.id, createdAt: at(6) },
-  { designId: wearable.id, role: 'system', text: 'The agent stopped at its cost limit for one message. Continue to let it finish: it doesn’t use a prompt.', jobId: stopped.id, createdAt: at(5) },
+  { designId: wearable.id, role: 'system', text: 'The agent stopped at this prompt’s cost limit. Press Continue to carry on where it stopped: it doesn’t use a prompt.', jobId: stopped.id, createdAt: at(5) },
   {
     designId: wearable.id, role: 'agent', agent: 'codex', text: 'A few pieces would round the set out. Pick the ones you want.', jobId: stopped.id, createdAt: at(4),
     proposal: { slots: [

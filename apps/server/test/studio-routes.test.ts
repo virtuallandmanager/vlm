@@ -185,6 +185,9 @@ describe('studio dashboard routes', () => {
     expect((await prompt(u, d.id, { continue: true })).statusCode).toBe(409)
     const second = (await prompt(u, d.id)).json().jobId
     await finish(second, okResult(second, { outcome: 'ceiling', pieces: [], reply: null }))
+    // the note points at the page's Continue button: typing "continue" would be a counted prompt
+    const note = (await db.select().from(studioMessages)).find((m) => m.role === 'system' && m.jobId === second)
+    expect(note?.text).toBe('The agent stopped at this prompt’s cost limit. Press Continue to carry on where it stopped: it doesn’t use a prompt.')
     const used = (await promptStatus(u.id, new Date())).used
     const res = await prompt(u, d.id, { continue: true })
     expect(res.statusCode).toBe(202)

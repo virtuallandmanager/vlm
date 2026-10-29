@@ -362,6 +362,7 @@ export async function finalizedRevisions(designId: string) {
       kind: r.e.kind,
       status: r.e.status,
       amountCents: r.e.amountCents,
+      paymentId: r.e.paymentId,
       paidAt: r.paidAt,
       report: r.reportStatus ? { status: r.reportStatus, createdAt: r.reportedAt } : null,
       reportableUntil: r.e.kind === 'revision' && r.e.amountCents > 0 && !r.reportStatus && r.paidAt

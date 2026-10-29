@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth'
 import { useStudioRoom } from '@/lib/colyseus'
 import { Badge, PageHeader, RowMenu, Skeleton } from '@/components/ui'
 import {
-  designBadge, designIdFromPath, nextPoll, paymentBanner, refreshDue, refusalMessage,
+  designBadge, designIdFromPath, nextPoll, paymentBanner, refreshDue, refusalMessage, reloadsOn,
   type Quote, type Refusal, type StudioDetail, type StudioEvent, type StudioUsage,
 } from '@/lib/studio'
 import Conversation from './Conversation'
@@ -70,7 +70,7 @@ export default function StudioDesignPage() {
 
   const onEvent = useCallback((e: StudioEvent) => {
     setEvents((prev) => [...prev.slice(-(MAX_EVENTS - 1)), e])
-    if (e.type === 'job' && (e.status === 'done' || e.status === 'failed')) reload()
+    if (reloadsOn(e)) reload()
   }, [reload])
   const { connected } = useStudioRoom(designId, token, onEvent)
 
@@ -93,7 +93,14 @@ export default function StudioDesignPage() {
   // Back from Stripe before the webhook: poll until the paid revision shows, then while it is packaged
   const banner = detail && payment ? paymentBanner(payment.id, detail, payment.startedAt, new Date()) : null
   useEffect(() => {
-    if (!banner || banner.kind === 'ready' || banner.kind === 'failed') return
+    if (!banner) return
+    if (banner.kind === 'ready' || banner.kind === 'failed') {
+      // Settled: a reload of this URL later shouldn't claim the payment is still on its way
+      const url = new URL(window.location.href)
+      url.searchParams.delete('payment')
+      window.history.replaceState(window.history.state, '', url.pathname + url.search)
+      return
+    }
     const t = setTimeout(reload, banner.kind === 'slow' ? 30_000 : PAYMENT_POLL_MS)
     return () => clearTimeout(t)
   }, [banner?.kind, detail, reload])

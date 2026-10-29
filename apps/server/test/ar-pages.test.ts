@@ -56,6 +56,7 @@ describe('AR static pages', () => {
     mkdirSync(join(dir, 'studio/_'), { recursive: true })
     writeFileSync(join(dir, 'studio/_/index.html'), 'STUDIO')
     writeFileSync(join(dir, 'studio/index.html'), 'LIST')
+    writeFileSync(join(dir, 'studio/index.txt'), 'LIST-RSC')
     ;(config as any).dashboardDir = dir
     await app.close()
     app = await testApp()
@@ -65,6 +66,8 @@ describe('AR static pages', () => {
       expect(res.body).toBe('STUDIO')
     }
     expect((await app.inject({ method: 'GET', url: '/studio/' })).body).toBe('LIST')
+    // the list page's RSC payload, which the client router fetches, is not a design id
+    expect((await app.inject({ method: 'GET', url: '/studio/index.txt' })).body).toBe('LIST-RSC')
   })
 
   describe('/.well-known/assetlinks.json', () => {

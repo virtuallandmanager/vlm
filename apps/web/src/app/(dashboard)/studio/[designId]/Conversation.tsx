@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useApi } from '@/lib/api'
 import { PrimaryButton } from '@/components/ui'
 import {
-  agentLabel, categoryLabel, composerState, formatCents, initialTicks, progressFor, refusalMessage, slotSelection,
+  agentLabel, canSend, categoryLabel, composerState, formatCents, initialTicks, progressFor, refusalMessage, slotSelection,
   type Refusal, type StudioDetail, type StudioEvent, type StudioMessage, type StudioProposal, type StudioUsage,
 } from '@/lib/studio'
 import { AgentPicker } from '../AgentPicker'
@@ -40,6 +40,8 @@ export default function Conversation({ designId, detail, usage, events, onChange
       await onChanged()
     } catch (err) {
       setRefusal(refusalMessage(err as never, new Date()))
+      // A refusal (busy from another tab, a timeout after the server queued it) may mean the design moved on
+      onChanged().catch(() => {})
     } finally {
       setSending(false)
     }
@@ -47,7 +49,7 @@ export default function Conversation({ designId, detail, usage, events, onChange
 
   const submit = () => {
     const t = text.trim()
-    if (!t || t.length > MAX_PROMPT || composer.mode !== 'send' || sending) return
+    if (!t || t.length > MAX_PROMPT || !canSend(composer.mode) || sending) return
     send({ text: t })
   }
 
@@ -124,7 +126,7 @@ export default function Conversation({ designId, detail, usage, events, onChange
               className="w-full resize-y rounded-md border border-gray-800 bg-gray-950 px-3 py-2 text-white outline-none focus:border-blue-400 disabled:opacity-60" />
             <div className="mt-2 flex items-center justify-between gap-3">
               <p className="text-xs text-gray-500">{composer.note}</p>
-              <PrimaryButton type="submit" disabled={composer.mode !== 'send' || sending || !text.trim()}>Send</PrimaryButton>
+              <PrimaryButton type="submit" disabled={!canSend(composer.mode) || sending || !text.trim()}>Send</PrimaryButton>
             </div>
           </form>
         )}
