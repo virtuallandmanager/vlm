@@ -1,0 +1,9 @@
+# Left out of `railway up` uploads: none of these go into the server image (see Dockerfile).
+# Patterns are anchored to the repo root; an unanchored `docs/` would also drop apps/docs.
+/test-scenes/
+/docs/
+/infra/
+/apps/ar-spike/
+/apps/quest/
+/apps/ring-marker/
+/apps/studio-worker/
