@@ -267,6 +267,7 @@ const CASES: Case[] = [
   { route: 'DELETE /api/admin/ads/:id/creatives/:creativeId', url: () => `/api/admin/ads/${AD_ID}/creatives/${AD_ID}` },
   { route: 'PUT /api/admin/ads/:id/placements', url: () => `/api/admin/ads/${AD_ID}/placements`, body: () => ({ elementIds: [] }) },
   { route: 'GET /api/admin/ads/:id/report', url: () => `/api/admin/ads/${AD_ID}/report` },
+  { route: 'POST /api/admin/ads/:id/review', url: () => `/api/admin/ads/${AD_ID}/review`, body: () => ({ decision: 'rejected', reason: 'x' }) },
 ]
 
 // Collected routes with a `:param` (or a body id) that are not another account's resource, each with its reason.

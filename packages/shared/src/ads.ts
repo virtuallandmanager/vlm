@@ -135,6 +135,8 @@ export interface AdminAdSpace {
   name: string
   type: 'ad_space' | 'video'
   shape: AdShape | null
+  /** The owner's content setting for this space. */
+  content: AdContent
 }
 
 export type LevelCounts = Record<AdLevel, number> & { unverified: Record<AdLevel, number> }

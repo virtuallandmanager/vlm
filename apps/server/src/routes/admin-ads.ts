@@ -6,6 +6,8 @@ import { db } from '../db/connection.js'
 import { ads, adCreatives, adPlacements, mediaAssets, sceneElements, scenePresets, scenes } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { adReport } from '../ads/report.js'
+import { recordReview, resetReview } from '../ads/review.js'
+import { spaceContentFor } from '../ads/content.js'
 
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply) {
   if (request.user.role !== 'admin') {
@@ -73,8 +75,9 @@ export default async function adminAdsRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate)
   app.addHook('preHandler', requireAdmin)
 
-  app.get('/api/admin/ads', async (_request, reply) => {
-    const rows = await db.select().from(ads).orderBy(asc(ads.createdAt))
+  app.get<{ Querystring: { review?: string } }>('/api/admin/ads', async (request, reply) => {
+    const pending = request.query.review === 'pending'
+    const rows = await db.select().from(ads).where(pending ? eq(ads.reviewStatus, 'pending') : undefined).orderBy(asc(ads.createdAt))
     return reply.send({ ads: await toAdminAds(rows) })
   })
 
@@ -91,12 +94,15 @@ export default async function adminAdsRoutes(app: FastifyInstance) {
       // booking clones take their original's placements, so only originals are listed
       .where(and(inArray(sceneElements.type, ['ad_space', 'video']), isNull(sceneElements.clonedFromId)))
       .orderBy(asc(scenes.name), asc(scenePresets.name), asc(sceneElements.name))
-    const spaces: AdminAdSpace[] = rows.filter(isAdCapable).map((r) => {
+    const capable = rows.filter(isAdCapable)
+    const contentById = await spaceContentFor(capable.map((r) => r.id))
+    const spaces: AdminAdSpace[] = capable.map((r) => {
       const p = (r.properties ?? {}) as Record<string, unknown>
       const raw = r.type === 'ad_space' ? p.shape : p.adShape
       return {
         elementId: r.id, sceneId: r.sceneId, sceneName: r.sceneName, presetName: r.presetName, activePreset: r.presetId === r.activePresetId,
         name: r.name, type: r.type as AdminAdSpace['type'], shape: isShape(raw) ? raw : r.type === 'video' ? '16:9' : null,
+        content: contentById.get(r.id) ?? 'family',
       }
     })
     return reply.send({ spaces })
@@ -136,7 +142,11 @@ export default async function adminAdsRoutes(app: FastifyInstance) {
       if (d === undefined) return reply.status(400).send({ error: `${key} must be a date or null` })
       set[key] = d
     }
-    await db.update(ads).set(set).where(eq(ads.id, request.params.id))
+    const before = await loadAd(request.params.id)
+    await db.transaction(async (tx) => {
+      await tx.update(ads).set(set).where(eq(ads.id, request.params.id))
+      if (set.clickUrl !== undefined && set.clickUrl !== before?.clickUrl) await resetReview(request.params.id, tx)
+    })
     return reply.send({ ad: await loadAd(request.params.id) })
   })
 
@@ -150,16 +160,41 @@ export default async function adminAdsRoutes(app: FastifyInstance) {
     if (media.status !== 'ready' || !media.publicUrl) return reply.status(400).send({ error: 'media_not_ready' })
     const kind = media.contentType.startsWith('image/') ? 'image' : media.contentType.startsWith('video/') ? 'video' : null
     if (!kind) return reply.status(400).send({ error: 'creative_must_be_image_or_video' })
-    const [creative] = await db.insert(adCreatives).values({ adId: request.params.id, shape, kind, mediaAssetId: media.id, url: media.publicUrl }).returning()
+    const creative = await db.transaction(async (tx) => {
+      const [row] = await tx.insert(adCreatives).values({ adId: request.params.id, shape, kind, mediaAssetId: media.id, url: media.publicUrl! }).returning()
+      await resetReview(request.params.id, tx)
+      return row
+    })
     return reply.status(201).send({ creative: { id: creative.id, shape: creative.shape, kind: creative.kind, url: creative.url } })
   })
 
   app.delete<{ Params: { id: string; creativeId: string } }>('/api/admin/ads/:id/creatives/:creativeId', async (request, reply) => {
     const { id, creativeId } = request.params
     if (!UUID.test(id) || !UUID.test(creativeId)) return reply.status(404).send({ error: 'Creative not found' })
-    const removed = await db.delete(adCreatives).where(and(eq(adCreatives.id, creativeId), eq(adCreatives.adId, id))).returning({ id: adCreatives.id })
+    const removed = await db.transaction(async (tx) => {
+      const gone = await tx.delete(adCreatives).where(and(eq(adCreatives.id, creativeId), eq(adCreatives.adId, id))).returning({ id: adCreatives.id })
+      if (gone.length) await resetReview(id, tx)
+      return gone
+    })
     if (!removed.length) return reply.status(404).send({ error: 'Creative not found' })
     return reply.send({ ok: true })
+  })
+
+  app.post<{ Params: { id: string }; Body: { decision?: unknown; audience?: unknown; reason?: unknown } }>('/api/admin/ads/:id/review', async (request, reply) => {
+    const { decision, audience, reason } = request.body ?? {}
+    const by = { kind: 'human' as const, userId: request.user.id }
+    if (decision !== 'approved' && decision !== 'rejected') return reply.status(400).send({ error: 'decision must be approved or rejected' })
+    if (decision === 'approved' && audience !== 'family' && audience !== 'mature') return reply.status(400).send({ error: 'audience_required' })
+    if (!UUID.test(request.params.id)) return reply.status(404).send({ error: 'Ad not found' })
+    const result = await recordReview(
+      request.params.id,
+      decision === 'approved' ? { decision, audience: audience as 'family' | 'mature' } : { decision, reason: typeof reason === 'string' ? reason : '' },
+      by,
+    )
+    if (result === 'not_found') return reply.status(404).send({ error: 'Ad not found' })
+    if (result === 'no_creatives') return reply.status(400).send({ error: 'ad_has_no_creatives' })
+    if (result === 'bad_reason') return reply.status(400).send({ error: 'reason_required' })
+    return reply.send({ ad: await loadAd(request.params.id) })
   })
 
   app.put<{ Params: { id: string }; Body: { elementIds?: unknown } }>('/api/admin/ads/:id/placements', async (request, reply) => {
