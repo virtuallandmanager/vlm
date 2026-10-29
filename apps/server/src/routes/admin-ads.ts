@@ -59,6 +59,13 @@ async function toAdminAds(rows: (typeof ads.$inferSelect)[]): Promise<AdminAd[]>
     endsAt: r.endsAt?.toISOString() ?? null,
     creatives: creatives.filter((c) => c.adId === r.id).map((c) => ({ id: c.id, shape: c.shape as AdShape, kind: c.kind, url: c.url })),
     placements: placements.filter((p) => p.adId === r.id).map((p) => p.elementId),
+    review: {
+      status: r.reviewStatus,
+      audience: r.audience,
+      reason: r.rejectReason,
+      reviewerKind: r.reviewerKind,
+      reviewedAt: r.reviewedAt?.toISOString() ?? null,
+    },
   }))
 }
 

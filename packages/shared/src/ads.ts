@@ -96,6 +96,14 @@ export function checkAdEventBatch(body: unknown): AdEventBatchCheck {
   return { ok: true, batch: { v: 1, sessionId: body.sessionId, events } }
 }
 
+/** What a space allows (owner setting) and what an ad is rated as. */
+export type AdContent = 'family' | 'mature'
+export type AdAudience = AdContent
+export type AdReviewStatus = 'pending' | 'approved' | 'rejected'
+export const AD_CONTENT_DEFAULT: AdContent = 'family'
+
+export type AdReviewer = { kind: 'human'; userId: string } | { kind: 'ai'; label: string }
+
 export interface AdminAd {
   id: string
   name: string
@@ -106,6 +114,13 @@ export interface AdminAd {
   endsAt: string | null
   creatives: { id: string; shape: AdShape; kind: 'image' | 'video'; url: string }[]
   placements: string[]
+  review: {
+    status: AdReviewStatus
+    audience: AdAudience | null
+    reason: string | null
+    reviewerKind: 'human' | 'ai' | null
+    reviewedAt: string | null
+  }
 }
 
 /** An element an ad can be placed on. `shape` is null for an ad space whose stored shape is invalid. */

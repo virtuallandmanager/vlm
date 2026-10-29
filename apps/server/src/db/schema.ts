@@ -1314,6 +1314,12 @@ export const ads = pgTable('ads', {
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  reviewStatus: text('review_status').$type<'pending' | 'approved' | 'rejected'>().notNull().default('pending'),
+  audience: text('audience').$type<'family' | 'mature'>(),
+  rejectReason: text('reject_reason'),
+  reviewerKind: text('reviewer_kind').$type<'human' | 'ai'>(),
+  reviewedBy: uuid('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
 })
 
 export const adCreatives = pgTable('ad_creatives', {
@@ -1355,6 +1361,48 @@ export const adEvents = pgTable(
   (t) => ({
     onePerViewer: uniqueIndex('ad_events_unique_space_view').on(t.adId, t.elementId, t.level, t.day, t.viewerKey),
     byAdDay: index('ad_events_ad_day_idx').on(t.adId, t.day),
+  }),
+)
+
+/** Append-only log of review decisions; `ads` holds the current state. */
+export const adReviews = pgTable(
+  'ad_reviews',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    adId: uuid('ad_id').notNull().references(() => ads.id, { onDelete: 'cascade' }),
+    decision: text('decision').$type<'approved' | 'rejected' | 'reset'>().notNull(),
+    audience: text('audience').$type<'family' | 'mature'>(),
+    reason: text('reason'),
+    reviewerKind: text('reviewer_kind').$type<'human' | 'ai' | 'system'>().notNull(),
+    reviewerId: uuid('reviewer_id'),
+    reviewerLabel: text('reviewer_label'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byAd: index('ad_reviews_ad_idx').on(t.adId, t.createdAt),
+  }),
+)
+
+/** Owner content setting per ad space ('family' | 'mature'); no row means the default. */
+export const adSpaceSettings = pgTable('ad_space_settings', {
+  elementId: uuid('element_id').primaryKey().references(() => sceneElements.id, { onDelete: 'cascade' }),
+  content: text('content').$type<'family' | 'mature'>().notNull(),
+  updatedBy: uuid('updated_by'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/** An ad space owner's decision on a specific ad. */
+export const adSpaceApprovals = pgTable(
+  'ad_space_approvals',
+  {
+    adId: uuid('ad_id').notNull().references(() => ads.id, { onDelete: 'cascade' }),
+    elementId: uuid('element_id').notNull().references(() => sceneElements.id, { onDelete: 'cascade' }),
+    decision: text('decision').$type<'approved' | 'declined'>().notNull(),
+    decidedBy: uuid('decided_by'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.adId, t.elementId] }),
   }),
 )
 
