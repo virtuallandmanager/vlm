@@ -96,9 +96,10 @@ export function checkAdEventBatch(body: unknown): AdEventBatchCheck {
   return { ok: true, batch: { v: 1, sessionId: body.sessionId, events } }
 }
 
-/** What a space allows (owner setting) and what an ad is rated as. */
-export type AdContent = 'family' | 'mature'
-export type AdAudience = AdContent
+/** What an ad space owner allows on a space. */
+export type AdContent = 'family' | 'all' | 'approve'
+/** What a reviewer rates an ad as. */
+export type AdAudience = 'family' | 'mature'
 export type AdReviewStatus = 'pending' | 'approved' | 'rejected'
 export const AD_CONTENT_DEFAULT: AdContent = 'family'
 

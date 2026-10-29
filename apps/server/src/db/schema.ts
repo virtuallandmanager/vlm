@@ -1383,10 +1383,10 @@ export const adReviews = pgTable(
   }),
 )
 
-/** Owner content setting per ad space ('family' | 'mature'); no row means the default. */
+/** Owner content setting per ad space ('family' | 'all' | 'approve'); no row means the default. */
 export const adSpaceSettings = pgTable('ad_space_settings', {
   elementId: uuid('element_id').primaryKey().references(() => sceneElements.id, { onDelete: 'cascade' }),
-  content: text('content').$type<'family' | 'mature'>().notNull(),
+  content: text('content').$type<'family' | 'all' | 'approve'>().notNull(),
   updatedBy: uuid('updated_by'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
