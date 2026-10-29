@@ -169,6 +169,17 @@ describe('admin ads routes', () => {
     expect(await db.select().from(ads)).toHaveLength(1)
   })
 
+  it('refuses placements on booking-clone elements and writes nothing', async () => {
+    const { preset } = await createScene(admin)
+    const original = await createElement(preset.id, { type: 'ad_space', properties: { shape: '1:1', formats: 'both' } })
+    const [clone] = await db.insert(sceneElements).values({ presetId: preset.id, type: 'ad_space', name: 'Clone', properties: { shape: '1:1', formats: 'both' }, clonedFromId: original.id }).returning()
+    const partner = await mkAd('partner')
+    const res = await call('PUT', `/api/admin/ads/${partner.id}/placements`, { elementIds: [original.id, clone.id] })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toBe('elements_must_be_ad_spaces')
+    expect((await call('GET', '/api/admin/ads')).json().ads.find((a: any) => a.id === partner.id).placements).toEqual([])
+  })
+
   it('placements only on partner ads and only on ad-capable elements', async () => {
     const { preset } = await createScene(admin)
     const space = await createElement(preset.id, { type: 'ad_space', properties: { shape: '1:1', formats: 'both' } })

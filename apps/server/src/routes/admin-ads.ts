@@ -207,7 +207,8 @@ export default async function adminAdsRoutes(app: FastifyInstance) {
     }
     const elementIds = [...new Set(raw as string[])]
     const found = elementIds.length ? await db.select().from(sceneElements).where(inArray(sceneElements.id, elementIds)) : []
-    if (found.length !== elementIds.length || !found.every(isAdCapable)) {
+    // booking clones serve their original's placements; the owner's candidate list reads originals only
+    if (found.length !== elementIds.length || !found.every(isAdCapable) || found.some((e) => e.clonedFromId !== null)) {
       return reply.status(400).send({ error: 'elements_must_be_ad_spaces' })
     }
     await db.transaction(async (tx) => {

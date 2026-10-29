@@ -77,8 +77,11 @@ describe('ad review', () => {
     await resetReview(ad.id)
     expect(await logOf(ad.id)).toHaveLength(0) // already pending: nothing to do
     await recordReview(ad.id, { decision: 'approved', audience: 'mature' }, { kind: 'ai', label: 'r' })
+    const before = (await load(ad.id)).updatedAt
+    await new Promise((r) => setTimeout(r, 20))
     await resetReview(ad.id)
     const row = await load(ad.id)
+    expect(row.updatedAt.getTime()).toBeGreaterThan(before.getTime())
     expect(row.reviewStatus).toBe('pending')
     expect(row.audience).toBeNull()
     expect(row.rejectReason).toBeNull()

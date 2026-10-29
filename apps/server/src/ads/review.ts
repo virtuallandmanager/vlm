@@ -60,6 +60,7 @@ export async function resetReview(adId: string, tx?: Tx): Promise<void> {
     reviewerKind: null,
     reviewedBy: null,
     reviewedAt: null,
+    updatedAt: new Date(),
   }).where(sql`${ads.id} = ${adId} AND ${ads.reviewStatus} <> 'pending'`).returning({ id: ads.id })
   if (!reset.length) return
   await tx.insert(adReviews).values({ adId, decision: 'reset', reviewerKind: 'system' })
