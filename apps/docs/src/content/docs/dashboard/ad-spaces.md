@@ -5,7 +5,7 @@ description: Panels in your scene that show ads, how to place them, and what vis
 
 An **ad space** is a flat panel in your scene that shows ads from Virvi. Ads are images or videos. Visitors can click an ad to open its link. Every ad carries a small **Ad** label.
 
-Buying ads, owner payouts and per-space content rules are coming later. For now, ads are set up by Virvi admins.
+Buying ads and owner payouts are coming later. For now, ads are set up by Virvi admins.
 
 ## Adding an ad space
 
@@ -99,6 +99,22 @@ Virvi measures ads at four levels: in the scene, on screen, looked at, and click
 - **House ads** are Virvi's own. They fill any space with no partner ad.
 
 House ads pay owners nothing. For now, owners are paid for partner ads manually, using the per-space numbers in the report.
+
+## Who can advertise here
+
+Each ad space has a **Who can advertise here** setting. It decides which approved ads can show:
+
+- **Family-friendly only**: only ads reviewed as safe for all ages.
+- **Allow all**: any approved ad, including mature ones such as alcohol.
+- **Approve only**: nothing shows until the owner approves that specific ad.
+
+Virvi reviews every ad first. Each ad is marked family-friendly or mature, or rejected with a reason. Your setting then decides which reviewed ads your space shows.
+
+Only the scene's owner, co-hosts and Virvi admins can change the setting. You find it in the ad space editor, and in video screens set to an ads mode, under **Who can advertise here**.
+
+On an approve-only space, you approve or decline each ad, house ads included. You can change a decision later. Booking copies of a space follow the original space's setting and approvals, so you manage approvals on the original.
+
+If an ad's link or images change, the ad goes back to Virvi's review before it can show again.
 
 ## For admins
 
