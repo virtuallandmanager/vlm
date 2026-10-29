@@ -50,6 +50,23 @@ describe('AR static pages', () => {
     expect(redactPairingCode('/s/ABCDEFG')).toBe('/s/:code')
   })
 
+  it('serves the design page for /studio/:id with and without a trailing slash', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'virvi-dash-'))
+    writeFileSync(join(dir, 'index.html'), 'HOME')
+    mkdirSync(join(dir, 'studio/_'), { recursive: true })
+    writeFileSync(join(dir, 'studio/_/index.html'), 'STUDIO')
+    writeFileSync(join(dir, 'studio/index.html'), 'LIST')
+    ;(config as any).dashboardDir = dir
+    await app.close()
+    app = await testApp()
+    for (const url of ['/studio/2f1c6a0e-8d3b-4c1a-9f6e-0b7d5e4a3c21', '/studio/2f1c6a0e-8d3b-4c1a-9f6e-0b7d5e4a3c21/']) {
+      const res = await app.inject({ method: 'GET', url })
+      expect(res.statusCode).toBe(200)
+      expect(res.body).toBe('STUDIO')
+    }
+    expect((await app.inject({ method: 'GET', url: '/studio/' })).body).toBe('LIST')
+  })
+
   describe('/.well-known/assetlinks.json', () => {
     const prevLinks = { pkg: config.androidAppPackage, sha: config.androidCertSha256 }
     afterEach(() => {

@@ -319,6 +319,12 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     // Companion upload links (/u/<code>): the static export has one page for every code, at u/_/
     app.get('/u/:code', (_request, reply) => reply.sendFile('u/_/index.html'))
     app.get('/u/:code/', (_request, reply) => reply.sendFile('u/_/index.html'))
+    // Design Studio pages (/studio/<designId>): one exported page for every design, at studio/_/
+    // ('/studio/' itself also matches here with an empty id: that is the designs list.)
+    const studioPage = (request: { params: unknown }, reply: { sendFile: (f: string) => unknown }) =>
+      reply.sendFile((request.params as { designId?: string }).designId ? 'studio/_/index.html' : 'studio/index.html')
+    app.get('/studio/:designId', studioPage)
+    app.get('/studio/:designId/', studioPage)
 
     // AR space pages (/s/<code>): the static export has one page for every code, at s/_/
     app.get('/s/:code', (_request, reply) => reply.sendFile('s/_/index.html'))

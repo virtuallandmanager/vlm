@@ -70,15 +70,20 @@ export async function designDetail(d: Design, now: Date) {
     .where(and(eq(studioJobs.designId, d.id), inArray(studioJobs.status, ['queued', 'taken'])))
     .orderBy(sql`CASE WHEN ${studioJobs.type} = 'prompt' THEN 0 ELSE 1 END`, asc(studioJobs.createdAt))
     .limit(1)
+  const [last] = await db.select({ jobId: studioJobs.id, status: studioJobs.status, result: studioJobs.result }).from(studioJobs)
+    .where(and(eq(studioJobs.designId, d.id), eq(studioJobs.type, 'prompt')))
+    .orderBy(desc(studioJobs.createdAt))
+    .limit(1)
   return {
     design: publicDesign(d),
     pieces: pieces.map((p) => {
       const rev = revs.find((r) => r.id === p.latestRevisionId)
-      const views: Record<string, { status: string; frames: number; urls: string[] }> = {}
+      const views: Record<string, { status: string; frames: number; urls: string[]; renderedAt: Date }> = {}
       for (const r of renders.filter((r) => r.revisionId === rev?.id)) {
         views[r.viewKey] = {
           status: r.status,
           frames: r.frames,
+          renderedAt: r.createdAt,
           urls: r.status === 'ready'
             ? Array.from({ length: r.frames }, (_, frame) => signRenderFrame(
               { designId: d.id, revisionId: r.revisionId, viewKey: r.viewKey, category: p.category, frame, jobId: r.jobId }, expires))
@@ -96,6 +101,9 @@ export async function designDetail(d: Design, now: Date) {
     }),
     messages: messages.map((m) => ({ id: m.id, role: m.role, agent: m.agent, text: m.text, proposal: m.proposal, jobId: m.jobId, createdAt: m.createdAt })),
     activeJob: active ?? null,
+    lastPrompt: last
+      ? { jobId: last.jobId, outcome: (last.result as { outcome?: string } | null)?.outcome ?? null, status: last.status }
+      : null,
   }
 }
 

@@ -296,6 +296,25 @@ describe('studio dashboard routes', () => {
     expect(res.body).not.toMatch(/pieces\/|checks\/|workerToken|machine/)
   })
 
+  it("design detail names the last prompt's outcome and when each view rendered", async () => {
+    const u = await createUser()
+    const { design } = await builtHat(u)
+    const first = (await app.inject({ method: 'GET', url: `${S}/designs/${design.id}`, headers: as(u) })).json()
+    expect(first.lastPrompt).toMatchObject({ outcome: 'ok', status: 'done' })
+    expect(new Date(first.pieces[0].renders['spin-male-default'].renderedAt).toISOString())
+      .toBe(first.pieces[0].renders['spin-male-default'].renderedAt)
+    const second = (await prompt(u, design.id)).json().jobId
+    await finish(second, okResult(second, { outcome: 'ceiling', pieces: [], reply: null }))
+    const body = (await app.inject({ method: 'GET', url: `${S}/designs/${design.id}`, headers: as(u) })).json()
+    expect(body.lastPrompt).toEqual({ jobId: second, outcome: 'ceiling', status: 'done' })
+  })
+
+  it('a new design has no last prompt', async () => {
+    const u = await createUser()
+    const d = (await create(u)).json()
+    expect((await app.inject({ method: 'GET', url: `${S}/designs/${d.id}`, headers: as(u) })).json().lastPrompt).toBeNull()
+  })
+
   it('render urls only open their own frame', async () => {
     const u = await createUser()
     const { design } = await builtHat(u)
