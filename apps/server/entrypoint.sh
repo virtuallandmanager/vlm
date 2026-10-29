@@ -88,7 +88,7 @@ if [ -n "$DATABASE_URL" ]; then
         await sql\`CREATE UNIQUE INDEX IF NOT EXISTS hyperfy_worlds_slug_uq ON hyperfy_worlds (slug) WHERE purged_at IS NULL\`;
         console.log('[virvi-server] hyperfy worlds ensured');
       } catch(e) { console.log('[virvi-server] hyperfy worlds:', e.message); }
-      // Ads; matches ads / adCreatives / adPlacements / adEvents in src/db/schema.ts
+      // Ads; matches ads / adCreatives / adPlacements / adEvents / adReviews / adSpaceSettings / adSpaceApprovals in src/db/schema.ts
       try {
         await sql\`ALTER TYPE element_type ADD VALUE IF NOT EXISTS 'ad_space'\`;
         await sql\`CREATE TABLE IF NOT EXISTS ads (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL, kind TEXT NOT NULL, click_url TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', starts_at TIMESTAMPTZ, ends_at TIMESTAMPTZ, created_by UUID REFERENCES users(id) ON DELETE SET NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
@@ -98,6 +98,16 @@ if [ -n "$DATABASE_URL" ]; then
         await sql\`DROP INDEX IF EXISTS ad_events_unique_view\`;
         await sql\`CREATE UNIQUE INDEX IF NOT EXISTS ad_events_unique_space_view ON ad_events (ad_id, element_id, level, day, viewer_key)\`;
         await sql\`CREATE INDEX IF NOT EXISTS ad_events_ad_day_idx ON ad_events (ad_id, day)\`;
+        await sql\`ALTER TABLE ads ADD COLUMN IF NOT EXISTS review_status TEXT NOT NULL DEFAULT 'pending'\`;
+        await sql\`ALTER TABLE ads ADD COLUMN IF NOT EXISTS audience TEXT\`;
+        await sql\`ALTER TABLE ads ADD COLUMN IF NOT EXISTS reject_reason TEXT\`;
+        await sql\`ALTER TABLE ads ADD COLUMN IF NOT EXISTS reviewer_kind TEXT\`;
+        await sql\`ALTER TABLE ads ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL\`;
+        await sql\`ALTER TABLE ads ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ\`;
+        await sql\`CREATE TABLE IF NOT EXISTS ad_reviews (id BIGSERIAL PRIMARY KEY, ad_id UUID NOT NULL REFERENCES ads(id) ON DELETE CASCADE, decision TEXT NOT NULL, audience TEXT, reason TEXT, reviewer_kind TEXT NOT NULL, reviewer_id UUID, reviewer_label TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        await sql\`CREATE INDEX IF NOT EXISTS ad_reviews_ad_idx ON ad_reviews (ad_id, created_at)\`;
+        await sql\`CREATE TABLE IF NOT EXISTS ad_space_settings (element_id UUID PRIMARY KEY REFERENCES scene_elements(id) ON DELETE CASCADE, content TEXT NOT NULL, updated_by UUID, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        await sql\`CREATE TABLE IF NOT EXISTS ad_space_approvals (ad_id UUID NOT NULL REFERENCES ads(id) ON DELETE CASCADE, element_id UUID NOT NULL REFERENCES scene_elements(id) ON DELETE CASCADE, decision TEXT NOT NULL, decided_by UUID, decided_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (ad_id, element_id))\`;
         console.log('[virvi-server] ads ensured');
       } catch(e) { console.log('[virvi-server] ads:', e.message); }
 

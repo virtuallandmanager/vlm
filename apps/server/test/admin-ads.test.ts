@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { db } from '../src/db/connection.js'
-import { ads, adCreatives, adEvents, mediaAssets, sceneElements, scenePresets } from '../src/db/schema.js'
+import { ads, adCreatives, adSpaceSettings, adEvents, mediaAssets, sceneElements, scenePresets } from '../src/db/schema.js'
 import { resetDb } from './helpers/db.js'
+import { selectAdsForElements } from '../src/ads/select.js'
 import { testApp, createUser, createScene, createElement, tokenFor } from './helpers/factories.js'
 
 const FAKE = '00000000-0000-4000-8000-000000000001'
@@ -34,8 +35,87 @@ describe('admin ads routes', () => {
       ['PUT', `/api/admin/ads/${FAKE}/placements`, { elementIds: [] }],
       ['GET', '/api/admin/ads/spaces'],
       ['GET', `/api/admin/ads/${FAKE}/report`],
+      ['POST', `/api/admin/ads/${FAKE}/review`, { decision: 'rejected', reason: 'x' }],
     ]
     for (const [m, u, b] of routes) expect((await call(m, u, b, headers)).statusCode, `${m} ${u}`).toBe(403)
+  })
+
+  const addCreative = async (adId: string, shape = '1:1') =>
+    (await call('POST', `/api/admin/ads/${adId}/creatives`, { mediaAssetId: (await mkMedia('image/png')).id, shape })).json().creative
+  const approve = (adId: string, audience: unknown = 'family') => call('POST', `/api/admin/ads/${adId}/review`, { decision: 'approved', audience })
+
+  it('a new ad is pending and the queue lists it', async () => {
+    const a = await mkAd()
+    expect(a.review).toMatchObject({ status: 'pending', audience: null, reason: null })
+    const b = await mkAd()
+    await addCreative(b.id)
+    await approve(b.id)
+    const queue = (await call('GET', '/api/admin/ads?review=pending')).json().ads
+    expect(queue.map((x: any) => x.id)).toEqual([a.id])
+    expect((await call('GET', '/api/admin/ads')).json().ads).toHaveLength(2)
+  })
+
+  it('approve with a label, reject with a reason', async () => {
+    const ad = await mkAd()
+    expect((await approve(ad.id)).json().error).toBe('ad_has_no_creatives')
+    await addCreative(ad.id)
+    const ok = await approve(ad.id, 'mature')
+    expect(ok.statusCode).toBe(200)
+    expect(ok.json().ad.review).toMatchObject({ status: 'approved', audience: 'mature', reviewerKind: 'human' })
+    expect(ok.json().ad.review.reviewedAt).toBeTruthy()
+    for (const bad of [null, 'kids', 5]) {
+      const r = await approve(ad.id, bad)
+      expect(r.statusCode).toBe(400)
+      expect(r.json().error).toBe('audience_required')
+    }
+    const noReason = await call('POST', `/api/admin/ads/${ad.id}/review`, { decision: 'rejected', reason: '  ' })
+    expect(noReason.statusCode).toBe(400)
+    expect(noReason.json().error).toBe('reason_required')
+    expect((await call('POST', `/api/admin/ads/${ad.id}/review`, { decision: 'rejected' })).json().error).toBe('reason_required')
+    const rej = await call('POST', `/api/admin/ads/${ad.id}/review`, { decision: 'rejected', reason: 'Too loud' })
+    expect(rej.statusCode).toBe(200)
+    expect(rej.json().ad.review).toMatchObject({ status: 'rejected', audience: null, reason: 'Too loud' })
+    expect((await call('POST', `/api/admin/ads/${ad.id}/review`, { decision: 'maybe' })).statusCode).toBe(400)
+    expect((await call('POST', `/api/admin/ads/${FAKE}/review`, { decision: 'rejected', reason: 'x' })).statusCode).toBe(404)
+    expect((await call('POST', `/api/admin/ads/${FAKE}/review`, { decision: 'rejected', reason: 'x' })).json().error).toBe('Ad not found')
+  })
+
+  it('editing click url or creatives after approval sends the ad back to pending and stops it serving', async () => {
+    const { scene, preset } = await createScene(admin)
+    const space = await createElement(preset.id, { type: 'ad_space', properties: { shape: '1:1', formats: 'both' } })
+    const ad = await mkAd('house')
+    const c = await addCreative(ad.id)
+    const serves = async () => (await selectAdsForElements(scene.id, [space.id], new Date()))[space.id]?.ads.length ?? 0
+    const status = async () => (await call('GET', '/api/admin/ads')).json().ads[0].review.status
+    expect(await serves()).toBe(0)
+    await approve(ad.id)
+    expect(await serves()).toBe(1)
+
+    await call('PATCH', `/api/admin/ads/${ad.id}`, { name: 'New name', status: 'paused' })
+    await call('PATCH', `/api/admin/ads/${ad.id}`, { status: 'active', clickUrl: 'https://x.example' })
+    expect(await status()).toBe('approved')
+
+    expect((await call('PATCH', `/api/admin/ads/${ad.id}`, { clickUrl: 'https://y.example' })).json().ad.review.status).toBe('pending')
+    expect(await serves()).toBe(0)
+    await approve(ad.id)
+    expect(await serves()).toBe(1)
+
+    await addCreative(ad.id, '16:9')
+    expect(await status()).toBe('pending')
+    await approve(ad.id)
+    await call('DELETE', `/api/admin/ads/${ad.id}/creatives/${c.id}`)
+    expect(await status()).toBe('pending')
+    expect(await serves()).toBe(0)
+  })
+
+  it("spaces report each space's content setting, family by default", async () => {
+    const { preset } = await createScene(admin)
+    const a = await createElement(preset.id, { type: 'ad_space', properties: { shape: '1:1', formats: 'both' } })
+    const b = await createElement(preset.id, { type: 'ad_space', properties: { shape: '1:1', formats: 'both' } })
+    await db.insert(adSpaceSettings).values({ elementId: b.id, content: 'approve' })
+    const by = Object.fromEntries((await call('GET', '/api/admin/ads/spaces')).json().spaces.map((s: any) => [s.elementId, s]))
+    expect(by[a.id].content).toBe('family')
+    expect(by[b.id].content).toBe('approve')
   })
 
   it('create, update, pause an ad', async () => {
@@ -87,6 +167,17 @@ describe('admin ads routes', () => {
     const img = await mkMedia('image/png')
     expect((await call('POST', `/api/admin/ads/${ad.id}/creatives`, { mediaAssetId: img.id, shape: '4:3' })).statusCode).toBe(400)
     expect(await db.select().from(ads)).toHaveLength(1)
+  })
+
+  it('refuses placements on booking-clone elements and writes nothing', async () => {
+    const { preset } = await createScene(admin)
+    const original = await createElement(preset.id, { type: 'ad_space', properties: { shape: '1:1', formats: 'both' } })
+    const [clone] = await db.insert(sceneElements).values({ presetId: preset.id, type: 'ad_space', name: 'Clone', properties: { shape: '1:1', formats: 'both' }, clonedFromId: original.id }).returning()
+    const partner = await mkAd('partner')
+    const res = await call('PUT', `/api/admin/ads/${partner.id}/placements`, { elementIds: [original.id, clone.id] })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toBe('elements_must_be_ad_spaces')
+    expect((await call('GET', '/api/admin/ads')).json().ads.find((a: any) => a.id === partner.id).placements).toEqual([])
   })
 
   it('placements only on partner ads and only on ad-capable elements', async () => {

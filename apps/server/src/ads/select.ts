@@ -1,13 +1,14 @@
 import { asc, eq, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { ads, adCreatives, adPlacements, sceneElements } from '../db/schema.js'
-import { VideoSourceType, AD_SHAPES } from '@virvixr/shared'
+import { ads, adCreatives, adPlacements, adSpaceApprovals, sceneElements } from '../db/schema.js'
+import { VideoSourceType, AD_SHAPES, AD_CONTENT_DEFAULT } from '@virvixr/shared'
 import type { AdItem, AdServeResponse, AdShape, AdFormats } from '@virvixr/shared'
 import { isUnderActiveBooking } from './booking.js'
+import { adAllowed, spaceContentFor } from './content.js'
 
-type Space = { shape: AdShape; formats: AdFormats }
+export type Space = { shape: AdShape; formats: AdFormats }
 
-function spaceFor(el: { type: string; properties: unknown }): Space | null {
+export function spaceFor(el: { type: string; properties: unknown }): Space | null {
   const p = (el.properties ?? {}) as Record<string, unknown>
   if (el.type === 'ad_space') {
     const shape = AD_SHAPES.includes(p.shape as AdShape) ? (p.shape as AdShape) : null
@@ -45,6 +46,10 @@ export async function selectAdsForElements(
     if (el.clonedFromId) lookupIds.add(el.clonedFromId)
   }
   const placements = await db.select().from(adPlacements).where(inArray(adPlacements.elementId, [...lookupIds]))
+  const contentByElement = await spaceContentFor([...spaces.keys()])
+  const approvals = await db.select().from(adSpaceApprovals).where(inArray(adSpaceApprovals.elementId, [...lookupIds]))
+  const decisionFor = (elementId: string, adId: string) =>
+    approvals.find((a) => a.elementId === elementId && a.adId === adId)?.decision ?? null
 
   const rows = await db
     .select({
@@ -52,6 +57,8 @@ export async function selectAdsForElements(
       adKind: ads.kind,
       clickUrl: ads.clickUrl,
       status: ads.status,
+      reviewStatus: ads.reviewStatus,
+      audience: ads.audience,
       startsAt: ads.startsAt,
       endsAt: ads.endsAt,
       creativeId: adCreatives.id,
@@ -70,7 +77,18 @@ export async function selectAdsForElements(
       result[id] = { paused: true, ads: [] }
       continue
     }
-    const fits = live.filter((r) => r.shape === space.shape && (space.formats === 'both' || r.kind === space.formats))
+    const content = contentByElement.get(id) ?? AD_CONTENT_DEFAULT
+    const fits = live.filter(
+      (r) =>
+        r.shape === space.shape &&
+        (space.formats === 'both' || r.kind === space.formats) &&
+        adAllowed(
+          content,
+          r,
+          // the element's own decision wins over its original's
+          decisionFor(el.id, r.adId) ?? (el.clonedFromId ? decisionFor(el.clonedFromId, r.adId) : null),
+        ),
+    )
     const placed = new Set(
       placements.filter((p) => p.elementId === el.id || p.elementId === el.clonedFromId).map((p) => p.adId),
     )

@@ -12,7 +12,7 @@ import { signedSceneHeaders, SCENE_META } from './helpers/dcl-sign.js'
 const NOW = new Date('2026-10-19T12:00:00Z')
 
 async function mkAd(kind: 'house' | 'partner', shape = '1:1', creativeKind: 'image' | 'video' = 'image') {
-  const [ad] = await db.insert(ads).values({ name: 'A', kind, clickUrl: 'https://x.example' }).returning()
+  const [ad] = await db.insert(ads).values({ name: 'A', kind, clickUrl: 'https://x.example', reviewStatus: 'approved', audience: 'family' }).returning()
   const [c] = await db.insert(adCreatives).values({ adId: ad.id, shape, kind: creativeKind, url: `https://cdn.example/${ad.id}` }).returning()
   return { ad, c }
 }

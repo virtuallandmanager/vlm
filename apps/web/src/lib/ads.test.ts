@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { LevelCounts } from '@virvixr/shared'
-import { shapeLabel, isHttpsUrl, clickRate, offImageLabel, adModeHint } from './ads'
+import { VideoSourceType } from '@virvixr/shared'
+import { shapeLabel, isHttpsUrl, clickRate, offImageLabel, adModeHint, contentLabel, reviewBadge, isAdsMode, candidateBadges, adSpaceErrorText, adSpaceRefreshKey } from './ads'
 
 const zero = { scene: 0, screen: 0, look: 0, click: 0 }
 const counts = (screen: number, click: number): LevelCounts => ({ ...zero, screen, click, unverified: { ...zero } })
@@ -53,5 +54,60 @@ describe('adModeHint', () => {
     expect(adModeHint(4)).toBe('Shows ads while no stream is live. House ads fill it unless a partner ad is placed on it.')
     expect(adModeHint(5)).toBe('Plays the playlist with an ad after every video. House ads fill it unless a partner ad is placed on it.')
     expect(adModeHint(1)).toBeNull()
+  })
+})
+
+describe('contentLabel', () => {
+  it('words each owner setting', () => {
+    expect(contentLabel('family')).toBe('Family-friendly only')
+    expect(contentLabel('all')).toBe('Allow all (includes mature ads such as alcohol)')
+    expect(contentLabel('approve')).toBe('Approve each ad')
+  })
+})
+
+describe('reviewBadge', () => {
+  const r = (status: 'pending' | 'approved' | 'rejected', audience: 'family' | 'mature' | null = null) =>
+    ({ status, audience, reason: null, reviewerKind: null, reviewedAt: null })
+  it('words each review state', () => {
+    expect(reviewBadge(r('pending'))).toEqual({ text: 'Awaiting review', tone: 'pending' })
+    expect(reviewBadge(r('approved', 'family'))).toEqual({ text: 'Approved · Family-friendly', tone: 'ok' })
+    expect(reviewBadge(r('approved', 'mature'))).toEqual({ text: 'Approved · Mature', tone: 'ok' })
+    expect(reviewBadge(r('rejected'))).toEqual({ text: 'Rejected', tone: 'bad' })
+  })
+})
+
+describe('isAdsMode', () => {
+  it('is true only for the two ads modes', () => {
+    expect(isAdsMode(VideoSourceType.ADS)).toBe(true)
+    expect(isAdsMode(VideoSourceType.PLAYLIST_ADS)).toBe(true)
+    expect(isAdsMode(VideoSourceType.IMAGE)).toBe(false)
+  })
+})
+
+describe('candidateBadges', () => {
+  it('labels house or partner, then the audience when there is one', () => {
+    expect(candidateBadges({ house: true, audience: 'family' })).toEqual(['House', 'Family-friendly'])
+    expect(candidateBadges({ house: false, audience: 'mature' })).toEqual(['Partner', 'Mature'])
+    expect(candidateBadges({ house: false, audience: null })).toEqual(['Partner'])
+  })
+})
+
+describe('adSpaceErrorText', () => {
+  it('maps known codes to sentences and everything else to a generic one', () => {
+    expect(adSpaceErrorText({ message: 'not_an_ad_space' })).toBe("This element isn't an ad space.")
+    expect(adSpaceErrorText({ message: 'ad_not_a_candidate' })).toBe("That ad can't show in this space any more. Refresh and try again.")
+    expect(adSpaceErrorText({ message: 'content_must_be_family_all_or_approve' })).toBe('Choose one of the three settings.')
+    expect(adSpaceErrorText({ message: 'boom' })).toBe('Something went wrong. Try again.')
+    expect(adSpaceErrorText(undefined)).toBe('Something went wrong. Try again.')
+  })
+})
+
+describe('adSpaceRefreshKey', () => {
+  it('changes with an ad space shape or formats and a screen ad shape or off type', () => {
+    expect(adSpaceRefreshKey({ shape: '1:1', formats: 'both' })).not.toBe(adSpaceRefreshKey({ shape: '16:9', formats: 'both' }))
+    expect(adSpaceRefreshKey({ shape: '1:1', formats: 'both' })).not.toBe(adSpaceRefreshKey({ shape: '1:1', formats: 'image' }))
+    expect(adSpaceRefreshKey({ adShape: '1:1', offType: 4 })).not.toBe(adSpaceRefreshKey({ adShape: '2:5', offType: 4 }))
+    expect(adSpaceRefreshKey({ adShape: '1:1', offType: 4 })).not.toBe(adSpaceRefreshKey({ adShape: '1:1', offType: 5 }))
+    expect(adSpaceRefreshKey({ shape: '1:1', formats: 'both' })).toBe(adSpaceRefreshKey({ shape: '1:1', formats: 'both' }))
   })
 })

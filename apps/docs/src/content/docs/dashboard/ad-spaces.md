@@ -5,7 +5,7 @@ description: Panels in your scene that show ads, how to place them, and what vis
 
 An **ad space** is a flat panel in your scene that shows ads from Virvi. Ads are images or videos. Visitors can click an ad to open its link. Every ad carries a small **Ad** label.
 
-Buying ads, owner payouts and per-space content rules are coming later. For now, ads are set up by Virvi admins.
+Buying ads and owner payouts are coming later. For now, ads are set up by Virvi admins.
 
 ## Adding an ad space
 
@@ -43,6 +43,7 @@ Image ads show for 10 seconds each. Ads in a space take turns.
 The fallback image is what the space shows when it has no ad to show. That includes:
 
 - no ad fits the shape;
+- no ad the space's setting allows is available (for example, nothing approved yet on an Approve each ad space);
 - Virvi can't be reached;
 - a stream is live and the space is video only;
 - a venue booking is running.
@@ -100,11 +101,28 @@ Virvi measures ads at four levels: in the scene, on screen, looked at, and click
 
 House ads pay owners nothing. For now, owners are paid for partner ads manually, using the per-space numbers in the report.
 
+## Who can advertise here
+
+Each ad space has a **Who can advertise here** setting. It decides which approved ads can show:
+
+- **Family-friendly only**: only ads reviewed as safe for all ages.
+- **Allow all**: any approved ad, including mature ones such as alcohol.
+- **Approve each ad**: nothing shows until the owner approves that specific ad.
+
+Virvi reviews every ad first. Each ad is marked family-friendly or mature, or rejected with a reason. Your setting then decides which reviewed ads your space shows.
+
+Only the scene's owner, co-hosts and Virvi admins can change the setting. You find it in the ad space editor, and in video screens set to an ads mode, under **Who can advertise here**.
+
+On a space set to Approve each ad, you approve or decline each ad, house ads included. The list only shows ads Virvi has already approved that fit the space. You can change a decision later. Booking copies share the original space's setting and approvals.
+
+If an ad's link or images change, the ad goes back to Virvi's review before it can show again.
+
 ## For admins
 
 **Admin → Ads** is where ads are made and read.
 
 - **New ad:** give it a name, choose **Partner** or **House**, and set a click URL. The URL must start with `https://`.
+- **Review queue:** a new ad waits in the review queue and shows nowhere until it is approved. Approving needs a **Family-friendly** or **Mature** label. Rejecting needs a reason. Changing an ad's link or creatives sends it back to review. An approved or rejected ad can be reviewed again with **Review again**.
 - **Creatives:** open an ad, pick a shape, and upload an image or video. Add one creative per shape you want to cover. Files that are still processing can't be added yet.
 - **Placements:** partner ads only. Tick the ad spaces and ads-mode screens that should run the ad. A space shows a warning if the ad has no creative in its shape. House ads have no placements.
 - **Pause / Resume:** takes an ad out of rotation and brings it back.

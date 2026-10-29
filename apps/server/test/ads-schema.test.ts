@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { ads, adEvents } from '../src/db/schema.js'
+import { ads, adEvents, adSpaceSettings, adSpaceApprovals, sceneElements } from '../src/db/schema.js'
 import { serializePreset } from '../src/services/scene-serializer.js'
 import { scopesForElementChange } from '../src/auth/permissions.js'
 import { resetDb } from './helpers/db.js'
-import { createUser, createScene, tokenFor, testApp } from './helpers/factories.js'
+import { createUser, createScene, createElement, tokenFor, testApp } from './helpers/factories.js'
 
 describe('ad spaces schema and plumbing', () => {
   beforeEach(async () => { await resetDb() })
@@ -51,5 +51,22 @@ describe('ad spaces schema and plumbing', () => {
     await db.insert(adEvents).values({ ...row, elementId: crypto.randomUUID() }).onConflictDoNothing()
     const rows = await db.select().from(adEvents).where(eq(adEvents.adId, ad.id))
     expect(rows).toHaveLength(2)
+  })
+  it('a new ad defaults to pending review', async () => {
+    const [ad] = await db.insert(ads).values({ name: 'House', kind: 'house', clickUrl: 'https://virvi.io' }).returning()
+    expect(ad.reviewStatus).toBe('pending')
+    expect(ad.audience).toBeNull()
+  })
+
+  it('ad_space_settings and ad_space_approvals go with their element', async () => {
+    const owner = await createUser()
+    const { preset } = await createScene(owner)
+    const el = await createElement(preset.id, { type: 'ad_space' })
+    const [ad] = await db.insert(ads).values({ name: 'House', kind: 'house', clickUrl: 'https://virvi.io' }).returning()
+    await db.insert(adSpaceSettings).values({ elementId: el.id, content: 'family' })
+    await db.insert(adSpaceApprovals).values({ adId: ad.id, elementId: el.id, decision: 'approved' })
+    await db.delete(sceneElements).where(eq(sceneElements.id, el.id))
+    expect(await db.select().from(adSpaceSettings)).toHaveLength(0)
+    expect(await db.select().from(adSpaceApprovals)).toHaveLength(0)
   })
 })
