@@ -6,7 +6,7 @@ import type { AdminAd, AdReport, AdShape, LevelCounts } from '@virvixr/shared'
 import { useAuth } from '@/lib/auth'
 import { useApi, fileToBase64, mediaContentType, uploadErrorMessage } from '@/lib/api'
 import type { AdminAdSpace } from '@/lib/api'
-import { shapeLabel, isHttpsUrl, clickRate } from '@/lib/ads'
+import { shapeLabel, isHttpsUrl, clickRate, contentLabel, reviewBadge } from '@/lib/ads'
 import { PageHeader, PrimaryButton, Skeleton, tableHeadBand } from '@/components/ui'
 import { PlusIcon } from '@/components/icons'
 
@@ -14,9 +14,14 @@ const ERRORS: Record<string, string> = {
   click_url_must_be_https: 'The click URL must start with https://',
   house_ads_go_everywhere: 'House ads run everywhere, so they have no placements.',
   media_not_ready: 'That file is still processing. Try again in a moment.',
+  ad_has_no_creatives: 'Add at least one creative before approving this ad.',
+  reason_required: 'Give a reason for rejecting this ad.',
+  audience_required: 'Choose who this ad is suitable for.',
   elements_must_be_ad_spaces: 'Ads can only be placed on ad spaces and on screens in an ads mode.',
 }
 const errorText = (e: any): string => ERRORS[e?.message] ?? e?.message ?? 'Something went wrong'
+
+const TONES = { pending: 'text-yellow-400', ok: 'text-green-400', bad: 'text-red-400' } as const
 
 const fmt = new Intl.NumberFormat('en-US')
 
@@ -29,6 +34,7 @@ export default function AdminAdsPage() {
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
+  const [backInReview, setBackInReview] = useState<Set<string>>(() => new Set())
 
   useEffect(() => {
     if (user?.role !== 'admin') return
@@ -36,7 +42,32 @@ export default function AdminAdsPage() {
     api.getAdminAdSpaces().then((d) => setSpaces(d.spaces), (e) => setError(errorText(e)))
   }, [user?.role])
 
-  const replaceAd = (ad: AdminAd) => setAds((prev) => prev?.map((a) => (a.id === ad.id ? ad : a)) ?? null)
+  const markBackInReview = (id: string, prevStatus: AdminAd['review']['status'] | undefined, nextStatus: AdminAd['review']['status']) =>
+    setBackInReview((prev) => {
+      const next = new Set(prev)
+      if (nextStatus !== 'pending') next.delete(id)
+      else if (prevStatus && prevStatus !== 'pending') next.add(id)
+      return next
+    })
+
+  const replaceAd = (ad: AdminAd) => {
+    markBackInReview(ad.id, ads?.find((a) => a.id === ad.id)?.review.status, ad.review.status)
+    setAds((prev) => prev?.map((a) => (a.id === ad.id ? ad : a)) ?? null)
+  }
+
+  /** A creative edit returns no ad, so reload the list to pick up the server's review status. */
+  const reloadAfterEdit = async (id: string, prevStatus: AdminAd['review']['status']) => {
+    try {
+      const d = await api.getAdminAds()
+      const fresh = d.ads.find((a) => a.id === id)
+      if (fresh) markBackInReview(id, prevStatus, fresh.review.status)
+      setAds(d.ads)
+    } catch (e) {
+      setError(errorText(e))
+    }
+  }
+
+  const pending = ads?.filter((a) => a.review.status === 'pending') ?? []
 
   if (user?.role !== 'admin') return <p className="text-gray-400">Admin access required.</p>
 
@@ -56,6 +87,7 @@ export default function AdminAdsPage() {
           onCancel={() => setCreating(false)}
         />
       )}
+      {ads && <ReviewQueue ads={pending} onReviewed={replaceAd} />}
       {!ads ? (
         <Skeleton rows={2} className="h-12" />
       ) : ads.length === 0 ? (
@@ -63,11 +95,92 @@ export default function AdminAdsPage() {
       ) : (
         <div className="space-y-3">
           {ads.map((ad) => (
-            <AdCard key={ad.id} ad={ad} spaces={spaces} open={openId === ad.id}
+            <AdCard key={ad.id} ad={ad} spaces={spaces} open={openId === ad.id} backInReview={backInReview.has(ad.id)} onEdited={reloadAfterEdit}
               onToggle={() => setOpenId(openId === ad.id ? null : ad.id)} onChange={replaceAd} />
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function ReviewQueue({ ads, onReviewed }: { ads: AdminAd[]; onReviewed: (ad: AdminAd) => void }) {
+  return (
+    <section className="mb-6 space-y-3">
+      <h2 className="text-sm font-medium text-gray-300">Review queue ({ads.length})</h2>
+      {ads.length === 0 ? (
+        <p className="text-sm text-gray-500">Nothing is waiting for review.</p>
+      ) : (
+        ads.map((ad) => <ReviewItem key={ad.id} ad={ad} onReviewed={onReviewed} />)
+      )}
+    </section>
+  )
+}
+
+function ReviewItem({ ad, onReviewed }: { ad: AdminAd; onReviewed: (ad: AdminAd) => void }) {
+  const api = useApi()
+  const [rejecting, setRejecting] = useState(false)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async (body: Parameters<typeof api.reviewAdminAd>[1]) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const { ad: next } = await api.reviewAdminAd(ad.id, body)
+      onReviewed(next)
+    } catch (e: any) {
+      setError(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const btn = 'rounded bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600 disabled:opacity-50'
+  return (
+    <div className="space-y-3 rounded-lg border border-gray-800 bg-gray-900 p-4">
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="truncate font-semibold">{ad.name}</span>
+          <span className="rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-400">{ad.kind === 'house' ? 'House' : 'Partner'}</span>
+        </div>
+        <a href={ad.clickUrl} target="_blank" rel="noopener noreferrer" className="block truncate text-xs text-blue-400 hover:text-blue-300">{ad.clickUrl}</a>
+      </div>
+      {ad.creatives.length === 0 ? (
+        <p className="text-sm text-gray-500">No creatives yet.</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {ad.creatives.map((c) => (
+            <div key={c.id} className="space-y-1 rounded-lg border border-gray-800 bg-gray-950 p-2">
+              <div className="flex h-24 items-center justify-center overflow-hidden rounded bg-gray-800">
+                {c.kind === 'image'
+                  ? <img src={c.url} alt={`${ad.name} ${c.shape}`} className="max-h-full max-w-full object-contain" />
+                  : <video src={c.url} controls muted preload="metadata" className="max-h-full max-w-full object-contain" />}
+              </div>
+              <p className="text-xs text-gray-400">{shapeLabel(c.shape)} · {c.kind}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <button disabled={busy} onClick={() => submit({ decision: 'approved', audience: 'family' })} className={btn}>Approve as Family-friendly</button>
+        <button disabled={busy} onClick={() => submit({ decision: 'approved', audience: 'mature' })} className={btn}>Approve as Mature</button>
+        <button disabled={busy} onClick={() => setRejecting((v) => !v)} className={btn}>Reject</button>
+      </div>
+      {rejecting && (
+        <div className="space-y-2">
+          <label className="flex flex-col gap-1 text-xs text-gray-500">
+            Reason for rejecting (required)
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500}
+              className="rounded bg-gray-950 px-3 py-1.5 text-sm text-white outline-none focus:border-blue-400 border border-gray-800" />
+          </label>
+          <button disabled={busy || reason.trim() === ''} onClick={() => submit({ decision: 'rejected', reason: reason.trim() })} className={btn}>
+            {busy ? 'Rejecting…' : 'Confirm reject'}
+          </button>
+        </div>
+      )}
+      {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   )
 }
@@ -130,8 +243,10 @@ function NewAdForm({ onCreated, onCancel }: { onCreated: (ad: AdminAd) => void; 
   )
 }
 
-function AdCard({ ad, spaces, open, onToggle, onChange }: {
+function AdCard({ ad, spaces, open, backInReview, onEdited, onToggle, onChange }: {
   ad: AdminAd
+  backInReview: boolean
+  onEdited: (id: string, prevStatus: AdminAd['review']['status']) => void
   spaces: AdminAdSpace[]
   open: boolean
   onToggle: () => void
@@ -141,6 +256,7 @@ function AdCard({ ad, spaces, open, onToggle, onChange }: {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const paused = ad.status === 'paused'
+  const badge = reviewBadge(ad.review)
 
   const toggleStatus = async () => {
     setBusy(true)
@@ -163,6 +279,8 @@ function AdCard({ ad, spaces, open, onToggle, onChange }: {
             <span className="truncate font-semibold">{ad.name}</span>
             <span className="rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-400">{ad.kind === 'house' ? 'House' : 'Partner'}</span>
             {paused && <span className="rounded bg-gray-800 px-2 py-0.5 text-xs text-yellow-400">Paused</span>}
+            <span className={`rounded bg-gray-800 px-2 py-0.5 text-xs ${TONES[badge.tone]}`}>{badge.text}</span>
+            {backInReview && <span className="rounded bg-gray-800 px-2 py-0.5 text-xs text-yellow-400">Back in review</span>}
           </div>
           <div className="mt-1 truncate text-xs text-gray-500">
             {ad.creatives.length} creative{ad.creatives.length !== 1 ? 's' : ''}
@@ -174,10 +292,11 @@ function AdCard({ ad, spaces, open, onToggle, onChange }: {
           {paused ? 'Resume' : 'Pause'}
         </button>
       </div>
+      {ad.review.status === 'rejected' && ad.review.reason && <p className="px-4 pb-3 text-sm text-red-400">Rejected: {ad.review.reason}</p>}
       {error && <p className="px-4 pb-3 text-sm text-red-400">{error}</p>}
       {open && (
         <div className="space-y-6 border-t border-gray-800 p-4">
-          <Creatives ad={ad} onChange={onChange} />
+          <Creatives ad={ad} onChange={onChange} onEdited={() => onEdited(ad.id, ad.review.status)} />
           {ad.kind === 'partner' && <Placements ad={ad} spaces={spaces} onChange={onChange} />}
           <Report adId={ad.id} />
         </div>
@@ -186,7 +305,7 @@ function AdCard({ ad, spaces, open, onToggle, onChange }: {
   )
 }
 
-function Creatives({ ad, onChange }: { ad: AdminAd; onChange: (ad: AdminAd) => void }) {
+function Creatives({ ad, onChange, onEdited }: { ad: AdminAd; onChange: (ad: AdminAd) => void; onEdited: () => void }) {
   const api = useApi()
   const [shape, setShape] = useState<AdShape>('16:9')
   const [uploading, setUploading] = useState(false)
@@ -202,6 +321,7 @@ function Creatives({ ad, onChange }: { ad: AdminAd; onChange: (ad: AdminAd) => v
       const { asset } = await api.uploadMedia(file.name, mediaContentType(file), await fileToBase64(file))
       const { creative } = await api.addAdminAdCreative(ad.id, asset.id, shape)
       onChange({ ...ad, creatives: [...ad.creatives, creative] })
+      onEdited()
     } catch (err: any) {
       setError(ERRORS[err?.message] ?? uploadErrorMessage(err))
     } finally {
@@ -215,6 +335,7 @@ function Creatives({ ad, onChange }: { ad: AdminAd; onChange: (ad: AdminAd) => v
     try {
       await api.deleteAdminAdCreative(ad.id, creativeId)
       onChange({ ...ad, creatives: ad.creatives.filter((c) => c.id !== creativeId) })
+      onEdited()
     } catch (err: any) {
       setError(errorText(err))
     }
@@ -305,8 +426,9 @@ function Placements({ ad, spaces, onChange }: { ad: AdminAd; spaces: AdminAdSpac
                   <input type="checkbox" checked={selected.has(s.elementId)} onChange={() => toggle(s.elementId)} className="accent-blue-500" />
                   <span>{s.name}</span>
                   <span className="text-xs text-gray-500">
-                    {s.type === 'video' ? 'Screen' : 'Ad space'} · {s.shape ? shapeLabel(s.shape) : 'Unknown shape'}
+                    {s.type === 'video' ? 'Screen' : 'Ad space'} · {s.shape ? shapeLabel(s.shape) : 'Unknown shape'} · {contentLabel(s.content)}
                   </span>
+                  {ad.review.audience === 'mature' && s.content === 'family' && <span className="text-xs text-yellow-400">Won't show: family-friendly space</span>}
                   {s.shape && !covered.has(s.shape) && <span className="text-xs text-yellow-400">no creative for this shape</span>}
                 </label>
               ))}

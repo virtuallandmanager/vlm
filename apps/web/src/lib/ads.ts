@@ -1,5 +1,5 @@
 import { VideoSourceType } from '@virvixr/shared'
-import type { AdShape, LevelCounts } from '@virvixr/shared'
+import type { AdContent, AdShape, AdminAd, LevelCounts } from '@virvixr/shared'
 
 const SHAPE_LABELS: Record<AdShape, string> = {
   '16:9': '16:9 landscape',
@@ -40,4 +40,25 @@ export function adModeHint(offType: number): string | null {
   if (offType === VideoSourceType.ADS) return `Shows ads while no stream is live. ${AD_MODES_HOUSE}`
   if (offType === VideoSourceType.PLAYLIST_ADS) return `Plays the playlist with an ad after every video. ${AD_MODES_HOUSE}`
   return null
+}
+
+/** True when a video screen's off type is one of the ads modes. */
+export function isAdsMode(offType: number): boolean {
+  return offType === VideoSourceType.ADS || offType === VideoSourceType.PLAYLIST_ADS
+}
+
+const CONTENT_LABELS: Record<AdContent, string> = {
+  family: 'Family-friendly only',
+  all: 'Allow all (includes mature ads such as alcohol)',
+  approve: 'Approve each ad',
+}
+
+export function contentLabel(c: AdContent): string {
+  return CONTENT_LABELS[c]
+}
+
+export function reviewBadge(r: AdminAd['review']): { text: string; tone: 'pending' | 'ok' | 'bad' } {
+  if (r.status === 'rejected') return { text: 'Rejected', tone: 'bad' }
+  if (r.status === 'approved') return { text: r.audience === 'mature' ? 'Approved · Mature' : 'Approved · Family-friendly', tone: 'ok' }
+  return { text: 'Awaiting review', tone: 'pending' }
 }

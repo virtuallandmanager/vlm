@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { LevelCounts } from '@virvixr/shared'
-import { shapeLabel, isHttpsUrl, clickRate, offImageLabel, adModeHint } from './ads'
+import { VideoSourceType } from '@virvixr/shared'
+import { shapeLabel, isHttpsUrl, clickRate, offImageLabel, adModeHint, contentLabel, reviewBadge, isAdsMode } from './ads'
 
 const zero = { scene: 0, screen: 0, look: 0, click: 0 }
 const counts = (screen: number, click: number): LevelCounts => ({ ...zero, screen, click, unverified: { ...zero } })
@@ -53,5 +54,32 @@ describe('adModeHint', () => {
     expect(adModeHint(4)).toBe('Shows ads while no stream is live. House ads fill it unless a partner ad is placed on it.')
     expect(adModeHint(5)).toBe('Plays the playlist with an ad after every video. House ads fill it unless a partner ad is placed on it.')
     expect(adModeHint(1)).toBeNull()
+  })
+})
+
+describe('contentLabel', () => {
+  it('words each owner setting', () => {
+    expect(contentLabel('family')).toBe('Family-friendly only')
+    expect(contentLabel('all')).toBe('Allow all (includes mature ads such as alcohol)')
+    expect(contentLabel('approve')).toBe('Approve each ad')
+  })
+})
+
+describe('reviewBadge', () => {
+  const r = (status: 'pending' | 'approved' | 'rejected', audience: 'family' | 'mature' | null = null) =>
+    ({ status, audience, reason: null, reviewerKind: null, reviewedAt: null })
+  it('words each review state', () => {
+    expect(reviewBadge(r('pending'))).toEqual({ text: 'Awaiting review', tone: 'pending' })
+    expect(reviewBadge(r('approved', 'family'))).toEqual({ text: 'Approved · Family-friendly', tone: 'ok' })
+    expect(reviewBadge(r('approved', 'mature'))).toEqual({ text: 'Approved · Mature', tone: 'ok' })
+    expect(reviewBadge(r('rejected'))).toEqual({ text: 'Rejected', tone: 'bad' })
+  })
+})
+
+describe('isAdsMode', () => {
+  it('is true only for the two ads modes', () => {
+    expect(isAdsMode(VideoSourceType.ADS)).toBe(true)
+    expect(isAdsMode(VideoSourceType.PLAYLIST_ADS)).toBe(true)
+    expect(isAdsMode(VideoSourceType.IMAGE)).toBe(false)
   })
 })
