@@ -24,9 +24,12 @@ cleanup() {  # destroy takes the machine's id, not its name
 }
 trap cleanup EXIT
 
+# The CLI stops waiting for "started" after about a minute, which a fresh host pulling the 1.3 GB image can pass; the
+# machine keeps starting, so carry on and follow its logs
 fly machine run "$image" -a "$app" --name "$name" --region iad --vm-size performance-4x --restart no --detach \
   "${files[@]}" -- bash -c 'if bash /opt/e2e/network_checks.sh && python3 /opt/e2e/real_prompt.py --agent codex \
-    --out /tmp/out; then echo E2E-""PASSED; else echo E2E-""FAILED; fi'
+    --out /tmp/out; then echo E2E-""PASSED; else echo E2E-""FAILED; fi' \
+  || [ -n "$(machine_id)" ] || exit 1
 
 # Follow the logs until the run says how it ended (the quotes keep Fly's echo of the command from matching), or the machine's command exits without saying (a failed
 # entrypoint)
