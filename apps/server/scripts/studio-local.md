@@ -47,3 +47,29 @@ agents' calls to Anthropic or OpenAI, which spend real money (about $0.15 for on
 
    Then `GET /api/studio/designs/<designId>` shows the reply, the hat's revision and its render URLs (swap
    `host.docker.internal` for `localhost` to open them from your machine). The `virvi_studio` room carries the progress.
+
+## Looking at the page without an agent
+
+`scripts/studio-seed-page.ts` fills the local database and file store with designs to look at the dashboard's
+Design Studio page:
+- a wearable set: a hat with a spin, two paid revisions (one to download, one to report) and a third to finalize;
+  sneakers failing the checker; a conversation ending in a slot proposal, after a stop at the cost limit;
+- an emote that plays;
+- an empty design.
+
+No agent runs and nothing is spent.
+
+1. Steps 1 and 2 above. For the dashboard on `next dev`, start the server with `PUBLIC_URL=http://localhost:3010
+   CORS_ORIGINS=http://localhost:3000`. Add a dummy `STRIPE_SECRET_KEY` to see the payment buttons refuse with
+   "Stripe didn’t answer".
+2. The seed:
+
+   ```bash
+   cd apps/server && DATABASE_URL=postgres://vlm:vlm_dev@localhost:5432/virvi_studio_local JWT_SECRET=studio-local-secret \
+     STUDIO_S3_URI=file:///tmp/studio-store PUBLIC_URL=http://localhost:3010 VIRVI_MODE=cloud \
+     pnpm exec tsx scripts/studio-seed-page.ts
+   ```
+
+   It prints `{accessToken, session, designs: {wearable, emote, empty}}`. Each run adds three more designs.
+3. The dashboard: `cd apps/web && pnpm dev`. In the browser console on `http://localhost:3000`, sign in with
+   `localStorage.setItem('virvi_auth', JSON.stringify(<session>))` and reload, then open **Design Studio**.
