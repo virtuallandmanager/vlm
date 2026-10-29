@@ -106,13 +106,13 @@ Each ad space has a **Who can advertise here** setting. It decides which approve
 
 - **Family-friendly only**: only ads reviewed as safe for all ages.
 - **Allow all**: any approved ad, including mature ones such as alcohol.
-- **Approve only**: nothing shows until the owner approves that specific ad.
+- **Approve each ad**: nothing shows until the owner approves that specific ad.
 
 Virvi reviews every ad first. Each ad is marked family-friendly or mature, or rejected with a reason. Your setting then decides which reviewed ads your space shows.
 
 Only the scene's owner, co-hosts and Virvi admins can change the setting. You find it in the ad space editor, and in video screens set to an ads mode, under **Who can advertise here**.
 
-On an approve-only space, you approve or decline each ad, house ads included. You can change a decision later. Booking copies of a space follow the original space's setting and approvals, so you manage approvals on the original.
+On a space set to Approve each ad, you approve or decline each ad, house ads included. The list only shows ads Virvi has already approved that fit the space. You can change a decision later. Booking copies share the original space's setting and approvals.
 
 If an ad's link or images change, the ad goes back to Virvi's review before it can show again.
 
