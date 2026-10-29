@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  checkoutBody, composerState, revisionActions, dialogTotal, finalizeStrip, frameAt, paymentBanner, initialTicks, nextPoll, pieceTabStatus, progressFor, slotSelection, stageState, viewKey,
+  checkoutBody, composerState, revisionActions, viewButtonRendering, dialogTotal, finalizeStrip, frameAt, paymentBanner, initialTicks, nextPoll, pieceTabStatus, progressFor, slotSelection, stageState, viewKey,
   type FinalizedRevision, type Quote, type QuoteLine, type StudioDetail, type StudioPiece, type StudioEvent, type StudioProposal,
 } from './studio'
 import { AGENTS, designBadge, designIdFromPath, formatCents, refreshDue, refusalMessage, relativeTime, untilReset, usageLine, type StudioDesign, type StudioUsage } from './studio'
@@ -372,5 +372,20 @@ describe('revisionActions', () => {
   it('shows a report already made', () => {
     expect(revisionActions(f({ report: { status: 'refunded', createdAt: NOW.toISOString() }, reportableUntil: null }), NOW).report).toBe('done')
     expect(revisionActions(f({ amountCents: 0, report: { status: 'waived', createdAt: NOW.toISOString() }, reportableUntil: null }), NOW).report).toBe('done')
+  })
+})
+
+describe('viewButtonRendering', () => {
+  const dance = { bodyShape: 'male', outfit: 'default', emote: 'dance' } as const
+  const rendering = (v: { emote: string | null }) => v.emote === 'dance'
+  it('marks the button that asked for the view, not the selected buttons it shares the view with', () => {
+    expect(viewButtonRendering('emote', 'dance', dance, 'emote', rendering)).toBe(true)
+    expect(viewButtonRendering('bodyShape', 'male', dance, 'emote', rendering)).toBe(false)
+    expect(viewButtonRendering('outfit', 'default', dance, 'emote', rendering)).toBe(false)
+  })
+  it('marks an unselected button whose view is rendering', () => {
+    const spin = { ...dance, emote: null }
+    expect(viewButtonRendering('emote', 'dance', spin, 'bodyShape', rendering)).toBe(true)
+    expect(viewButtonRendering('emote', 'wave', spin, 'emote', rendering)).toBe(false)
   })
 })

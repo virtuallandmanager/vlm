@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useApi } from '@/lib/api'
 import { Badge, type Tone } from '@/components/ui'
 import {
-  categoryLabel, pieceTabStatus, refusalMessage, relativeTime, stageState, viewKey,
+  categoryLabel, pieceTabStatus, refusalMessage, relativeTime, stageState, viewButtonRendering, viewKey,
   type RenderView, type StudioDetail, type StudioPiece,
 } from '@/lib/studio'
 import SpinStage from './SpinStage'
@@ -36,6 +36,7 @@ export default function Preview({ designId, detail, category, onSelect, onChange
   const [view, setView] = useState<RenderView>({ bodyShape: 'male', outfit: 'default', emote: null })
   const [pending, setPending] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
+  const [lastPicked, setLastPicked] = useState<keyof RenderView | null>(null)
 
   const piece = detail.pieces.find((p) => p.category === category) ?? detail.pieces[0]
   const key = viewKey(kind, view)
@@ -60,11 +61,12 @@ export default function Preview({ designId, detail, category, onSelect, onChange
     }
   }
 
-  const isPending = (v: RenderView) => !!piece && (pending.has(viewKey(kind, v)) || piece.renders[viewKey(kind, v)]?.status === 'queued')
-  const button = (label: string, selected: boolean, next: RenderView) => (
-    <button key={label} type="button" aria-pressed={selected} onClick={() => pick(next)} disabled={!piece}
-      className={`rounded px-2.5 py-1 text-sm disabled:opacity-40 ${selected ? 'bg-white/[0.08] text-white' : 'text-gray-400 hover:text-white'}`}>
-      {label}{isPending(next) ? ' · Rendering…' : ''}
+  const rendering = (v: RenderView) => !!piece && (pending.has(viewKey(kind, v)) || piece.renders[viewKey(kind, v)]?.status === 'queued')
+  const button = <K extends keyof RenderView>(label: string, dim: K, value: RenderView[K]) => (
+    <button key={label} type="button" aria-pressed={view[dim] === value} disabled={!piece}
+      onClick={() => { setLastPicked(dim); pick({ ...view, [dim]: value }) }}
+      className={`rounded px-2.5 py-1 text-sm disabled:opacity-40 ${view[dim] === value ? 'bg-white/[0.08] text-white' : 'text-gray-400 hover:text-white'}`}>
+      {label}{viewButtonRendering(dim, value, view, lastPicked, rendering) ? ' · Rendering…' : ''}
     </button>
   )
 
@@ -110,13 +112,13 @@ export default function Preview({ designId, detail, category, onSelect, onChange
           )}
           {kind === 'wearable' && (
             <div className="flex flex-wrap gap-1" role="group" aria-label="Emote">
-              {EMOTES.map(([emote, label]) => button(label, view.emote === emote, { ...view, emote }))}
+              {EMOTES.map(([emote, label]) => button(label, 'emote', emote))}
             </div>
           )}
           <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Avatar">
-            {SHAPES.map(([bodyShape, label]) => button(label, view.bodyShape === bodyShape, { ...view, bodyShape }))}
+            {SHAPES.map(([bodyShape, label]) => button(label, 'bodyShape', bodyShape))}
             <span className="mx-1 h-4 w-px bg-gray-800" aria-hidden="true" />
-            {OUTFITS.map(([outfit, label]) => button(label, view.outfit === outfit, { ...view, outfit }))}
+            {OUTFITS.map(([outfit, label]) => button(label, 'outfit', outfit))}
           </div>
           {error && <p className="text-sm text-amber-300" role="alert">{error}</p>}
         </div>

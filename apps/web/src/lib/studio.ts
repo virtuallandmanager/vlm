@@ -340,3 +340,15 @@ export function revisionActions(f: FinalizedRevision, now: Date): {
         : 'closed'
   return { download: f.status === 'ready', retry: f.status === 'failed', packaging: f.status === 'packaging', report }
 }
+
+/**
+ * Whether a view button says "Rendering…": its view is rendering, and it is either the button last picked or a view
+ * other than the one shown. The shown view's other selected buttons (Male, Default under Dance) share its key but
+ * didn't ask for it.
+ */
+export function viewButtonRendering<K extends keyof RenderView>(
+  dim: K, value: RenderView[K], current: RenderView, lastPicked: keyof RenderView | null, rendering: (v: RenderView) => boolean,
+): boolean {
+  const next = { ...current, [dim]: value }
+  return rendering(next) && (dim === lastPicked || current[dim] !== value)
+}
