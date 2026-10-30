@@ -25,7 +25,8 @@ data class RoomScanUi(
 /**
  * The **Scan this room** panel: [open] reads the headset's rooms ([read]) and shows their outline with a default name;
  * [upload] sends them as a layout ([RoomScanMapper]) with the AR pass of the space being built ([spaceId]). With no
- * rooms set up it offers [setUpSpace] (the system's Space Setup), whose `done` reopens the panel. Main thread only.
+ * rooms set up it offers [setUpSpace] (the system's Space Setup). Space Setup pauses the app, which closes the panel,
+ * so the person taps **Scan this room** again afterwards; a `done` for a closed panel is dropped. Main thread only.
  */
 class RoomScanFlow(
     private val scope: CoroutineScope,
@@ -90,7 +91,10 @@ class RoomScanFlow(
     }
   }
 
-  /** Starts the system's Space Setup; the panel opens again (reading the new rooms) when it's done. */
+  /**
+   * Starts the system's Space Setup. On the headset it pauses the app and the panel closes, so its `done` is dropped
+   * and the person opens **Scan this room** again; only a panel still open when it's done reads the new rooms.
+   */
   fun setUpSpace() {
     if (!ui.open) return
     val g = generation

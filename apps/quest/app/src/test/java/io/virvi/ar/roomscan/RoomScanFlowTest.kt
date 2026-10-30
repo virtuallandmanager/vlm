@@ -24,6 +24,9 @@ class RoomScanFlowTest {
   private var mapFails = false
   private val uploads = ArrayList<Triple<String, String, JsonObject>>()
   private var setUps = 0
+  /** When true, Space Setup's `done` is held here (the activity paused meanwhile) instead of called at once. */
+  private var holdSetUp = false
+  private var setUpDone: (() -> Unit)? = null
 
   private fun room(id: String) =
       ScanRoom(id, null, ScanPose(Vec3(0.0, 0.0, 0.0), 0.0), listOf(0f to 0f, 1f to 0f, 1f to 1f), 0f, 2.5f, emptyList(), emptyList(), emptyList())
@@ -39,7 +42,7 @@ class RoomScanFlowTest {
           spaceId = { "sp1" },
           setUpSpace = { done ->
             setUps++
-            done()
+            if (holdSetUp) setUpDone = done else done()
           },
           show = { ui = it },
           map = { if (mapFails) error("bad reading") else RoomScanMapper.toLayoutJson(it) },
@@ -101,15 +104,32 @@ class RoomScanFlowTest {
   }
 
   @Test
-  fun `no rooms offers Space Setup, and opens again once it's done`() {
+  fun `no rooms offers Space Setup, which closes the panel, and Scan this room is tapped again`() {
     rooms = emptyList()
     flow.open()
     assertTrue(ui.noRooms)
     assertEquals(RoomScanCopy.NO_ROOMS, ui.status)
     assertFalse(ui.canUpload)
-    rooms = listOf(room("a"))
+    holdSetUp = true
     flow.setUpSpace()
     assertEquals(1, setUps)
+    // Space Setup pauses the app; the HUD goes and closes the panel before Space Setup is done
+    flow.close()
+    rooms = listOf(room("a"))
+    setUpDone!!()
+    assertFalse(ui.open) // the late done is dropped: nothing reopens by itself
+    assertNull(ui.status)
+    flow.open()
+    assertFalse(ui.noRooms)
+    assertTrue(ui.canUpload)
+  }
+
+  @Test
+  fun `if the panel is still open when Space Setup is done, it shows the new rooms`() {
+    rooms = emptyList()
+    flow.open()
+    rooms = listOf(room("a"))
+    flow.setUpSpace()
     assertFalse(ui.noRooms)
     assertTrue(ui.canUpload)
   }

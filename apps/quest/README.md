@@ -340,6 +340,6 @@ Also worth a look on the way: the HUD and the Align panel can be grabbed and mov
 The layout is read from MRUK in the app's world frame (metres, Y up) and uploaded as it is; the server places it on a plot. Unverified on device.
 
 1. Pair as **Personal headset** and start building. The Layout tab has **Scan this room**. (Paired as shared, it isn't there.)
-2. With no rooms in Space Setup: **Scan this room** says "No rooms are set up on this headset yet"; **Set up my space** opens Space Setup, and finishing it reopens the panel with the new outline (if builder mode had to place the scene again after Space Setup, tap **Scan this room** again).
+2. With no rooms in Space Setup: **Scan this room** says "No rooms are set up on this headset yet"; **Set up my space** opens Space Setup (the panel closes while it runs). After finishing it, tap **Scan this room** again: it shows the new outline.
 3. **Scan this room** shows each room's outline from above (forward is up) and the name "My room" (one room) or "My home" (several). **Upload** says it's uploaded.
 4. On virvi.io, start a room set from the scan in the wizard: the picker lists it, with the right size (measure a wall), doors and windows on the right walls, and furniture where it is.
