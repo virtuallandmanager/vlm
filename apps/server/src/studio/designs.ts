@@ -179,6 +179,7 @@ export async function queuePrompt(
           limits: PROMPT_LIMITS,
           render: null,
           uploads: await uploadPaths(d.id, tx),
+          check: counted, // the user's own words; Continue and fixing the checks are the server's
         },
         counted,
         countedDay: r.day,
