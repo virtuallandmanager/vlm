@@ -1,6 +1,6 @@
-import { and, desc, eq, gt, max } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, max, ne } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { studioFlags, studioScopeEvents, users } from '../db/schema.js'
+import { studioFlags, studioPauses, studioScopeEvents, users } from '../db/schema.js'
 import { config } from '../config.js'
 import { sendEmail } from '../services/email.js'
 import { promptStatus, type Exec } from './quota.js'
@@ -78,4 +78,48 @@ export async function maybeFlag(userId: string, now: Date): Promise<'opened' | n
     <ul>${latest}</ul>
     <p><a href="${config.publicUrl}/admin/studio">Review it on the Studio flags page</a>: dismiss it, or pause their studio access.</p>`)
   return 'opened'
+}
+
+export async function isPaused(userId: string): Promise<boolean> {
+  const [p] = await db.select({ userId: studioPauses.userId }).from(studioPauses).where(eq(studioPauses.userId, userId))
+  return !!p
+}
+
+export async function pauseUser(userId: string, adminId: string, now: Date): Promise<boolean> {
+  const [u] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId))
+  if (!u) return false
+  await db.insert(studioPauses).values({ userId, pausedAt: now, pausedBy: adminId }).onConflictDoNothing()
+  return true
+}
+
+export async function resumeUser(userId: string): Promise<void> {
+  await db.delete(studioPauses).where(eq(studioPauses.userId, userId))
+}
+
+/** Closes an open flag; false when there is none by that id. */
+export async function dismissFlag(flagId: string, adminId: string, now: Date): Promise<boolean> {
+  const [f] = await db.update(studioFlags).set({ status: 'dismissed', closedAt: now, closedBy: adminId })
+    .where(and(eq(studioFlags.id, flagId), eq(studioFlags.status, 'open'))).returning({ id: studioFlags.id })
+  return !!f
+}
+
+/** Flags for the admin page, newest first, each with its account and its latest turn-downs. */
+export async function listFlags(status: 'open' | 'closed', now: Date) {
+  const rows = await db.select({ f: studioFlags, email: users.email }).from(studioFlags)
+    .innerJoin(users, eq(users.id, studioFlags.userId))
+    .where(status === 'open' ? eq(studioFlags.status, 'open') : ne(studioFlags.status, 'open'))
+    .orderBy(desc(studioFlags.openedAt)).limit(200)
+  const ids = [...new Set(rows.map((r) => r.f.userId))]
+  const paused = new Set(ids.length ? (await db.select().from(studioPauses).where(inArray(studioPauses.userId, ids))).map((p) => p.userId) : [])
+  return Promise.all(rows.map(async ({ f, email }) => {
+    const events = await db.select().from(studioScopeEvents)
+      .where(eq(studioScopeEvents.userId, f.userId))
+      .orderBy(desc(studioScopeEvents.createdAt)).limit(20)
+    return {
+      id: f.id, status: f.status, openedAt: f.openedAt, closedAt: f.closedAt,
+      user: { id: f.userId, email, plan: (await promptStatus(f.userId, now)).plan },
+      paused: paused.has(f.userId),
+      events: events.map((e) => ({ by: e.by, category: e.category, note: e.note, message: e.message, designId: e.designId, createdAt: e.createdAt })),
+    }
+  }))
 }

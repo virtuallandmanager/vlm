@@ -9,6 +9,7 @@ import { getStudioStore, jobFileKey, uploadKey } from '../studio/store.js'
 import { verifyRenderFrame, framePath } from '../studio/render-urls.js'
 import { quoteFinalize, QuoteError } from '../studio/pricing.js'
 import { addUpload, deleteUpload, findUpload, UploadError, UPLOAD_LIMITS } from '../studio/uploads.js'
+import { isPaused } from '../studio/scope.js'
 import { createFinalizeCheckout, createTopupCheckout, entitlementFor, queueFinalize, reportMistake, PaymentError } from '../studio/payments.js'
 import {
   BASE_EMOTES, BODY_SHAPES, OUTFITS, WEARABLE_CATEGORIES,
@@ -62,18 +63,26 @@ export function quoteRefusal(reply: FastifyReply, err: QuoteError) {
   return reply.status(err.code === 'unknown_piece' ? 400 : 409).send({ error: err.code, code: err.code, categories: err.categories })
 }
 
+/** New work: refused for an account whose studio access the owner paused (it can still finalize and download). */
+async function notPaused(request: FastifyRequest, reply: FastifyReply) {
+  if (await isPaused(request.user.id)) {
+    return reply.status(403).send({ error: 'Your studio access is paused', code: 'studio_paused' })
+  }
+}
+
 async function openLimit(userId: string) {
   return (await getSubscription(userId)).limits.studioOpenDesigns
 }
 
 export default async function studioRoutes(app: FastifyInstance) {
   const auth = { preHandler: [authenticate, studioOn] }
+  const work = { preHandler: [authenticate, studioOn, notPaused] }
 
   app.get('/api/studio/usage', auth, async (request) => {
-    return usage(request.user.id, await openLimit(request.user.id), new Date())
+    return { ...await usage(request.user.id, await openLimit(request.user.id), new Date()), paused: await isPaused(request.user.id) }
   })
 
-  app.post('/api/studio/designs', auth, async (request, reply) => {
+  app.post('/api/studio/designs', work, async (request, reply) => {
     const b = (request.body ?? {}) as { kind?: unknown; agent?: unknown; name?: unknown }
     const err = agentError(b.agent)
     if (err) return reply.status(400).send({ error: err })
@@ -134,7 +143,7 @@ export default async function studioRoutes(app: FastifyInstance) {
     return publicDesign(updated)
   })
 
-  app.post('/api/studio/designs/:id/prompts', auth, async (request, reply) => {
+  app.post('/api/studio/designs/:id/prompts', work, async (request, reply) => {
     const d = await ownDesign(request)
     if (!d) return notFound(reply)
     const b = (request.body ?? {}) as { text?: unknown; selectedSlots?: unknown; continue?: unknown; fixChecks?: unknown }
@@ -256,7 +265,7 @@ export default async function studioRoutes(app: FastifyInstance) {
     return reply.status(202).send({ jobId })
   })
 
-  app.post('/api/studio/topups', auth, async (request, reply) => {
+  app.post('/api/studio/topups', work, async (request, reply) => {
     if (!config.stripeSecretKey) return paymentsOff(reply)
     const packs = (request.body as { packs?: unknown } | null)?.packs ?? 1
     if (!Number.isInteger(packs) || (packs as number) < 1 || (packs as number) > MAX_PACKS) {
@@ -273,7 +282,7 @@ export default async function studioRoutes(app: FastifyInstance) {
   await app.register(async (files) => {
     files.removeAllContentTypeParsers()
     files.addContentTypeParser('*', { parseAs: 'buffer', bodyLimit: UPLOAD_LIMITS.modelBytes + 1024 }, (_req, body, done) => done(null, body))
-    files.post('/api/studio/designs/:id/uploads', { ...auth, bodyLimit: UPLOAD_LIMITS.modelBytes + 1024 }, async (request, reply) => {
+    files.post('/api/studio/designs/:id/uploads', { ...work, bodyLimit: UPLOAD_LIMITS.modelBytes + 1024 }, async (request, reply) => {
       const d = await ownDesign(request)
       if (!d) return notFound(reply)
       const name = (request.query as { name?: unknown }).name
@@ -302,7 +311,7 @@ export default async function studioRoutes(app: FastifyInstance) {
     return reply.status(204).send()
   })
 
-  app.post('/api/studio/designs/:id/renders', auth, async (request, reply) => {
+  app.post('/api/studio/designs/:id/renders', work, async (request, reply) => {
     const d = await ownDesign(request)
     if (!d) return notFound(reply)
     const b = (request.body ?? {}) as { category?: unknown; bodyShape?: unknown; outfit?: unknown; emote?: unknown }

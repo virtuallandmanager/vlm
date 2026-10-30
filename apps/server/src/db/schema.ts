@@ -1546,6 +1546,13 @@ export const studioFlags = pgTable('studio_flags', {
   openUq: uniqueIndex('studio_flags_open_uq').on(t.userId).where(sql`status = 'open'`),
 }))
 
+// An account whose studio access the owner paused: no prompts, designs, renders, uploads or top-ups
+export const studioPauses = pgTable('studio_pauses', {
+  userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  pausedAt: timestamp('paused_at', { withTimezone: true }).notNull().defaultNow(),
+  pausedBy: uuid('paused_by'),
+})
+
 export const studioRenders = pgTable('studio_renders', {
   id: uuid('id').primaryKey().defaultRandom(),
   revisionId: uuid('revision_id').notNull().references(() => studioRevisions.id, { onDelete: 'cascade' }),
