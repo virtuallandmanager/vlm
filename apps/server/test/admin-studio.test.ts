@@ -2,11 +2,12 @@ import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest'
 import Stripe from 'stripe'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { studioEntitlements, studioFlags, studioPauses, studioPayments, studioScopeEvents } from '../src/db/schema.js'
+import { studioEntitlements, studioFlags, studioMistakeReports, studioPauses, studioPayments, studioScopeEvents } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { setStripe } from '../src/integrations/stripe.js'
 import { memoryStudioStore, setStudioStore } from '../src/studio/store.js'
 import { setMachineDeps } from '../src/studio/machines.js'
+import { setFlagMailer } from '../src/studio/scope.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, tokenFor, type TestUser } from './helpers/factories.js'
 import { addRevision, createDesign, entitle, fakeFly, fakeStripe } from './helpers/studio.js'
@@ -143,5 +144,103 @@ describe('studio admin: flags and pauses', () => {
       await pause(u.id, creator),
       await app.inject({ method: 'POST', url: `/api/admin/studio/flags/${flag.id}/dismiss`, headers: as(creator) }),
     ]) expect(res.statusCode).toBe(403)
+  })
+
+  describe('mistake reports past the instant limit', () => {
+    let mail: { to: string; subject: string; html: string }[]
+    const prevFlag = { ...config.studioFlag }
+    beforeEach(() => {
+      mail = []
+      setFlagMailer(async (to, subject, html) => { mail.push({ to, subject, html }); return true })
+      ;(config as any).studioFlag = { ...prevFlag, email: 'owner@virvi.test', instantReports: 2 }
+    })
+    afterAll(() => {
+      setFlagMailer(null)
+      ;(config as any).studioFlag = prevFlag
+    })
+    const TEXT = 'the sleeve clips through the arm when waving'
+    const report = (u: TestUser, id: string, n: number) =>
+      app.inject({ method: 'POST', url: `/api/studio/designs/${id}/pieces/hat/revisions/${n}/report`, headers: as(u), payload: { text: TEXT } })
+    const review = (id: string, action: 'approve' | 'decline') =>
+      app.inject({ method: 'POST', url: `/api/admin/studio/reports/${id}/${action}`, headers: as(admin) })
+    /** A hat finalized once, then `paidRevisions` paid revisions (numbers 2, 3, ...). */
+    async function revisions(u: TestUser, paidRevisions: number) {
+      const d = await createDesign(u)
+      await entitle(d, await addRevision(d, 'hat'))
+      for (let i = 0; i < paidRevisions; i++) await entitle(d, await addRevision(d, 'hat'), { amountCents: 1500, paymentIntent: `pi_r${i}` })
+      return d
+    }
+    const reportRow = async (status: string) => (await db.select().from(studioMistakeReports)).filter((r) => r.status === status)
+
+    it('the first two reports on a piece refund at once; the third waits and emails the owner', async () => {
+      const u = await createUser()
+      const d = await revisions(u, 3)
+      expect((await report(u, d.id, 2)).json()).toMatchObject({ status: 'refunded' })
+      expect((await report(u, d.id, 3)).json()).toMatchObject({ status: 'refunded' })
+      const third = await report(u, d.id, 4)
+      expect(third.statusCode).toBe(200)
+      expect(third.json()).toEqual({ status: 'in_review' })
+      expect(stripe.calls.refunds).toHaveLength(2)
+      expect(await reportRow('in_review')).toHaveLength(1)
+      expect(mail).toHaveLength(1)
+      expect(mail[0].html).toContain(TEXT)
+      expect(mail[0].html).toContain('/admin/studio')
+    })
+
+    it('at checkout the third report is charged and held', async () => {
+      const u = await createUser()
+      const d = await revisions(u, 2)
+      await report(u, d.id, 2)
+      await report(u, d.id, 3)
+      await addRevision(d, 'hat')
+      const res = await app.inject({ method: 'POST', url: `/api/studio/designs/${d.id}/finalize`, headers: as(u), payload: { reports: { hat: TEXT } } })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().url).toBeTruthy() // charged: a Stripe session, not an instant grant
+      const [pay] = (await db.select().from(studioPayments).where(eq(studioPayments.designId, d.id))).filter((p) => p.status === 'pending')
+      expect(pay.amountCents).toBe(1500)
+      expect(pay.lines[0]).toMatchObject({ waived: false, held: true, reportText: TEXT })
+      await paid(pay.id)
+      const held = await reportRow('in_review')
+      expect(held).toHaveLength(1)
+      expect(held[0]).toMatchObject({ refundCents: 1500, text: TEXT })
+    })
+
+    it('approving refunds through Stripe once; declining refunds nothing', async () => {
+      const u = await createUser()
+      const d = await revisions(u, 4)
+      for (const n of [2, 3, 4, 5]) await report(u, d.id, n)
+      const held = await reportRow('in_review')
+      expect(held).toHaveLength(2)
+      const list = (await app.inject({ method: 'GET', url: '/api/admin/studio/reports', headers: as(admin) })).json().reports
+      expect(list).toHaveLength(2)
+      expect(list[0]).toMatchObject({ text: TEXT, refundCents: 1500, piece: { category: 'hat', name: 'Neon hat' }, user: { id: u.id, email: u.email } })
+      expect(list[0].revisionNumber).toBeGreaterThan(3)
+      const ok = await review(held[0].id, 'approve')
+      expect(ok.statusCode).toBe(200)
+      expect(ok.json()).toEqual({ status: 'refunded', refundCents: 1500 })
+      expect(stripe.calls.refunds).toHaveLength(3)
+      expect((await review(held[0].id, 'approve')).statusCode).toBe(409)
+      expect((await review(held[1].id, 'decline')).statusCode).toBe(204)
+      expect(stripe.calls.refunds).toHaveLength(3)
+      const rows = await db.select().from(studioMistakeReports)
+      expect(rows.find((r) => r.id === held[0].id)).toMatchObject({ status: 'refunded', reviewedBy: admin.id })
+      expect(rows.find((r) => r.id === held[1].id)).toMatchObject({ status: 'declined', reviewedBy: admin.id })
+      const creator = await createUser()
+      expect((await app.inject({ method: 'GET', url: '/api/admin/studio/reports', headers: as(creator) })).statusCode).toBe(403)
+    })
+
+    it('a declined report doesn’t use up an instant one; an approved one does', async () => {
+      ;(config as any).studioFlag = { ...config.studioFlag, instantReports: 0 }
+      const u = await createUser()
+      const d = await revisions(u, 4)
+      await report(u, d.id, 2)
+      await review((await reportRow('in_review'))[0].id, 'decline')
+      ;(config as any).studioFlag = { ...config.studioFlag, instantReports: 1 }
+      expect((await report(u, d.id, 3)).json()).toMatchObject({ status: 'refunded' })
+      expect((await report(u, d.id, 4)).json()).toEqual({ status: 'in_review' })
+      await review((await reportRow('in_review'))[0].id, 'approve')
+      ;(config as any).studioFlag = { ...config.studioFlag, instantReports: 2 }
+      expect((await report(u, d.id, 5)).json()).toEqual({ status: 'in_review' }) // the approved one counts
+    })
   })
 })

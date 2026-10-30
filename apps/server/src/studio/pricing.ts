@@ -1,8 +1,9 @@
-import { asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { studioEntitlements, studioPieces, studioRevisions, type PaymentLine } from '../db/schema.js'
+import { studioEntitlements, studioMistakeReports, studioPieces, studioRevisions, type PaymentLine } from '../db/schema.js'
 import { config } from '../config.js'
 import type { Design } from './designs.js'
+import type { Exec } from './quota.js'
 
 /**
  * What finalizing a design's pieces costs. A piece's first finalize is the first paid revision of that piece; every
@@ -64,6 +65,18 @@ export function priceLines(
   })
 }
 
+/**
+ * Mistake reports on a piece that were refunded without review (waived at checkout, refunded at once, or approved by
+ * the owner). Past STUDIO_INSTANT_REPORTS of them, a report waits for the owner; a declined one doesn't count.
+ */
+export async function instantReportsUsed(designId: string, category: string, exec: Exec = db): Promise<number> {
+  const rows = await exec.select({ id: studioMistakeReports.id }).from(studioMistakeReports)
+    .innerJoin(studioEntitlements, eq(studioEntitlements.id, studioMistakeReports.entitlementId))
+    .where(and(eq(studioEntitlements.designId, designId), eq(studioEntitlements.category, category),
+      inArray(studioMistakeReports.status, ['waived', 'refunded'])))
+  return rows.length
+}
+
 export async function quoteFinalize(design: Design, categories: string[] | null, waived: string[]): Promise<Quote> {
   const pieceRows = await db.select().from(studioPieces).where(eq(studioPieces.designId, design.id)).orderBy(asc(studioPieces.category))
   const revIds = pieceRows.map((p) => p.latestRevisionId).filter((x): x is string => !!x)
@@ -95,9 +108,14 @@ export async function quoteFinalize(design: Design, categories: string[] | null,
   if (notWaivable.length) throw new QuoteError('not_waivable', notWaivable)
 
   const prices = priceLines(design.kind, chosen, ents.length > 0)
+  const overLimit = new Set<string>()
+  for (const c of waived) {
+    if ((await instantReportsUsed(design.id, c)) >= config.studioFlag.instantReports) overLimit.add(c)
+  }
   const lines: PaymentLine[] = chosen.map((p, i) => ({
     category: p.category, revisionId: p.revisionId, revisionNumber: p.revisionNumber, pieceName: p.name,
-    ...prices[i], waived: waived.includes(p.category),
+    ...prices[i], waived: waived.includes(p.category) && !overLimit.has(p.category),
+    ...(overLimit.has(p.category) ? { held: true } : {}),
   }))
   return {
     pieces,

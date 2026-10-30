@@ -1583,7 +1583,8 @@ export type PaymentLine = {
   priceKind: 'first' | 'first_extra' | 'revision' | 'revision_extra'
   amountCents: number
   waived: boolean
-  reportText?: string // a waived line's mistake report, stored as a report at grant time
+  held?: boolean // a mistake report past the instant limit: charged, and its report waits for the owner
+  reportText?: string // a waived or held line's mistake report, stored as a report at grant time
 }
 
 // A one-time Stripe Checkout: finalizing pieces, or a prompt top-up. Nothing is charged when every line is waived.
@@ -1636,8 +1637,10 @@ export const studioMistakeReports = pgTable('studio_mistake_reports', {
   userId: uuid('user_id').notNull(),
   text: text('text').notNull(),
   refundCents: integer('refund_cents').notNull(),
-  status: text('status').notNull(), // pending (refund in flight) | refunded | waived
+  status: text('status').notNull(), // pending (refund in flight) | refunded | waived | in_review (waits for the owner) | declined
   stripeRefundId: text('stripe_refund_id'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewedBy: uuid('reviewed_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
