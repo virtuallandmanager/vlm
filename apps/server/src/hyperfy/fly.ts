@@ -197,6 +197,17 @@ export class FlyApi {
     throw new FlyError(`Fly GET machine ${id} returned ${status} without a state`, status, text.slice(0, 500))
   }
 
+  /** The machine's state and the image it runs, or null when it no longer exists. */
+  async getMachine(app: string, id: string): Promise<{ state: string; image: string | null } | null> {
+    const { status, text } = await this.request('GET', `/apps/${encodeURIComponent(app)}/machines/${encodeURIComponent(id)}`, undefined, [404])
+    if (status === 404) return null
+    try {
+      const m = JSON.parse(text) as { state?: unknown; config?: { image?: unknown } }
+      if (typeof m.state === 'string') return { state: m.state, image: typeof m.config?.image === 'string' ? m.config.image : null }
+    } catch { /* fall through */ }
+    throw new FlyError(`Fly GET machine ${id} returned ${status} without a state`, status, text.slice(0, 500))
+  }
+
   async updateMachine(app: string, id: string, m: WorldMachineSpec): Promise<void> {
     await this.request('POST', `/apps/${encodeURIComponent(app)}/machines/${encodeURIComponent(id)}`, machineBody(m))
   }

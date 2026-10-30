@@ -19,7 +19,7 @@ export class StudioMachineError extends Error {
 }
 
 export type MachineDeps = {
-  fly: Pick<FlyApi, 'createWorkerMachine' | 'getMachineState' | 'startMachine' | 'deleteMachine'>
+  fly: Pick<FlyApi, 'createWorkerMachine' | 'getMachine' | 'getMachineState' | 'startMachine' | 'deleteMachine'>
   now: () => Date
 }
 
@@ -44,6 +44,8 @@ export const hashWorkerToken = (token: string) => createHash('sha256').update(to
 const CLAIM_STALE_MS = 2 * 60_000
 const DEAD = ['destroyed', 'destroying', 'failed']
 const IDLE_EXIT_SEC = '600'
+/** Fly reports an image with its digest (`repo:tag@sha256:…`); the tag is what STUDIO_WORKER_IMAGE names. */
+const sameImage = (a: string | null, b: string) => (a ?? '').split('@')[0] === b.split('@')[0]
 
 function plain(err: unknown, secret?: string): string {
   let msg = err instanceof Error ? err.message : String(err)
@@ -60,13 +62,25 @@ export async function ensureWorker(designId: string, deps: Partial<MachineDeps> 
   if (!design) throw new StudioMachineError('The design no longer exists.')
 
   if (design.machineId) {
-    let state: string | null
+    let machine: { state: string; image: string | null } | null
     try {
-      state = await d.fly.getMachineState(app, design.machineId)
+      machine = await d.fly.getMachine(app, design.machineId)
     } catch (err) {
       throw new StudioMachineError(`The studio machine could not be reached: ${plain(err)}`)
     }
-    if (state === null || DEAD.includes(state)) {
+    const state = machine?.state ?? null
+    // A machine keeps the image it was made with: a stopped one on an older worker is replaced, so a new
+    // STUDIO_WORKER_IMAGE reaches every design. A running one finishes its job first.
+    const outdated = !!machine && !!config.studioWorkerImage && (state === 'stopped' || state === 'suspended') &&
+      !sameImage(machine.image, config.studioWorkerImage)
+    if (outdated) {
+      try {
+        await d.fly.deleteMachine(app, design.machineId)
+      } catch (err) {
+        throw new StudioMachineError(`The studio machine could not be updated: ${plain(err)}`)
+      }
+    }
+    if (outdated || state === null || DEAD.includes(state)) {
       // Destroyed outside Virvi (Fly reports `destroyed` for a while before 404) or failed: forget it and make a new one
       await db.update(studioDesigns).set({ machineId: null, workerTokenHash: null })
         .where(and(eq(studioDesigns.id, designId), eq(studioDesigns.machineId, design.machineId)))

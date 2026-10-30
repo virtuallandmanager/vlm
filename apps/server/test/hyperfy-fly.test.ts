@@ -330,5 +330,11 @@ describe('FlyApi', () => {
       expect(await mk(fn).getMachineState('a', 'm1')).toBe('stopped')
       expect(await mk(fn).getMachineState('a', 'm2')).toBeNull()
     })
+
+    it('getMachine reads the state and image, and null when the machine is gone', async () => {
+      const { fn } = fakeFetch((c) => (c.url.endsWith('/m1') ? { body: { id: 'm1', state: 'stopped', config: { image: 'img:2' } } } : { status: 404, body: { error: 'not found' } }))
+      expect(await mk(fn).getMachine('a', 'm1')).toEqual({ state: 'stopped', image: 'img:2' })
+      expect(await mk(fn).getMachine('a', 'm2')).toBeNull()
+    })
   })
 })

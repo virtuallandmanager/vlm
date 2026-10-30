@@ -79,6 +79,41 @@ describe('studio worker machines', () => {
     }
   })
 
+  it('a stopped machine on an older worker image is replaced by one on the current image', async () => {
+    const fly = fakeFly()
+    const d = await createDesign(await createUser())
+    await ensureWorker(d.id, { fly })
+    fly.machines.get('m1')!.state = 'stopped'
+    fly.machines.get('m1')!.spec.image = 'registry.fly.io/vlm-studio-worker:old'
+    await ensureWorker(d.id, { fly })
+    expect(fly.calls.del).toEqual(['m1'])
+    expect(fly.calls.start).toHaveLength(0)
+    expect(fly.calls.create).toHaveLength(2)
+    expect(fly.calls.create[1].image).toBe('registry.fly.io/vlm-studio-worker:test')
+    expect((await row(d.id)).machineId).toBe('m2')
+  })
+
+  it('a running machine on an older image is left to finish; it is replaced once stopped', async () => {
+    const fly = fakeFly()
+    const d = await createDesign(await createUser())
+    await ensureWorker(d.id, { fly })
+    fly.machines.get('m1')!.spec.image = 'registry.fly.io/vlm-studio-worker:old'
+    await ensureWorker(d.id, { fly })
+    expect(fly.calls.del).toHaveLength(0)
+    expect(fly.calls.create).toHaveLength(1)
+  })
+
+  it('the image Fly reports with its digest is the same image', async () => {
+    const fly = fakeFly()
+    const d = await createDesign(await createUser())
+    await ensureWorker(d.id, { fly })
+    fly.machines.get('m1')!.state = 'stopped'
+    fly.machines.get('m1')!.spec.image = 'registry.fly.io/vlm-studio-worker:test@sha256:f71a81ab'
+    await ensureWorker(d.id, { fly })
+    expect(fly.calls.del).toHaveLength(0)
+    expect(fly.calls.start).toEqual(['m1'])
+  })
+
   it('a stopping machine that refuses to start is left for the sweep, not failed', async () => {
     const fly = fakeFly()
     const d = await createDesign(await createUser())
