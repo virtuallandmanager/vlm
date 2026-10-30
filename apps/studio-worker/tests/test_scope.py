@@ -55,3 +55,17 @@ def test_cost_from_usage():
     v = scope.check('a neon cap', 'wearable', [], [],
                     ask=asks({'verdict': 'design', 'category': None, 'note': ''}, usage={'input_tokens': 1000, 'output_tokens': 50}))
     assert v.cost_usd == round(1000 * 0.10 / 1e6 + 50 * 0.50 / 1e6, 6)
+
+
+def test_eval_fails_when_the_check_never_works(monkeypatch):
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location('scope_eval', Path(__file__).parent.parent / 'e2e' / 'scope_eval.py')
+    ev = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ev)
+    monkeypatch.setattr(ev.scope, 'check', lambda *a, **k: scope.Verdict('unsure', None, '', None))
+    assert ev.main() == 1  # a check that always fails open must not pass the deploy gate
+
+
+def test_the_check_treats_small_talk_in_a_design_as_design():
+    assert 'thanks' in scope.SYSTEM and 'greeting' in scope.SYSTEM
