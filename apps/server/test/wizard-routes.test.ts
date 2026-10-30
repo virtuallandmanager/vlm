@@ -1,11 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { assetLibraryItems, catalogPacks, scenes, scenePresets, sceneElements, sceneElementInstances, sceneLibrary, subscriptions } from '../src/db/schema.js'
+import { assetLibraryItems, catalogPacks, roomScans, roomSets, scenes, scenePresets, sceneElements, sceneElementInstances, sceneLibrary, subscriptions } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, tokenFor } from './helpers/factories.js'
 import { THEMES } from '../src/wizard/themes.js'
+import type { RoomScanLayout } from '@virvixr/shared'
+import type { StorageProvider } from '../src/storage/index.js'
+import { setRoomSetStorage } from '../src/room-scan/sets.js'
+import { wallsFromOutline } from '../src/room-scan/geometry.js'
 
 describe('wizard routes', () => {
   let app: Awaited<ReturnType<typeof testApp>>
@@ -198,5 +202,94 @@ describe('wizard routes', () => {
     const res = await app.inject({ method: 'GET', url: '/api/assets?category=Building,Structure' })
     expect(res.json().assets.map((x: any) => x.id).sort()).toEqual([a.id, b.id].sort())
     expect((await app.inject({ method: 'GET', url: '/api/assets?category=Decor' })).json().assets).toHaveLength(1)
+  })
+
+  describe('starting from a room scan', () => {
+    const files = new Map<string, Buffer>()
+    const storage: StorageProvider = {
+      upload: async (key, data) => { files.set(key, data); return `https://cdn.test/${key}` },
+      delete: async (key) => { files.delete(key) },
+      getPublicUrl: (key) => `https://cdn.test/${key}`,
+    }
+    beforeEach(() => { files.clear(); setRoomSetStorage(storage) })
+    afterEach(() => setRoomSetStorage(null))
+
+    const plot1 = { width: 1, depth: 1, base: { x: 0, y: 0 } }
+    const layout = (): RoomScanLayout => {
+      const floor: Array<[number, number]> = [[0, 0], [4, 0], [4, 3], [0, 3]]
+      return {
+        version: 1,
+        rooms: [{ label: 'Room', floor, floorY: 0, ceilingHeight: 2.5, walls: wallsFromOutline(floor), objects: [],
+          anchor: { source: 'quest-mruk', roomId: 'r', floorAnchorId: null, floorPose: { position: [0, 0, 0], yaw: 0 } } }],
+      }
+    }
+    const scanFor = async (u: { id: string }) =>
+      (await db.insert(roomScans).values({ userId: u.id, name: 'Lounge', source: 'quest-mruk', layout: layout() }).returning())[0]
+    const withSet = (scanId: string, extra: Record<string, unknown> = {}) =>
+      ({ name: 'Lounge scene', plot: plot1, spawn: { x: 8, z: 8 }, dcl: true, items: [], roomSet: { scanId, options: { style: 'plain' } }, ...extra })
+
+    it('creates the set, a model element at the origin and links the set to it', async () => {
+      const u = await createUser()
+      const scan = await scanFor(u)
+      const res = await book(u, withSet(scan.id))
+      expect(res.statusCode).toBe(201)
+      const [set] = await db.select().from(roomSets)
+      expect(set).toMatchObject({ scanId: scan.id, userId: u.id })
+      const [el] = await db.select().from(sceneElements)
+      expect(el).toMatchObject({ type: 'model', name: 'Lounge scene room', properties: { modelSrc: set.glbUrl } })
+      expect(set.sceneElementId).toBe(el.id)
+      const [inst] = await db.select().from(sceneElementInstances)
+      expect(inst).toMatchObject({ elementId: el.id, position: { x: 0, y: 0, z: 0 } })
+      expect(files.size).toBe(1)
+    })
+
+    it('keeps the client-chosen plot base and adds the set to items', async () => {
+      const u = await createUser()
+      const scan = await scanFor(u)
+      const a = await seedAsset('Tree')
+      const res = await book(u, withSet(scan.id, { plot: { width: 1, depth: 1, base: { x: 5, y: -3 } }, items: [{ assetId: a.id, x: 4, z: 5, rotationY: 0 }] }))
+      expect(res.statusCode).toBe(201)
+      expect((await counts()).elements).toBe(2)
+    })
+
+    it("404s another user's scan and creates nothing", async () => {
+      const u = await createUser(); const other = await createUser()
+      const scan = await scanFor(other)
+      const res = await book(u, withSet(scan.id))
+      expect(res.statusCode).toBe(404)
+      expect(await counts()).toEqual({ scenes: 0, presets: 0, elements: 0, instances: 0, links: 0 })
+      expect(files.size).toBe(0)
+    })
+
+    it('400 plot_mismatch on the wrong plot size, storing nothing', async () => {
+      const u = await createUser()
+      const scan = await scanFor(u)
+      const res = await book(u, withSet(scan.id, { plot: plot2 }))
+      expect(res.statusCode).toBe(400)
+      expect(res.json()).toMatchObject({ error: 'plot_mismatch' })
+      expect(await counts()).toEqual({ scenes: 0, presets: 0, elements: 0, instances: 0, links: 0 })
+      expect(files.size).toBe(0)
+    })
+
+    it('400 on invalid options, storing nothing', async () => {
+      const u = await createUser()
+      const scan = await scanFor(u)
+      const res = await book(u, withSet(scan.id, { roomSet: { scanId: scan.id, options: { style: 'castle' } } }))
+      expect(res.statusCode).toBe(400)
+      expect(files.size).toBe(0)
+    })
+
+    it('422 over_budget when the set plus items exceed the triangle budget, storing nothing', async () => {
+      const u = await createUser()
+      const scan = await scanFor(u)
+      const big = await seedAsset('Big', { triangleCount: 10000 })
+      const res = await book(u, withSet(scan.id, { items: [{ assetId: big.id, x: 1, z: 1, rotationY: 0 }] }))
+      expect(res.statusCode).toBe(422)
+      expect(res.json()).toMatchObject({ error: 'over_budget', limit: 10000 })
+      expect(res.json().triangles).toBeGreaterThan(10000)
+      expect(await counts()).toEqual({ scenes: 0, presets: 0, elements: 0, instances: 0, links: 0 })
+      expect(await db.select().from(roomSets)).toEqual([])
+      expect(files.size).toBe(0)
+    })
   })
 })

@@ -19,6 +19,8 @@ import { getSubscription } from '../integrations/stripe.js'
 import { getTierRank } from '../middleware/feature-gate.js'
 import { virviSigner } from '../services/dcl/entity.js'
 import { sceneLimitError } from './scenes.js'
+import { plotForLayout } from '../room-scan/plot.js'
+import { commitRoomSet, discardRoomSet, insertRoomSet, loadOwnedScan, parseRoomSetOptions, prepareRoomSet, RoomSetError, type PreparedRoomSet } from '../room-scan/sets.js'
 import { CATEGORY_CHIPS, THEMES } from '../wizard/themes.js'
 
 interface WizardAsset {
@@ -64,6 +66,8 @@ interface BootstrapBody {
   spawn?: unknown
   /** True when the scene goes to a Decentraland World; false (Hyperfy/AR only) drops the per-parcel budget. */
   dcl?: unknown
+  /** Start the scene from one of the caller's room scans: `{ scanId, options }`. */
+  roomSet?: unknown
 }
 
 export default async function wizardRoutes(app: FastifyInstance) {
@@ -149,6 +153,21 @@ export default async function wizardRoutes(app: FastifyInstance) {
       }
     }
 
+    // A room set is checked (owner, plot, options) before anything is generated or stored
+    let roomSetRequest: { scan: NonNullable<Awaited<ReturnType<typeof loadOwnedScan>>>; options: NonNullable<ReturnType<typeof parseRoomSetOptions>> } | null = null
+    if (body.roomSet !== undefined) {
+      const rs = body.roomSet as { scanId?: unknown; options?: unknown } | null
+      if (!rs || typeof rs !== 'object' || typeof rs.scanId !== 'string') return reply.status(400).send({ error: 'invalid_room_set' })
+      const scan = UUID_RE.test(rs.scanId) ? await loadOwnedScan(request.user.id, rs.scanId) : null
+      if (!scan) return reply.status(404).send({ error: 'not_found' })
+      // The client picks the plot's base (Genesis City parcels), so only the size must match the generated shell
+      const needed = plotForLayout(scan.layout)
+      if (!needed || needed.width !== plot.width || needed.depth !== plot.depth) return reply.status(400).send({ error: 'plot_mismatch' })
+      const options = parseRoomSetOptions(rs.options)
+      if (!options) return reply.status(400).send({ error: 'invalid_options' })
+      roomSetRequest = { scan, options }
+    }
+
     const assetIds = [...new Set(items.map((i) => i.assetId as string))]
     const assets = assetIds.length
       ? await db
@@ -163,20 +182,35 @@ export default async function wizardRoutes(app: FastifyInstance) {
     if (assets.some((a) => a.triangleCount === null)) return reply.status(400).send({ error: 'unmeasured_asset' })
     const byId = new Map(assets.map((a) => [a.id, a]))
 
-    const triangles = items.reduce((sum, i) => sum + byId.get(i.assetId as string)!.triangleCount!, 0)
-    if (dclLimits && triangles > budget.triangles) {
-      return reply.status(422).send({
+    const itemTriangles = items.reduce((sum, i) => sum + byId.get(i.assetId as string)!.triangleCount!, 0)
+    const overBudget = (triangles: number) =>
+      reply.status(422).send({
         error: 'over_budget',
         message: `This plot fits ${budget.triangles.toLocaleString('en-US')} triangles; the chosen items make ${triangles.toLocaleString('en-US')}`,
         triangles,
         limit: budget.triangles,
       })
-    }
+    if (dclLimits && itemTriangles > budget.triangles) return overBudget(itemTriangles)
 
     const limitError = await sceneLimitError(request.user.id)
     if (limitError) return reply.status(403).send(limitError)
 
-    const sceneId = await db.transaction(async (tx) => {
+    // The set's triangles are only known once it is generated (and uploaded, outside the transaction); drop it if refused
+    let prepared: PreparedRoomSet | null = null
+    if (roomSetRequest) {
+      try {
+        prepared = await prepareRoomSet(request.user.id, roomSetRequest.scan, roomSetRequest.options, [])
+      } catch (err) {
+        if (err instanceof RoomSetError) return reply.status(err.status).send({ error: err.code })
+        throw err
+      }
+      if (dclLimits && itemTriangles + prepared.triangles > budget.triangles) {
+        await discardRoomSet(prepared)
+        return overBudget(itemTriangles + prepared.triangles)
+      }
+    }
+
+    const create = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
       const [scene] = await tx.insert(scenes).values({ ownerId: request.user.id, name }).returning({ id: scenes.id })
       const [preset] = await tx.insert(scenePresets).values({ sceneId: scene.id, name: 'Default' }).returning({ id: scenePresets.id })
       await tx.update(scenes).set({ activePresetId: preset.id }).where(eq(scenes.id, scene.id))
@@ -197,8 +231,22 @@ export default async function wizardRoutes(app: FastifyInstance) {
         )
         await tx.insert(sceneLibrary).values(assets.map((a) => ({ sceneId: scene.id, assetItemId: a.id, addedBy: request.user.id })))
       }
+      if (prepared) {
+        const [element] = await tx
+          .insert(sceneElements)
+          .values({ presetId: preset.id, type: 'model', name: `${name} room`, properties: { modelSrc: prepared.glbUrl } })
+          .returning({ id: sceneElements.id })
+        await tx.insert(sceneElementInstances).values({
+          elementId: element.id,
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        })
+        await insertRoomSet(prepared, { sceneElementId: element.id }, tx)
+      }
       return scene.id
-    })
+    }
+    const sceneId = prepared ? await commitRoomSet(prepared, create) : await db.transaction(create)
     return reply.status(201).send({ sceneId })
   })
 }
