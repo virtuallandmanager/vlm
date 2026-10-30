@@ -120,21 +120,26 @@ export function horizontalPolygon(mesh: MeshData, poly: V2[], y: number, up: boo
   for (const [a, b, c] of earClip(poly)) mesh.face([at(poly[a], y), at(poly[b], y), at(poly[c], y)], [0, up ? 1 : -1, 0])
 }
 
-/** Move every edge of a polygon `d` metres outward (mitred corners). */
-export function offsetPolygon(poly: V2[], d: number): V2[] {
-  const ccw = signedArea(poly) > 0
+/** Unit outward normal of edge poly[i] -> poly[i+1]. */
+export function edgeNormal(poly: V2[], i: number): V2 {
+  const p = poly[i], q = poly[(i + 1) % poly.length]
+  const len = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1
+  const dx = (q[0] - p[0]) / len, dz = (q[1] - p[1]) / len
+  return signedArea(poly) > 0 ? [dz, -dx] : [-dz, dx]
+}
+
+/** Move edge i (poly[i] -> poly[i+1]) `d[i]` metres outward; corners meet where the moved edges cross. */
+export function offsetPolygonEdges(poly: V2[], d: number[]): V2[] {
   const n = poly.length
-  const edgeNormal = (i: number): V2 => {
-    const p = poly[i], q = poly[(i + 1) % n]
-    const len = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1
-    const dx = (q[0] - p[0]) / len, dz = (q[1] - p[1]) / len
-    return ccw ? [dz, -dx] : [-dz, dx]
-  }
   return poly.map((p, i) => {
-    const n1 = edgeNormal((i + n - 1) % n), n2 = edgeNormal(i)
-    const k = 1 + n1[0] * n2[0] + n1[1] * n2[1]
-    if (k < 0.1) return [p[0] + n2[0] * d, p[1] + n2[1] * d]
-    return [p[0] + ((n1[0] + n2[0]) * d) / k, p[1] + ((n1[1] + n2[1]) * d) / k]
+    const j = (i + n - 1) % n
+    const n1 = edgeNormal(poly, j), n2 = edgeNormal(poly, i)
+    const det = n1[0] * n2[1] - n1[1] * n2[0]
+    // nearly parallel (or folded-back) edges: just move along the next edge's normal
+    if (Math.abs(det) < 0.1) return [p[0] + n2[0] * d[i], p[1] + n2[1] * d[i]]
+    // solve x . n1 = d[j], x . n2 = d[i]
+    const x = (d[j] * n2[1] - d[i] * n1[1]) / det, z = (n1[0] * d[i] - n2[0] * d[j]) / det
+    return [p[0] + x, p[1] + z]
   })
 }
 

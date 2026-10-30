@@ -7,8 +7,8 @@
 import { Document, NodeIO, type Material, type Node } from '@gltf-transform/core'
 import { layoutFootprint, type RoomScanLayout } from '@virvixr/shared'
 import { glbStats } from '../catalog/glb-stats.js'
-import { applyNudges, mergeSharedWalls, MERGE_MAX_GAP_M, wallPieces, wallsFromOutline, type GeometryWall, type Nudge, type WallPiece } from './geometry.js'
-import { MeshData, at, cleanPolygon, horizontalPolygon, offsetPolygon, prism, yawBox, type MaterialSpec, type MeshPart, type V2, type V3 } from './mesh.js'
+import { applyNudges, mergeSharedWalls, MERGE_MAX_ANGLE_DEG, MERGE_MAX_GAP_M, MERGE_MIN_OVERLAP_M, wallPieces, wallsFromOutline, type GeometryWall, type Nudge, type WallPiece } from './geometry.js'
+import { MeshData, at, cleanPolygon, edgeNormal, horizontalPolygon, offsetPolygonEdges, prism, yawBox, type MaterialSpec, type MeshPart, type V2, type V3 } from './mesh.js'
 import { ROOM_STYLES, STYLE_KITS, type DoorSpot, type RoomStyle, type StyleKit } from './styles/index.js'
 
 export type { RoomStyle, StyleKit, StyleContext } from './styles/index.js'
@@ -169,12 +169,38 @@ function srgbToLinear(c: number): number {
   return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
 }
 
-/** Write named parts into a glTF document, every vertex shifted by (dx, dz). */
-function writeGlb(nodes: Array<{ name: string; prims: Array<{ material: MaterialSpec; mesh: MeshData }> }>, dx: number, dz: number): Promise<Uint8Array> {
+/**
+ * How far each edge of room `roomIndex`'s outline moves out to cover its walls:
+ * the wall thickness, or only to the centre line of a shared partition that
+ * runs along the edge, so two rooms' flat roofs meet there without overlapping.
+ */
+function roofEdgeOffsets(poly: V2[], roomIndex: number, walls: GeometryWall[]): number[] {
+  const maxSin = Math.sin((MERGE_MAX_ANGLE_DEG * Math.PI) / 180)
+  return poly.map((p, i) => {
+    const q = poly[(i + 1) % poly.length]
+    const { dir, len } = unit(p, q)
+    const n = edgeNormal(poly, i)
+    for (const w of walls) {
+      if (!w.shared || (w.roomIndex !== roomIndex && w.otherRoomIndex !== roomIndex)) continue
+      const W = unit(w.a, w.b)
+      if (Math.abs(dir[0] * W.dir[1] - dir[1] * W.dir[0]) > maxSin) continue
+      const d = (dot(sub(w.a, p), n) + dot(sub(w.b, p), n)) / 2
+      if (d < -EPS || d > MERGE_MAX_GAP_M) continue
+      const sa = dot(sub(w.a, p), dir), sb = dot(sub(w.b, p), dir)
+      if (Math.min(len, Math.max(sa, sb)) - Math.max(0, Math.min(sa, sb)) < MERGE_MIN_OVERLAP_M) continue
+      return Math.max(0, d)
+    }
+    return T
+  })
+}
+
+/** Write named parts into a glTF document, every vertex shifted by (dx, dy, dz). */
+function writeGlb(nodes: Array<{ name: string; prims: Array<{ material: MaterialSpec; mesh: MeshData }> }>, dx: number, dy: number, dz: number): Promise<Uint8Array> {
   const doc = new Document()
   const buffer = doc.createBuffer()
   const root = doc.createNode('room-set')
-  doc.createScene('room-set').addChild(root)
+  const scene = doc.createScene('room-set').addChild(root)
+  doc.getRoot().setDefaultScene(scene)
   const materials = new Map<string, Material>()
   const material = (spec: MaterialSpec): Material => {
     const key = `${spec.name}|${spec.color}|${spec.alpha ?? 1}`
@@ -198,7 +224,7 @@ function writeGlb(nodes: Array<{ name: string; prims: Array<{ material: Material
     const mesh = doc.createMesh(name)
     for (const { material: spec, mesh: data } of parts) {
       const pos = new Float32Array(data.positions)
-      for (let i = 0; i < pos.length; i += 3) { pos[i] += dx; pos[i + 2] += dz }
+      for (let i = 0; i < pos.length; i += 3) { pos[i] += dx; pos[i + 1] += dy; pos[i + 2] += dz }
       const indices = data.vertexCount < 65536 ? new Uint16Array(data.indices) : new Uint32Array(data.indices)
       mesh.addPrimitive(doc.createPrimitive()
         .setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(pos).setBuffer(buffer))
@@ -215,14 +241,14 @@ function writeGlb(nodes: Array<{ name: string; prims: Array<{ material: Material
 /**
  * Build the room set's GLB. Rooms are nudged first; rooms with no scanned
  * walls get walls along their floor outline. The set is translated so the
- * outer wall faces' minimum corner sits at the 0.5 m plot margin; `offset`
- * is that x/z translation (Y is left as scanned).
+ * outer wall faces' minimum corner sits at the 0.5 m plot margin and the
+ * lowest room floor at y = 0; `offset` is that translation.
  */
 export async function buildRoomSetGlb(
   layout: RoomScanLayout,
   options: RoomSetOptions,
   nudges?: Nudge[],
-): Promise<{ glb: Buffer; triangles: number; bbox: { x: number; y: number; z: number }; offset: { x: number; z: number } }> {
+): Promise<{ glb: Buffer; triangles: number; bbox: { x: number; y: number; z: number }; offset: { x: number; y: number; z: number } }> {
   const opts = normaliseOptions(options)
   const kit: StyleKit = STYLE_KITS[opts.style]
   const withWalls: RoomScanLayout = { ...layout, rooms: layout.rooms.map(r => (r.walls.length ? r : { ...r, walls: wallsFromOutline(r.floor) })) }
@@ -290,10 +316,10 @@ export async function buildRoomSetGlb(
     if (poly.length < 3) return
     horizontalPolygon(floor, poly, room.floorY + FLOOR_LIFT_M, true)
     horizontalPolygon(floorCollider, poly, room.floorY + FLOOR_LIFT_M, true)
-    if (opts.ceiling) horizontalPolygon(ceiling, poly, room.floorY + room.ceilingHeight, false)
+    if (opts.ceiling && kit.ceiling !== false) horizontalPolygon(ceiling, poly, room.floorY + room.ceilingHeight, false)
     if (kit.roof === 'flat') {
       const top = room.floorY + outerHeightOf(i)
-      prism(roof, offsetPolygon(poly, T), top, top + ROOF_SLAB_M, { bottom: !opts.ceiling })
+      prism(roof, offsetPolygonEdges(poly, roofEdgeOffsets(poly, i, walls)), top, top + ROOF_SLAB_M, { bottom: !opts.ceiling })
     }
   })
   if (kit.roof === 'pitched' && rooms.length) {
@@ -323,8 +349,9 @@ export async function buildRoomSetGlb(
     { name: 'floor_collider', prims: [{ material: COLLIDER_MATERIAL, mesh: floorCollider }] },
     { name: 'furniture_collider', prims: [{ material: COLLIDER_MATERIAL, mesh: furniture }] },
   ]
-  const offset = { x: PLOT_MARGIN_M - shell.minX, z: PLOT_MARGIN_M - shell.minZ }
-  const glb = Buffer.from(await writeGlb(nodes, offset.x, offset.z))
+  const lowestFloor = rooms.length ? Math.min(...rooms.map(r => r.floorY)) : 0
+  const offset = { x: PLOT_MARGIN_M - shell.minX, y: 0 - lowestFloor, z: PLOT_MARGIN_M - shell.minZ }
+  const glb = Buffer.from(await writeGlb(nodes, offset.x, offset.y, offset.z))
   const { triangles, bbox } = await glbStats(glb)
   return { glb, triangles, bbox, offset }
 }

@@ -47,6 +47,17 @@ function triangleArea(p: Primitive): number {
   return area
 }
 
+function upFacingArea(p: Primitive): number {
+  const pos = p.getAttribute('POSITION')!, nor = p.getAttribute('NORMAL')!, idx = p.getIndices()!
+  let area = 0
+  for (let i = 0; i < idx.getCount(); i += 3) {
+    const [a, b, c] = [0, 1, 2].map(k => pos.getElement(idx.getScalar(i + k), [0, 0, 0]))
+    if (nor.getElement(idx.getScalar(i), [0, 0, 0])[1] < 0.99) continue
+    area += Math.abs((b[0] - a[0]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[0] - a[0])) / 2
+  }
+  return area
+}
+
 describe('buildRoomSetGlb', () => {
   it('defaults to plain, the global interior colours, no ceiling and no furniture', () => {
     expect(DEFAULT_ROOM_SET_OPTIONS).toEqual({ style: 'plain', wallColor: '#E8E6E1', floorColor: '#B9A68C', ceiling: false, furniture: false })
@@ -79,14 +90,38 @@ describe('buildRoomSetGlb', () => {
   })
 
   it('offsets the set so the outer wall faces start at the 0.5 m margin: {0.62, 0.62} for an outline at (0,0)', async () => {
-    expect((await buildRoomSetGlb(room43(), opts())).offset).toEqual({ x: expect.closeTo(0.62, 6), z: expect.closeTo(0.62, 6) })
+    expect((await buildRoomSetGlb(room43(), opts())).offset).toEqual({ x: expect.closeTo(0.62, 6), y: 0, z: expect.closeTo(0.62, 6) })
     const moved: Array<[number, number]> = RECT.map(([x, z]) => [x + 2, z + 1])
-    expect((await buildRoomSetGlb({ version: 1, rooms: [room(moved)] }, opts())).offset).toEqual({ x: expect.closeTo(-1.38, 6), z: expect.closeTo(-0.38, 6) })
+    expect((await buildRoomSetGlb({ version: 1, rooms: [room(moved)] }, opts())).offset).toEqual({ x: expect.closeTo(-1.38, 6), y: 0, z: expect.closeTo(-0.38, 6) })
   })
 
   it('applies nudges before placing the set', async () => {
     const out = await buildRoomSetGlb(room43(), opts(), [{ dx: 1, dz: -2, yaw: 0 }])
-    expect(out.offset).toEqual({ x: expect.closeTo(-0.38, 6), z: expect.closeTo(2.62, 6) })
+    expect(out.offset).toEqual({ x: expect.closeTo(-0.38, 6), y: 0, z: expect.closeTo(2.62, 6) })
+  })
+
+  it('lifts or lowers the set so the lowest room floor sits at y = 0, and reports it in offset.y', async () => {
+    const out = await buildRoomSetGlb(room43({ floorY: -1.3 }), opts())
+    expect(out.offset.y).toBeCloseTo(1.3, 6)
+    const doc = await read(out.glb)
+    expect(getBounds(doc.getRoot().getDefaultScene()!).min[1]).toBeCloseTo(0, 5)
+    expect(getBounds(node(doc, 'walls')!).max[1]).toBeCloseTo(2.5, 5)
+    // the floor is lifted 1 cm off the ground so it doesn't z-fight it
+    expect(getBounds(node(doc, 'floor')!).max[1]).toBeCloseTo(0.01, 5)
+  })
+
+  it('never gives dollhouse a ceiling', async () => {
+    expect(node(await read((await buildRoomSetGlb(room43(), opts({ style: 'dollhouse', ceiling: true }))).glb), 'ceiling')).toBeUndefined()
+  })
+
+  it('covers two rooms sharing a wall with flat roofs that meet at the partition without overlapping', async () => {
+    const b: Array<[number, number]> = [[4.1, 0], [8.1, 0], [8.1, 3], [4.1, 3]]
+    const doc = await read((await buildRoomSetGlb({ version: 1, rooms: [room(RECT), room(b)] }, opts({ style: 'plain' }))).glb)
+    const roof = doc.getRoot().listMeshes().find(m => m.getName() === 'roof')!
+    let top = 0
+    for (const p of roof.listPrimitives()) top += upFacingArea(p)
+    const union = 8.34 * 3.24 // outer shell x -0.12..8.22, z -0.12..3.12
+    expect(Math.abs(top - union) / union).toBeLessThan(0.01)
   })
 
   it('adds a ceiling only when asked', async () => {

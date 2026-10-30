@@ -33,6 +33,8 @@ export interface StyleKit {
   roofMaterial?: MaterialSpec
   /** Outer face material for the wall holding the front door, when it differs (storefront glass). */
   doorWallMaterial?: MaterialSpec
+  /** False when the style never has a ceiling, whatever the options say. */
+  ceiling?: boolean
   /** How tall outer walls are built for a room with this ceiling height; shared partitions stay full height. */
   outerWallHeight: (ceiling: number) => number
   extras: (ctx: StyleContext) => MeshPart[]
