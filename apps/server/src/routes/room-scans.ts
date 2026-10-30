@@ -1,3 +1,4 @@
+import { plotForLayout } from '../room-scan/plot.js'
 import type { FastifyInstance } from 'fastify'
 import { and, desc, eq } from 'drizzle-orm'
 import { layoutFootprint, validateLayout } from '@virvixr/shared'
@@ -50,7 +51,7 @@ export default async function roomScanRoutes(app: FastifyInstance) {
         source: s.source,
         roomCount: s.layout.rooms.length,
         footprint: layoutFootprint(s.layout),
-        plot: null, // Task 5 fills this from plotForLayout
+        plot: plotForLayout(s.layout),
         createdAt: s.createdAt,
       })),
     }

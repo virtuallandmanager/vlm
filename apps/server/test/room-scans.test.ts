@@ -117,7 +117,7 @@ describe('room scans', () => {
     expect(res.statusCode).toBe(200)
     const { scans } = res.json()
     expect(scans.map((s: any) => s.name)).toEqual(['second', 'first'])
-    expect(scans[0]).toMatchObject({ source: 'quest-mruk', roomCount: 1, footprint: { minX: 0, minZ: 0, maxX: 4, maxZ: 3 }, plot: null })
+    expect(scans[0]).toMatchObject({ source: 'quest-mruk', roomCount: 1, footprint: { minX: 0, minZ: 0, maxX: 4, maxZ: 3 }, plot: { width: 1, depth: 1, base: { x: 0, y: 0 } } })
     expect(scans[0].layout).toBeUndefined()
   })
 
