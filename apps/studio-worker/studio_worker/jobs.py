@@ -8,6 +8,8 @@ paid packages from Virvi's copies of the paid files (finalize.py) and saves noth
 import copy
 import mimetypes
 import os
+import re
+import shutil
 import sys
 import tempfile
 import time
@@ -21,7 +23,7 @@ from .agent import Usage, run_agent
 from .api import Api, ApiError
 from .config import AGENT_USER, DESIGN, skills_sha
 from .finalize import Tools, finalize_job
-from .instructions import closing
+from .instructions import closing, uploads_text
 from .pieces import Piece, collect, glbs_by_shape, glbs_outside, new_hashes
 from .workspace import load_state, pack, prompt_with_context, save_state, state_dir, unpack
 
@@ -53,6 +55,37 @@ def run_job(job: dict, client: Api, design: Path, render_fn: Callable = renderer
     return result
 
 
+UPLOAD_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,80}')
+
+
+def fetch_uploads(job, client, design: Path) -> list[dict]:
+    """The owner's uploads the job lists, written fresh into design/uploads/ (what was there before goes, so a
+    deleted upload leaves and nothing the agent left in the folder is followed). Returns the ones written."""
+    folder = Path(design) / 'uploads'
+    if os.path.lexists(folder):
+        if folder.is_symlink() or not folder.is_dir():
+            os.unlink(folder)
+        else:
+            shutil.rmtree(folder)
+    got = []
+    for u in job.get('uploads') or []:
+        name = u.get('name') or ''
+        if not UPLOAD_NAME.fullmatch(name) or '..' in name:
+            print(f'[worker] skipped an upload with an odd name: {name!r}', file=sys.stderr)
+            continue
+        try:
+            data = client.get_input(job['jobId'], u['path'])
+        except ApiError as e:
+            print(f'[worker] could not read upload {name}: {e}', file=sys.stderr)
+            continue
+        folder.mkdir(exist_ok=True)
+        fd = os.open(folder / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(fd, 'wb') as f:
+            f.write(data)
+        got.append(u)
+    return got
+
+
 def _prompt_job(job, client, design, render_fn, command, as_user, result):
     job_id, agent, kind = job['jobId'], job['agent'], job.get('kind', 'wearable')
     state_path = state_dir(design)
@@ -63,7 +96,8 @@ def _prompt_job(job, client, design, render_fn, command, as_user, result):
         os.unlink(proposal_file)
     totals = state.totals.get(agent)
     before = Usage(**totals) if totals else None
-    prompt = prompt_with_context(state, agent, job['prompt']) + closing(kind, job.get('selectedSlots'))
+    uploads = fetch_uploads(job, client, design)
+    prompt = prompt_with_context(state, agent, job['prompt']) + uploads_text(uploads) + closing(kind, job.get('selectedSlots'))
     limits = {**DEFAULT_LIMITS, **{k: v for k, v in (job.get('limits') or {}).items() if v is not None}}
 
     _phase(client, job_id, 'building')

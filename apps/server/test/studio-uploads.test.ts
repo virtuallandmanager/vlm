@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest'
 import { eq } from 'drizzle-orm'
+import sharp from 'sharp'
 import { db } from '../src/db/connection.js'
 import { studioDesigns, studioJobs, studioUploads } from '../src/db/schema.js'
 import { config } from '../src/config.js'
@@ -11,9 +12,11 @@ import { testApp, createUser, tokenFor, type TestUser } from './helpers/factorie
 import { createDesign, fakeFly, issueWorker } from './helpers/studio.js'
 
 const S = '/api/studio'
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 1)])
-const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64, 2)])
-const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0, 0, 0, 0]), Buffer.from('WEBP'), Buffer.alloc(64, 3)])
+// Real images: an image is decoded on upload, so signature bytes alone are refused
+const pixels = sharp(Buffer.alloc(4 * 4 * 3, 120), { raw: { width: 4, height: 4, channels: 3 } })
+const PNG = await pixels.clone().png().toBuffer()
+const JPEG = await pixels.clone().jpeg().toBuffer()
+const WEBP = await pixels.clone().webp().toBuffer()
 const GLB = Buffer.concat([Buffer.from('glTF'), Buffer.from([2, 0, 0, 0]), Buffer.alloc(64, 4)])
 
 describe('studio uploads', () => {
@@ -69,10 +72,48 @@ describe('studio uploads', () => {
     expect((await upload(other, d.id, 'x.png', PNG)).statusCode).toBe(404)
   })
 
+  it('turns other image formats into PNG the agent and the page can open', async () => {
+    const u = await createUser()
+    const d = await createDesign(u)
+    const raw = { raw: { width: 4, height: 2, channels: 3 as const } }
+    const pixels = Buffer.alloc(4 * 2 * 3, 200)
+    const gif = await sharp(pixels, raw).gif().toBuffer()
+    const tiff = await sharp(pixels, raw).tiff().toBuffer()
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><rect width="100" height="50" fill="#0ff"/></svg>')
+    for (const [name, body] of [['anim.gif', gif], ['scan.tiff', tiff], ['logo.svg', svg]] as const) {
+      const res = await upload(u, d.id, name, body)
+      expect(res.statusCode, name).toBe(201)
+      expect(res.json()).toMatchObject({ kind: 'image', contentType: 'image/png', name: name.replace(/\.[a-z]+$/, '.png') })
+      const stored = await store.get(uploadKey(d.id, res.json().id))
+      expect((await sharp(stored!.body).metadata()).format).toBe('png')
+    }
+    // a vector logo becomes a texture-sized picture
+    const logo = (await upload(u, d.id, 'logo2.svg', svg)).json()
+    expect((await sharp((await store.get(uploadKey(d.id, logo.id)))!.body).metadata()).width).toBe(2048)
+  })
+
+  it('takes the 3D formats Blender opens, judged by their contents', async () => {
+    const u = await createUser()
+    const d = await createDesign(u)
+    const fbx = Buffer.concat([Buffer.from('Kaydara FBX Binary  \0'), Buffer.alloc(64, 5)])
+    const obj = Buffer.from('# cap\nmtllib cap.mtl\no Cap\nv 0 0 0\nv 1 0 0\nv 0 1 0\nvn 0 0 1\nf 1 2 3\n')
+    const stl = Buffer.alloc(84 + 50)
+    stl.writeUInt32LE(1, 80)
+    const blend = Buffer.concat([Buffer.from('BLENDER-v404'), Buffer.alloc(64, 6)])
+    const cases = [['avatar.vrm', GLB, 'avatar.vrm'], ['shoe.fbx', fbx, 'shoe.fbx'], ['cap.obj', obj, 'cap.obj'], ['ring.stl', stl, 'ring.stl'], ['hat.blend', blend, 'hat.blend']] as const
+    for (const [name, body, stored] of cases) {
+      const res = await upload(u, d.id, name, body)
+      expect(res.statusCode, name).toBe(201)
+      expect(res.json()).toMatchObject({ kind: 'model', name: stored })
+    }
+    // a text file is not an OBJ for being named one
+    expect((await upload(u, d.id, 'notes.obj', Buffer.from('hello there\nthis is not a mesh\n'))).statusCode).toBe(400)
+  })
+
   it('judges a file by its bytes, not its name', async () => {
     const u = await createUser()
     const d = await createDesign(u)
-    const fake = await upload(u, d.id, 'logo.png', Buffer.from('<svg onload=alert(1)>'), 'image/png')
+    const fake = await upload(u, d.id, 'logo.png', Buffer.from('just some text, not a picture'), 'image/png')
     expect(fake.statusCode).toBe(400)
     expect(fake.json().code).toBe('unsupported_file')
     // a real PNG named .glb keeps its own kind and gets a matching extension
@@ -87,6 +128,7 @@ describe('studio uploads', () => {
     const tooBig = await upload(u, d.id, 'big.png', big)
     expect(tooBig.statusCode).toBe(413)
     expect(tooBig.json().code).toBe('file_too_large')
+    expect((await upload(u, d.id, 'big.glb', Buffer.concat([GLB, Buffer.alloc(UPLOAD_LIMITS.modelBytes)]))).json().code).toBe('file_too_large')
     for (let i = 0; i < UPLOAD_LIMITS.perDesign; i++) expect((await upload(u, d.id, `l${i}.png`, PNG)).statusCode).toBe(201)
     const more = await upload(u, d.id, 'one-more.png', PNG)
     expect(more.statusCode).toBe(409)

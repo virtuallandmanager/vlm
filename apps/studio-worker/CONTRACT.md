@@ -30,7 +30,7 @@ design gets 403. Path segments are URL-encoded.
 | `GET /designs/{designId}/jobs/next` | | 200 with a Job, or 204 when there is none. Handing out a job marks it taken. |
 | `POST /jobs/{jobId}/events` | an Event (JSON) | 2xx |
 | `PUT /jobs/{jobId}/files/{path}` | the file's raw bytes, with its content type | 2xx |
-| `GET /jobs/{jobId}/inputs/{path}` | | 200 with the file's bytes. Only for a taken finalize job, and only for the paths it lists. |
+| `GET /jobs/{jobId}/inputs/{path}` | | 200 with the file's bytes. Only for a taken job, and only for the paths it lists: a finalize job's piece files, a prompt job's `uploads`. |
 | `POST /jobs/{jobId}/result` | a Result (JSON) | 2xx; the job is finished |
 
 The worker retries a call 3 times on a 5xx or connection error. It retries the result `POST` until it succeeds or
@@ -91,6 +91,11 @@ Render frames are the only files the browser ever receives. A `viewKey` is `<mod
   with a slot proposal instead of building.
 - `limits`: defaults `timeoutSec` 1500, `maxTurns` 80, `costCeilingUsd` 3.0. Claude is stopped once its running cost
   passes the ceiling; Codex reports usage only at the end of a turn, so time alone caps it.
+- `uploads`, on a prompt job: the files the owner uploaded for the design, `[{"path": "uploads/<id>/<name>", "name":
+  str, "kind": "image" | "model"}]` (empty when there are none). Images are PNG, JPEG or WebP (Virvi turns other
+  formats into PNG); models are GLB, VRM, FBX, OBJ, STL or .blend. The worker reads each through `inputs` into the
+  workspace's `uploads/<name>` before the agent runs, replacing what was there, and the prompt names them. The folder
+  is never saved with the workspace.
 - `render`, on a render job: `{"categories": ["hat"], "bodyShape": "male"|"female", "outfit": "default"|"outfit-2"|
   "outfit-3", "emote": null|"idle"|"wave"|"dance"|"clap"|"walk"}`. A wearable view is a 36-frame spin; an emote
   design's view is 36 frames through its animation.

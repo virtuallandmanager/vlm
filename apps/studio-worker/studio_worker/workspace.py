@@ -17,6 +17,8 @@ from .config import AGENT_USER
 
 # The image installs the skills into the workspace; saving them with a design would pin it to an old skills SHA
 IMAGE_OWNED = ('.claude/skills', '.agents/skills')
+# What a saved workspace leaves out: the image's skills, and the owner's uploads, which come from Virvi with every prompt
+NOT_SAVED = (*IMAGE_OWNED, 'uploads')
 
 
 @dataclass
@@ -41,13 +43,13 @@ def pack(design: Path, state: Path) -> bytes:
         for prefix, root in (('design', Path(design)), ('state', Path(state))):
             for dirpath, dirnames, filenames in os.walk(root):
                 rel_dir = Path(dirpath).relative_to(root).as_posix()
-                if any(rel_dir == d or rel_dir.startswith(d + '/') for d in IMAGE_OWNED):
+                if any(rel_dir == d or rel_dir.startswith(d + '/') for d in NOT_SAVED):
                     dirnames[:] = []
                     continue
                 for name in sorted(dirnames) + sorted(filenames):
                     path = Path(dirpath) / name
                     rel = path.relative_to(root).as_posix()
-                    if any(rel == d for d in IMAGE_OWNED):
+                    if any(rel == d for d in NOT_SAVED):
                         continue
                     st = path.lstat()
                     if stat.S_ISDIR(st.st_mode):

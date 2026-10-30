@@ -41,3 +41,22 @@ Blender is for building only: never render in Blender (no thumbnails, turntables
 {look}
 {check}{shaping}
 When you're done, reply to the user in a few plain sentences: what you made or changed, and anything you need from them."""
+
+
+def uploads_text(uploads: list[dict]) -> str:
+    """What the agent is told about the files the user uploaded (fetched into uploads/ before it runs)."""
+    if not uploads:
+        return ''
+    kinds = {'image': 'image', 'model': '3D model'}
+    listed = '\n'.join(f"- uploads/{u['name']} ({kinds.get(u['kind'], u['kind'])})" for u in uploads)
+    return f"""
+
+The user uploaded these files for this design; they are in uploads/:
+{listed}
+Use them as the user's messages ask. Open an image to see it before you use it. An image can be a reference to look
+at, or go on the model itself as a texture or a decal: a logo printed on a shirt, a pattern across a jacket. Place it
+with UVs on an image texture in the material, keep its proportions and keep the texture within Decentraland's
+limits. A 3D model can be a reference for shape and scale, or a starting mesh when the user asks for that; refit
+anything you reuse to the avatar and the checker. Bring one into Blender with its importer: glTF for .glb and .vrm,
+FBX, OBJ or STL; a .blend file is opened, or appended from. Leave the files in uploads/ as they are: copy what you need into
+the piece's folder."""
