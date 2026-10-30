@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useApi } from '@/lib/api'
 import { Badge, PrimaryButton } from '@/components/ui'
 import {
-  formatCents, REPORT_MAX, refusalMessage, reportOk, revisionActions,
+  formatCents, REPORT_MAX, refusalMessage, reportCopy, reportOk, revisionActions,
   type FinalizedRevision, type StudioPiece,
 } from '@/lib/studio'
 
@@ -60,7 +60,7 @@ function PaidRevision({ designId, category, f, onChanged }: { designId: string; 
 
   const report = () => run(async () => {
     const r = await api.reportStudioMistake(designId, category, f.revision, text.trim())
-    setRefunded(r.refundCents)
+    if (r.status === 'refunded') setRefunded(r.refundCents)
     setReporting(false)
     await onChanged()
   })
@@ -76,7 +76,9 @@ function PaidRevision({ designId, category, f, onChanged }: { designId: string; 
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {f.report && <Badge tone="success">{f.report.status === 'waived' ? 'Waived' : 'Refunded'}</Badge>}
+          {f.report && (f.report.status === 'waived' || f.report.status === 'refunded') && (
+            <Badge tone="success">{f.report.status === 'waived' ? 'Waived' : 'Refunded'}</Badge>
+          )}
           {actions.packaging && <span className="text-gray-400">Packaging…</span>}
           {actions.download && <PrimaryButton type="button" disabled={busy} onClick={download}>Download</PrimaryButton>}
           {actions.retry && <PrimaryButton type="button" disabled={busy} onClick={retry}>Try again</PrimaryButton>}
@@ -100,6 +102,7 @@ function PaidRevision({ designId, category, f, onChanged }: { designId: string; 
         </form>
       )}
       {refunded !== null && <p className="mt-2 text-emerald-300" role="status">Refunded {formatCents(refunded)}.</p>}
+      {f.report && reportCopy(f.report.status) && <p className="mt-2 text-gray-300" role="status">{reportCopy(f.report.status)}</p>}
       {error && <p className="mt-2 text-amber-300" role="alert">{error}</p>}
     </li>
   )

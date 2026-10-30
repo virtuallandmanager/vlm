@@ -4,11 +4,12 @@ import { studioDesigns, studioEntitlements, studioJobs, studioMessages, studioPi
 import { checkFilePath, jobFileKey } from './store.js'
 import { recordCost, refundPrompt, utcDay, type Exec, type PromptSource } from './quota.js'
 import { publishStudio } from './events.js'
+import { DECLINED_NOTE, SCOPE_CATEGORIES, logScopeEvent, maybeFlag, offTopicIsFree, offTopicNote } from './scope.js'
 
 /** A worker's Result, as apps/studio-worker/CONTRACT.md defines it (only the fields Virvi reads are typed). */
 export type ContractResult = {
   jobId?: string
-  outcome: 'ok' | 'needs_input' | 'no_change' | 'ceiling' | 'timeout' | 'error'
+  outcome: 'ok' | 'needs_input' | 'no_change' | 'off_topic' | 'declined' | 'ceiling' | 'timeout' | 'error'
   agent?: string | null
   model?: string | null
   skillsSha?: string | null
@@ -19,6 +20,7 @@ export type ContractResult = {
   proposal?: unknown
   pieces: ContractPiece[]
   error?: string | null
+  scope?: { by: 'check' | 'agent'; category: string; note: string } | null // on off_topic and declined
 }
 
 export type ContractPiece = {
@@ -32,7 +34,7 @@ export type ContractPiece = {
   finalize?: Record<string, unknown> | null // a finalize job's check summary for the piece
 }
 
-const OUTCOMES = ['ok', 'needs_input', 'no_change', 'ceiling', 'timeout', 'error'] as const
+const OUTCOMES = ['ok', 'needs_input', 'no_change', 'off_topic', 'declined', 'ceiling', 'timeout', 'error'] as const
 const CATEGORY = /^[a-z_]+$/
 const VIEW_KEY = /^[a-z0-9-]+$/
 
@@ -47,6 +49,13 @@ export function parseResult(body: unknown): { ok: true; result: ContractResult }
   }
   if (r.reply != null && typeof r.reply !== 'string') return { ok: false, reason: 'reply is not text' }
   if (r.error != null && typeof r.error !== 'string') return { ok: false, reason: 'error is not text' }
+  if (r.outcome === 'off_topic' || r.outcome === 'declined') {
+    const sc = r.scope as Record<string, unknown> | null | undefined
+    if (!sc || typeof sc !== 'object' || (sc.by !== 'check' && sc.by !== 'agent')
+      || typeof sc.category !== 'string' || !SCOPE_CATEGORIES.includes(sc.category) || typeof sc.note !== 'string') {
+      return { ok: false, reason: 'scope is malformed' }
+    }
+  }
   for (const p of r.pieces as unknown[]) {
     if (!p || typeof p !== 'object') return { ok: false, reason: 'a piece is not an object' }
     const piece = p as Record<string, unknown>
@@ -89,6 +98,10 @@ function systemNote(r: ContractResult, refunded: boolean): string | null {
       return 'The agent stopped at this prompt’s cost limit. Press Continue to carry on where it stopped: it doesn’t use a prompt.'
     case 'timeout':
       return 'The agent ran out of time on this prompt.'
+    case 'off_topic': // the fixed words only: the model's note is never shown
+      return offTopicNote(r.scope?.category ?? 'other', !refunded)
+    case 'declined':
+      return DECLINED_NOTE
     default:
       return null
   }
@@ -150,10 +163,17 @@ export async function applyResult(jobId: string, result: ContractResult, now: Da
         }
       }
       if (design) await recordCost(design.ownerId, day, result.costUsd ?? 0, tx)
-      const refunded = result.outcome === 'error' && job.counted && !!design
+      const refunded = job.counted && !!design && (result.outcome === 'error'
+        || (result.outcome === 'off_topic' && await offTopicIsFree(tx, design.ownerId, now)))
       if (refunded) await refundPrompt(design!.ownerId, day, job.countedFrom as PromptSource | null, tx)
       const note = systemNote(result, refunded)
       if (note) await tx.insert(studioMessages).values({ designId: job.designId, role: 'system', text: note, jobId: job.id })
+      if ((result.outcome === 'off_topic' || result.outcome === 'declined') && result.scope && design) {
+        await logScopeEvent(tx, {
+          userId: design.ownerId, designId: design.id, jobId: job.id, by: result.scope.by, category: result.scope.category,
+          note: result.scope.note, message: String((job.payload as { prompt?: unknown }).prompt ?? ''),
+        })
+      }
     } else if (job.type === 'finalize') {
       // Each paid piece is ready once its package was uploaded; the rest failed and can be retried for free
       for (const { e, name } of await finalizeEntitlements(job.id, tx)) {
@@ -185,6 +205,10 @@ export async function applyResult(jobId: string, result: ContractResult, now: Da
     return job
   })
   if (!job) return 'already'
+  if (result.outcome === 'off_topic' || result.outcome === 'declined') {
+    const [d] = await db.select({ ownerId: studioDesigns.ownerId }).from(studioDesigns).where(eq(studioDesigns.id, job.designId))
+    if (d) await maybeFlag(d.ownerId, now).catch((err) => console.error('[studio] flag check failed:', err instanceof Error ? err.message : err))
+  }
   await publishStudio(job.designId, {
     type: 'job', jobId: job.id, status, outcome: result.outcome, ...(result.error ? { error: result.error } : {}),
   })

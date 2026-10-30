@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useApi } from '@/lib/api'
 import { PrimaryButton } from '@/components/ui'
 import {
-  checkoutBody, dialogTotal, finalizeStrip, formatCents, REPORT_MAX, refusalMessage, reportOk,
+  checkoutBody, dialogTotal, finalizeStrip, formatCents, HELD_REPORT_COPY, REPORT_MAX, refusalMessage, reportOk,
   type Quote, type QuoteLine, type Refusal, type StudioKind,
 } from '@/lib/studio'
 
@@ -78,7 +78,10 @@ function FinalizeDialog({ designId, quote, onClose, onChanged }: { designId: str
         <h2 id="finalize-title" className="text-lg font-semibold">Finalize</h2>
         <ul className="mt-4 divide-y divide-gray-800">
           {quote.lines.map((l) => {
-            const waived = l.category in reports
+            const reported = l.category in reports
+            // Past the piece's instant refunds, a report is charged now and goes to the team
+            const held = reported && (quote.reportsHeld ?? []).includes(l.category)
+            const waived = reported && !held
             const revision = l.priceKind.startsWith('revision')
             return (
               <li key={l.category} className="py-3">
@@ -94,11 +97,12 @@ function FinalizeDialog({ designId, quote, onClose, onChanged }: { designId: str
                 </div>
                 {revision && (
                   <label className="mt-2 flex items-center gap-2 text-sm text-gray-300">
-                    <input type="checkbox" checked={waived} onChange={() => toggle(l.category)} />
+                    <input type="checkbox" checked={reported} onChange={() => toggle(l.category)} />
                     This revision fixes the agent’s mistake
                   </label>
                 )}
-                {waived && (
+                {held && <p className="mt-2 text-xs text-gray-400">{HELD_REPORT_COPY}</p>}
+                {reported && (
                   <label className="mt-2 block">
                     <span className="mb-1 block text-xs text-gray-400">What did the agent get wrong?</span>
                     <textarea rows={3} maxLength={REPORT_MAX} value={reports[l.category]}

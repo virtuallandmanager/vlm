@@ -1,15 +1,17 @@
-import { and, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   studioDesigns, studioEntitlements, studioJobs, studioMistakeReports, studioPayments, studioPieces, studioPromptCredits,
-  studioRevisions, type PaymentLine,
+  studioRenders, studioRevisions, users, type PaymentLine,
 } from '../db/schema.js'
 import { config } from '../config.js'
 import { ensureCustomer, getStripe } from '../integrations/stripe.js'
-import { priceLines, quoteFinalize, QuoteError } from './pricing.js'
+import { instantReportsUsed, priceLines, quoteFinalize, QuoteError } from './pricing.js'
 import { startWorker, type Design } from './designs.js'
 import type { Exec } from './quota.js'
 import { publishStudio } from './events.js'
+import { mailOwner } from './scope.js'
+import { frameUrlExpiry, signRenderFrame } from './render-urls.js'
 
 /**
  * Design Studio payments: one-time Stripe Checkout sessions for finalizing pieces and for prompt top-ups, applied once
@@ -31,7 +33,7 @@ export class PaymentError extends Error {
 const appUrl = (path: string) => `${config.publicUrl.replace(/\/+$/, '')}${path}`
 // An open session is reused only for exactly the same lines: revisions, what each costs, and which are waived
 const lineKey = (lines: PaymentLine[]) =>
-  lines.map((l) => `${l.revisionId}:${l.amountCents}:${l.waived ? 'w' : 'c'}`).sort().join(',')
+  lines.map((l) => `${l.revisionId}:${l.amountCents}:${l.waived ? 'w' : l.held ? 'h' : 'c'}`).sort().join(',')
 const sameLines = (a: PaymentLine[], b: PaymentLine[]) => lineKey(a) === lineKey(b)
 
 function lineName(l: PaymentLine): string {
@@ -59,7 +61,7 @@ export async function createFinalizeCheckout(
 ): Promise<{ url: string } | { granted: true; paymentId: string }> {
   const quote = await quoteFinalize(design, categories, Object.keys(reports))
   if (!quote.lines.length) throw new QuoteError('nothing_to_pay', categories ?? [])
-  const lines = quote.lines.map((l) => (l.waived ? { ...l, reportText: reports[l.category] } : l))
+  const lines = quote.lines.map((l) => (l.waived || l.held ? { ...l, reportText: reports[l.category] } : l))
   if (quote.totalCents === 0) {
     const [pay] = await db.insert(studioPayments).values({ userId: user.id, designId: design.id, kind: 'finalize', amountCents: 0, lines }).returning()
     await grantPayment(pay.id, null, now)
@@ -136,6 +138,7 @@ export async function createTopupCheckout(user: { id: string; email: string | nu
  * confirms.
  */
 export async function grantPayment(paymentId: string, paymentIntent: string | null, now: Date): Promise<'granted' | 'already'> {
+  const held: { name: string; revision: number; text: string }[] = []
   const out = await db.transaction(async (tx) => {
     const [pay] = await tx.update(studioPayments)
       .set({ status: 'paid', paidAt: now, ...(paymentIntent ? { stripePaymentIntent: paymentIntent } : {}) })
@@ -170,6 +173,11 @@ export async function grantPayment(paymentId: string, paymentIntent: string | nu
         await tx.insert(studioMistakeReports).values({
           entitlementId: e.id, userId: pay.userId, text: l.reportText ?? '', refundCents: l.amountCents, status: 'waived',
         })
+      } else if (l.held) { // past the instant limit: charged, and the report waits for the owner
+        await tx.insert(studioMistakeReports).values({
+          entitlementId: e.id, userId: pay.userId, text: l.reportText ?? '', refundCents: charged, status: 'in_review',
+        })
+        held.push({ name: l.pieceName, revision: l.revisionNumber, text: l.reportText ?? '' })
       }
     }
     if (owed > 0) await tx.update(studioPayments).set({ refundDueCents: owed }).where(eq(studioPayments.id, pay.id))
@@ -180,6 +188,7 @@ export async function grantPayment(paymentId: string, paymentIntent: string | nu
     return { pay, jobIds: await insertFinalizeJobs(tx, design, entitlementIds, now) }
   })
   if (!out) return 'already'
+  for (const h of held) await mailHeldReport(out.pay.userId, h.name, h.revision, h.text)
   await settleRefund(out.pay.id)
   await startFinalizeJobs(out.pay.designId, out.jobIds, now)
   return 'granted'
@@ -288,7 +297,7 @@ export async function reportMistake(
   revisionNumber: number,
   text: string,
   now: Date,
-): Promise<{ status: 'refunded'; refundCents: number }> {
+): Promise<{ status: 'refunded'; refundCents: number } | { status: 'in_review' }> {
   const [row] = await db.select({ e: studioEntitlements, pay: studioPayments })
     .from(studioEntitlements)
     .innerJoin(studioRevisions, eq(studioRevisions.id, studioEntitlements.revisionId))
@@ -302,6 +311,16 @@ export async function reportMistake(
   if (!pay.paidAt || now.getTime() - pay.paidAt.getTime() > REPORT_WINDOW_DAYS * 24 * 3600 * 1000) {
     throw new PaymentError(409, 'report_window_closed')
   }
+  if ((await instantReportsUsed(design.id, category)) >= config.studioFlag.instantReports) {
+    const [held] = await db.insert(studioMistakeReports).values({
+      entitlementId: e.id, userId: e.userId, text, refundCents: e.amountCents, status: 'in_review', createdAt: now,
+    }).onConflictDoNothing().returning()
+    if (!held) throw new PaymentError(409, 'already_reported')
+    const [piece] = await db.select({ name: studioPieces.name }).from(studioPieces)
+      .where(and(eq(studioPieces.designId, design.id), eq(studioPieces.category, category)))
+    await mailHeldReport(e.userId, piece?.name ?? category, revisionNumber, text)
+    return { status: 'in_review' }
+  }
   // A pending row left by a request that died mid-refund stops being a lock after a while
   await db.delete(studioMistakeReports).where(and(
     eq(studioMistakeReports.entitlementId, e.id), eq(studioMistakeReports.status, 'pending'),
@@ -311,6 +330,18 @@ export async function reportMistake(
     entitlementId: e.id, userId: e.userId, text, refundCents: e.amountCents, status: 'pending', createdAt: now,
   }).onConflictDoNothing().returning()
   if (!lock) throw new PaymentError(409, 'already_reported')
+  return refundReport(e, pay, lock.id, 'delete')
+}
+
+/**
+ * Refunds a report's line in full through Stripe and records it. A refund Stripe already made for this entitlement
+ * (an answer that was lost) is recorded, not repeated. On a refused refund the report is removed (a customer's
+ * instant report, so they can try again) or put back in review (an owner's approval), and 502 is thrown.
+ */
+async function refundReport(
+  e: typeof studioEntitlements.$inferSelect, pay: typeof studioPayments.$inferSelect, reportId: string,
+  onFailure: 'delete' | 'back_to_review', review?: { by: string; at: Date },
+): Promise<{ status: 'refunded'; refundCents: number }> {
   let refundId: string
   try {
     const stripe = await getStripe()
@@ -318,15 +349,18 @@ export async function reportMistake(
     const earlier = made.find((r) => r.metadata?.virvi_studio_entitlement_id === e.id)
     refundId = earlier?.id ?? (await stripe.refunds.create(
       { payment_intent: pay.stripePaymentIntent, amount: e.amountCents, metadata: { virvi_studio_entitlement_id: e.id, reason: 'agent_mistake' } },
-      { idempotencyKey: `studio-report-${e.id}-${lock.id}` },
+      { idempotencyKey: `studio-report-${e.id}-${reportId}` },
     )).id
   } catch (err) {
     console.error('[studio] mistake refund failed:', err instanceof Error ? err.message : err)
-    await db.delete(studioMistakeReports).where(eq(studioMistakeReports.id, lock.id))
+    if (onFailure === 'delete') await db.delete(studioMistakeReports).where(eq(studioMistakeReports.id, reportId))
+    else await db.update(studioMistakeReports).set({ status: 'in_review' }).where(eq(studioMistakeReports.id, reportId))
     throw new PaymentError(502, 'stripe_error')
   }
   await db.transaction(async (tx) => {
-    await tx.update(studioMistakeReports).set({ status: 'refunded', stripeRefundId: refundId }).where(eq(studioMistakeReports.id, lock.id))
+    await tx.update(studioMistakeReports)
+      .set({ status: 'refunded', stripeRefundId: refundId, ...(review ? { reviewedAt: review.at, reviewedBy: review.by } : {}) })
+      .where(eq(studioMistakeReports.id, reportId))
     await tx.update(studioPayments).set({ refundedCents: sql`${studioPayments.refundedCents} + ${e.amountCents}` })
       .where(eq(studioPayments.id, pay.id))
   })
@@ -369,4 +403,77 @@ export async function finalizedRevisions(designId: string) {
         ? new Date(r.paidAt.getTime() + REPORT_WINDOW_DAYS * 24 * 3600 * 1000)
         : null,
     }))
+}
+
+async function mailHeldReport(userId: string, pieceName: string, revision: number, text: string) {
+  const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId))
+  const esc = (x: string) => x.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  await mailOwner(`Mistake report to review: ${u?.email ?? userId}`, `
+    <p>${esc(u?.email ?? userId)} reported that revision ${revision} of ${esc(pieceName)} fixed the agent's mistake. It's past
+    the instant refunds for this piece, so it waits for you.</p>
+    <blockquote>${esc(text)}</blockquote>
+    <p><a href="${appUrl('/admin/studio')}">Approve or decline it on the Studio flags page</a>.</p>`)
+}
+
+/** The owner approves a held report: its line is refunded in full, as an instant report would be. */
+export async function approveReport(reportId: string, adminId: string, now: Date): Promise<{ status: 'refunded'; refundCents: number }> {
+  // in_review -> approving is the lock: a second approval finds nothing to approve. An approval that died midway
+  // (approving for longer than a refund takes) can be approved again; Stripe's earlier refund is found, not repeated.
+  const [lock] = await db.update(studioMistakeReports).set({ status: 'approving', reviewedAt: now })
+    .where(and(eq(studioMistakeReports.id, reportId), approvable(now))).returning()
+  if (!lock) throw new PaymentError(409, 'not_in_review')
+  const [row] = await db.select({ e: studioEntitlements, pay: studioPayments }).from(studioEntitlements)
+    .innerJoin(studioPayments, eq(studioPayments.id, studioEntitlements.paymentId))
+    .where(eq(studioEntitlements.id, lock.entitlementId))
+  if (!row?.pay.stripePaymentIntent || !(row.e.amountCents > 0)) {
+    await db.update(studioMistakeReports).set({ status: 'in_review' }).where(eq(studioMistakeReports.id, reportId))
+    throw new PaymentError(409, 'nothing_charged')
+  }
+  return refundReport(row.e, row.pay, reportId, 'back_to_review', { by: adminId, at: now })
+}
+
+/** A report the owner can act on: waiting for review, or an approval that died midway. */
+const approvable = (now: Date) => or(
+  eq(studioMistakeReports.status, 'in_review'),
+  and(eq(studioMistakeReports.status, 'approving'), lt(studioMistakeReports.reviewedAt, new Date(now.getTime() - PENDING_REPORT_MS))),
+)
+
+export async function declineReport(reportId: string, adminId: string, now: Date): Promise<boolean> {
+  const [r] = await db.update(studioMistakeReports).set({ status: 'declined', reviewedAt: now, reviewedBy: adminId })
+    .where(and(eq(studioMistakeReports.id, reportId), approvable(now))).returning({ id: studioMistakeReports.id })
+  return !!r
+}
+
+/** Held reports for the admin page, oldest first, with the piece, the revision's request and a frame of before and after. */
+export async function heldReports(now: Date) {
+  const rows = await db.select({ r: studioMistakeReports, e: studioEntitlements, rev: studioRevisions, piece: studioPieces, email: users.email })
+    .from(studioMistakeReports)
+    .innerJoin(studioEntitlements, eq(studioEntitlements.id, studioMistakeReports.entitlementId))
+    .innerJoin(studioRevisions, eq(studioRevisions.id, studioEntitlements.revisionId))
+    .innerJoin(studioPieces, eq(studioPieces.id, studioRevisions.pieceId))
+    .innerJoin(users, eq(users.id, studioMistakeReports.userId))
+    .where(approvable(now))
+    .orderBy(asc(studioMistakeReports.createdAt))
+  const expires = frameUrlExpiry(now)
+  // The first frame of one ready render of a revision of the piece: enough to see what changed
+  const frame = async (piece: typeof studioPieces.$inferSelect, number: number) => {
+    const [x] = await db.select({ render: studioRenders }).from(studioRenders)
+      .innerJoin(studioRevisions, eq(studioRevisions.id, studioRenders.revisionId))
+      .where(and(eq(studioRevisions.pieceId, piece.id), eq(studioRevisions.number, number), eq(studioRenders.status, 'ready')))
+      .orderBy(asc(studioRenders.viewKey))
+      .limit(1)
+    return x ? signRenderFrame({
+      designId: piece.designId, revisionId: x.render.revisionId, viewKey: x.render.viewKey, category: piece.category, frame: 0, jobId: x.render.jobId,
+    }, expires) : null
+  }
+  return Promise.all(rows.map(async ({ r, e, rev, piece, email }) => {
+    const [job] = rev.jobId ? await db.select({ payload: studioJobs.payload }).from(studioJobs).where(eq(studioJobs.id, rev.jobId)) : []
+    return {
+      id: r.id, text: r.text, refundCents: r.refundCents, createdAt: r.createdAt,
+      user: { id: r.userId, email },
+      designId: e.designId, piece: { category: piece.category, name: piece.name }, revisionNumber: rev.number,
+      request: String((job?.payload as { prompt?: unknown } | undefined)?.prompt ?? ''),
+      before: await frame(piece, rev.number - 1), after: await frame(piece, rev.number),
+    }
+  }))
 }

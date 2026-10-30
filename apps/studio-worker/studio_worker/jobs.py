@@ -19,12 +19,13 @@ from pathlib import Path
 from typing import Callable, Mapping
 
 from . import render as renderer
+from . import scope
 from .agent import Usage, run_agent
 from .api import Api, ApiError
 from .config import AGENT_USER, DESIGN, skills_sha
 from .finalize import Tools, finalize_job
 from .instructions import closing, uploads_text
-from .pieces import Piece, collect, glbs_by_shape, glbs_outside, new_hashes
+from .pieces import Piece, collect, glbs_by_shape, glbs_outside, new_hashes, read_declined
 from .workspace import load_state, pack, prompt_with_context, save_state, state_dir, unpack
 
 IDLE_EXIT_SEC = 600
@@ -33,12 +34,13 @@ DEFAULT_LIMITS = {'timeoutSec': 1500, 'maxTurns': 80, 'costCeilingUsd': 3.0}
 
 
 def run_job(job: dict, client: Api, design: Path, render_fn: Callable = renderer.render,
-            command: list[str] | None = None, as_user: str | None = AGENT_USER, tools: Tools | None = None) -> dict:
+            command: list[str] | None = None, as_user: str | None = AGENT_USER, tools: Tools | None = None,
+            checker: Callable | None = None) -> dict:
     """Runs one job and posts its Result, which it also returns."""
     start = time.monotonic()
     result = {'jobId': job['jobId'], 'outcome': 'error', 'agent': job.get('agent'), 'model': job.get('model'),
               'skillsSha': skills_sha(), 'wallSec': None, 'tokens': None, 'costUsd': None, 'reply': '',
-              'proposal': None, 'pieces': [], 'error': None}
+              'proposal': None, 'pieces': [], 'error': None, 'scope': None}
     try:
         if job.get('type') == 'render':
             _render_job(job, client, Path(design), render_fn, result)
@@ -46,7 +48,7 @@ def run_job(job: dict, client: Api, design: Path, render_fn: Callable = renderer
             with tempfile.TemporaryDirectory(prefix='studio-final-') as stage:
                 finalize_job(job, client, render_fn, tools or Tools.real(), result, Path(stage))
         else:
-            _prompt_job(job, client, Path(design), render_fn, command, as_user, result)
+            _prompt_job(job, client, Path(design), render_fn, command, as_user, result, checker or scope.check)
     except Exception as e:  # the result still goes out, so the design isn't left waiting
         result.update(outcome='error', error=f'worker: {type(e).__name__}: {e}')
         traceback.print_exc(file=sys.stderr)
@@ -86,14 +88,22 @@ def fetch_uploads(job, client, design: Path) -> list[dict]:
     return got
 
 
-def _prompt_job(job, client, design, render_fn, command, as_user, result):
+def _prompt_job(job, client, design, render_fn, command, as_user, result, checker):
     job_id, agent, kind = job['jobId'], job['agent'], job.get('kind', 'wearable')
     state_path = state_dir(design)
     state = load_state(state_path)
+    check_cost = None
+    if job.get('check'):  # only the user's own words are checked; the server's (Continue, fix the checks) never are
+        v = checker(job['prompt'], kind, state.messages, [u.get('name') or '' for u in job.get('uploads') or []])
+        check_cost = v.cost_usd
+        if v.verdict == 'off_topic':  # the agent never runs, and nothing about the design changes
+            result.update(outcome='off_topic', costUsd=v.cost_usd,
+                          scope={'by': 'check', 'category': v.category, 'note': v.note})
+            return
     saved = copy.deepcopy(state)
-    proposal_file = design / 'out' / 'proposal.json'
-    if os.path.lexists(proposal_file):  # an earlier prompt's proposal has been answered; don't read it as this one's
-        os.unlink(proposal_file)
+    for answered in ('proposal.json', 'declined.json'):  # an earlier prompt's; don't read it as this one's
+        if os.path.lexists(design / 'out' / answered):
+            os.unlink(design / 'out' / answered)
     totals = state.totals.get(agent)
     before = Usage(**totals) if totals else None
     uploads = fetch_uploads(job, client, design)
@@ -106,7 +116,8 @@ def _prompt_job(job, client, design, render_fn, command, as_user, result):
                     lambda text: _send(client, job_id, {'type': 'progress', 'text': text}),
                     command=command, as_user=as_user, cwd=design)
     usage = run.usage
-    result.update(reply=run.reply, costUsd=run.cost_usd, tokens=usage and {
+    cost = None if run.cost_usd is None and check_cost is None else round((run.cost_usd or 0) + (check_cost or 0), 6)
+    result.update(reply=run.reply, costUsd=cost, tokens=usage and {
         'input': usage.input, 'cachedInput': usage.cached_input, 'cacheWrite': usage.cache_write,
         'output': usage.output})
 
@@ -115,6 +126,7 @@ def _prompt_job(job, client, design, render_fn, command, as_user, result):
         pieces, proposal, error = collect(design, kind, state.hashes, stage=Path(stage)) \
             if run.outcome == 'ok' else ([], None, None)
         changed = [p for p in pieces if p.changed]
+        declined = read_declined(design) if run.outcome == 'ok' and not changed and not proposal else None
         if run.outcome == 'ok' and not error and not changed and not proposal:
             elsewhere = glbs_outside(design, started)
             if elsewhere:
@@ -159,6 +171,8 @@ def _prompt_job(job, client, design, render_fn, command, as_user, result):
         result.update(outcome=run.outcome, error=run.error)
     elif error:
         result.update(outcome='error', error=error)
+    elif declined is not None:  # the agent stopped on a request that isn't design work
+        result.update(outcome='declined', scope={'by': 'agent', 'category': 'other', 'note': declined})
     elif proposal:
         result['outcome'] = 'needs_input'
     elif render_errors:

@@ -88,7 +88,7 @@ export default function Conversation({ designId, detail, usage, events, onChange
         {detail.messages.map((m) => (
           <Message key={m.id} m={m}>
             {m === openProposal && m.proposal && (
-              <ProposalPicker proposal={m.proposal} disabled={sending || composer.mode === 'out'}
+              <ProposalPicker proposal={m.proposal} disabled={sending || composer.mode === 'out' || composer.mode === 'paused'}
                 onBuild={(slots) => send({ text: `Build these: ${slots.map(categoryLabel).join(', ')}`, selectedSlots: slots })} />
             )}
           </Message>
@@ -105,7 +105,7 @@ export default function Conversation({ designId, detail, usage, events, onChange
       </div>
 
       <div className="border-t border-gray-800 p-3">
-        <Uploads designId={designId} uploads={detail.uploads ?? []} disabled={composer.mode === 'archived'} dropped={dropped} onChanged={onChanged} />
+        <Uploads designId={designId} uploads={detail.uploads ?? []} disabled={composer.mode === 'archived' || composer.mode === 'paused'} dropped={dropped} onChanged={onChanged} />
         {refusal && <RefusalLine refusal={refusal} usage={usage} onFix={() => send({ fixChecks: true })} />}
         {failing.length > 0 && !active && (
           <button type="button" disabled={sending} onClick={() => send({ fixChecks: true })}
@@ -119,7 +119,7 @@ export default function Conversation({ designId, detail, usage, events, onChange
             <PrimaryButton type="button" disabled={sending} onClick={() => send({ continue: true })}>Continue</PrimaryButton>
           </div>
         )}
-        {composer.mode === 'out' || composer.mode === 'archived' ? (
+        {composer.mode === 'out' || composer.mode === 'archived' || composer.mode === 'paused' ? (
           <div className="text-sm text-gray-400">
             <p>{composer.note}</p>
             {composer.mode === 'out' && usage && <TopupButton usage={usage} onRefusal={setRefusal} />}

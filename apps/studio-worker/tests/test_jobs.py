@@ -7,7 +7,7 @@ from PIL import Image
 
 import fake_api
 from conftest import FIXTURES
-from studio_worker import jobs
+from studio_worker import jobs, scope
 from studio_worker.api import Api
 from studio_worker.workspace import State, pack, save_state
 
@@ -189,3 +189,56 @@ def test_proposal_with_built_pieces_keeps_them_for_later(api, tmp_path, skills):
 def test_glbs_exported_outside_out_are_an_error(api, tmp_path):
     result = run(api, tmp_path, prompt_job(), 'claude_exports_elsewhere.jsonl')
     assert result['outcome'] == 'error' and 'exports/neon_cap_male.glb' in result['error']
+
+
+def verdict(v, category=None, note='', cost=0.001):
+    calls = []
+
+    def checker(words, kind, history, upload_names):
+        calls.append((words, kind, upload_names))
+        return scope.Verdict(v, category, note, cost)
+    checker.calls = calls
+    return checker
+
+
+def run_checked(api, tmp_path, job, fixture, checker, renders=None):
+    return jobs.run_job(job, client(api), tmp_path, render_fn=fake_render(renders if renders is not None else []),
+                        command=fake_command(fixture), as_user=None, checker=checker)
+
+
+def test_off_topic_skips_the_agent(api, tmp_path):
+    checker = verdict('off_topic', 'coding', 'python help')
+    job = prompt_job(check=True, prompt='reverse a linked list', uploads=[{'path': 'uploads/x/logo.png', 'name': 'logo.png', 'kind': 'image'}])
+    result = run_checked(api, tmp_path, job, 'claude_builds_hat.jsonl', checker)
+    assert result['outcome'] == 'off_topic'
+    assert result['scope'] == {'by': 'check', 'category': 'coding', 'note': 'python help'}
+    assert result['costUsd'] == 0.001 and result['pieces'] == []
+    assert checker.calls == [('reverse a linked list', 'wearable', ['logo.png'])]
+    assert not (tmp_path / 'out').exists() and api.workspace is None  # the agent never ran, nothing was saved
+
+
+def test_unsure_runs_the_agent(api, tmp_path):
+    result = run_checked(api, tmp_path, prompt_job(check=True, selectedSlots=None), 'claude_proposes.jsonl', verdict('unsure'))
+    assert result['outcome'] == 'needs_input' and result['scope'] is None
+
+
+def test_no_check_flag_runs_without_checking(api, tmp_path):
+    checker = verdict('off_topic', 'coding')
+    result = run_checked(api, tmp_path, prompt_job(selectedSlots=None), 'claude_proposes.jsonl', checker)
+    assert result['outcome'] == 'needs_input' and checker.calls == []
+
+
+def test_agent_decline_is_declined(api, tmp_path):
+    (tmp_path / 'out').mkdir()
+    (tmp_path / 'out' / 'declined.json').write_text('{"reason": "stale"}')
+    result = run_checked(api, tmp_path, prompt_job(check=True, prompt='hm'), 'claude_stream.jsonl', verdict('design'))
+    assert result['outcome'] == 'no_change'  # an earlier prompt's decline doesn't count for this one
+    result = run_checked(api, tmp_path, prompt_job(jobId='job-2', check=True), 'claude_declines.jsonl', verdict('unsure'))
+    assert result['outcome'] == 'declined'
+    assert result['scope'] == {'by': 'agent', 'category': 'other', 'note': 'not a design'}
+    assert api.workspace is not None  # the agent ran: its session is saved
+
+
+def test_declined_with_a_changed_piece_is_ok(api, tmp_path, skills):
+    result = run_checked(api, tmp_path, prompt_job(check=True), 'claude_declines_but_builds.jsonl', verdict('design'))
+    assert result['outcome'] == 'ok' and result['scope'] is None

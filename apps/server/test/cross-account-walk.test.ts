@@ -9,7 +9,7 @@ import {
   uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, roomScans, roomSets, arDevices,
   dclWorldDestinations, adSpaceSettings, adSpaceApprovals,
   studioDesigns, studioPieces, studioRevisions, studioJobs, studioMessages, studioRenders, studioUsageDays,
-  studioPayments, studioEntitlements, studioMistakeReports, studioPromptCredits, studioUploads,
+  studioPayments, studioEntitlements, studioMistakeReports, studioPromptCredits, studioUploads, studioScopeEvents, studioFlags, studioPauses,
 } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { memoryStudioStore, setStudioStore, uploadKey } from '../src/studio/store.js'
@@ -289,6 +289,11 @@ const CASES: Case[] = [
   { route: 'PUT /api/admin/ads/:id/placements', url: () => `/api/admin/ads/${AD_ID}/placements`, body: () => ({ elementIds: [] }) },
   { route: 'GET /api/admin/ads/:id/report', url: () => `/api/admin/ads/${AD_ID}/report` },
   { route: 'POST /api/admin/ads/:id/review', url: () => `/api/admin/ads/${AD_ID}/review`, body: () => ({ decision: 'rejected', reason: 'x' }) },
+  { route: 'POST /api/admin/studio/flags/:id/dismiss', url: () => `/api/admin/studio/flags/${AD_ID}/dismiss` },
+  { route: 'POST /api/admin/studio/users/:userId/pause', url: (f) => `/api/admin/studio/users/${f.b.id}/pause` },
+  { route: 'DELETE /api/admin/studio/users/:userId/pause', url: (f) => `/api/admin/studio/users/${f.b.id}/pause` },
+  { route: 'POST /api/admin/studio/reports/:id/approve', url: () => `/api/admin/studio/reports/${AD_ID}/approve` },
+  { route: 'POST /api/admin/studio/reports/:id/decline', url: () => `/api/admin/studio/reports/${AD_ID}/decline` },
   { route: 'GET /api/ad-spaces/:elementId', url: (f) => `/api/ad-spaces/${f.adSpace.id}` },
   { route: 'PUT /api/ad-spaces/:elementId/content', url: (f) => `/api/ad-spaces/${f.adSpace.id}/content`, body: () => ({ content: 'all' }) },
   { route: 'PUT /api/ad-spaces/:elementId/approvals/:adId', url: (f) => `/api/ad-spaces/${f.adSpace.id}/approvals/${AD_ID}`, body: () => ({ decision: 'approved' }) },
@@ -332,7 +337,7 @@ const TABLES = [
   uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices, roomScans, roomSets,
   dclWorldDestinations,
   studioDesigns, studioPieces, studioRevisions, studioJobs, studioMessages, studioRenders, studioUsageDays,
-  studioPayments, studioEntitlements, studioMistakeReports, studioPromptCredits, studioUploads,
+  studioPayments, studioEntitlements, studioMistakeReports, studioPromptCredits, studioUploads, studioScopeEvents, studioFlags, studioPauses,
 ]
 async function snapshot(f: F) {
   const all = await Promise.all(TABLES.map((t) => db.select().from(t as any)))

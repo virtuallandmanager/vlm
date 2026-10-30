@@ -43,6 +43,7 @@ import roomScanRoutes from './routes/room-scans.js'
 import roomSetRoutes from './routes/room-sets.js'
 import adminRoutes from './routes/admin.js'
 import adminAdsRoutes from './routes/admin-ads.js'
+import adminStudioRoutes from './routes/admin-studio.js'
 import adSpacesRoutes from './routes/ad-spaces.js'
 import advertiserLeadRoutes from './routes/advertiser-leads.js'
 import venueRoutes from './routes/venues.js'
@@ -209,6 +210,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(roomSetRoutes)
   await app.register(adminRoutes)
   await app.register(adminAdsRoutes)
+  await app.register(adminStudioRoutes)
   await app.register(adSpacesRoutes)
   await app.register(advertiserLeadRoutes)
   await app.register(venueRoutes)

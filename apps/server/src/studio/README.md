@@ -15,6 +15,7 @@ own Fly worker machine (`apps/studio-worker`), which talks to the routes here th
 | `events.ts` | progress on the bus, relayed to the page by the `virvi_studio` room (`src/ws/VirviStudioRoom.ts`) |
 | `pricing.ts` | what finalizing costs: first finalize, extra pieces, half-price revisions, and the checker gate |
 | `payments.ts` | one-time Stripe Checkout for finalizing and top-ups, applied once from the webhook; entitlements, finalize jobs, mistake refunds |
+| `scope.ts` | keeping the studio to design work: the turn-down log, flags for the owner (and their email), pausing an account |
 | `sweep.ts` | every minute: fails lost jobs and refunds them, restarts machines for waiting jobs, destroys idle machines |
 
 Routes: `src/routes/studio.ts` (the dashboard, `/api/studio`) and `src/routes/studio-worker.ts` (the workers,
@@ -55,6 +56,24 @@ The studio is on when `VIRVI_MODE=cloud` and both `STUDIO_WORKER_IMAGE` and `STU
    (2000), `STUDIO_TOPUP_CENTS` (500) and `STUDIO_TOPUP_PROMPTS` (10).
 7. **The worker image** must be rebuilt and pushed for finalize jobs: it adds ffmpeg and Decentraland's animations
    (`apps/studio-worker/README.md`, "Releasing an image"), then `STUDIO_WORKER_IMAGE` points at the new tag.
+
+8. **Keeping the studio to design work** (`scope.ts`, `routes/admin-studio.ts`, the admin page Studio flags):
+   - The worker checks each prompt the user typed with Claude Haiku before the agent runs (`studio_worker/scope.py`).
+     An off-topic message ends as `off_topic`, not counted for the first `STUDIO_FLAG_THRESHOLD` in the window and counted
+     after that; an agent that stops on one ends as `declined` (counted).
+     Both are logged in `studio_scope_events`; the user sees only a category's fixed words, never the model's note.
+   - An account with `STUDIO_FLAG_THRESHOLD` (3) turn-downs within `STUDIO_FLAG_WINDOW_HOURS` (24) is flagged once,
+     and the owner is emailed at `STUDIO_FLAG_EMAIL` (unset: nothing is sent). Admins dismiss flags and pause or
+     resume an account's studio access; a paused account can't send prompts, start designs, request renders, upload or
+     buy top-ups, and can still finalize, pay and download.
+   - A piece's first `STUDIO_INSTANT_REPORTS` (2) mistake reports refund at once; later ones are charged and wait for
+     the owner's Approve or Decline on the same page, with an email.
+   - **The owner's steps:** SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`) and
+     `STUDIO_FLAG_EMAIL` on Railway; no email goes out without SMTP.
+   - **Deploy order:** the server first (it accepts the `off_topic` and `declined` outcomes and creates the new tables
+     at boot), then the worker image: `fly deploy --build-only --push --remote-only --image-label <sha>` from
+     `apps/studio-worker`, then `e2e/fly.sh <image>`, then `e2e/scope_eval.py` on a machine of that image (it fails if
+     a designer's message would be turned down), then `STUDIO_WORKER_IMAGE` on Railway.
 
 To check a deploy's machine lifecycle without a user: `scripts/studio-fly-smoke.ts`. To run a real worker against
 a local server: `scripts/studio-local.md`.

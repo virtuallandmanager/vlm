@@ -32,7 +32,7 @@ RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor
     && rm -rf /var/lib/apt/lists/*
 
 # Python tools: numpy for the checkers, Playwright for the preview, Pillow for its frames
-RUN pip3 install --no-cache-dir numpy pillow playwright && playwright install-deps chromium
+RUN pip3 install --no-cache-dir numpy pillow playwright anthropic==2.2.0 && playwright install-deps chromium
 
 # Agent CLIs, pinned: their output formats and usage reporting are what agent.py parses
 ARG CLAUDE_CODE_VERSION=2.1.310

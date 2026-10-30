@@ -23,6 +23,14 @@ export function roomsDistributed(c: { useRedisPresence: boolean; redisUrl?: stri
   return c.useRedisPresence && !!c.redisUrl
 }
 
+/** A whole-number setting; a bad value refuses to start rather than silently changing a limit. */
+function positiveInt(raw: string | undefined, def: number, zeroOk = false): number {
+  if (raw === undefined || raw === '') return def
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < (zeroOk ? 0 : 1)) throw new Error(`invalid setting: ${raw}`)
+  return n
+}
+
 /** Design Studio prices in US cents, each a setting (see src/studio/README.md). A bad value refuses to start. */
 export function studioPricesFrom(e: Record<string, string | undefined>) {
   const cents = (name: string, def: number) => {
@@ -204,6 +212,14 @@ export const config = {
   studioClaudeModel: env('STUDIO_CLAUDE_MODEL') || 'claude-opus-5-5',
   studioCodexModel: env('STUDIO_CODEX_MODEL') || 'gpt-6.1-sol',
   studioPrices: studioPricesFrom(process.env),
+  // Turn-downs: who hears about an account that keeps sending off-topic work, after how many in how long, and how many
+  // mistake refunds per piece are instant before the rest wait for review (src/studio/scope.ts)
+  studioFlag: {
+    email: env('STUDIO_FLAG_EMAIL') || null,
+    threshold: positiveInt(env('STUDIO_FLAG_THRESHOLD'), 3),
+    windowHours: positiveInt(env('STUDIO_FLAG_WINDOW_HOURS'), 24),
+    instantReports: positiveInt(env('STUDIO_INSTANT_REPORTS'), 2, true),
+  },
   studioEnabled: mode === 'cloud' && !!env('STUDIO_WORKER_IMAGE') && !!env('STUDIO_S3_URI'),
 
   // ── Metrics ─────────────────────────────────────────────────────────────

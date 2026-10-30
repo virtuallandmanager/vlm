@@ -16,6 +16,7 @@ export type StudioUsage = {
   openDesigns: number
   openDesignLimit: number | null
   topup: { cents: number; prompts: number }
+  paused: boolean
 }
 
 export type StudioDesign = {
@@ -41,7 +42,7 @@ export type FinalizedRevision = {
   amountCents: number
   paymentId: string
   paidAt: string | null
-  report: { status: 'pending' | 'refunded' | 'waived' | string; createdAt: string } | null
+  report: { status: 'pending' | 'refunded' | 'waived' | 'in_review' | 'declined' | string; createdAt: string } | null
   reportableUntil: string | null
 }
 
@@ -86,6 +87,7 @@ export type QuoteLine = {
   priceKind: 'first' | 'first_extra' | 'revision' | 'revision_extra'
   amountCents: number
   waived: boolean
+  held?: boolean
 }
 
 export type Quote = {
@@ -93,6 +95,7 @@ export type Quote = {
   lines: QuoteLine[]
   totalCents: number
   blocked: string[]
+  reportsHeld: string[] // pieces whose mistake report would wait for the team rather than be waived
   notes: string[]
 }
 
@@ -252,7 +255,9 @@ export function nextPoll(detail: StudioDetail, connected: boolean): number | nul
   return connected ? 30_000 : 5_000
 }
 
-export type ComposerMode = 'send' | 'busy' | 'continue' | 'out' | 'archived'
+export type ComposerMode = 'send' | 'busy' | 'continue' | 'out' | 'archived' | 'paused'
+
+export const PAUSED_NOTE = 'Your studio access is paused, so you can’t send new messages. You can still finalize and download your designs. Contact support@virvi.io.'
 
 /** After a cost stop the person may press Continue (free) or send something new instead. */
 export const canSend = (mode: ComposerMode) => mode === 'send' || mode === 'continue'
@@ -264,6 +269,7 @@ export const reloadsOn = (e: StudioEvent) =>
 export function composerState(detail: StudioDetail, usage: StudioUsage | null, now: Date): { mode: ComposerMode; note: string } {
   const note = usage ? `${usage.promptsLeft} prompts left today · ${usage.plan} plan` : ''
   if (detail.design.archivedAt) return { mode: 'archived', note: 'This design is archived. Unarchive it to keep working on it.' }
+  if (usage?.paused) return { mode: 'paused', note: PAUSED_NOTE }
   if (detail.activeJob?.type === 'prompt') return { mode: 'busy', note: 'The agent is still working on your last message.' }
   if (detail.lastPrompt?.outcome === 'ceiling') return { mode: 'continue', note }
   if (usage && usage.promptsLeft <= 0) return { mode: 'out', note: refusalMessage({ body: { code: 'allowance', resetsAt: usage.resetsAt } }, now).text }
@@ -329,9 +335,21 @@ export function checkoutBody(reports: Record<string, string>): { reports?: Recor
   return ok.length ? { reports: Object.fromEntries(ok) } : {}
 }
 
-/** The dialog's total: a reported line is waived, and waiving one changes no other line's price. */
+/**
+ * The dialog's total: a reported line is waived, and waiving one changes no other line's price. A report on a piece
+ * past its instant refunds (`reportsHeld`) is charged, and goes to the team.
+ */
 export const dialogTotal = (quote: Quote, reported: string[]) =>
-  quote.lines.reduce((n, l) => n + (reported.includes(l.category) ? 0 : l.amountCents), 0)
+  quote.lines.reduce((n, l) => n + (reported.includes(l.category) && !quote.reportsHeld?.includes(l.category) ? 0 : l.amountCents), 0)
+
+export const HELD_REPORT_COPY = 'Your report is with our team. If it’s approved, this revision is refunded in full.'
+
+/** Where a mistake report stands, when it isn't simply refunded. */
+export function reportCopy(status: string): string | null {
+  if (status === 'in_review' || status === 'approving') return HELD_REPORT_COPY
+  if (status === 'declined') return 'Our team reviewed your report and this revision wasn’t refunded.'
+  return null
+}
 
 /** Stripe's return URL carries `?payment=`: until the webhook grants it, the page says what is happening. */
 const BANNER_SLOW_MS = 2 * 60_000
@@ -395,4 +413,45 @@ export function formatBytesShort(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < MB) return `${Math.round(n / 1024)} KB`
   return `${(n / MB).toFixed(1)} MB`
+}
+
+/** A flagged account on the admin Studio flags page (the server's `listFlags`). */
+export type AdminStudioFlag = {
+  id: string
+  status: 'open' | 'dismissed' | string
+  openedAt: string
+  closedAt: string | null
+  user: { id: string; email: string | null; plan: string }
+  paused: boolean
+  events: { by: 'check' | 'agent' | string; category: string; note: string; message: string; designId: string | null; createdAt: string }[]
+}
+
+/** A mistake report past the piece's instant refunds, waiting for the owner (the server's `heldReports`). */
+export type AdminMistakeReport = {
+  id: string
+  text: string
+  refundCents: number
+  createdAt: string
+  user: { id: string; email: string | null }
+  designId: string
+  piece: { category: string; name: string }
+  revisionNumber: number
+  request: string
+  before: string | null // a signed frame of the revision before, and of this one
+  after: string | null
+}
+
+/** The words the user sees for each kind of turn-down (apps/server/src/studio/scope.ts CATEGORY_WORDS). */
+export const SCOPE_CATEGORY_WORDS: Record<string, string> = {
+  coding: 'coding help', writing: 'writing', research: 'research', chat: 'general chat', other: 'other work',
+}
+
+const dayFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+/** "3 turn-downs since Oct 28 · general chat, coding help": its events, the oldest one's day, and their kinds. */
+export function flagSummary(flag: AdminStudioFlag): string {
+  const n = flag.events.length
+  const oldest = flag.events.reduce((min, e) => (e.createdAt < min ? e.createdAt : min), flag.events[0]?.createdAt ?? flag.openedAt)
+  const kinds = [...new Set(flag.events.map((e) => SCOPE_CATEGORY_WORDS[e.category] ?? e.category))]
+  return `${n} turn-down${n === 1 ? '' : 's'} since ${dayFmt.format(new Date(oldest))}${kinds.length ? ` · ${kinds.join(', ')}` : ''}`
 }

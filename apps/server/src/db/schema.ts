@@ -1556,6 +1556,40 @@ export const studioUploads = pgTable('studio_uploads', {
   nameUq: uniqueIndex('studio_uploads_design_name_uq').on(t.designId, t.name),
 }))
 
+// Prompts turned down as off-topic, by the scope check or by the agent (src/studio/scope.ts)
+export const studioScopeEvents = pgTable('studio_scope_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  designId: uuid('design_id').references(() => studioDesigns.id, { onDelete: 'set null' }),
+  jobId: uuid('job_id'),
+  by: text('by').notNull(), // check | agent
+  category: text('category').notNull(), // coding | writing | research | chat | other
+  note: text('note').notNull(), // the model's own words: for the owner, never shown to the user
+  message: text('message').notNull(), // the user's message, first 2,000 characters
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  userIdx: index('studio_scope_events_user_idx').on(t.userId, t.createdAt),
+}))
+
+// An account flagged to the owner for repeated turn-downs; at most one open at a time
+export const studioFlags = pgTable('studio_flags', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: text('status').notNull().default('open'), // open | dismissed
+  openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+  closedBy: uuid('closed_by'),
+}, (t) => ({
+  openUq: uniqueIndex('studio_flags_open_uq').on(t.userId).where(sql`status = 'open'`),
+}))
+
+// An account whose studio access the owner paused: no prompts, designs, renders, uploads or top-ups
+export const studioPauses = pgTable('studio_pauses', {
+  userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  pausedAt: timestamp('paused_at', { withTimezone: true }).notNull().defaultNow(),
+  pausedBy: uuid('paused_by'),
+})
+
 export const studioRenders = pgTable('studio_renders', {
   id: uuid('id').primaryKey().defaultRandom(),
   revisionId: uuid('revision_id').notNull().references(() => studioRevisions.id, { onDelete: 'cascade' }),
@@ -1586,7 +1620,8 @@ export type PaymentLine = {
   priceKind: 'first' | 'first_extra' | 'revision' | 'revision_extra'
   amountCents: number
   waived: boolean
-  reportText?: string // a waived line's mistake report, stored as a report at grant time
+  held?: boolean // a mistake report past the instant limit: charged, and its report waits for the owner
+  reportText?: string // a waived or held line's mistake report, stored as a report at grant time
 }
 
 // A one-time Stripe Checkout: finalizing pieces, or a prompt top-up. Nothing is charged when every line is waived.
@@ -1639,8 +1674,10 @@ export const studioMistakeReports = pgTable('studio_mistake_reports', {
   userId: uuid('user_id').notNull(),
   text: text('text').notNull(),
   refundCents: integer('refund_cents').notNull(),
-  status: text('status').notNull(), // pending (refund in flight) | refunded | waived
+  status: text('status').notNull(), // pending (refund in flight) | refunded | waived | in_review (waits for the owner) | approving (the owner's refund in flight) | declined
   stripeRefundId: text('stripe_refund_id'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewedBy: uuid('reviewed_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
