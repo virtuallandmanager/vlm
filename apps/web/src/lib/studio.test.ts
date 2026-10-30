@@ -3,6 +3,7 @@ import {
   canSend, checkoutBody, composerState, reloadsOn, revisionActions, viewButtonRendering, dialogTotal, finalizeStrip, frameAt, paymentBanner, initialTicks, nextPoll, pieceTabStatus, progressFor, slotSelection, stageState, viewKey,
   type FinalizedRevision, type Quote, type QuoteLine, type StudioDetail, type StudioPiece, type StudioEvent, type StudioProposal,
 } from './studio'
+import { formatBytesShort, uploadProblem } from './studio'
 import { AGENTS, designBadge, designIdFromPath, formatCents, refreshDue, refusalMessage, relativeTime, untilReset, usageLine, type StudioDesign, type StudioUsage } from './studio'
 
 const NOW = new Date('2026-10-29T21:55:00Z')
@@ -140,7 +141,7 @@ const usage = (over: Partial<StudioUsage> = {}): StudioUsage => ({
 })
 const detail = (over: Partial<StudioDetail> = {}): StudioDetail => ({
   design: { id: 'd1', name: 'Cap', kind: 'wearable', agent: 'claude', status: 'idle', archivedAt: null, lastJobAt: null, finalizedAt: null, createdAt: NOW.toISOString() },
-  pieces: [], messages: [], activeJob: null, lastPrompt: null, ...over,
+  pieces: [], messages: [], activeJob: null, lastPrompt: null, uploads: [], ...over,
 })
 
 describe('progressFor', () => {
@@ -407,5 +408,31 @@ describe('reloadsOn', () => {
     expect(reloadsOn({ type: 'job', jobId: 'j1', status: 'failed' })).toBe(true)
     expect(reloadsOn({ type: 'job', jobId: 'j1', status: 'taken' })).toBe(false)
     expect(reloadsOn({ type: 'progress', jobId: 'j1', text: 'hi' })).toBe(false)
+  })
+})
+
+describe('uploads', () => {
+  it('explains a refused file plainly', () => {
+    expect(refusalMessage({ status: 400, body: { code: 'unsupported_file' } }, NOW).text).toBe(
+      'That file type can’t be used. Upload an image (PNG, JPEG, WebP, GIF, TIFF, AVIF or SVG) or a 3D file (GLB, VRM, FBX, OBJ, STL or .blend).')
+    expect(refusalMessage({ status: 413, body: { code: 'file_too_large' } }, NOW).text).toBe('That file is too big: images can be up to 20 MB, 3D files up to 25 MB.')
+    // the server's own body-size refusal carries no code
+    expect(refusalMessage({ status: 413, body: {} }, NOW).text).toBe('That file is too big: images can be up to 20 MB, 3D files up to 25 MB.')
+    expect(refusalMessage({ status: 409, body: { code: 'too_many_uploads' } }, NOW).text).toBe('A design holds up to 12 files. Remove one to add another.')
+  })
+
+  it('checks a file before sending it', () => {
+    expect(uploadProblem({ name: 'logo.svg', size: 2_000 })).toBeNull()
+    expect(uploadProblem({ name: 'shoe.FBX', size: 2_000 })).toBeNull()
+    expect(uploadProblem({ name: 'notes.pdf', size: 2_000 })).toMatch(/^That file type/)
+    expect(uploadProblem({ name: 'huge.png', size: 21 * 1024 * 1024 })).toMatch(/^That file is too big/)
+    expect(uploadProblem({ name: 'scene.glb', size: 24 * 1024 * 1024 })).toBeNull()
+    expect(uploadProblem({ name: 'scene.glb', size: 26 * 1024 * 1024 })).toMatch(/^That file is too big/)
+  })
+
+  it('formats sizes', () => {
+    expect(formatBytesShort(900)).toBe('900 B')
+    expect(formatBytesShort(48_000)).toBe('47 KB')
+    expect(formatBytesShort(3_400_000)).toBe('3.2 MB')
   })
 })

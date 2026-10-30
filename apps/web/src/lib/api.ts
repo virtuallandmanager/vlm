@@ -6,7 +6,7 @@ import { requestHeaders } from './request-headers'
 import type { Plot } from '@virvixr/shared'
 import type { AuthChain } from '@dcl/crypto'
 import type { ArFileFormat, ArMounting } from './ar'
-import type { Quote, RenderView, StudioDesign, StudioDetail, StudioKind, StudioUsage } from './studio'
+import type { Quote, RenderView, StudioDesign, StudioDetail, StudioKind, StudioUpload, StudioUsage } from './studio'
 import type { ArDeviceKind, ArDeviceSummary, ArPairApprovalInfo, ArFloorView, ArMarkerView, ArSpaceView, AdContent, AdAudience, AdminAd, AdminAdSpace, OwnerAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyPairingSummary, HyperfyWorldSummary } from '@virvixr/shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
@@ -593,6 +593,25 @@ export function useApi() {
       apiFetch<{ status: 'refunded'; refundCents: number }>(`/api/studio/designs/${id}/pieces/${category}/revisions/${n}/report`, { method: 'POST', body: JSON.stringify({ text }) }),
     retryStudioPackage: (id: string, category: string, n: number) =>
       apiFetch<{ jobId: string }>(`/api/studio/designs/${id}/pieces/${category}/revisions/${n}/package/retry`, { method: 'POST' }),
+    /** A file for the agent: the body is the file itself (the server reads its contents to tell its type). */
+    uploadStudioFile: async (id: string, file: File): Promise<StudioUpload> => {
+      const res = await fetch(`${API_URL}/api/studio/designs/${id}/uploads?name=${encodeURIComponent(file.name)}`, {
+        method: 'POST', body: file, headers: { ...requestHeaders(token, {}), 'Content-Type': 'application/octet-stream' },
+      })
+      const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+      if (!res.ok) {
+        dropDeadSession(res.status, body)
+        throw Object.assign(new Error(body.error || `API error ${res.status}`), { status: res.status, body })
+      }
+      return body
+    },
+    deleteStudioUpload: (id: string, uploadId: string) => apiFetch(`/api/studio/designs/${id}/uploads/${uploadId}`, { method: 'DELETE' }),
+    /** An uploaded image's bytes, for its thumbnail (the route needs the bearer header, so no plain <img src>). */
+    getStudioUploadBlob: async (id: string, uploadId: string): Promise<Blob> => {
+      const res = await fetch(`${API_URL}/api/studio/designs/${id}/uploads/${uploadId}`, { headers: requestHeaders(token, {}) })
+      if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status })
+      return res.blob()
+    },
     /** The paid revision's package, through the authenticated route: no package URL is ever put in the page. */
     downloadStudioPackage: async (id: string, category: string, n: number): Promise<{ blob: Blob; filename: string }> => {
       const res = await fetch(`${API_URL}/api/studio/designs/${id}/pieces/${category}/revisions/${n}/package`, { headers: requestHeaders(token, {}) })

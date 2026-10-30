@@ -16,6 +16,8 @@ export const HomeIcon = (p: IconProps) => <Icon {...p}><path d="M3 10.5 12 3l9 7
 export const ScenesIcon = (p: IconProps) => <Icon {...p}><rect x="3" y="4" width="18" height="16" rx="1.5" /><path d="m3 16 5-5 4 4 3-3 6 6" /><circle cx="16" cy="9" r="1.5" /></Icon>
 export const CalendarIcon = (p: IconProps) => <Icon {...p}><rect x="3" y="5" width="18" height="16" rx="1.5" /><path d="M3 10h18M8 3v4M16 3v4" /></Icon>
 export const SparkleIcon = (p: IconProps) => <Icon {...p}><path d="M12 3c.6 4.2 2.8 6.4 7 7-4.2.6-6.4 2.8-7 7-.6-4.2-2.8-6.4-7-7 4.2-.6 6.4-2.8 7-7Z" /><path d="M19 15.5c.25 1.6 1 2.35 2.5 2.5-1.5.25-2.25 1-2.5 2.5-.25-1.5-1-2.25-2.5-2.5 1.5-.15 2.25-.9 2.5-2.5Z" /></Icon>
+export const PaperclipIcon = (p: IconProps) => <Icon {...p}><path d="m20.5 11.5-8.2 8.2a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9" /></Icon>
+export const XSmallIcon = (p: IconProps) => <Icon {...p}><path d="M6 6l12 12M18 6 6 18" /></Icon>
 export const GiftIcon = (p: IconProps) => <Icon {...p}><rect x="3" y="8" width="18" height="4" rx="1" /><path d="M5 12v9h14v-9M12 8v13" /><path d="M12 8c-1.5-3-5-3.5-5-1.25S10 8 12 8Zm0 0c1.5-3 5-3.5 5-1.25S14 8 12 8Z" /></Icon>
 export const MediaIcon = (p: IconProps) => <Icon {...p}><rect x="3" y="3" width="18" height="18" rx="1.5" /><circle cx="9" cy="9" r="2" /><path d="m21 15-5-5L5 21" /></Icon>
 export const LayersIcon = (p: IconProps) => <Icon {...p}><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 13 9 5 9-5" /><path d="m3 17.5 9 5 9-5" /></Icon>

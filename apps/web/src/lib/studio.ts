@@ -72,7 +72,11 @@ export type StudioDetail = {
   messages: StudioMessage[]
   activeJob: { id: string; type: 'prompt' | 'render' | 'finalize' | string; status: string } | null
   lastPrompt: { jobId: string; outcome: string | null; status: string } | null
+  uploads: StudioUpload[]
 }
+
+/** A file the owner gave the agent (the server's `publicUpload`). */
+export type StudioUpload = { id: string; name: string; kind: 'image' | 'model'; contentType: string; size: number; createdAt: string }
 
 export type QuoteLine = {
   category: string
@@ -128,6 +132,9 @@ export function untilReset(resetsAt: string, now: Date): string {
 
 export type Refusal = { text: string; action?: 'topup' | 'settings' | 'fix' }
 
+const UNSUPPORTED_FILE = 'That file type can’t be used. Upload an image (PNG, JPEG, WebP, GIF, TIFF, AVIF or SVG) or a 3D file (GLB, VRM, FBX, OBJ, STL or .blend).'
+const FILE_TOO_LARGE = 'That file is too big: images can be up to 20 MB, 3D files up to 25 MB.'
+
 /** A refused request in the page's words, keyed by the server's `code`. */
 export function refusalMessage(
   err: { status?: number; body?: { code?: string; resetsAt?: string; categories?: string[] } },
@@ -155,8 +162,15 @@ export function refusalMessage(
       return { text: 'Payments aren’t available right now.' }
     case 'stripe_error':
       return { text: 'Stripe didn’t answer. Try again in a moment.' }
+    case 'unsupported_file':
+      return { text: UNSUPPORTED_FILE }
+    case 'file_too_large':
+      return { text: FILE_TOO_LARGE }
+    case 'too_many_uploads':
+      return { text: 'A design holds up to 12 files. Remove one to add another.' }
     default:
-      return { text: 'Something went wrong. Try again.' }
+      // The server's own body-size limit answers 413 without a code
+      return { text: err.status === 413 ? FILE_TOO_LARGE : 'Something went wrong. Try again.' }
   }
 }
 
@@ -356,4 +370,27 @@ export function viewButtonRendering<K extends keyof RenderView>(
 ): boolean {
   const next = { ...current, [dim]: value }
   return rendering(next) && (dim === lastPicked || current[dim] !== value)
+}
+
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'tif', 'tiff', 'avif', 'svg']
+const MODEL_EXTS = ['glb', 'vrm', 'fbx', 'obj', 'stl', 'blend']
+const MB = 1024 * 1024
+
+/** The file picker's accept list. */
+export const UPLOAD_ACCEPT = [...IMAGE_EXTS, ...MODEL_EXTS].map((e) => `.${e}`).join(',')
+
+/** What's wrong with a file before it's sent, by its name and size (the server checks its contents). */
+export function uploadProblem(file: { name: string; size: number }): string | null {
+  const ext = /\.([A-Za-z0-9]+)$/.exec(file.name)?.[1]?.toLowerCase() ?? ''
+  const image = IMAGE_EXTS.includes(ext)
+  if (!image && !MODEL_EXTS.includes(ext)) return UNSUPPORTED_FILE
+  if (file.size > (image ? 20 : 25) * MB) return FILE_TOO_LARGE
+  return null
+}
+
+/** `900 B`, `47 KB`, `3.2 MB`. */
+export function formatBytesShort(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < MB) return `${Math.round(n / 1024)} KB`
+  return `${(n / MB).toFixed(1)} MB`
 }

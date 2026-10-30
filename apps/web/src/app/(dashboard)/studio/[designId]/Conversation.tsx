@@ -9,6 +9,7 @@ import {
 } from '@/lib/studio'
 import { AgentPicker } from '../AgentPicker'
 import Markdown from './Markdown'
+import Uploads from './Uploads'
 
 const MAX_PROMPT = 4000
 
@@ -21,6 +22,8 @@ export default function Conversation({ designId, detail, usage, events, onChange
   const [sending, setSending] = useState(false)
   const [refusal, setRefusal] = useState<Refusal | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const [dropped, setDropped] = useState<File[] | null>(null)
+  const [dragging, setDragging] = useState(false)
 
   const composer = composerState(detail, usage, new Date())
   const active = detail.activeJob?.type === 'prompt' ? detail.activeJob : null
@@ -65,7 +68,11 @@ export default function Conversation({ designId, detail, usage, events, onChange
   }
 
   return (
-    <section aria-label="Conversation" className="flex min-w-0 flex-col rounded-lg border border-gray-800 bg-gray-900">
+    <section aria-label="Conversation"
+      className={`flex min-w-0 flex-col rounded-lg border bg-gray-900 ${dragging ? 'border-blue-400' : 'border-gray-800'}`}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true) } }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false) }}
+      onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); setDropped([...e.dataTransfer.files]) } setDragging(false) }}>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800 p-3">
         <AgentPicker name="design-agent" value={detail.design.agent} onChange={switchAgent} disabled={!!active || sending} />
       </div>
@@ -98,6 +105,7 @@ export default function Conversation({ designId, detail, usage, events, onChange
       </div>
 
       <div className="border-t border-gray-800 p-3">
+        <Uploads designId={designId} uploads={detail.uploads ?? []} disabled={composer.mode === 'archived'} dropped={dropped} onChanged={onChanged} />
         {refusal && <RefusalLine refusal={refusal} usage={usage} onFix={() => send({ fixChecks: true })} />}
         {failing.length > 0 && !active && (
           <button type="button" disabled={sending} onClick={() => send({ fixChecks: true })}
