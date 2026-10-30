@@ -1,6 +1,6 @@
 {
-  "asOf": "2026-10-24",
-  "source": "Claude: Anthropic model pricing (claude-api skill, cached 2026-10-06; cache write = 1.25x input). Codex: gpt-6.1-sol, Codex 0.164.0's default, at OpenAI's list price as quoted 2026-10-04/11 by anotherwrapper.com and techenclave.com (openai.com/api/pricing blocks fetches); no cache-write rate is listed, so cache writes are priced as input.",
+  "asOf": "2026-10-30",
+  "source": "Claude (Opus 5.5, and Haiku 5.5 for the scope check): Anthropic model pricing (claude-api skill, cached 2026-10-06; cache write = 1.25x input). Codex: gpt-6.1-sol, Codex 0.164.0's default, at OpenAI's list price as quoted 2026-10-04/11 by anotherwrapper.com and techenclave.com (openai.com/api/pricing blocks fetches); no cache-write rate is listed, so cache writes are priced as input.",
   "models": {
     "claude-opus-5-5": {
       "input": 4.0,
@@ -13,6 +13,12 @@
       "cachedInput": 0.1,
       "cacheWrite": 2.0,
       "output": 10.0
+    },
+    "claude-haiku-5-5": {
+      "input": 0.1,
+      "cachedInput": 0.01,
+      "cacheWrite": 0.125,
+      "output": 0.5
     }
   }
 }
