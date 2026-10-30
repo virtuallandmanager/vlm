@@ -20,7 +20,7 @@ import { getTierRank } from '../middleware/feature-gate.js'
 import { virviSigner } from '../services/dcl/entity.js'
 import { sceneLimitError } from './scenes.js'
 import { plotForLayout } from '../room-scan/plot.js'
-import { commitRoomSet, discardRoomSet, insertRoomSet, loadOwnedScan, parseRoomSetOptions, prepareRoomSet, RoomSetError, type PreparedRoomSet } from '../room-scan/sets.js'
+import { commitRoomSet, discardRoomSet, insertRoomSet, loadOwnedScan, parseRoomSetOptions, prepareRoomSet, RoomSetError, type PreparedRoomSet, type Tx } from '../room-scan/sets.js'
 import { CATEGORY_CHIPS, THEMES } from '../wizard/themes.js'
 
 interface WizardAsset {
@@ -191,6 +191,17 @@ export default async function wizardRoutes(app: FastifyInstance) {
         limit: budget.triangles,
       })
     if (dclLimits && itemTriangles > budget.triangles) return overBudget(itemTriangles)
+    // The room model is one more entity on the plot
+    if (dclLimits && roomSetRequest && items.length + 1 > budget.entities) {
+      return reply.status(422).send({
+        error: 'over_budget',
+        message: `This plot fits ${budget.entities} items; the chosen items plus the room make ${items.length + 1}`,
+        triangles: itemTriangles,
+        limit: budget.triangles,
+        entities: items.length + 1,
+        entityLimit: budget.entities,
+      })
+    }
 
     const limitError = await sceneLimitError(request.user.id)
     if (limitError) return reply.status(403).send(limitError)
@@ -210,7 +221,7 @@ export default async function wizardRoutes(app: FastifyInstance) {
       }
     }
 
-    const create = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+    const create = async (tx: Tx) => {
       const [scene] = await tx.insert(scenes).values({ ownerId: request.user.id, name }).returning({ id: scenes.id })
       const [preset] = await tx.insert(scenePresets).values({ sceneId: scene.id, name: 'Default' }).returning({ id: scenePresets.id })
       await tx.update(scenes).set({ activePresetId: preset.id }).where(eq(scenes.id, scene.id))

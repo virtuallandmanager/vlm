@@ -6,7 +6,7 @@ import { config } from '../src/config.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, tokenFor } from './helpers/factories.js'
 import { THEMES } from '../src/wizard/themes.js'
-import type { RoomScanLayout } from '@virvixr/shared'
+import { dclBudget, type RoomScanLayout } from '@virvixr/shared'
 import type { StorageProvider } from '../src/storage/index.js'
 import { setRoomSetStorage } from '../src/room-scan/sets.js'
 import { wallsFromOutline } from '../src/room-scan/geometry.js'
@@ -277,6 +277,20 @@ describe('wizard routes', () => {
       const res = await book(u, withSet(scan.id, { roomSet: { scanId: scan.id, options: { style: 'castle' } } }))
       expect(res.statusCode).toBe(400)
       expect(files.size).toBe(0)
+    })
+
+    it('422 over_budget when the items fill the entity budget and the room would be one more, storing nothing', async () => {
+      const u = await createUser()
+      const scan = await scanFor(u)
+      const a = await seedAsset('Pebble', { triangleCount: 1 })
+      const limit = dclBudget(1).entities
+      const items = Array.from({ length: limit }, () => ({ assetId: a.id, x: 1, z: 1, rotationY: 0 }))
+      const res = await book(u, withSet(scan.id, { items }))
+      expect(res.statusCode).toBe(422)
+      expect(res.json()).toMatchObject({ error: 'over_budget', entities: limit + 1, entityLimit: limit })
+      expect(await counts()).toEqual({ scenes: 0, presets: 0, elements: 0, instances: 0, links: 0 })
+      expect(files.size).toBe(0)
+      expect((await book(u, withSet(scan.id, { items: items.slice(1) }))).statusCode).toBe(201)
     })
 
     it('422 over_budget when the set plus items exceed the triangle budget, storing nothing', async () => {
