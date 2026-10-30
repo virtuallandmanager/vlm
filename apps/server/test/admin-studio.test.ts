@@ -193,6 +193,8 @@ describe('studio admin: flags and pauses', () => {
       await report(u, d.id, 2)
       await report(u, d.id, 3)
       await addRevision(d, 'hat')
+      const quote = (await app.inject({ method: 'GET', url: `/api/studio/designs/${d.id}/finalize`, headers: as(u) })).json()
+      expect(quote.reportsHeld).toEqual(['hat'])
       const res = await app.inject({ method: 'POST', url: `/api/studio/designs/${d.id}/finalize`, headers: as(u), payload: { reports: { hat: TEXT } } })
       expect(res.statusCode).toBe(200)
       expect(res.json().url).toBeTruthy() // charged: a Stripe session, not an instant grant

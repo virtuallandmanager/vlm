@@ -16,6 +16,7 @@ export type StudioUsage = {
   openDesigns: number
   openDesignLimit: number | null
   topup: { cents: number; prompts: number }
+  paused: boolean
 }
 
 export type StudioDesign = {
@@ -41,7 +42,7 @@ export type FinalizedRevision = {
   amountCents: number
   paymentId: string
   paidAt: string | null
-  report: { status: 'pending' | 'refunded' | 'waived' | string; createdAt: string } | null
+  report: { status: 'pending' | 'refunded' | 'waived' | 'in_review' | 'declined' | string; createdAt: string } | null
   reportableUntil: string | null
 }
 
@@ -86,6 +87,7 @@ export type QuoteLine = {
   priceKind: 'first' | 'first_extra' | 'revision' | 'revision_extra'
   amountCents: number
   waived: boolean
+  held?: boolean
 }
 
 export type Quote = {
@@ -93,6 +95,7 @@ export type Quote = {
   lines: QuoteLine[]
   totalCents: number
   blocked: string[]
+  reportsHeld: string[] // pieces whose mistake report would wait for the team rather than be waived
   notes: string[]
 }
 
@@ -252,7 +255,9 @@ export function nextPoll(detail: StudioDetail, connected: boolean): number | nul
   return connected ? 30_000 : 5_000
 }
 
-export type ComposerMode = 'send' | 'busy' | 'continue' | 'out' | 'archived'
+export type ComposerMode = 'send' | 'busy' | 'continue' | 'out' | 'archived' | 'paused'
+
+export const PAUSED_NOTE = 'Your studio access is paused, so you can’t send new messages. You can still finalize and download your designs. Contact support@virvi.io.'
 
 /** After a cost stop the person may press Continue (free) or send something new instead. */
 export const canSend = (mode: ComposerMode) => mode === 'send' || mode === 'continue'
@@ -264,6 +269,7 @@ export const reloadsOn = (e: StudioEvent) =>
 export function composerState(detail: StudioDetail, usage: StudioUsage | null, now: Date): { mode: ComposerMode; note: string } {
   const note = usage ? `${usage.promptsLeft} prompts left today · ${usage.plan} plan` : ''
   if (detail.design.archivedAt) return { mode: 'archived', note: 'This design is archived. Unarchive it to keep working on it.' }
+  if (usage?.paused) return { mode: 'paused', note: PAUSED_NOTE }
   if (detail.activeJob?.type === 'prompt') return { mode: 'busy', note: 'The agent is still working on your last message.' }
   if (detail.lastPrompt?.outcome === 'ceiling') return { mode: 'continue', note }
   if (usage && usage.promptsLeft <= 0) return { mode: 'out', note: refusalMessage({ body: { code: 'allowance', resetsAt: usage.resetsAt } }, now).text }
@@ -329,9 +335,21 @@ export function checkoutBody(reports: Record<string, string>): { reports?: Recor
   return ok.length ? { reports: Object.fromEntries(ok) } : {}
 }
 
-/** The dialog's total: a reported line is waived, and waiving one changes no other line's price. */
+/**
+ * The dialog's total: a reported line is waived, and waiving one changes no other line's price. A report on a piece
+ * past its instant refunds (`reportsHeld`) is charged, and goes to the team.
+ */
 export const dialogTotal = (quote: Quote, reported: string[]) =>
-  quote.lines.reduce((n, l) => n + (reported.includes(l.category) ? 0 : l.amountCents), 0)
+  quote.lines.reduce((n, l) => n + (reported.includes(l.category) && !quote.reportsHeld?.includes(l.category) ? 0 : l.amountCents), 0)
+
+export const HELD_REPORT_COPY = 'Your report is with our team. If it’s approved, this revision is refunded in full.'
+
+/** Where a mistake report stands, when it isn't simply refunded. */
+export function reportCopy(status: string): string | null {
+  if (status === 'in_review') return HELD_REPORT_COPY
+  if (status === 'declined') return 'Our team reviewed your report and this revision wasn’t refunded.'
+  return null
+}
 
 /** Stripe's return URL carries `?payment=`: until the webhook grants it, the page says what is happening. */
 const BANNER_SLOW_MS = 2 * 60_000

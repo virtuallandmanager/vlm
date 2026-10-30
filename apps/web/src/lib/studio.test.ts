@@ -4,6 +4,7 @@ import {
   type FinalizedRevision, type Quote, type QuoteLine, type StudioDetail, type StudioPiece, type StudioEvent, type StudioProposal,
 } from './studio'
 import { formatBytesShort, uploadProblem } from './studio'
+import { HELD_REPORT_COPY, PAUSED_NOTE, reportCopy } from './studio'
 import { AGENTS, designBadge, designIdFromPath, formatCents, refreshDue, refusalMessage, relativeTime, untilReset, usageLine, type StudioDesign, type StudioUsage } from './studio'
 
 const NOW = new Date('2026-10-29T21:55:00Z')
@@ -128,7 +129,7 @@ describe('relativeTime', () => {
 })
 
 describe('usageLine', () => {
-  const u: StudioUsage = { plan: 'free', promptsLeft: 3, credits: 0, allowance: 3, resetsAt: NOW.toISOString(), openDesigns: 0, openDesignLimit: 1, topup: { cents: 500, prompts: 10 } }
+  const u: StudioUsage = { plan: 'free', promptsLeft: 3, credits: 0, allowance: 3, resetsAt: NOW.toISOString(), openDesigns: 0, openDesignLimit: 1, topup: { cents: 500, prompts: 10 }, paused: false }
   it('names the plan and the prompts left, and bought prompts when there are any', () => {
     expect(usageLine(u)).toBe('free plan · 3 prompts left today')
     expect(usageLine({ ...u, credits: 7 })).toBe('free plan · 3 prompts left today · 7 bought')
@@ -137,7 +138,7 @@ describe('usageLine', () => {
 
 const usage = (over: Partial<StudioUsage> = {}): StudioUsage => ({
   plan: 'free', promptsLeft: 3, credits: 0, allowance: 3, resetsAt: at(125 * MIN), openDesigns: 1, openDesignLimit: 1,
-  topup: { cents: 500, prompts: 10 }, ...over,
+  topup: { cents: 500, prompts: 10 }, paused: false, ...over,
 })
 const detail = (over: Partial<StudioDetail> = {}): StudioDetail => ({
   design: { id: 'd1', name: 'Cap', kind: 'wearable', agent: 'claude', status: 'idle', archivedAt: null, lastJobAt: null, finalizedAt: null, createdAt: NOW.toISOString() },
@@ -285,7 +286,7 @@ const line = (over: Partial<QuoteLine>): QuoteLine => ({
   category: 'hat', revisionId: 'r1', revisionNumber: 1, pieceName: 'Neon Cap', priceKind: 'first', amountCents: 2900, waived: false, ...over,
 })
 const quote = (lines: QuoteLine[], over: Partial<Quote> = {}): Quote => ({
-  pieces: [], lines, totalCents: lines.reduce((n, l) => n + (l.waived ? 0 : l.amountCents), 0), blocked: [], notes: [], ...over,
+  pieces: [], lines, totalCents: lines.reduce((n, l) => n + (l.waived ? 0 : l.amountCents), 0), blocked: [], reportsHeld: [], notes: [], ...over,
 })
 
 describe('finalizeStrip', () => {
@@ -435,5 +436,28 @@ describe('uploads', () => {
     expect(formatBytesShort(900)).toBe('900 B')
     expect(formatBytesShort(48_000)).toBe('47 KB')
     expect(formatBytesShort(3_400_000)).toBe('3.2 MB')
+  })
+})
+
+describe('the scope guard on the page', () => {
+  it('a paused account sees the notice instead of the composer', () => {
+    expect(PAUSED_NOTE).toBe('Your studio access is paused, so you can’t send new messages. You can still finalize and download your designs. Contact support@virvi.io.')
+    expect(composerState(detail(), usage({ paused: true }), NOW)).toEqual({ mode: 'paused', note: PAUSED_NOTE })
+    expect(composerState(detail({ activeJob: { id: 'j1', type: 'prompt', status: 'queued' } }), usage({ paused: true, promptsLeft: 0 }), NOW).mode).toBe('paused')
+    expect(composerState(detail({ design: { ...detail().design, archivedAt: NOW.toISOString() } }), usage({ paused: true }), NOW).mode).toBe('archived')
+    expect(canSend('paused')).toBe(false)
+  })
+  it('a held report is still charged in the dialog', () => {
+    const q = quote([line({ priceKind: 'revision', amountCents: 1500 }), line({ category: 'feet', priceKind: 'revision_extra', amountCents: 1000 })], { reportsHeld: ['hat'] })
+    expect(dialogTotal(q, ['hat', 'feet'])).toBe(1500)
+  })
+  it('says where a held or declined report stands', () => {
+    expect(reportCopy('in_review')).toBe(HELD_REPORT_COPY)
+    expect(HELD_REPORT_COPY).toBe('Your report is with our team. If it’s approved, this revision is refunded in full.')
+    expect(reportCopy('declined')).toBe('Our team reviewed your report and this revision wasn’t refunded.')
+    expect(reportCopy('refunded')).toBeNull()
+    const f = (report: FinalizedRevision['report']): FinalizedRevision => ({ revision: 2, kind: 'revision', status: 'ready', amountCents: 1500, paymentId: 'p', paidAt: NOW.toISOString(), report, reportableUntil: null })
+    expect(revisionActions(f({ status: 'in_review', createdAt: NOW.toISOString() }), NOW).report).toBe('done')
+    expect(revisionActions(f({ status: 'declined', createdAt: NOW.toISOString() }), NOW).report).toBe('done')
   })
 })

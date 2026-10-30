@@ -25,7 +25,7 @@ export type QuotePiece = {
   checker: unknown
 }
 
-export type Quote = { pieces: QuotePiece[]; lines: PaymentLine[]; totalCents: number; blocked: string[]; notes: string[] }
+export type Quote = { pieces: QuotePiece[]; lines: PaymentLine[]; totalCents: number; blocked: string[]; reportsHeld: string[]; notes: string[] }
 
 export class QuoteError extends Error {
   constructor(public code: 'checks_failed' | 'nothing_to_pay' | 'unknown_piece' | 'not_waivable', public categories: string[] = []) {
@@ -108,20 +108,22 @@ export async function quoteFinalize(design: Design, categories: string[] | null,
   if (notWaivable.length) throw new QuoteError('not_waivable', notWaivable)
 
   const prices = priceLines(design.kind, chosen, ents.length > 0)
+  // Revision lines whose mistake report would wait for the owner rather than be waived
   const overLimit = new Set<string>()
-  for (const c of waived) {
-    if ((await instantReportsUsed(design.id, c)) >= config.studioFlag.instantReports) overLimit.add(c)
+  for (const p of chosen.filter((p) => p.kind === 'revision')) {
+    if ((await instantReportsUsed(design.id, p.category)) >= config.studioFlag.instantReports) overLimit.add(p.category)
   }
   const lines: PaymentLine[] = chosen.map((p, i) => ({
     category: p.category, revisionId: p.revisionId, revisionNumber: p.revisionNumber, pieceName: p.name,
     ...prices[i], waived: waived.includes(p.category) && !overLimit.has(p.category),
-    ...(overLimit.has(p.category) ? { held: true } : {}),
+    ...(waived.includes(p.category) && overLimit.has(p.category) ? { held: true } : {}),
   }))
   return {
     pieces,
     lines,
     totalCents: lines.reduce((sum, l) => sum + (l.waived ? 0 : l.amountCents), 0),
     blocked,
+    reportsHeld: [...overLimit],
     notes: lines.some((l) => l.priceKind.startsWith('revision')) ? [RECURATION_NOTE] : [],
   }
 }
