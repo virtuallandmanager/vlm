@@ -102,11 +102,13 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
     credentials: false,
   })
 
-  // Rate limiting (global)
+  // Rate limiting (global): API calls only. The dashboard's own files, uploads and well-known files don't count, or a
+  // couple of page loads (every script chunk, icon and thumbnail) would use up a person's whole minute.
   if (opts.rateLimit !== false) {
     await app.register(import('@fastify/rate-limit'), {
       max: config.rateLimitMax,
       timeWindow: '1 minute',
+      allowList: (request) => !request.url.startsWith('/api/'),
     })
   }
 
