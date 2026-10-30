@@ -162,7 +162,8 @@ export default async function wizardRoutes(app: FastifyInstance) {
       if (!scan) return reply.status(404).send({ error: 'not_found' })
       // The client picks the plot's base (Genesis City parcels), so only the size must match the generated shell
       const needed = plotForLayout(scan.layout)
-      if (!needed || needed.width !== plot.width || needed.depth !== plot.depth) return reply.status(400).send({ error: 'plot_mismatch' })
+      if (!needed) return reply.status(422).send({ error: 'too_big' })
+      if (needed.width !== plot.width || needed.depth !== plot.depth) return reply.status(400).send({ error: 'plot_mismatch' })
       const options = parseRoomSetOptions(rs.options)
       if (!options) return reply.status(400).send({ error: 'invalid_options' })
       roomSetRequest = { scan, options }

@@ -217,6 +217,62 @@ describe('room sets', () => {
     })
   })
 
+  describe("deleting a room set's element or scene", () => {
+    async function placedSet(owner: TestUser, preset: { id: string }) {
+      const scan = await scanFor(owner)
+      const prepared = await prepareRoomSet(owner.id, scan, DEFAULT_ROOM_SET_OPTIONS, [])
+      const element = await createElement(preset.id, { type: 'model', name: 'Room', properties: { modelSrc: prepared.glbUrl } })
+      const row = await insertRoomSet(prepared, { sceneElementId: element.id })
+      return { element, row }
+    }
+    const deleteElement = (u: TestUser, id: string) => app.inject({ method: 'DELETE', url: `/api/elements/${id}`, headers: bearer(u) })
+    const deleteScene = (u: TestUser, id: string) => app.inject({ method: 'DELETE', url: `/api/scenes/${id}`, headers: bearer(u) })
+
+    it('deleting the element deletes its set row and GLB', async () => {
+      const owner = await createUser()
+      const { preset } = await createScene(owner)
+      const { element, row } = await placedSet(owner, preset)
+      expect((await deleteElement(owner, element.id)).statusCode).toBe(204)
+      expect(await db.select().from(roomSets)).toHaveLength(0)
+      expect(files.has(row.storageKey)).toBe(false)
+    })
+
+    it('deleting the element keeps the GLB while another element still uses its URL', async () => {
+      const owner = await createUser()
+      const { preset } = await createScene(owner)
+      const { element, row } = await placedSet(owner, preset)
+      await createElement(preset.id, { type: 'model', name: 'Duplicate', properties: { modelSrc: row.glbUrl } })
+      expect((await deleteElement(owner, element.id)).statusCode).toBe(204)
+      expect(await db.select().from(roomSets)).toHaveLength(0)
+      expect(files.has(row.storageKey)).toBe(true)
+    })
+
+    it("deleting the scene deletes its elements' set rows and GLBs", async () => {
+      const owner = await createUser()
+      const { scene, preset } = await createScene(owner)
+      const a = await placedSet(owner, preset)
+      const b = await placedSet(owner, preset)
+      const { preset: elsewhere } = await createScene(owner, 'Other')
+      const kept = await placedSet(owner, elsewhere)
+      expect((await deleteScene(owner, scene.id)).statusCode).toBe(204)
+      expect((await db.select().from(roomSets)).map((r) => r.id)).toEqual([kept.row.id])
+      expect(files.has(a.row.storageKey)).toBe(false)
+      expect(files.has(b.row.storageKey)).toBe(false)
+      expect(files.has(kept.row.storageKey)).toBe(true)
+    })
+
+    it('deleting the scene keeps a GLB that an element in another scene still uses', async () => {
+      const owner = await createUser()
+      const { scene, preset } = await createScene(owner)
+      const { row } = await placedSet(owner, preset)
+      const { preset: elsewhere } = await createScene(owner, 'Other')
+      await createElement(elsewhere.id, { type: 'model', name: 'Pasted', properties: { modelSrc: row.glbUrl } })
+      expect((await deleteScene(owner, scene.id)).statusCode).toBe(204)
+      expect(await db.select().from(roomSets)).toHaveLength(0)
+      expect(files.has(row.storageKey)).toBe(true)
+    })
+  })
+
   describe('copyRoomSetForScene', () => {
     it("makes a scene-owned copy that a later PUT on the asset's set doesn't change", async () => {
       const owner = await createUser(); const other = await createUser()

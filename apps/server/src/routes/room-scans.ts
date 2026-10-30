@@ -13,11 +13,14 @@ import { plotForLayout } from '../room-scan/plot.js'
  */
 export const SHARED_DEVICE_MESSAGE = 'Room scans need a personal headset. This one is shared.'
 
+/** A scan's layout JSON is small; a bigger upload body is refused (413) before parsing. */
+export const ROOM_SCAN_BODY_LIMIT = 1_048_576
+
 export default async function roomScanRoutes(app: FastifyInstance) {
   // The headset's pass is bound to its space's scene, so the resolver accepts the pass's own scene.
   app.post<{ Body: { name?: unknown; layout?: unknown } }>(
     '/api/ar/room-scans',
-    { preHandler: [authenticate], config: { scenePass: { ar: true, sceneFrom: boundScene } } },
+    { bodyLimit: ROOM_SCAN_BODY_LIMIT, preHandler: [authenticate], config: { scenePass: { ar: true, sceneFrom: boundScene } } },
     async (request, reply) => {
       const { name, layout } = request.body ?? {}
       if (typeof name !== 'string' || name.length < 1 || name.length > 120) {
@@ -36,7 +39,7 @@ export default async function roomScanRoutes(app: FastifyInstance) {
       }
       const [scan] = await db
         .insert(roomScans)
-        .values({ userId: request.user.id, name, source: checked.layout.rooms[0].anchor.source, layout: checked.layout })
+        .values({ userId: request.user.id, name, source: checked.layout.rooms[0].anchor.source, layout: checked.layout, plot: plotForLayout(checked.layout) })
         .returning({ id: roomScans.id, name: roomScans.name, createdAt: roomScans.createdAt })
       return reply.status(201).send({ scan })
     },
@@ -51,7 +54,7 @@ export default async function roomScanRoutes(app: FastifyInstance) {
         source: s.source,
         roomCount: s.layout.rooms.length,
         footprint: layoutFootprint(s.layout),
-        plot: plotForLayout(s.layout),
+        plot: s.plot ?? plotForLayout(s.layout),
         createdAt: s.createdAt,
       })),
     }

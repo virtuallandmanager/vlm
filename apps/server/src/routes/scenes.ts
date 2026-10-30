@@ -22,7 +22,7 @@ import { getSubscription } from '../integrations/stripe.js'
 import { hostedWorldsBlockingDelete } from '../hyperfy/hosting.js'
 import { authorizeVideoControl } from '../ws/scene-guard.js'
 import { boundScene, fromElement, fromInstance, fromParam, fromPreset, isScenePass } from '../auth/scene-from.js'
-import { commitRoomSet, insertRoomSet, prepareRoomSetForPlacement, RoomSetError, roomSetIdsByElement, type PreparedRoomSet } from '../room-scan/sets.js'
+import { commitRoomSet, deleteOrphanedRoomSets, insertRoomSet, prepareRoomSetForPlacement, RoomSetError, roomSetIdsByElement, sceneOwnedRoomSets, type PreparedRoomSet } from '../room-scan/sets.js'
 
 type ElementChange = Parameters<typeof publishElementChanged>[0]
 
@@ -334,7 +334,10 @@ export default async function sceneRoutes(app: FastifyInstance) {
     // Hosted worlds' rows would cascade away with it, leaving their Fly app, database and files running untracked.
     const blocked = await hostedWorldsBlockingDelete({ sceneId })
     if (blocked) return reply.status(409).send(blocked)
+    // The cascade only unlinks the scene's room sets, so they (and their GLBs) are removed here
+    const roomSetsToDelete = await sceneOwnedRoomSets({ sceneId })
     await db.delete(scenes).where(eq(scenes.id, sceneId))
+    await deleteOrphanedRoomSets(roomSetsToDelete)
     await publishSceneTouched(sceneId) // wake waiting Hyperfy feed polls so they get 404 now
     return reply.status(204).send()
   })
@@ -527,7 +530,9 @@ export default async function sceneRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
+      const roomSetsToDelete = await sceneOwnedRoomSets({ elementId })
       await db.delete(sceneElements).where(eq(sceneElements.id, elementId))
+      await deleteOrphanedRoomSets(roomSetsToDelete)
       await elementChanged({
         sceneId: element.preset.sceneId,
         presetId: element.presetId,

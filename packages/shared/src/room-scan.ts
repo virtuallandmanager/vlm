@@ -22,6 +22,10 @@ export const MIN_WALL_LENGTH_M = 0.1
 /** Accepted ceiling height range, metres. */
 export const MIN_CEILING_M = 1.8
 export const MAX_CEILING_M = 8
+/** A floor outline enclosing less than this many square metres is degenerate. */
+export const MIN_FLOOR_AREA_M2 = 0.01
+/** Upload size caps: anything larger is refused as invalid_layout. */
+export const ROOM_SCAN_LIMITS = { rooms: 32, floorPoints: 256, walls: 256, openingsPerWall: 32, objects: 256 } as const
 
 /** A room set's exterior style. */
 export type RoomStyle = 'house' | 'storefront' | 'plain' | 'dollhouse'
@@ -54,6 +58,26 @@ function tuple(v: unknown, n: number, path: string, errors: string[]): number[] 
   return v.map((x, i) => num(x, `${path}[${i}]`, errors))
 }
 
+/** Reports `path` when `v` is an array longer than `max`; true when within the cap. */
+function withinCap(v: unknown, max: number, path: string, what: string, errors: string[]): boolean {
+  if (Array.isArray(v) && v.length > max) {
+    errors.push(`${path} must contain at most ${max} ${what}`)
+    return false
+  }
+  return true
+}
+
+/** Absolute shoelace area of a floor outline, square metres. */
+function polygonArea(points: Array<[number, number]>): number {
+  let twice = 0
+  for (let i = 0; i < points.length; i++) {
+    const [x1, z1] = points[i]
+    const [x2, z2] = points[(i + 1) % points.length]
+    twice += x1 * z2 - x2 * z1
+  }
+  return Math.abs(twice) / 2
+}
+
 function str(v: unknown, path: string, errors: string[]): string {
   if (typeof v !== 'string') {
     errors.push(`${path} must be a string`)
@@ -81,6 +105,7 @@ function parseWall(v: unknown, path: string, errors: string[]): RoomWall | null 
   const a = tuple(v.a, 2, `${path}.a`, errors)
   const b = tuple(v.b, 2, `${path}.b`, errors)
   if (!Array.isArray(v.openings)) { errors.push(`${path}.openings must be an array`); return null }
+  if (!withinCap(v.openings, ROOM_SCAN_LIMITS.openingsPerWall, `${path}.openings`, 'openings', errors)) return null
   const len = Math.hypot(b[0] - a[0], b[1] - a[1])
   const openings: RoomOpening[] = []
   v.openings.forEach((o, i) => {
@@ -123,7 +148,7 @@ function parseRoom(v: unknown, path: string, errors: string[]): ScannedRoom | nu
   const label = str(v.label, `${path}.label`, errors)
   let floor: Array<[number, number]> = []
   if (!Array.isArray(v.floor) || v.floor.length < 3) errors.push(`${path}.floor must have at least 3 points`)
-  else floor = v.floor.map((p, i) => tuple(p, 2, `${path}.floor[${i}]`, errors))
+  else if (withinCap(v.floor, ROOM_SCAN_LIMITS.floorPoints, `${path}.floor`, 'points', errors)) floor = v.floor.map((p, i) => tuple(p, 2, `${path}.floor[${i}]`, errors))
   const floorY = num(v.floorY, `${path}.floorY`, errors)
   const ceilingHeight = num(v.ceilingHeight, `${path}.ceilingHeight`, errors)
   if (Number.isFinite(ceilingHeight) && typeof v.ceilingHeight === 'number' && (ceilingHeight < MIN_CEILING_M || ceilingHeight > MAX_CEILING_M)) {
@@ -131,10 +156,10 @@ function parseRoom(v: unknown, path: string, errors: string[]): ScannedRoom | nu
   }
   const walls: RoomWall[] = []
   if (!Array.isArray(v.walls)) errors.push(`${path}.walls must be an array`)
-  else v.walls.forEach((w, i) => { const p = parseWall(w, `${path}.walls[${i}]`, errors); if (p) walls.push(p) })
+  else if (withinCap(v.walls, ROOM_SCAN_LIMITS.walls, `${path}.walls`, 'walls', errors)) v.walls.forEach((w, i) => { const p = parseWall(w, `${path}.walls[${i}]`, errors); if (p) walls.push(p) })
   const objects: RoomObject[] = []
   if (!Array.isArray(v.objects)) errors.push(`${path}.objects must be an array`)
-  else v.objects.forEach((o, i) => { const p = parseObject(o, `${path}.objects[${i}]`, errors); if (p) objects.push(p) })
+  else if (withinCap(v.objects, ROOM_SCAN_LIMITS.objects, `${path}.objects`, 'objects', errors)) v.objects.forEach((o, i) => { const p = parseObject(o, `${path}.objects[${i}]`, errors); if (p) objects.push(p) })
   const anchor = parseAnchor(v.anchor, `${path}.anchor`, errors)
   return { label, floor, floorY, ceilingHeight, walls, objects, anchor }
 }
@@ -142,7 +167,10 @@ function parseRoom(v: unknown, path: string, errors: string[]): ScannedRoom | nu
 /**
  * Check an untrusted upload and return a normalised layout: walls under
  * 0.10 m are dropped and opening offsets/widths are clamped into their wall.
- * Errors name the offending field, e.g. `rooms[0].ceilingHeight`.
+ * Errors name the offending field, e.g. `rooms[0].ceilingHeight`. A scan where
+ * no room keeps a wall or a usable floor (area over MIN_FLOOR_AREA_M2) is
+ * refused with an `empty_scan` error; one over ROOM_SCAN_LIMITS names the
+ * array that is too long.
  */
 export function validateLayout(input: unknown): { ok: true; layout: RoomScanLayout } | { ok: false; errors: string[] } {
   const errors: string[] = []
@@ -151,8 +179,12 @@ export function validateLayout(input: unknown): { ok: true; layout: RoomScanLayo
   const rooms: ScannedRoom[] = []
   if (!Array.isArray(input.rooms)) errors.push('rooms must be an array')
   else if (input.rooms.length === 0) errors.push('empty_scan: rooms must contain at least one room')
-  else input.rooms.forEach((r, i) => { const p = parseRoom(r, `rooms[${i}]`, errors); if (p) rooms.push(p) })
+  else if (withinCap(input.rooms, ROOM_SCAN_LIMITS.rooms, 'rooms', 'rooms', errors)) {
+    input.rooms.forEach((r, i) => { const p = parseRoom(r, `rooms[${i}]`, errors); if (p) rooms.push(p) })
+  }
   if (errors.length) return { ok: false, errors }
+  const usable = rooms.some((r) => r.walls.length > 0 || polygonArea(r.floor) > MIN_FLOOR_AREA_M2)
+  if (!usable) return { ok: false, errors: ['empty_scan: no room has a wall or a usable floor'] }
   return { ok: true, layout: { version: 1, rooms } }
 }
 

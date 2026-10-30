@@ -99,6 +99,38 @@ describe('room scans', () => {
     expect(await db.select().from(roomScans)).toHaveLength(0)
   })
 
+  it('rejects an all-degenerate scan as empty_scan and stores nothing', async () => {
+    const owner = await createUser()
+    const { pass } = await headset(owner)
+    const l = layout()
+    l.rooms[0].floor = [[0, 0], [0.05, 0], [0.05, 0.05]]
+    l.rooms[0].walls = [{ a: [0, 0], b: [0.05, 0], openings: [] }, { a: [0.05, 0], b: [0.05, 0.05], openings: [] }]
+    const res = await upload(pass, { name: 'Speck', layout: l })
+    expect(res.statusCode).toBe(400)
+    expect(res.json()).toEqual({ error: 'empty_scan' })
+    expect(await db.select().from(roomScans)).toHaveLength(0)
+  })
+
+  it('answers 413 to a body over 1 MB and stores nothing', async () => {
+    const owner = await createUser()
+    const { pass } = await headset(owner)
+    const res = await upload(pass, { name: 'Huge', layout: layout(), padding: 'x'.repeat(1_048_576) })
+    expect(res.statusCode).toBe(413)
+    expect(await db.select().from(roomScans)).toHaveLength(0)
+  })
+
+  it('rejects a layout over a size cap as invalid_layout naming the field', async () => {
+    const owner = await createUser()
+    const { pass } = await headset(owner)
+    const l = layout()
+    l.rooms[0].objects = Array.from({ length: 257 }, () => ({ label: 'box', center: [1, 0.5, 1], size: [1, 1, 1], yaw: 0 }))
+    const res = await upload(pass, { name: 'Cluttered', layout: l })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toBe('invalid_layout')
+    expect(res.json().errors.some((e: string) => e.startsWith('rooms[0].objects'))).toBe(true)
+    expect(await db.select().from(roomScans)).toHaveLength(0)
+  })
+
   it('an account session cannot use the headset upload, and a pass cannot list', async () => {
     const owner = await createUser()
     const { pass } = await headset(owner)
@@ -119,6 +151,22 @@ describe('room scans', () => {
     expect(scans.map((s: any) => s.name)).toEqual(['second', 'first'])
     expect(scans[0]).toMatchObject({ source: 'quest-mruk', roomCount: 1, footprint: { minX: 0, minZ: 0, maxX: 4, maxZ: 3 }, plot: { width: 1, depth: 1, base: { x: 0, y: 0 } } })
     expect(scans[0].layout).toBeUndefined()
+  })
+
+  it('stores the plot at upload and the list returns the stored plot, computing it only for rows without one', async () => {
+    const a = await createUser()
+    const { pass } = await headset(a)
+    const { scan } = (await upload(pass, { name: 'stored', layout: layout() })).json()
+    const [row] = await db.select().from(roomScans).where(eq(roomScans.id, scan.id))
+    expect(row.plot).toEqual({ width: 1, depth: 1, base: { x: 0, y: 0 } })
+    // A stored value wins over recomputing from the layout
+    await db.update(roomScans).set({ plot: { width: 3, depth: 3, base: { x: 0, y: 0 } } }).where(eq(roomScans.id, scan.id))
+    await db.insert(roomScans).values({ userId: a.id, name: 'legacy', source: 'quest-mruk', layout: layout(), createdAt: new Date(Date.now() + 1000) })
+    const { scans } = (await app.inject({ method: 'GET', url: '/api/room-scans', headers: bearer(tokenFor(a)) })).json()
+    expect(scans.map((s: any) => [s.name, s.plot])).toEqual([
+      ['legacy', { width: 1, depth: 1, base: { x: 0, y: 0 } }],
+      ['stored', { width: 3, depth: 3, base: { x: 0, y: 0 } }],
+    ])
   })
 
   it('the owner gets the full record; anyone else gets 404 on GET and DELETE', async () => {

@@ -271,6 +271,18 @@ describe('wizard routes', () => {
       expect(files.size).toBe(0)
     })
 
+    it('422 too_big for a home larger than the largest plot, before the plot size check, storing nothing', async () => {
+      const u = await createUser()
+      const floor: Array<[number, number]> = [[0, 0], [160, 0], [160, 4], [0, 4]]
+      const big: RoomScanLayout = { version: 1, rooms: [{ ...layout().rooms[0], floor, walls: wallsFromOutline(floor) }] }
+      const [scan] = await db.insert(roomScans).values({ userId: u.id, name: 'Mansion', source: 'quest-mruk', layout: big }).returning()
+      const res = await book(u, withSet(scan.id))
+      expect(res.statusCode).toBe(422)
+      expect(res.json()).toEqual({ error: 'too_big' })
+      expect(await counts()).toEqual({ scenes: 0, presets: 0, elements: 0, instances: 0, links: 0 })
+      expect(files.size).toBe(0)
+    })
+
     it('400 on invalid options, storing nothing', async () => {
       const u = await createUser()
       const scan = await scanFor(u)

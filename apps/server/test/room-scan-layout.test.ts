@@ -91,6 +91,43 @@ describe('validateLayout', () => {
     expect(errorsOf({ rooms: [] }).some(e => e.includes('empty_scan'))).toBe(true)
   })
 
+  it('rejects a scan with no surviving wall and no usable floor as empty_scan', () => {
+    const f = fixture()
+    f.rooms[0].floor = [[0, 0], [0.05, 0], [0.05, 0.05]]
+    f.rooms[0].walls = [{ a: [0, 0], b: [0.05, 0], openings: [] }]
+    expect(errorsOf(f).some(e => e.includes('empty_scan'))).toBe(true)
+    const collinear = fixture()
+    collinear.rooms[0].floor = [[0, 0], [1, 0], [2, 0]]
+    collinear.rooms[0].walls = []
+    expect(errorsOf(collinear).some(e => e.includes('empty_scan'))).toBe(true)
+  })
+
+  it('accepts a scan when a room keeps a wall or a usable floor', () => {
+    const wallsOnly = fixture(); wallsOnly.rooms[0].floor = [[0, 0], [1, 0], [2, 0]]
+    expect(validateLayout(wallsOnly).ok).toBe(true)
+    const floorOnly = fixture(); floorOnly.rooms[0].walls = []
+    expect(validateLayout(floorOnly).ok).toBe(true)
+  })
+
+  it('caps rooms, floor points, walls, openings and objects, naming the field', () => {
+    const many = <T>(n: number, make: (i: number) => T) => Array.from({ length: n }, (_, i) => make(i))
+    const rooms = fixture(); rooms.rooms = many(33, () => fixture().rooms[0])
+    expect(errorsOf(rooms).some(e => e.startsWith('rooms ') && e.includes('32'))).toBe(true)
+    const floor = fixture(); floor.rooms[0].floor = many(257, (i) => [Math.cos(i / 40), Math.sin(i / 40)])
+    expect(errorsOf(floor).some(e => e.startsWith('rooms[0].floor ') && e.includes('256'))).toBe(true)
+    const walls = fixture(); walls.rooms[0].walls = many(257, () => fixture().rooms[0].walls[1])
+    expect(errorsOf(walls).some(e => e.startsWith('rooms[0].walls ') && e.includes('256'))).toBe(true)
+    const openings = fixture(); openings.rooms[0].walls[0].openings = many(33, () => ({ kind: 'window', offset: 0, width: 0.1, sill: 1, height: 1 }))
+    expect(errorsOf(openings).some(e => e.startsWith('rooms[0].walls[0].openings ') && e.includes('32'))).toBe(true)
+    const objects = fixture(); objects.rooms[0].objects = many(257, () => ({ label: 'box', center: [1, 0.5, 1], size: [1, 1, 1], yaw: 0 }))
+    expect(errorsOf(objects).some(e => e.startsWith('rooms[0].objects ') && e.includes('256'))).toBe(true)
+    const atCaps = fixture()
+    atCaps.rooms = many(32, () => fixture().rooms[0])
+    atCaps.rooms[0].walls[0].openings = many(32, () => ({ kind: 'window', offset: 0, width: 0.1, sill: 1, height: 1 }))
+    atCaps.rooms[0].objects = many(256, () => ({ label: 'box', center: [1, 0.5, 1], size: [1, 1, 1], yaw: 0 }))
+    expect(validateLayout(atCaps).ok).toBe(true)
+  })
+
   it('rejects a wall with missing or non-array openings', () => {
     const f = fixture(); delete f.rooms[0].walls[0].openings
     expect(errorsOf(f).some(e => e.includes('rooms[0].walls[0].openings'))).toBe(true)

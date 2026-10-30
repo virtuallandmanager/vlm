@@ -6,10 +6,10 @@
  * `commitRoomSet` runs a transaction and deletes the uploaded object if it fails.
  */
 import { randomUUID } from 'node:crypto'
-import { and, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import { dclBudget, plotParcels, type Plot, type RoomScanLayout } from '@virvixr/shared'
 import { db } from '../db/connection.js'
-import { assetLibraryItems, roomScans, roomSets, sceneElements, sceneLibrary } from '../db/schema.js'
+import { assetLibraryItems, roomScans, roomSets, sceneElements, sceneLibrary, scenePresets } from '../db/schema.js'
 import { createStorage, type StorageProvider } from '../storage/index.js'
 import { generateThumbnail } from '../services/thumbnails.js'
 import { publishElementChanged, publishSceneTouched } from '../realtime/bus.js'
@@ -363,6 +363,37 @@ export async function prepareRoomSetForPlacement(modelSrc: unknown, sceneId: str
     if (err instanceof RoomSetError && err.code === 'scan_deleted') return null
     throw err
   }
+}
+
+/**
+ * The scene-owned sets placed by an element, or by any element of a scene. Read them before deleting the element or
+ * scene (the link goes null with it), then hand them to `deleteOrphanedRoomSets`. Library-asset sets aren't included.
+ */
+export async function sceneOwnedRoomSets(where: { elementId: string } | { sceneId: string }): Promise<RoomSetRow[]> {
+  const owned = isNull(roomSets.assetItemId)
+  if ('elementId' in where) return db.select().from(roomSets).where(and(eq(roomSets.sceneElementId, where.elementId), owned))
+  const rows = await db
+    .select({ set: roomSets })
+    .from(roomSets)
+    .innerJoin(sceneElements, eq(sceneElements.id, roomSets.sceneElementId))
+    .innerJoin(scenePresets, eq(scenePresets.id, sceneElements.presetId))
+    .where(and(eq(scenePresets.sceneId, where.sceneId), owned))
+  return rows.map((r) => r.set)
+}
+
+/**
+ * Delete the rows of sets whose element is gone, then release each GLB (kept while something else still uses it).
+ * The delete it follows has already happened, so this logs failures instead of throwing.
+ */
+export async function deleteOrphanedRoomSets(rows: RoomSetRow[]): Promise<void> {
+  if (rows.length === 0) return
+  try {
+    await db.delete(roomSets).where(inArray(roomSets.id, rows.map((r) => r.id)))
+  } catch (err) {
+    console.error('[room-sets] failed to delete orphaned sets', rows.map((r) => r.id), err)
+    return
+  }
+  for (const row of rows) await releaseRoomSetObject(row)
 }
 
 /** Each element's room set id, for the elements that have one: one query. */

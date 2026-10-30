@@ -20,7 +20,7 @@ import {
   bigint,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
-import type { VenueRules, Vec3, RoomScanLayout } from '@virvixr/shared'
+import type { VenueRules, Vec3, RoomScanLayout, Plot } from '@virvixr/shared'
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 
@@ -1428,6 +1428,7 @@ export const roomScans = pgTable('room_scans', {
   name: text('name').notNull(),
   source: text('source').notNull(), // the first room's anchor.source
   layout: jsonb('layout').$type<RoomScanLayout>().notNull(),
+  plot: jsonb('plot').$type<Plot>(), // computed once at upload; null for older rows and homes too big for any plot
   capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
