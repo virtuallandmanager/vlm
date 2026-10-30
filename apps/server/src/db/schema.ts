@@ -1534,6 +1534,18 @@ export const studioScopeEvents = pgTable('studio_scope_events', {
   userIdx: index('studio_scope_events_user_idx').on(t.userId, t.createdAt),
 }))
 
+// An account flagged to the owner for repeated turn-downs; at most one open at a time
+export const studioFlags = pgTable('studio_flags', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: text('status').notNull().default('open'), // open | dismissed
+  openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+  closedBy: uuid('closed_by'),
+}, (t) => ({
+  openUq: uniqueIndex('studio_flags_open_uq').on(t.userId).where(sql`status = 'open'`),
+}))
+
 export const studioRenders = pgTable('studio_renders', {
   id: uuid('id').primaryKey().defaultRandom(),
   revisionId: uuid('revision_id').notNull().references(() => studioRevisions.id, { onDelete: 'cascade' }),

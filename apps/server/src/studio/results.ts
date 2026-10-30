@@ -4,7 +4,7 @@ import { studioDesigns, studioEntitlements, studioJobs, studioMessages, studioPi
 import { checkFilePath, jobFileKey } from './store.js'
 import { recordCost, refundPrompt, utcDay, type Exec, type PromptSource } from './quota.js'
 import { publishStudio } from './events.js'
-import { DECLINED_NOTE, SCOPE_CATEGORIES, logScopeEvent, offTopicNote } from './scope.js'
+import { DECLINED_NOTE, SCOPE_CATEGORIES, logScopeEvent, maybeFlag, offTopicNote } from './scope.js'
 
 /** A worker's Result, as apps/studio-worker/CONTRACT.md defines it (only the fields Virvi reads are typed). */
 export type ContractResult = {
@@ -204,6 +204,10 @@ export async function applyResult(jobId: string, result: ContractResult, now: Da
     return job
   })
   if (!job) return 'already'
+  if (result.outcome === 'off_topic' || result.outcome === 'declined') {
+    const [d] = await db.select({ ownerId: studioDesigns.ownerId }).from(studioDesigns).where(eq(studioDesigns.id, job.designId))
+    if (d) await maybeFlag(d.ownerId, now).catch((err) => console.error('[studio] flag check failed:', err instanceof Error ? err.message : err))
+  }
   await publishStudio(job.designId, {
     type: 'job', jobId: job.id, status, outcome: result.outcome, ...(result.error ? { error: result.error } : {}),
   })

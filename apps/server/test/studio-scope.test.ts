@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { studioDesigns, studioJobs, studioMessages, studioScopeEvents } from '../src/db/schema.js'
+import { studioDesigns, studioFlags, studioJobs, studioMessages, studioScopeEvents } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { memoryStudioStore, setStudioStore } from '../src/studio/store.js'
 import { setMachineDeps } from '../src/studio/machines.js'
 import { promptStatus } from '../src/studio/quota.js'
 import { parseResult } from '../src/studio/results.js'
-import { DECLINED_NOTE, offTopicNote } from '../src/studio/scope.js'
+import { DECLINED_NOTE, maybeFlag, offTopicNote, setFlagMailer } from '../src/studio/scope.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, tokenFor, type TestUser } from './helpers/factories.js'
 import { fakeFly, issueWorker, okResult } from './helpers/studio.js'
@@ -112,5 +112,106 @@ describe('studio scope guard', () => {
     expect(parseResult(okResult('j', { outcome: 'off_topic', pieces: [], scope: null })).ok).toBe(false)
     expect(parseResult(okResult('j', { outcome: 'declined', pieces: [], scope: { by: 'someone', category: 'coding', note: 'x' } })).ok).toBe(false)
     expect(parseResult(okResult('j', { outcome: 'off_topic', pieces: [], scope: { by: 'check', category: 'coding', note: 5 } })).ok).toBe(false)
+  })
+
+  describe('flags', () => {
+    let mail: { to: string; subject: string; html: string }[]
+    const prevFlag = { ...config.studioFlag }
+    beforeEach(() => {
+      mail = []
+      setFlagMailer(async (to, subject, html) => { mail.push({ to, subject, html }); return true })
+      ;(config as any).studioFlag = { ...prevFlag, email: 'owner@virvi.test', threshold: 3, windowHours: 24 }
+    })
+    afterAll(() => {
+      setFlagMailer(null)
+      ;(config as any).studioFlag = prevFlag
+    })
+
+    const HOUR = 3600_000
+    async function turnDowns(u: TestUser, n: number, at: Date, d?: { id: string }) {
+      const design = d ?? (await create(u)).json()
+      for (let i = 0; i < n; i++) {
+        await db.insert(studioScopeEvents).values({ userId: u.id, designId: design.id, by: 'check', category: 'coding', note: `note ${i}`, message: `python ${i}`, createdAt: at })
+      }
+      return design
+    }
+
+    it('the third turn-down in a day opens a flag and emails once', async () => {
+      const u = await createUser()
+      const now = new Date()
+      const d = (await create(u)).json()
+      for (let i = 0; i < 3; i++) {
+        const jobId = (await prompt(u, d.id)).json().jobId
+        await finish(jobId, offTopic(jobId, `python help ${i}`))
+      }
+      const flags = await db.select().from(studioFlags)
+      expect(flags).toHaveLength(1)
+      expect(flags[0]).toMatchObject({ userId: u.id, status: 'open' })
+      expect(mail).toHaveLength(1)
+      expect(mail[0].to).toBe('owner@virvi.test')
+      expect(mail[0].html).toContain(u.email)
+      expect(mail[0].html).toContain('free')
+      expect(mail[0].html).toContain('3 turn-downs')
+      expect(mail[0].html).toContain('python help 2')
+      expect(mail[0].html).toContain('/admin/studio')
+      expect(now).toBeTruthy()
+    })
+
+    it('a fourth adds to the open flag without another email', async () => {
+      const u = await createUser()
+      const d = await turnDowns(u, 3, new Date())
+      expect(await maybeFlag(u.id, new Date())).toBe('opened')
+      await turnDowns(u, 1, new Date(), d)
+      expect(await maybeFlag(u.id, new Date())).toBe(null)
+      expect(await db.select().from(studioFlags)).toHaveLength(1)
+      expect(mail).toHaveLength(1)
+    })
+
+    it('two at once open one flag', async () => {
+      const u = await createUser()
+      await turnDowns(u, 3, new Date())
+      const r = await Promise.all([maybeFlag(u.id, new Date()), maybeFlag(u.id, new Date())])
+      expect(r.filter((x) => x === 'opened')).toHaveLength(1)
+      expect(await db.select().from(studioFlags)).toHaveLength(1)
+      expect(mail).toHaveLength(1)
+    })
+
+    it('turn-downs older than the window don’t count', async () => {
+      const u = await createUser()
+      const now = new Date()
+      const d = await turnDowns(u, 2, new Date(now.getTime() - 25 * HOUR))
+      await turnDowns(u, 2, now, d)
+      expect(await maybeFlag(u.id, now)).toBe(null)
+    })
+
+    it('after a dismissal only newer turn-downs count', async () => {
+      const u = await createUser()
+      const now = new Date()
+      const d = await turnDowns(u, 3, new Date(now.getTime() - 2 * HOUR))
+      await db.insert(studioFlags).values({ userId: u.id, status: 'dismissed', openedAt: new Date(now.getTime() - 2 * HOUR), closedAt: new Date(now.getTime() - HOUR) })
+      await turnDowns(u, 2, now, d)
+      expect(await maybeFlag(u.id, now)).toBe(null)
+      await turnDowns(u, 1, now, d)
+      expect(await maybeFlag(u.id, now)).toBe('opened')
+    })
+
+    it('a message can’t write html into the owner’s email', async () => {
+      const u = await createUser()
+      const d = (await create(u)).json()
+      for (let i = 0; i < 3; i++) {
+        await db.insert(studioScopeEvents).values({ userId: u.id, designId: d.id, by: 'check', category: 'coding', note: 'n', message: '<a href="https://evil.test">click</a>' })
+      }
+      await maybeFlag(u.id, new Date())
+      expect(mail[0].html).not.toContain('<a href="https://evil.test">')
+      expect(mail[0].html).toContain('&lt;a href=&quot;https://evil.test&quot;&gt;')
+    })
+
+    it('no email address set: the flag opens, nothing is sent', async () => {
+      ;(config as any).studioFlag = { ...config.studioFlag, email: null }
+      const u = await createUser()
+      await turnDowns(u, 3, new Date())
+      expect(await maybeFlag(u.id, new Date())).toBe('opened')
+      expect(mail).toHaveLength(0)
+    })
   })
 })
