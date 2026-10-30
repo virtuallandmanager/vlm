@@ -9,9 +9,8 @@ import { connectExtras, jumpInUrl, progressLines, runWizard, type Phase, type Ru
 import { effectivePlot, type WizardAction, type WizardState } from '@/lib/wizard/state'
 import { PrimaryButton } from '@/components/ui'
 import { ProgressLines, useShownPhase } from '../ProgressLines'
+import { ROOM_LAYOUT_NOTICE } from '@/lib/room-set'
 
-/** Shown once, before a scene built from a room scan goes to a public World or Hyperfy world. */
-export const ROOM_LAYOUT_NOTICE = "This World will show your room's layout to anyone who visits."
 /** The server keeps a storefront sign to this many characters. */
 const SIGN_TEXT_MAX = 80
 

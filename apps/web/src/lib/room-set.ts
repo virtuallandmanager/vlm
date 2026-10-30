@@ -34,6 +34,14 @@ export function nudgesFor(roomCount: number, stored: unknown): RoomNudge[] {
   return Array.from({ length: roomCount }, (_, i) => (list[i] ? { dx: list[i].dx, dz: list[i].dz, yaw: list[i].yaw } : { ...ZERO }))
 }
 
+/** Shown once where a scene holding a room set is deployed to a World (spec §3). */
+export const ROOM_LAYOUT_NOTICE = "This World will show your room's layout to anyone who visits."
+
+/** Whether any of a scene's elements is a room set (its layout would go out with a deploy). */
+export function sceneHasRoomSet(elements: ReadonlyArray<{ roomSetId?: string | null }>): boolean {
+  return elements.some((e) => !!e.roomSetId)
+}
+
 export const SCAN_DELETED_MESSAGE = "This room's scan was deleted, so it can't be restyled or adjusted any more."
 
 /** Plain words for a failed room-set read or save. */

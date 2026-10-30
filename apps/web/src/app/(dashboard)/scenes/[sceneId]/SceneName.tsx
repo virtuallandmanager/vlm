@@ -8,6 +8,7 @@ import { useApi, type DclDestination } from '@/lib/api'
 import { defaultTicked, namesDiffer, renameError, sceneNameError, SCENE_NAME_MAX } from '@/lib/scene-rename'
 import { PencilIcon } from '@/components/icons'
 import { useWorldSigning } from '@/components/dcl/useWorldSigning'
+import { ROOM_LAYOUT_NOTICE } from '@/lib/room-set'
 
 // ---------------------------------------------------------------------------
 // Editable title
@@ -105,11 +106,13 @@ type Deployer = () => Promise<{ ok: true } | { ok: false; message: string }>
 /** A World can be redeployed from here when its owner signs (sign mode) or Virvi holds the permission. */
 const canRedeploy = (d: DclDestination) => d.mode === 'sign' || !!d.grantedAt
 
-export function UseNameEverywhere({ sceneName, oldName, connected, onDone, onClose }: {
+export function UseNameEverywhere({ sceneName, oldName, connected, hasRoomSet = false, onDone, onClose }: {
   sceneName: string
   /** The name before the rename this visit; null when reopened with nothing to compare against. */
   oldName: string | null
   connected: Connected
+  /** The scene holds a room set: a World redeploy shows the room's layout, which the panel says once. */
+  hasRoomSet?: boolean
   /** Something was renamed or redeployed: the page reloads what's connected. */
   onDone: () => void
   onClose: () => void
@@ -171,6 +174,9 @@ export function UseNameEverywhere({ sceneName, oldName, connected, onDone, onClo
           Pick what should be called &ldquo;{sceneName}&rdquo; too. Addresses and links stay as they are.
         </p>
       </div>
+      {hasRoomSet && connected.dcl.length > 0 && (
+        <p className="rounded-md border border-yellow-700/60 bg-yellow-950/30 px-3 py-2 text-yellow-100">{ROOM_LAYOUT_NOTICE}</p>
+      )}
       <ul className="space-y-2">
         {connected.dcl.map((d) => (
           <DclRow key={d.id} dest={d} checked={!!ticked[`dcl:${d.id}`]} onToggle={() => toggle(`dcl:${d.id}`)} disabled={running || finished}

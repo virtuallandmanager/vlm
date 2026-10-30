@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MOVE_STEP_M, TURN_STEP_DEG, nudgesFor, roomSetErrorMessage, stepNudge } from './room-set'
+import { MOVE_STEP_M, ROOM_LAYOUT_NOTICE, TURN_STEP_DEG, nudgesFor, roomSetErrorMessage, sceneHasRoomSet, stepNudge } from './room-set'
 
 describe('stepNudge', () => {
   const zero = { dx: 0, dz: 0, yaw: 0 }
@@ -47,5 +47,17 @@ describe('roomSetErrorMessage', () => {
   it('explains a deleted scan in plain words', () => {
     const err = Object.assign(new Error('scan_deleted'), { status: 409, body: { error: 'scan_deleted' } })
     expect(roomSetErrorMessage(err)).toBe("This room's scan was deleted, so it can't be restyled or adjusted any more.")
+  })
+})
+
+describe('sceneHasRoomSet', () => {
+  it('is true when any element is a room set, false otherwise', () => {
+    expect(sceneHasRoomSet([])).toBe(false)
+    expect(sceneHasRoomSet([{ roomSetId: null }, {}])).toBe(false)
+    expect(sceneHasRoomSet([{ roomSetId: null }, { roomSetId: 'set-1' }])).toBe(true)
+  })
+
+  it("has the spec's exact notice", () => {
+    expect(ROOM_LAYOUT_NOTICE).toBe("This World will show your room's layout to anyone who visits.")
   })
 })

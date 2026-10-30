@@ -8,6 +8,7 @@ import { useSceneRoom } from '@/lib/colyseus'
 import { SceneRoles } from './SceneRoles'
 import { ArSpaces } from './ArSpaces'
 import { RoomSetPanel } from './RoomSetPanel'
+import { sceneHasRoomSet } from '@/lib/room-set'
 import { EditableSceneTitle, UseNameEverywhere, connectedNamesDiffer, hasConnected, useConnected } from './SceneName'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
@@ -1613,6 +1614,7 @@ export default function SceneEditorPage() {
 
       {namePanel && linked && hasConnected(linked) && (
         <UseNameEverywhere key={`${scene.name}:${renamedFrom ?? ''}`} sceneName={scene.name} oldName={renamedFrom} connected={linked}
+          hasRoomSet={sceneHasRoomSet(scene.presets.flatMap((p) => p.elements))}
           onDone={reloadConnected} onClose={() => setNamePanel(false)} />
       )}
 

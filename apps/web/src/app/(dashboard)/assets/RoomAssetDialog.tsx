@@ -70,7 +70,7 @@ export function RoomAssetDialog({ onCreated, onClose }: { onCreated: (asset: any
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 id="room-asset-title" className="text-lg font-semibold">Make an asset from a room scan</h2>
-            <p className="mt-1 text-sm text-gray-400">The room becomes one model, at real size, that you can place in any of your scenes. Only you can see it.</p>
+            <p className="mt-1 text-sm text-gray-400">The room becomes one model, at real size, that you can place in any of your scenes. It stays private in your library, but anyone visiting a World you deploy it to will see the room&apos;s layout.</p>
           </div>
           <button type="button" onClick={onClose} disabled={saving} aria-label="Close" className="px-2 text-lg text-gray-400 hover:text-white">&times;</button>
         </div>
