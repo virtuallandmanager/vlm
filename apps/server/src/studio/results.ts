@@ -4,7 +4,7 @@ import { studioDesigns, studioEntitlements, studioJobs, studioMessages, studioPi
 import { checkFilePath, jobFileKey } from './store.js'
 import { recordCost, refundPrompt, utcDay, type Exec, type PromptSource } from './quota.js'
 import { publishStudio } from './events.js'
-import { DECLINED_NOTE, SCOPE_CATEGORIES, logScopeEvent, maybeFlag, offTopicNote } from './scope.js'
+import { DECLINED_NOTE, SCOPE_CATEGORIES, logScopeEvent, maybeFlag, offTopicIsFree, offTopicNote } from './scope.js'
 
 /** A worker's Result, as apps/studio-worker/CONTRACT.md defines it (only the fields Virvi reads are typed). */
 export type ContractResult = {
@@ -99,7 +99,7 @@ function systemNote(r: ContractResult, refunded: boolean): string | null {
     case 'timeout':
       return 'The agent ran out of time on this prompt.'
     case 'off_topic': // the fixed words only: the model's note is never shown
-      return offTopicNote(r.scope?.category ?? 'other')
+      return offTopicNote(r.scope?.category ?? 'other', !refunded)
     case 'declined':
       return DECLINED_NOTE
     default:
@@ -163,7 +163,8 @@ export async function applyResult(jobId: string, result: ContractResult, now: Da
         }
       }
       if (design) await recordCost(design.ownerId, day, result.costUsd ?? 0, tx)
-      const refunded = (result.outcome === 'error' || result.outcome === 'off_topic') && job.counted && !!design
+      const refunded = job.counted && !!design && (result.outcome === 'error'
+        || (result.outcome === 'off_topic' && await offTopicIsFree(tx, design.ownerId, now)))
       if (refunded) await refundPrompt(design!.ownerId, day, job.countedFrom as PromptSource | null, tx)
       const note = systemNote(result, refunded)
       if (note) await tx.insert(studioMessages).values({ designId: job.designId, role: 'system', text: note, jobId: job.id })

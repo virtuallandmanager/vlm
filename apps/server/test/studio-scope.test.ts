@@ -68,6 +68,22 @@ describe('studio scope guard', () => {
     expect(job.status).toBe('done')
   })
 
+  it('turn-downs past the flag threshold in the window count', async () => {
+    const u = await createUser()
+    const d = (await create(u)).json()
+    for (let i = 0; i < config.studioFlag.threshold; i++) {
+      const jobId = (await prompt(u, d.id)).json().jobId
+      await finish(jobId, offTopic(jobId))
+    }
+    expect((await promptStatus(u.id, new Date())).used).toBe(0)
+    const jobId = (await prompt(u, d.id)).json().jobId
+    await finish(jobId, offTopic(jobId))
+    expect((await promptStatus(u.id, new Date())).used).toBe(1)
+    const notes = await systemNotes(d.id)
+    expect(notes.at(-1)).toBe(offTopicNote('coding', true))
+    expect(offTopicNote('coding', true)).toBe('The studio only builds Decentraland wearables and emotes, so this message (coding help) wasn’t sent to the agent. It counted as a prompt, because several recent messages weren’t design work.')
+  })
+
   it('the note never carries the model’s words', async () => {
     const u = await createUser()
     const d = (await create(u)).json()

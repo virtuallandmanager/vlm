@@ -16,8 +16,20 @@ export const CATEGORY_WORDS: Record<string, string> = {
 }
 export const SCOPE_CATEGORIES = Object.keys(CATEGORY_WORDS)
 
-export const offTopicNote = (category: string) =>
-  `The studio only builds Decentraland wearables and emotes, so this message (${CATEGORY_WORDS[category] ?? CATEGORY_WORDS.other}) wasn’t sent to the agent. It wasn’t counted.`
+export const offTopicNote = (category: string, counted = false) =>
+  `The studio only builds Decentraland wearables and emotes, so this message (${CATEGORY_WORDS[category] ?? CATEGORY_WORDS.other}) wasn’t sent to the agent. ` +
+  (counted ? 'It counted as a prompt, because several recent messages weren’t design work.' : 'It wasn’t counted.')
+
+/**
+ * Whether a turn-down by the check is free: the first STUDIO_FLAG_THRESHOLD in the window are, so an honest odd
+ * message costs nothing, and a script sending nothing but off-topic messages pays for each one after that.
+ */
+export async function offTopicIsFree(exec: Exec, userId: string, now: Date): Promise<boolean> {
+  const since = new Date(now.getTime() - config.studioFlag.windowHours * 3600_000)
+  const earlier = await exec.select({ id: studioScopeEvents.id }).from(studioScopeEvents)
+    .where(and(eq(studioScopeEvents.userId, userId), eq(studioScopeEvents.by, 'check'), gt(studioScopeEvents.createdAt, since)))
+  return earlier.length < config.studioFlag.threshold
+}
 export const DECLINED_NOTE = 'The agent only works on Decentraland wearables and emotes, so it stopped.'
 
 const MESSAGE_MAX = 2000

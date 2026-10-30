@@ -59,7 +59,8 @@ The studio is on when `VIRVI_MODE=cloud` and both `STUDIO_WORKER_IMAGE` and `STU
 
 8. **Keeping the studio to design work** (`scope.ts`, `routes/admin-studio.ts`, the admin page Studio flags):
    - The worker checks each prompt the user typed with Claude Haiku before the agent runs (`studio_worker/scope.py`).
-     An off-topic message ends as `off_topic` (not counted); an agent that stops on one ends as `declined` (counted).
+     An off-topic message ends as `off_topic`, not counted for the first `STUDIO_FLAG_THRESHOLD` in the window and counted
+     after that; an agent that stops on one ends as `declined` (counted).
      Both are logged in `studio_scope_events`; the user sees only a category's fixed words, never the model's note.
    - An account with `STUDIO_FLAG_THRESHOLD` (3) turn-downs within `STUDIO_FLAG_WINDOW_HOURS` (24) is flagged once,
      and the owner is emailed at `STUDIO_FLAG_EMAIL` (unset: nothing is sent). Admins dismiss flags and pause or
