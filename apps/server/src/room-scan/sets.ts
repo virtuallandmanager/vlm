@@ -6,10 +6,10 @@
  * `commitRoomSet` runs a transaction and deletes the uploaded object if it fails.
  */
 import { randomUUID } from 'node:crypto'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { dclBudget, plotParcels, type Plot, type RoomScanLayout } from '@virvixr/shared'
 import { db } from '../db/connection.js'
-import { assetLibraryItems, roomScans, roomSets, sceneElements } from '../db/schema.js'
+import { assetLibraryItems, roomScans, roomSets, sceneElements, sceneLibrary } from '../db/schema.js'
 import { createStorage, type StorageProvider } from '../storage/index.js'
 import { generateThumbnail } from '../services/thumbnails.js'
 import { publishElementChanged, publishSceneTouched } from '../realtime/bus.js'
@@ -29,7 +29,7 @@ const MAX_SIGN_TEXT = 80
 
 /** A refusal with the HTTP status and `error` code the routes answer with. */
 export class RoomSetError extends Error {
-  constructor(public status: 400 | 404 | 409 | 422, public code: string) {
+  constructor(public status: 400 | 403 | 404 | 409 | 422, public code: string) {
     super(code)
   }
 }
@@ -297,4 +297,53 @@ export async function prepareRoomSetCopy(assetItemId: string, userId: string): P
 export async function copyRoomSetForScene(assetItemId: string, userId: string): Promise<RoomSetRow> {
   const prepared = await prepareRoomSetCopy(assetItemId, userId)
   return commitRoomSet(prepared, (tx) => insertRoomSet(prepared, {}, tx))
+}
+
+/** The set behind the room-set asset whose GLB is `modelSrc`, or null (for any other model, without a query). */
+async function assetSetForModel(modelSrc: unknown): Promise<RoomSetRow | null> {
+  if (typeof modelSrc !== 'string' || !modelSrc.includes('/room-sets/')) return null
+  const [row] = await db.select().from(roomSets).where(and(eq(roomSets.glbUrl, modelSrc), isNotNull(roomSets.assetItemId)))
+  return row ?? null
+}
+
+/**
+ * Placing a model in a scene: when `modelSrc` is a room-set asset's GLB, generate and upload the scene's own copy
+ * (run it outside any transaction, then `insertRoomSet` it linked to the new element). The copy belongs to the
+ * asset's owner, who may place it anywhere; anyone else only in a scene whose library holds the asset (403).
+ * Null for any other model, and for an asset whose scan is gone: it can never change again, so it's placed as is.
+ */
+export async function prepareRoomSetForPlacement(modelSrc: unknown, sceneId: string, userId: string): Promise<PreparedRoomSet | null> {
+  const source = await assetSetForModel(modelSrc)
+  if (!source) return null
+  if (source.userId !== userId) {
+    const [linked] = await db
+      .select({ id: sceneLibrary.id })
+      .from(sceneLibrary)
+      .where(and(eq(sceneLibrary.sceneId, sceneId), eq(sceneLibrary.assetItemId, source.assetItemId!)))
+    if (!linked) throw new RoomSetError(403, 'forbidden')
+  }
+  try {
+    return await prepareRoomSetCopy(source.assetItemId!, source.userId)
+  } catch (err) {
+    if (err instanceof RoomSetError && err.code === 'scan_deleted') return null
+    throw err
+  }
+}
+
+/** Each element's room set id, for the elements that have one: one query. */
+export async function roomSetIdsByElement(elementIds: string[]): Promise<Map<string, string>> {
+  if (elementIds.length === 0) return new Map()
+  const rows = await db
+    .select({ id: roomSets.id, elementId: roomSets.sceneElementId })
+    .from(roomSets)
+    .where(inArray(roomSets.sceneElementId, elementIds))
+  return new Map(rows.map((r) => [r.elementId!, r.id]))
+}
+
+/** The owner's set with its scan's room labels (null once the scan is deleted). 404 for anyone else. */
+export async function getRoomSet(userId: string, setId: string): Promise<RoomSetRow & { rooms: string[] | null }> {
+  const [row] = await db.select().from(roomSets).where(and(eq(roomSets.id, setId), eq(roomSets.userId, userId)))
+  if (!row) throw new RoomSetError(404, 'not_found')
+  const scan = await loadOwnedScan(userId, row.scanId)
+  return { ...row, rooms: scan ? scan.layout.rooms.map((r) => r.label) : null }
 }

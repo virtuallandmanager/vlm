@@ -4,6 +4,7 @@ import { useAuth } from './auth'
 import { API_URL } from './config'
 import { requestHeaders } from './request-headers'
 import type { Plot, RoomSetOptions } from '@virvixr/shared'
+import type { RoomNudge } from './room-set'
 import type { AuthChain } from '@dcl/crypto'
 import type { ArFileFormat, ArMounting } from './ar'
 import type { Quote, RenderView, StudioDesign, StudioDetail, StudioKind, StudioUpload, StudioUsage } from './studio'
@@ -53,6 +54,23 @@ export interface RoomScanSummary {
   footprint: { minX: number; minZ: number; maxX: number; maxZ: number }
   plot: Plot | null
   createdAt: string
+}
+
+/**
+ * One room set (owner only). `rooms` holds its scan's room labels, null once the scan is deleted (it can't be
+ * restyled then). `nudges` has one entry per room once adjusted, and is empty or `{}` before.
+ */
+export interface RoomSetDetail {
+  id: string
+  scanId: string | null
+  options: RoomSetOptions
+  nudges: RoomNudge[] | Record<string, never>
+  glbUrl: string
+  triangles: number
+  plot: Plot
+  sceneElementId: string | null
+  assetItemId: string | null
+  rooms: string[] | null
 }
 
 /** The preview GLB of a scan with these options (the route needs the bearer header: fetch it, don't link it). */
@@ -429,6 +447,11 @@ export function useApi() {
     /** A private library asset made from a scan. 422 `too_big`. */
     createRoomSetAsset: (data: { scanId: string; name: string; options: RoomSetOptions }) =>
       apiFetch<{ asset: any; set: any }>('/api/room-sets/asset', { method: 'POST', body: JSON.stringify(data) }),
+    /** 404 unless it's yours. */
+    getRoomSet: (id: string) => apiFetch<{ set: RoomSetDetail }>(`/api/room-sets/${encodeURIComponent(id)}`),
+    /** Restyle and/or nudge (one per room; `snap` lines doors up first). 409 `scan_deleted`, 422 `too_big`. */
+    updateRoomSet: (id: string, data: { options?: Partial<RoomSetOptions>; nudges?: RoomNudge[]; snap?: boolean }) =>
+      apiFetch<{ set: Omit<RoomSetDetail, 'rooms'> }>(`/api/room-sets/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
 
     // Decentraland Worlds
     getDclNames: () => apiFetch<{ wallets: Array<{ address: string; names: DclWorld[] }> }>('/api/dcl/names'),

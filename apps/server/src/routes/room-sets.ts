@@ -2,10 +2,10 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import { authenticate } from '../middleware/auth.js'
 import { isUuid } from '../auth/scene-from.js'
 import { DEFAULT_ROOM_SET_OPTIONS, type RoomSetOptions } from '../room-scan/build-glb.js'
-import { createRoomSetAsset, generateRoomSet, loadOwnedScan, parseRoomSetOptions, RoomSetError, updateRoomSet } from '../room-scan/sets.js'
+import { createRoomSetAsset, generateRoomSet, getRoomSet, loadOwnedScan, parseRoomSetOptions, RoomSetError, updateRoomSet } from '../room-scan/sets.js'
 
 /**
- * Room sets: wizard previews of a scan, library assets made from a scan, and restyling or nudging a set later.
+ * Room sets: wizard previews of a scan, library assets made from a scan, and reading, restyling or nudging a set later.
  * Every route answers 404 to anyone but the owner.
  */
 type PreviewQuery = { style?: string; wallColor?: string; floorColor?: string; ceiling?: string; furniture?: string }
@@ -71,6 +71,15 @@ export default async function roomSetRoutes(app: FastifyInstance) {
       }
     },
   )
+
+  app.get<{ Params: { id: string } }>('/api/room-sets/:id', { preHandler: [authenticate] }, async (request, reply) => {
+    if (!isUuid(request.params.id)) return reply.status(404).send({ error: 'not_found' })
+    try {
+      return { set: await getRoomSet(request.user.id, request.params.id) }
+    } catch (err) {
+      return refuse(reply, err)
+    }
+  })
 
   app.put<{ Params: { id: string }; Body: { options?: unknown; nudges?: unknown; snap?: unknown } }>(
     '/api/room-sets/:id',

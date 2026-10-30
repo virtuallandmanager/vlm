@@ -22,6 +22,7 @@ import { getSubscription } from '../integrations/stripe.js'
 import { hostedWorldsBlockingDelete } from '../hyperfy/hosting.js'
 import { authorizeVideoControl } from '../ws/scene-guard.js'
 import { boundScene, fromElement, fromInstance, fromParam, fromPreset, isScenePass } from '../auth/scene-from.js'
+import { commitRoomSet, insertRoomSet, prepareRoomSetForPlacement, RoomSetError, roomSetIdsByElement, type PreparedRoomSet } from '../room-scan/sets.js'
 
 type ElementChange = Parameters<typeof publishElementChanged>[0]
 
@@ -255,15 +256,25 @@ export default async function sceneRoutes(app: FastifyInstance) {
     const access = await accessFor(request, sceneId)
     if (access.level === 'none') return reply.status(403).send({ error: 'Forbidden' })
 
+    // Model elements carry the id of their room set (null when they're an ordinary model), looked up in one query
+    const withRoomSets = async <P extends (typeof scene.presets)[number]>(presets: P[]) => {
+      const modelIds = presets.flatMap((p) => p.elements.filter((e) => e.type === 'model').map((e) => e.id))
+      const ids = await roomSetIdsByElement(modelIds)
+      return presets.map((p) => ({
+        ...p,
+        elements: p.elements.map((e) => (e.type === 'model' ? { ...e, roomSetId: ids.get(e.id) ?? null } : e)),
+      }))
+    }
+
     if (access.level === 'grant') {
       // Venue crew see only what's live and their own booking's copy — never the
       // owner's other presets, other renters' bookings, or the collaborator list.
       const visible = new Set([scene.activePresetId, access.booking?.bookingPresetId].filter(Boolean))
       const { collaborators: _hidden, ...rest } = scene
-      return reply.send({ scene: { ...rest, presets: scene.presets.filter((p) => visible.has(p.id)) } })
+      return reply.send({ scene: { ...rest, presets: await withRoomSets(scene.presets.filter((p) => visible.has(p.id))) } })
     }
 
-    return reply.send({ scene })
+    return reply.send({ scene: { ...scene, presets: await withRoomSets(scene.presets) } })
   })
 
   // ── PUT /api/scenes/:sceneId — update scene ─────────────────────────────
@@ -374,19 +385,38 @@ export default async function sceneRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
-      const [element] = await db
-        .insert(sceneElements)
-        .values({
-          presetId,
-          type,
-          name,
-          enabled: enabled ?? true,
-          customId: customId || null,
-          customRendering: customRendering ?? false,
-          clickEvent: clickEvent ?? null,
-          properties: properties ?? null,
-        })
-        .returning()
+      // A room-set asset gets the scene's own copy of its set (generated and uploaded before the transaction)
+      let prepared: PreparedRoomSet | null = null
+      try {
+        if (type === 'model') prepared = await prepareRoomSetForPlacement((properties as { modelSrc?: unknown } | null)?.modelSrc, preset.sceneId, request.user.id)
+      } catch (err) {
+        if (err instanceof RoomSetError) return reply.status(err.status).send({ error: err.code })
+        throw err
+      }
+
+      const insertElement = (exec: Pick<typeof db, 'insert'>, props: unknown) =>
+        exec
+          .insert(sceneElements)
+          .values({
+            presetId,
+            type,
+            name,
+            enabled: enabled ?? true,
+            customId: customId || null,
+            customRendering: customRendering ?? false,
+            clickEvent: clickEvent ?? null,
+            properties: props ?? null,
+          })
+          .returning()
+
+      const room = prepared
+      const { element, roomSetId } = room
+        ? await commitRoomSet(room, async (tx) => {
+            const [el] = await insertElement(tx, { ...(properties as Record<string, unknown>), modelSrc: room.glbUrl })
+            const set = await insertRoomSet(room, { sceneElementId: el.id }, tx)
+            return { element: el, roomSetId: set.id as string | null }
+          })
+        : { element: (await insertElement(db, properties))[0], roomSetId: null }
 
       await elementChanged({
         sceneId: preset.sceneId,
@@ -395,7 +425,7 @@ export default async function sceneRoutes(app: FastifyInstance) {
         elementType: element.type,
         deleted: false,
       })
-      return reply.status(201).send({ element })
+      return reply.status(201).send({ element: type === 'model' ? { ...element, roomSetId } : element })
     },
   )
 

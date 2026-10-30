@@ -158,6 +158,7 @@ const CASES: Case[] = [
   { route: 'DELETE /api/room-scans/:id', url: (f) => `/api/room-scans/${f.roomScan.id}` },
   { route: 'GET /api/room-scans/:id/preview.glb', url: (f) => `/api/room-scans/${f.roomScan.id}/preview.glb` },
   { route: 'POST /api/room-sets/asset', url: () => '/api/room-sets/asset', body: (f) => ({ scanId: f.roomScan.id, name: 'pwned', options: {} }) },
+  { route: 'GET /api/room-sets/:id', url: (f) => `/api/room-sets/${f.roomSet.id}` },
   { route: 'PUT /api/room-sets/:id', url: (f) => `/api/room-sets/${f.roomSet.id}`, body: () => ({ options: { style: 'house' } }) },
   // AR spaces
   { route: 'GET /api/scenes/:sceneId/ar/spaces', url: (f) => `/api/scenes/${f.scene.id}/ar/spaces` },

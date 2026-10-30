@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { eq } from 'drizzle-orm'
 import type { RoomScanLayout, ScannedRoom } from '@virvixr/shared'
-import { assetLibraryItems, roomScans, roomSets, sceneElements } from '../src/db/schema.js'
+import { assetLibraryItems, roomScans, roomSets, sceneCollaborators, sceneElements } from '../src/db/schema.js'
 import { db } from '../src/db/connection.js'
 import type { StorageProvider } from '../src/storage/index.js'
 import { glbStats } from '../src/catalog/glb-stats.js'
@@ -235,6 +235,133 @@ describe('room sets', () => {
       const [after] = await db.select().from(roomSets).where(eq(roomSets.id, copy.id))
       expect(after).toEqual(copy)
       expect(files.has(copy.storageKey)).toBe(true)
+    })
+  })
+
+  describe('placing a room-set asset in a scene', () => {
+    const addToLibrary = (u: TestUser, sceneId: string, assetItemId: string) =>
+      app.inject({ method: 'POST', url: `/api/scenes/${sceneId}/library`, headers: bearer(u), payload: { assetItemId } })
+    const placeModel = (u: TestUser, presetId: string, modelSrc: string) =>
+      app.inject({ method: 'POST', url: `/api/presets/${presetId}/elements`, headers: bearer(u), payload: { type: 'model', name: 'Room', properties: { modelSrc } } })
+    const getScene = (u: TestUser, sceneId: string) => app.inject({ method: 'GET', url: `/api/scenes/${sceneId}`, headers: bearer(u) })
+
+    it("gives the new element its own copy of the set, which a later change to the asset doesn't reach", async () => {
+      const owner = await createUser()
+      const scan = await scanFor(owner)
+      const asset = (await makeAsset(owner, { scanId: scan.id, name: 'Lounge', options: { style: 'house', wallColor: '#112233' } })).json().asset
+      const source = await setOf(asset.id)
+      const { scene, preset } = await createScene(owner)
+      expect((await addToLibrary(owner, scene.id, asset.id)).statusCode).toBe(201)
+
+      const res = await placeModel(owner, preset.id, asset.cdnUrl)
+      expect(res.statusCode).toBe(201)
+      const { element } = res.json()
+      const [copy] = await db.select().from(roomSets).where(eq(roomSets.sceneElementId, element.id))
+      expect(copy).toBeDefined()
+      expect(copy.id).not.toBe(source.id)
+      expect(copy).toMatchObject({ scanId: scan.id, userId: owner.id, options: source.options, nudges: source.nudges, assetItemId: null })
+      expect(copy.glbUrl).not.toBe(asset.cdnUrl)
+      expect(element.properties.modelSrc).toBe(copy.glbUrl)
+      expect(element.roomSetId).toBe(copy.id)
+      expect(files.has(copy.storageKey)).toBe(true)
+
+      expect((await put(owner, source.id, { options: { style: 'plain' } })).statusCode).toBe(200)
+      const [after] = await db.select().from(roomSets).where(eq(roomSets.id, copy.id))
+      expect(after).toEqual(copy)
+      const [el] = await db.select().from(sceneElements).where(eq(sceneElements.id, element.id))
+      expect((el.properties as any).modelSrc).toBe(copy.glbUrl)
+      expect(files.has(copy.storageKey)).toBe(true)
+    })
+
+    it('copies for an editor placing the owner\'s asset from the scene library, as the owner', async () => {
+      const owner = await createUser(); const editor = await createUser()
+      const scan = await scanFor(owner)
+      const asset = (await makeAsset(owner, { scanId: scan.id, name: 'Lounge', options: {} })).json().asset
+      const { scene, preset } = await createScene(owner)
+      await db.insert(sceneCollaborators).values({ sceneId: scene.id, userId: editor.id, role: 'editor' })
+      expect((await addToLibrary(owner, scene.id, asset.id)).statusCode).toBe(201)
+
+      const res = await placeModel(editor, preset.id, asset.cdnUrl)
+      expect(res.statusCode).toBe(201)
+      const [copy] = await db.select().from(roomSets).where(eq(roomSets.sceneElementId, res.json().element.id))
+      expect(copy.userId).toBe(owner.id)
+      expect(res.json().element.properties.modelSrc).toBe(copy.glbUrl)
+    })
+
+    it("refuses someone else's private room asset that isn't in the scene's library", async () => {
+      const owner = await createUser(); const other = await createUser()
+      const scan = await scanFor(owner)
+      const asset = (await makeAsset(owner, { scanId: scan.id, name: 'Lounge', options: {} })).json().asset
+      const { preset } = await createScene(other)
+      const res = await placeModel(other, preset.id, asset.cdnUrl)
+      expect(res.statusCode).toBe(403)
+      expect(await db.select().from(sceneElements)).toHaveLength(0)
+      expect(await db.select().from(roomSets)).toHaveLength(1)
+      expect(files.size).toBe(1)
+    })
+
+    it('places the asset as it is once its scan is deleted (nothing left to copy from)', async () => {
+      const owner = await createUser()
+      const scan = await scanFor(owner)
+      const asset = (await makeAsset(owner, { scanId: scan.id, name: 'Lounge', options: {} })).json().asset
+      await db.delete(roomScans).where(eq(roomScans.id, scan.id))
+      const { preset } = await createScene(owner)
+      const res = await placeModel(owner, preset.id, asset.cdnUrl)
+      expect(res.statusCode).toBe(201)
+      expect(res.json().element.properties.modelSrc).toBe(asset.cdnUrl)
+      expect(res.json().element.roomSetId).toBeNull()
+      expect(await db.select().from(roomSets)).toHaveLength(1)
+    })
+
+    it('leaves other models exactly as before', async () => {
+      const owner = await createUser()
+      const { preset } = await createScene(owner)
+      const res = await placeModel(owner, preset.id, 'https://cdn.test/models/chair.glb')
+      expect(res.statusCode).toBe(201)
+      expect(res.json().element.properties).toEqual({ modelSrc: 'https://cdn.test/models/chair.glb' })
+      expect(await db.select().from(roomSets)).toHaveLength(0)
+      expect(files.size).toBe(0)
+    })
+
+    it('includes roomSetId on model elements in the scene payload', async () => {
+      const owner = await createUser(); const viewer = await createUser(); const stranger = await createUser()
+      const scan = await scanFor(owner)
+      const { scene, preset } = await createScene(owner)
+      const room = await createElement(preset.id, { type: 'model', name: 'Room', properties: { modelSrc: 'x' } })
+      const chair = await createElement(preset.id, { type: 'model', name: 'Chair', properties: { modelSrc: 'y' } })
+      const screen = await createElement(preset.id)
+      const set = await insertRoomSet(await prepareRoomSet(owner.id, scan, DEFAULT_ROOM_SET_OPTIONS, []), { sceneElementId: room.id })
+      await db.insert(sceneCollaborators).values({ sceneId: scene.id, userId: viewer.id, role: 'viewer' })
+
+      for (const u of [owner, viewer]) {
+        const res = await getScene(u, scene.id)
+        expect(res.statusCode).toBe(200)
+        const els = Object.fromEntries(res.json().scene.presets[0].elements.map((e: any) => [e.id, e]))
+        expect(els[room.id].roomSetId).toBe(set.id)
+        expect(els[chair.id].roomSetId).toBeNull()
+        expect(els[screen.id]).not.toHaveProperty('roomSetId')
+      }
+      expect((await getScene(stranger, scene.id)).statusCode).toBe(403)
+    })
+  })
+
+  describe('GET /api/room-sets/:id', () => {
+    it("returns the set with its scan's room labels to the owner only", async () => {
+      const owner = await createUser(); const other = await createUser()
+      const layout = twoRooms()
+      layout.rooms[1].label = 'Kitchen'
+      const scan = await scanFor(owner, layout)
+      const row = await createRoomSet(owner.id, scan.id, DEFAULT_ROOM_SET_OPTIONS, [])
+      const get = (u: TestUser, id = row.id) => app.inject({ method: 'GET', url: `/api/room-sets/${id}`, headers: bearer(u) })
+
+      const res = await get(owner)
+      expect(res.statusCode).toBe(200)
+      expect(res.json().set).toMatchObject({ id: row.id, options: row.options, nudges: row.nudges, rooms: ['Room', 'Kitchen'] })
+      expect((await get(other)).statusCode).toBe(404)
+      expect((await get(owner, 'nope')).statusCode).toBe(404)
+
+      await db.delete(roomScans).where(eq(roomScans.id, scan.id))
+      expect((await get(owner)).json().set.rooms).toBeNull()
     })
   })
 

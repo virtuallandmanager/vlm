@@ -7,6 +7,7 @@ import AdSpaceContent from '@/components/AdSpaceContent'
 import { useSceneRoom } from '@/lib/colyseus'
 import { SceneRoles } from './SceneRoles'
 import { ArSpaces } from './ArSpaces'
+import { RoomSetPanel } from './RoomSetPanel'
 import { EditableSceneTitle, UseNameEverywhere, connectedNamesDiffer, hasConnected, useConnected } from './SceneName'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
@@ -35,6 +36,8 @@ interface Element {
   enabled: boolean
   properties: Record<string, any>
   instances: Instance[]
+  /** Model elements: the room set behind this model, null for an ordinary model. */
+  roomSetId?: string | null
 }
 
 interface Preset {
@@ -711,9 +714,11 @@ function AdSpaceElementEditor({ element, onUpdateElement, onUpdateInstance, onDe
 // Model Element Editor
 // ---------------------------------------------------------------------------
 
-function ModelElementEditor({ element, onUpdateElement, onUpdateInstance, onDeleteInstance, onAddInstance, api }: {
+function ModelElementEditor({ element, onUpdateElement, onRoomSetSaved, onUpdateInstance, onDeleteInstance, onAddInstance, api }: {
   element: Element
   onUpdateElement: (id: string, data: Record<string, any>) => void
+  /** The room set rewrote this element's model on the server: show the new URL. */
+  onRoomSetSaved: (id: string, modelSrc: string) => void
   onUpdateInstance: (id: string, data: Partial<Instance>) => void
   onDeleteInstance: (id: string) => void
   onAddInstance: (elementId: string) => void
@@ -757,6 +762,8 @@ function ModelElementEditor({ element, onUpdateElement, onUpdateInstance, onDele
           Enabled
         </label>
       </div>
+
+      {element.roomSetId && <RoomSetPanel roomSetId={element.roomSetId} onSaved={(url) => onRoomSetSaved(element.id, url)} />}
 
       <div className="space-y-2">
         <TextInput label="Model URL" value={props.modelSrc || ''} onChange={setModel} />
@@ -1374,6 +1381,17 @@ export default function SceneEditorPage() {
     }
   }, [api])
 
+  // The server already wrote the element (and told the scene room): local state only.
+  const handleRoomSetSaved = useCallback((elementId: string, modelSrc: string) => {
+    setScene(prev => prev && {
+      ...prev,
+      presets: prev.presets.map(preset => ({
+        ...preset,
+        elements: preset.elements.map(el => (el.id === elementId ? { ...el, properties: { ...el.properties, modelSrc } } : el)),
+      })),
+    })
+  }, [])
+
   const handleUpdateInstance = useCallback(async (instanceId: string, data: Partial<Instance>) => {
     try {
       await api.updateInstance(instanceId, data)
@@ -1674,7 +1692,7 @@ export default function SceneEditorPage() {
               switch (el.type) {
                 case 'video': return <VideoElementEditor key={el.id} {...editorProps} api={api} />
                 case 'image': return <ImageElementEditor key={el.id} {...editorProps} api={api} />
-                case 'model': return <ModelElementEditor key={el.id} {...editorProps} api={api} />
+                case 'model': return <ModelElementEditor key={el.id} {...editorProps} onRoomSetSaved={handleRoomSetSaved} api={api} />
                 case 'sound': return <SoundElementEditor key={el.id} {...editorProps} />
                 case 'ad_space': return <AdSpaceElementEditor key={el.id} {...editorProps} api={api} />
                 default: return null

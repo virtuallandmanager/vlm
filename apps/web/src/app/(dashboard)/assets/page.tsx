@@ -8,11 +8,19 @@ import Link from 'next/link'
 import { creditLine, licenseLabel } from '@/lib/catalog'
 import { countLabel, formatBytes, plural } from '@/lib/format'
 import { CubeIcon, GridIcon, LayersIcon, ListIcon, PlusIcon } from '@/components/icons'
+import { RoomAssetDialog } from './RoomAssetDialog'
 import { Badge, ConfirmAction, EmptyState, PageHeader, PrimaryButton, RowMenu, SearchField, SelectField, useStoredView, ViewToggle, Skeleton } from '@/components/ui'
 
 const VIEW_KEY = 'virvi.assets.view'
 const fieldClass = 'w-full rounded-md border border-gray-800 bg-gray-950 px-3 py-2 text-sm outline-none focus:border-blue-400'
 const assetHref = (id: string) => `/assets?id=${id}`
+
+/** Room-set assets are made from someone's home: they're never public, and say so. */
+const isPrivateRoom = (asset: any) => asset.category === 'room' && asset.isPublic === false
+
+function PrivateBadge({ asset }: { asset: any }) {
+  return isPrivateRoom(asset) ? <Badge tone="violet">Private</Badge> : null
+}
 
 function formatTriangles(count: number): string {
   if (count >= 1_000_000) return (count / 1_000_000).toFixed(1) + 'M'
@@ -362,6 +370,7 @@ function AssetDetail({ assetId, onDeleted }: { assetId: string; onDeleted: (id: 
               {/* Badges row */}
               <div className="flex flex-wrap items-center gap-2">
                 {asset.category && <Badge tone="info">{asset.category}</Badge>}
+                <PrivateBadge asset={asset} />
                 {asset.tags?.map((tag: string) => <Badge key={tag}>{tag}</Badge>)}
                 {asset.license && <span className="text-xs text-gray-400 first-letter:uppercase">{licenseLabel(asset.license)}</span>}
               </div>
@@ -509,6 +518,7 @@ export default function AssetsPage() {
   const [listError, setListError] = useState<string | null>(null)
   const [libraryTotal, setLibraryTotal] = useState<number | null>(null)
   const [showUpload, setShowUpload] = useState(false)
+  const [showRoomAsset, setShowRoomAsset] = useState(false)
   const [view, chooseView] = useStoredView(VIEW_KEY, ['grid', 'list'], 'grid')
 
   // Filters
@@ -627,8 +637,19 @@ export default function AssetsPage() {
         title="3D Asset Library"
         count={libraryTotal === null ? undefined : countLabel(libraryTotal)}
         subtitle="Browse and manage your 3D assets."
-        actions={<PrimaryButton onClick={() => setShowUpload(!showUpload)}><PlusIcon size={16} /> Upload Asset</PrimaryButton>}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setShowRoomAsset(true)}
+              className="rounded-md border border-gray-700 px-3 py-2 text-sm text-gray-200 hover:border-gray-600 hover:bg-white/[0.04]">
+              Make an asset from a room scan
+            </button>
+            <PrimaryButton onClick={() => setShowUpload(!showUpload)}><PlusIcon size={16} /> Upload Asset</PrimaryButton>
+          </div>
+        }
       />
+      {showRoomAsset && (
+        <RoomAssetDialog onClose={() => setShowRoomAsset(false)} onCreated={(asset) => { handleUploaded(asset); setShowRoomAsset(false) }} />
+      )}
 
       {listError && <p className="mb-4 text-sm text-red-400" role="alert">{listError}</p>}
       {showUpload && <UploadForm onUploaded={handleUploaded} onClose={() => setShowUpload(false)} />}
@@ -749,8 +770,11 @@ function AssetCard({ asset, onDelete }: { asset: any; onDelete: () => void }) {
           <Link href={assetHref(asset.id)} className="min-w-0 truncate pt-1.5 font-semibold hover:text-blue-300" title={asset.name}>{asset.name}</Link>
           <div className="-mr-2"><RowMenu label={`Actions for ${asset.name}`} items={assetMenu(asset, onDelete, () => router.push(assetHref(asset.id)))} /></div>
         </div>
-        {asset.category && (
-          <Badge tone="info" className="mt-1 self-start">{asset.category}</Badge>
+        {(asset.category || isPrivateRoom(asset)) && (
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {asset.category && <Badge tone="info">{asset.category}</Badge>}
+            <PrivateBadge asset={asset} />
+          </div>
         )}
         <p className="mt-2 whitespace-pre font-mono text-xs text-gray-400">{formatStats(asset)}</p>
         <div className="mt-2 flex items-end justify-between gap-3 text-xs text-gray-500">
@@ -776,6 +800,7 @@ function AssetRow({ asset, first, onDelete }: { asset: any; first: boolean; onDe
         <p className="flex items-center gap-2">
           <Link href={assetHref(asset.id)} className="truncate font-medium hover:text-blue-300">{asset.name}</Link>
           {asset.category && <Badge tone="info">{asset.category}</Badge>}
+          <PrivateBadge asset={asset} />
         </p>
         <p className="truncate text-sm text-gray-500">{asset.pack ? creditLine(asset) : asset.author ? `by ${asset.author}` : asset.description || ''}</p>
       </div>
