@@ -23,6 +23,10 @@ export function fakeFly() {
     async getMachineState(_app: string, id: string) {
       return machines.get(id)?.state ?? null
     },
+    async getMachine(_app: string, id: string) {
+      const m = machines.get(id)
+      return m ? { state: m.state, image: m.spec.image } : null
+    },
     async startMachine(_app: string, id: string) {
       calls.start.push(id)
       const m = machines.get(id)
