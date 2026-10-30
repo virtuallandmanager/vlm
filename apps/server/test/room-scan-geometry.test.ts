@@ -140,6 +140,29 @@ describe('mergeSharedWalls', () => {
     expect(Math.max(walls[0].a[1], walls[0].b[1])).toBeCloseTo(5)
   })
 
+  it('gives a wall inset 3 cm from the outline the outward normal whichever way it is drawn', () => {
+    const floor: Array<[number, number]> = [[0, 0], [4, 0], [4, 3], [0, 3]]
+    for (const [a, b] of [[[3.97, 0], [3.97, 3]], [[3.97, 3], [3.97, 0]]] as Array<[[number, number], [number, number]]>) {
+      const [w] = mergeSharedWalls({ version: 1, rooms: [room(floor, [{ a, b, openings: [] }])] })
+      expect(w.normal[0]).toBeCloseTo(1); expect(w.normal[1]).toBeCloseTo(0)
+    }
+    // also on a clockwise outline
+    const cw = [...floor].reverse()
+    const [w] = mergeSharedWalls({ version: 1, rooms: [room(cw, [{ a: [3.97, 3], b: [3.97, 0], openings: [] }])] })
+    expect(w.normal[0]).toBeCloseTo(1)
+  })
+
+  it('still merges an inset wall with the neighbouring room\'s wall', () => {
+    const layout = sideBySide(0.12)
+    // room A's east wall 3 cm inside its outline, drawn north to south; door re-measured from the new start
+    layout.rooms[0].walls[1] = { a: [3.97, 3], b: [3.97, 0], openings: [{ kind: 'door', offset: 1.1, width: 0.9, sill: 0, height: 2.1 }] }
+    const shared = mergeSharedWalls(layout).filter(w => w.shared)
+    expect(shared).toHaveLength(1)
+    expect(shared[0].a[0]).toBeCloseTo(4.045)
+    expect(shared[0].openings).toHaveLength(1)
+    expect(shared[0].openings[0].width).toBeCloseTo(0.9)
+  })
+
   it("doesn't merge walls 10 degrees apart", () => {
     const walls = mergeSharedWalls(sideBySide(0.12, 10))
     expect(walls.filter(w => w.shared)).toHaveLength(0)

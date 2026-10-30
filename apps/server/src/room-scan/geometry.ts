@@ -85,11 +85,36 @@ function outwardNormal(w: { a: Vec; b: Vec }, floor: Array<[number, number]>): V
   const { dir } = unitDir(w)
   const left: Vec = [-dir[1], dir[0]]
   const mid = scale(add(w.a, w.b), 0.5)
+  const right: Vec = [-left[0], -left[1]]
   const probe = 0.01
-  if (insidePolygon(add(mid, scale(left, probe)), floor)) return [-left[0], -left[1]]
-  if (insidePolygon(add(mid, scale(left, -probe)), floor)) return left
-  // Wall not on the outline: face away from the centroid.
-  return dot(sub(mid, floorCentroid(floor)), left) >= 0 ? left : [-left[0], -left[1]]
+  const leftIn = insidePolygon(add(mid, scale(left, probe)), floor)
+  const rightIn = insidePolygon(add(mid, scale(left, -probe)), floor)
+  // The probe only decides when the wall sits on the outline (exactly one side inside).
+  if (leftIn !== rightIn) return leftIn ? right : left
+  // Wall inset from (or outside) the outline: face the way the nearest outline edge faces.
+  const edge = nearestOutlineEdgeNormal(mid, dir, floor)
+  if (edge) return dot(edge, left) >= 0 ? left : right
+  return dot(sub(mid, floorCentroid(floor)), left) >= 0 ? left : right
+}
+
+/** Outward normal of the floor-outline edge nearest `pt`, preferring edges within 45° of `dir`. */
+function nearestOutlineEdgeNormal(pt: Vec, dir: Vec, floor: Array<[number, number]>): Vec | null {
+  let area = 0
+  for (let i = 0; i < floor.length; i++) area += cross(floor[i], floor[(i + 1) % floor.length])
+  if (floor.length < 3 || Math.abs(area) < EPS) return null
+  let best: { d: number; parallel: boolean; n: Vec } | null = null
+  for (let i = 0; i < floor.length; i++) {
+    const e = { a: floor[i], b: floor[(i + 1) % floor.length] }
+    const { dir: ed, len } = unitDir(e)
+    if (len < EPS) continue
+    const t = Math.min(Math.max(dot(sub(pt, e.a), ed), 0), len)
+    const d = length(sub(pt, along(e.a, ed, t)))
+    const parallel = Math.abs(dot(ed, dir)) >= Math.SQRT1_2
+    // Counter-clockwise outline (positive area): the interior is on each edge's left.
+    const n: Vec = area > 0 ? [ed[1], -ed[0]] : [-ed[1], ed[0]]
+    if (!best || (parallel && !best.parallel) || (parallel === best.parallel && d < best.d)) best = { d, parallel, n }
+  }
+  return best ? best.n : null
 }
 
 /** Rotate and translate each room (rotation about its floor centroid; +yaw turns +x towards -z). Returns a new layout. */
