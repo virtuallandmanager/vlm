@@ -158,6 +158,8 @@ data class BuilderHudModel(
     val saving: Boolean,
     /** Done was pressed with unsaved changes: the HUD asks [DONE_CONFIRM]. */
     val confirmingDone: Boolean,
+    /** The Layout tab offers **Scan this room**: only on a personal headset (a shared one uploads to someone else's account). */
+    val canScanRoom: Boolean = false,
 )
 
 fun kindLabel(element: String): String =

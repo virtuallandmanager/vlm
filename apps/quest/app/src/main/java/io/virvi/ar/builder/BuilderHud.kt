@@ -134,10 +134,16 @@ private val DOT = Color(0xFF4FC3F7)
  * a dot and **Reset to shared** for items with their own adjustment here; tap to pick) or **Assets** ([assets], the
  * library, Task 9). While an item is picked: **Move / Rotate / Resize**, **Exact** fields, and the **Everywhere /
  * Just this place** switch. **Save / Revert / Done** are always at the bottom; Done with unsaved changes asks first.
+ * On a personal headset the Layout tab also has [roomScan] (**Scan this room**, `RoomScanSection`).
  * Not wired into the menu yet (Task 10).
  */
 @Composable
-fun BuilderHud(model: BuilderHudModel, actions: BuilderHudActions, assets: @Composable () -> Unit = {}) {
+fun BuilderHud(
+    model: BuilderHudModel,
+    actions: BuilderHudActions,
+    assets: @Composable () -> Unit = {},
+    roomScan: @Composable () -> Unit = {},
+) {
   MaterialTheme(colorScheme = darkColorScheme()) {
     Column(
         Modifier.fillMaxSize().background(Color(0xF0101420), RoundedCornerShape(16.dp)).padding(12.dp),
@@ -152,7 +158,12 @@ fun BuilderHud(model: BuilderHudModel, actions: BuilderHudActions, assets: @Comp
       }
       Box(Modifier.weight(1f).fillMaxWidth()) {
         when (model.tab) {
-          HudTab.LAYOUT -> LayoutList(model.rows, actions)
+          HudTab.LAYOUT ->
+              Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Only on a personal headset ([BuilderHudModel.canScanRoom]).
+                if (model.canScanRoom) roomScan()
+                Box(Modifier.weight(1f).fillMaxWidth()) { LayoutList(model.rows, actions) }
+              }
           HudTab.ASSETS -> assets()
         }
       }

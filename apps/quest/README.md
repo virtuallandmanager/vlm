@@ -55,6 +55,13 @@ Builder mode's own panels (`BuilderCopy` in `builder/BuilderController.kt`) and 
 - A space link while building: "Finish building first (Done) to open another space"
 - The menu's owner items: "Keep the scene loaded between visitors" and "Sign out" (the brief's names)
 
+**Scan this room** (`RoomScanCopy` in `roomscan/RoomScanApi.kt`). "Room scans need a personal headset. This one is shared." is the plan's copy.
+
+- No rooms set up: "No rooms are set up on this headset yet", with **Set up my space**
+- Uploading: "Uploading…"; done: "Uploaded “<name>”: pick it on virvi.io to build a set from it"
+- Refused as empty: "This scan has no rooms: set up your space and try again"; as unreadable: "This room scan couldn't be read: set up your space again and retry"
+- Offline: "Can't reach virvi.io: check the connection and try again"; signed out meanwhile: "This headset was signed out: pair it again to upload"; anything else: "Couldn't upload the scan: try again"
+
 ## Build
 
 Needs JDK 17 and the Android SDK (API 34). On this Mac they're installed with Homebrew:
@@ -327,3 +334,12 @@ Before you start: a scene you can edit with one AR space (a floor with two print
     - [ ] With **Keep the scene loaded between visitors** on, a visitor's scene hides when the headset comes off and comes back after looking at a ring without loading again; off (the default), the next person starts at the hint card.
 
 Also worth a look on the way: the HUD and the Align panel can be grabbed and moved; leaving builder mode with **Done** doesn't flash the scene (the renderer rebuilds its items when picking is turned off).
+
+### Owner checks (Scan this room, room scan Task 10)
+
+The layout is read from MRUK in the app's world frame (metres, Y up) and uploaded as it is; the server places it on a plot. Unverified on device.
+
+1. Pair as **Personal headset** and start building. The Layout tab has **Scan this room**. (Paired as shared, it isn't there.)
+2. With no rooms in Space Setup: **Scan this room** says "No rooms are set up on this headset yet"; **Set up my space** opens Space Setup, and finishing it reopens the panel with the new outline (if builder mode had to place the scene again after Space Setup, tap **Scan this room** again).
+3. **Scan this room** shows each room's outline from above (forward is up) and the name "My room" (one room) or "My home" (several). **Upload** says it's uploaded.
+4. On virvi.io, start a room set from the scan in the wizard: the picker lists it, with the right size (measure a wall), doors and windows on the right walls, and furniture where it is.

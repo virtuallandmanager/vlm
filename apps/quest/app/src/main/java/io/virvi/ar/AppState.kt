@@ -12,6 +12,7 @@ import io.virvi.ar.builder.BuilderPrompt
 import io.virvi.ar.builder.RingCheckUi
 import io.virvi.ar.ring.CameraStatus
 import io.virvi.ar.ring.RING_TEST_MARKERS
+import io.virvi.ar.roomscan.RoomScanUi
 import io.virvi.ar.visitor.RecentSpace
 import io.virvi.ar.visitor.SpacePageInfo
 import io.virvi.ar.visitor.VisitorCopy
@@ -59,6 +60,8 @@ class AppState {
   /** The builder HUD, while building; null hides it. */
   var hud by mutableStateOf<BuilderHudModel?>(null)
   var assets by mutableStateOf(AssetsState(null))
+  /** The Layout tab's **Scan this room** panel (personal headsets only). */
+  var roomScan by mutableStateOf(RoomScanUi())
 
   // ── developer panel (debug builds) ──
   var developerOpen by mutableStateOf(false)

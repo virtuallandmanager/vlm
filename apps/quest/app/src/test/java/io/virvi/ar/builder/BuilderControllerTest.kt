@@ -368,6 +368,17 @@ class BuilderControllerTest {
     assertEquals(listOf("Flyer"), ui.assets.entries!!.map { it.name })
   }
 
+  @Test fun `only a personal headset's HUD offers Scan this room, for the space being built`() {
+    toBuilding(DeviceKind.PERSONAL)
+    assertTrue(ui.hud!!.canScanRoom)
+    assertEquals("sp-a", builder.buildingSpaceId)
+  }
+
+  @Test fun `a shared headset's HUD has no Scan this room`() {
+    toBuilding(DeviceKind.SHARED)
+    assertFalse(ui.hud!!.canScanRoom)
+  }
+
   @Test fun `with no ring in view the builder picks the space from a list`() {
     auth.pair(DeviceKind.PERSONAL)
     auth.spacesAnswer = BuilderCall.Ok(listOf(spaceA, spaceB))

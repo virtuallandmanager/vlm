@@ -25,6 +25,10 @@ import com.meta.spatial.mruk.MRUKFeature
 import com.meta.spatial.mruk.MRUKLabel
 import com.meta.spatial.mruk.MRUKLoadDeviceResult
 import com.meta.spatial.mruk.MRUKPlane
+import com.meta.spatial.mruk.MRUKRoom
+import com.meta.spatial.mruk.MRUKVolume
+import com.meta.spatial.mruk.getBoundaryAsList
+import com.meta.spatial.mruk.getLabelsAsList
 import com.meta.spatial.mruk.MRUKSpawnMode
 import com.meta.spatial.mruk.hasLabel
 import com.meta.spatial.okhttp3.OkHttpAssetFetcher
@@ -80,6 +84,18 @@ import io.virvi.ar.ring.WallPlane
 import io.virvi.ar.ring.cameraToWorld
 import io.virvi.ar.ring.markerInCamera
 import io.virvi.ar.ring.wallHeading
+import io.virvi.ar.roomscan.OpeningKind
+import io.virvi.ar.roomscan.RoomScanApi
+import io.virvi.ar.roomscan.RoomScanFlow
+import io.virvi.ar.roomscan.RoomScanInput
+import io.virvi.ar.roomscan.RoomScanSection
+import io.virvi.ar.roomscan.ScanOpening
+import io.virvi.ar.roomscan.ScanPose
+import io.virvi.ar.roomscan.ScanRoom
+import io.virvi.ar.roomscan.ScanVolume
+import io.virvi.ar.roomscan.ScanWall
+import io.virvi.ar.roomscan.boxOf
+import io.virvi.ar.roomscan.yawOfXAxis
 import io.virvi.ar.space.SpaceSession
 import io.virvi.ar.visitor.CameraRings
 import io.virvi.ar.visitor.HintCard
@@ -118,6 +134,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
   private lateinit var renderer: SceneRenderer
   private lateinit var visitor: VisitorController
   private lateinit var builder: BuilderController
+  private lateinit var roomScan: RoomScanFlow
   private val builderPanels = BuilderPanels(state)
 
   private var hintPanel: Entity? = null
@@ -211,6 +228,16 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
             tools = HeadsetBuilderTools(this, renderer, ::builderSurfaces),
             ui = state,
         )
+    val roomScanApi = RoomScanApi(api, auth)
+    roomScan =
+        RoomScanFlow(
+            scope,
+            read = ::readRoomScanInput,
+            upload = roomScanApi::upload,
+            spaceId = { builder.buildingSpaceId },
+            setUpSpace = ::setUpSpace,
+            show = { state.roomScan = it },
+        )
     // A virvi.io/s link that launched the app (a re-created activity doesn't open it again).
     if (savedInstanceState == null) openLink(intent)
 
@@ -292,7 +319,14 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
           },
           composePanel(R.id.ring_panel, 0.45f, 0.3f) { state.ringCheck?.let { RingCheckPanel(it) { builder.recordRing() } } },
           composePanel(R.id.builder_hud, HUD_WIDTH_M, HUD_HEIGHT_M) {
-            state.hud?.let { BuilderHud(it, builder.hudActions) { AssetsTab(state.assets) { e -> builder.place(e) } } }
+            state.hud?.let {
+              BuilderHud(
+                  it,
+                  builder.hudActions,
+                  assets = { AssetsTab(state.assets) { e -> builder.place(e) } },
+                  roomScan = { RoomScanSection(state.roomScan, roomScan) },
+              )
+            }
           },
           if (BuildConfig.DEBUG) composePanel(R.id.control_panel, 0.7f, 0.9f) { ControlPanel(state, this) } else null,
       )
@@ -586,9 +620,9 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
 
   /**
    * Loads the room scan from the headset, retrying a failed load a few times. It doesn't ask for a new scan when there is none (that would start
-   * Space Setup unprompted); the panel says how to make one instead.
+   * Space Setup unprompted); the panel says how to make one instead. [onLoaded] runs once it has finished, retries included.
    */
-  private fun loadRoom() {
+  private fun loadRoom(onLoaded: () -> Unit = {}) {
     if (roomRequested) return
     roomRequested = true
     roomAttempts++
@@ -607,7 +641,7 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
           roomRequested = false
           scope.launch {
             delay(ROOM_RETRY_MS)
-            loadRoom()
+            loadRoom(onLoaded)
           }
           return@runOnUiThread
         }
@@ -621,6 +655,27 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
             }
         Log.i(TAG, "Room scan: $result, ${walls.size} walls")
         applyOcclusion()
+        onLoaded()
+      }
+    }
+  }
+
+  /**
+   * **Set up my space** (Scan this room with no rooms): runs the system's Space Setup, then loads the room scan afresh
+   * (walls, occlusion and tint included) and calls [done].
+   */
+  private fun setUpSpace(done: () -> Unit) {
+    mruk.requestSceneCapture().whenComplete { _, error ->
+      runOnUiThread {
+        if (error != null) Log.w(TAG, "Space Setup failed", error)
+        occluders.forEach { it.destroy() }
+        wallTint.forEach { it.destroy() }
+        occluders = emptyList()
+        wallTint = emptyList()
+        roomRequested = false
+        roomLoaded = false
+        roomAttempts = 0
+        loadRoom(done)
       }
     }
   }
@@ -685,6 +740,91 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
             (plane.max.y - plane.min.y) / 2,
         )
       }
+
+  /**
+   * Every loaded room, for **Scan this room** ([RoomScanFlow]): in world space as MRUK reports it (metres, Y up), its
+   * floor outline, ceiling, wall faces, door and window frames and furniture volumes. MRUK planes lie in their
+   * anchor's local x-y with the normal along local z; volumes are boxes in their anchor's local frame. A room
+   * without a floor plane is left out. Unverified on device (the owner checks it on the headset).
+   */
+  fun readRoomScanInput(): RoomScanInput = RoomScanInput(mruk.rooms.mapNotNull(::readScanRoom))
+
+  private fun readScanRoom(room: MRUKRoom): ScanRoom? {
+    val floorEntity = room.floors.firstOrNull { it.tryGetComponent<MRUKPlane>() != null && worldPose(it) != null } ?: return null
+    val floorPlane = floorEntity.tryGetComponent<MRUKPlane>()!!
+    val floorPose = worldPose(floorEntity)!!
+    val floorAnchor = floorEntity.tryGetComponent<MRUKAnchor>()
+    val polygon = floorPlane.getBoundaryAsList().map { p -> floorPose.times(Vector3(p.x, p.y, 0f)).let { it.x to it.z } }
+    if (polygon.size < 3) return null
+    val floorY = floorPose.t.y
+    val walls =
+        room.walls.mapIndexedNotNull { i, e ->
+          val anchor = e.tryGetComponent<MRUKAnchor>()
+          if (anchor != null && !anchor.hasLabel(MRUKLabel.WALL_FACE)) return@mapIndexedNotNull null
+          val plane = e.tryGetComponent<MRUKPlane>() ?: return@mapIndexedNotNull null
+          val pose = worldPose(e) ?: return@mapIndexedNotNull null
+          val midY = (plane.min.y + plane.max.y) / 2
+          val a = pose.times(Vector3(plane.min.x, midY, 0f))
+          val b = pose.times(Vector3(plane.max.x, midY, 0f))
+          val (bottom, top) = heights(pose, (plane.min.x + plane.max.x) / 2, plane.min.y, plane.max.y)
+          ScanWall(anchor?.uuid?.toString() ?: "wall-$i", a.x to a.z, b.x to b.z, bottom, top)
+        }
+    val ceilingY =
+        room.ceilings.firstNotNullOfOrNull { worldPose(it)?.t?.y } ?: walls.maxOfOrNull { it.top } ?: (floorY + DEFAULT_CEILING_M)
+    val openings =
+        room.anchors.mapNotNull { e ->
+          val anchor = e.tryGetComponent<MRUKAnchor>() ?: return@mapNotNull null
+          val kind =
+              when {
+                anchor.hasLabel(MRUKLabel.DOOR_FRAME) -> OpeningKind.DOOR
+                anchor.hasLabel(MRUKLabel.WINDOW_FRAME) -> OpeningKind.WINDOW
+                else -> return@mapNotNull null
+              }
+          val plane = e.tryGetComponent<MRUKPlane>() ?: return@mapNotNull null
+          val pose = worldPose(e) ?: return@mapNotNull null
+          val cx = (plane.min.x + plane.max.x) / 2
+          val (bottom, top) = heights(pose, cx, plane.min.y, plane.max.y)
+          // MRUK parents a frame to the wall it is on; with no parent the mapper finds the wall it lies on.
+          val wallId =
+              anchor.parentAnchor.takeIf { it != Entity.nullEntity() }?.tryGetComponent<MRUKAnchor>()?.uuid?.toString()
+          ScanOpening(kind, wallId, pose.times(Vector3(cx, (plane.min.y + plane.max.y) / 2, 0f)).vec(), plane.max.x - plane.min.x, top - bottom, bottom)
+        }
+    val volumes =
+        room.anchors.mapNotNull { e ->
+          val anchor = e.tryGetComponent<MRUKAnchor>() ?: return@mapNotNull null
+          val volume = e.tryGetComponent<MRUKVolume>() ?: return@mapNotNull null
+          val label = anchor.getLabelsAsList().firstOrNull { it !in STRUCTURE_LABELS } ?: return@mapNotNull null
+          val pose = worldPose(e) ?: return@mapNotNull null
+          val mid = Vector3((volume.min.x + volume.max.x) / 2, (volume.min.y + volume.max.y) / 2, (volume.min.z + volume.max.z) / 2)
+          val box =
+              boxOf(
+                  pose.times(mid).vec(),
+                  pose.q.times(Vector3(1f, 0f, 0f)).vec(),
+                  pose.q.times(Vector3(0f, 1f, 0f)).vec(),
+                  pose.q.times(Vector3(0f, 0f, 1f)).vec(),
+                  (volume.max - volume.min).vec(),
+              )
+          ScanVolume(label.name, box.center, box.size, box.yaw)
+        }
+    return ScanRoom(
+        roomUuid = floorAnchor?.roomUuid?.toString() ?: room.anchor.uuid.toString(),
+        floorAnchorUuid = floorAnchor?.uuid?.toString(),
+        floorPose = ScanPose(floorPose.t.vec(), yawOfXAxis(floorPose.q.times(Vector3(1f, 0f, 0f)).vec())),
+        floorPolygon = polygon,
+        floorY = floorY,
+        ceilingY = ceilingY,
+        walls = walls,
+        openings = openings,
+        volumes = volumes,
+    )
+  }
+
+  /** The world heights (lower, upper) of a plane's points at local x [x] and local y [y0] and [y1]. */
+  private fun heights(pose: Pose, x: Float, y0: Float, y1: Float): Pair<Float, Float> {
+    val a = pose.times(Vector3(x, y0, 0f)).y
+    val b = pose.times(Vector3(x, y1, 0f)).y
+    return minOf(a, b) to maxOf(a, b)
+  }
 
   /**
    * The room scan's walls, floors and tables as snap surfaces in world space (for `Picking`'s carries in builder mode).
@@ -785,6 +925,11 @@ class MainActivity : AppSystemActivity(), MenuActions, DeveloperActions {
     private const val WALLS_EVERY_MS = 100L
     /** The "⋯" button sits this far below the hint card's place. */
     private const val MENU_BUTTON_BELOW_M = 0.35f
+    /** A room with neither a ceiling nor walls gets this ceiling height. */
+    private const val DEFAULT_CEILING_M = 2.5f
+    /** Labels that aren't furniture: a volume's label is its first other one. */
+    private val STRUCTURE_LABELS =
+        setOf(MRUKLabel.FLOOR, MRUKLabel.CEILING, MRUKLabel.WALL_FACE, MRUKLabel.INVISIBLE_WALL_FACE, MRUKLabel.INNER_WALL_FACE, MRUKLabel.DOOR_FRAME, MRUKLabel.WINDOW_FRAME, MRUKLabel.GLOBAL_MESH)
     private const val NO_ROOM_SCAN = "No room scan: set up your space in Quest settings to get wall heading"
     private const val HOLD_MARKER = "Hold a printed ring marker in view, then walk away and back"
   }

@@ -125,6 +125,10 @@ class BuilderController(
   /** Why builder mode closed or didn't open, shown on the builder panel until it is closed. */
   private var notice: String? = null
 
+  /** The space being built (the HUD is up), whose AR pass a room scan uploads with; null otherwise. */
+  val buildingSpaceId: String?
+    get() = build?.takeIf { stage == Stage.BUILDING }?.space?.spaceId
+
   /** Builder mode holds the space session (placing, aligning or building). */
   val active: Boolean
     get() = stage == Stage.PLACING || stage == Stage.ALIGNING || stage == Stage.BUILDING
@@ -656,7 +660,7 @@ class BuilderController(
       ui.hud = null
       return
     }
-    val m = hudModel(b.editor.view(), b.tab, hudWarnings(b.booking, b.otherPlaces))
+    val m = hudModel(b.editor.view(), b.tab, hudWarnings(b.booking, b.otherPlaces)).copy(canScanRoom = b.kind == DeviceKind.PERSONAL)
     ui.hud = if (m.message == null && b.note != null) m.copy(message = b.note) else m
   }
 
