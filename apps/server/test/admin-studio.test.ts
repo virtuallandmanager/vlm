@@ -231,6 +231,25 @@ describe('studio admin: flags and pauses', () => {
       expect((await app.inject({ method: 'GET', url: '/api/admin/studio/reports', headers: as(creator) })).statusCode).toBe(403)
     })
 
+    it('an approval that died midway comes back to the list and refunds once', async () => {
+      const u = await createUser()
+      const d = await revisions(u, 3)
+      for (const n of [2, 3, 4]) await report(u, d.id, n)
+      const [held] = await reportRow('in_review')
+      // Mid-approval: the lock is taken and Stripe already refunded, then the process died
+      await db.update(studioMistakeReports).set({ status: 'approving', reviewedAt: new Date() }).where(eq(studioMistakeReports.id, held.id))
+      const list = async () => (await app.inject({ method: 'GET', url: '/api/admin/studio/reports', headers: as(admin) })).json().reports
+      expect(await list()).toHaveLength(0) // still in flight
+      expect((await review(held.id, 'approve')).statusCode).toBe(409)
+      await db.update(studioMistakeReports).set({ reviewedAt: new Date(Date.now() - 20 * 60_000) }).where(eq(studioMistakeReports.id, held.id))
+      stripe.made.push({ id: 're_earlier', payment_intent: 'pi_r2', amount: 1500, metadata: { virvi_studio_entitlement_id: held.entitlementId } })
+      expect((await list()).map((r: { id: string }) => r.id)).toEqual([held.id])
+      const ok = await review(held.id, 'approve')
+      expect(ok.statusCode).toBe(200)
+      expect(stripe.calls.refunds).toHaveLength(2) // the two instant ones; the earlier refund was recorded, not repeated
+      expect((await db.select().from(studioMistakeReports).where(eq(studioMistakeReports.id, held.id)))[0]).toMatchObject({ status: 'refunded', stripeRefundId: 're_earlier' })
+    })
+
     it('a declined report doesn’t use up an instant one; an approved one does', async () => {
       ;(config as any).studioFlag = { ...config.studioFlag, instantReports: 0 }
       const u = await createUser()

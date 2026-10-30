@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   studioDesigns, studioEntitlements, studioJobs, studioMistakeReports, studioPayments, studioPieces, studioPromptCredits,
@@ -417,9 +417,10 @@ async function mailHeldReport(userId: string, pieceName: string, revision: numbe
 
 /** The owner approves a held report: its line is refunded in full, as an instant report would be. */
 export async function approveReport(reportId: string, adminId: string, now: Date): Promise<{ status: 'refunded'; refundCents: number }> {
-  // in_review -> pending is the lock: a second approval finds nothing to approve
-  const [lock] = await db.update(studioMistakeReports).set({ status: 'pending' })
-    .where(and(eq(studioMistakeReports.id, reportId), eq(studioMistakeReports.status, 'in_review'))).returning()
+  // in_review -> approving is the lock: a second approval finds nothing to approve. An approval that died midway
+  // (approving for longer than a refund takes) can be approved again; Stripe's earlier refund is found, not repeated.
+  const [lock] = await db.update(studioMistakeReports).set({ status: 'approving', reviewedAt: now })
+    .where(and(eq(studioMistakeReports.id, reportId), approvable(now))).returning()
   if (!lock) throw new PaymentError(409, 'not_in_review')
   const [row] = await db.select({ e: studioEntitlements, pay: studioPayments }).from(studioEntitlements)
     .innerJoin(studioPayments, eq(studioPayments.id, studioEntitlements.paymentId))
@@ -431,9 +432,15 @@ export async function approveReport(reportId: string, adminId: string, now: Date
   return refundReport(row.e, row.pay, reportId, 'back_to_review', { by: adminId, at: now })
 }
 
+/** A report the owner can act on: waiting for review, or an approval that died midway. */
+const approvable = (now: Date) => or(
+  eq(studioMistakeReports.status, 'in_review'),
+  and(eq(studioMistakeReports.status, 'approving'), lt(studioMistakeReports.reviewedAt, new Date(now.getTime() - PENDING_REPORT_MS))),
+)
+
 export async function declineReport(reportId: string, adminId: string, now: Date): Promise<boolean> {
   const [r] = await db.update(studioMistakeReports).set({ status: 'declined', reviewedAt: now, reviewedBy: adminId })
-    .where(and(eq(studioMistakeReports.id, reportId), eq(studioMistakeReports.status, 'in_review'))).returning({ id: studioMistakeReports.id })
+    .where(and(eq(studioMistakeReports.id, reportId), approvable(now))).returning({ id: studioMistakeReports.id })
   return !!r
 }
 
@@ -445,7 +452,7 @@ export async function heldReports(now: Date) {
     .innerJoin(studioRevisions, eq(studioRevisions.id, studioEntitlements.revisionId))
     .innerJoin(studioPieces, eq(studioPieces.id, studioRevisions.pieceId))
     .innerJoin(users, eq(users.id, studioMistakeReports.userId))
-    .where(eq(studioMistakeReports.status, 'in_review'))
+    .where(approvable(now))
     .orderBy(asc(studioMistakeReports.createdAt))
   const expires = frameUrlExpiry(now)
   // The first frame of one ready render of a revision of the piece: enough to see what changed

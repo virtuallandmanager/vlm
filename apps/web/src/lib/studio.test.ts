@@ -455,6 +455,7 @@ describe('the scope guard on the page', () => {
     expect(reportCopy('in_review')).toBe(HELD_REPORT_COPY)
     expect(HELD_REPORT_COPY).toBe('Your report is with our team. If it’s approved, this revision is refunded in full.')
     expect(reportCopy('declined')).toBe('Our team reviewed your report and this revision wasn’t refunded.')
+    expect(reportCopy('approving')).toBe(HELD_REPORT_COPY)
     expect(reportCopy('refunded')).toBeNull()
     const f = (report: FinalizedRevision['report']): FinalizedRevision => ({ revision: 2, kind: 'revision', status: 'ready', amountCents: 1500, paymentId: 'p', paidAt: NOW.toISOString(), report, reportableUntil: null })
     expect(revisionActions(f({ status: 'in_review', createdAt: NOW.toISOString() }), NOW).report).toBe('done')

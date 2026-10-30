@@ -346,7 +346,7 @@ export const HELD_REPORT_COPY = 'Your report is with our team. If it’s approve
 
 /** Where a mistake report stands, when it isn't simply refunded. */
 export function reportCopy(status: string): string | null {
-  if (status === 'in_review') return HELD_REPORT_COPY
+  if (status === 'in_review' || status === 'approving') return HELD_REPORT_COPY
   if (status === 'declined') return 'Our team reviewed your report and this revision wasn’t refunded.'
   return null
 }

@@ -1637,7 +1637,7 @@ export const studioMistakeReports = pgTable('studio_mistake_reports', {
   userId: uuid('user_id').notNull(),
   text: text('text').notNull(),
   refundCents: integer('refund_cents').notNull(),
-  status: text('status').notNull(), // pending (refund in flight) | refunded | waived | in_review (waits for the owner) | declined
+  status: text('status').notNull(), // pending (refund in flight) | refunded | waived | in_review (waits for the owner) | approving (the owner's refund in flight) | declined
   stripeRefundId: text('stripe_refund_id'),
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   reviewedBy: uuid('reviewed_by'),
