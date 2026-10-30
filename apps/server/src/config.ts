@@ -230,7 +230,7 @@ export const config = {
   autoPromoteFirstUser: mode !== 'cloud',
 
   // ── Rate Limiting ──────────────────────────────────────────────────────
-  rateLimitMax: parseInt(env('RATE_LIMIT_MAX') || '100'),
+  rateLimitMax: parseInt(env('RATE_LIMIT_MAX') || '300'),
   // Reverse-proxy hops to trust for client IP (Railway = 1)
   trustProxyHops: ((n) => (Number.isNaN(n) || n < 0 ? 1 : n))(parseInt(env('TRUST_PROXY_HOPS') || '1')),
 
