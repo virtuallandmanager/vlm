@@ -39,6 +39,7 @@ import arDraftRoutes from './routes/ar-drafts.js'
 import arSpaceRoutes from './routes/ar-spaces.js'
 import arFeedRoutes from './routes/ar-feed.js'
 import arBuilderRoutes from './routes/ar-builder.js'
+import roomScanRoutes from './routes/room-scans.js'
 import adminRoutes from './routes/admin.js'
 import adminAdsRoutes from './routes/admin-ads.js'
 import adSpacesRoutes from './routes/ad-spaces.js'
@@ -203,6 +204,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(arBuilderRoutes)
   await app.register(arDeviceRoutes)
   await app.register(arDraftRoutes)
+  await app.register(roomScanRoutes)
   await app.register(adminRoutes)
   await app.register(adminAdsRoutes)
   await app.register(adSpacesRoutes)

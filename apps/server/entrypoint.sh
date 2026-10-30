@@ -134,6 +134,16 @@ if [ -n "$DATABASE_URL" ]; then
         console.log('[virvi-server] advertiser_leads table ensured');
       } catch(e) { console.log('[virvi-server] advertiser_leads:', e.message); }
 
+      // Room scans and the sets built from them; matches roomScans / roomSets in src/db/schema.ts
+      try {
+        await sql\`CREATE TABLE IF NOT EXISTS room_scans (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, org_id UUID, name TEXT NOT NULL, source TEXT NOT NULL, layout JSONB NOT NULL, captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        await sql\`CREATE INDEX IF NOT EXISTS room_scans_user_idx ON room_scans (user_id)\`;
+        await sql\`CREATE TABLE IF NOT EXISTS room_sets (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), scan_id UUID REFERENCES room_scans(id) ON DELETE SET NULL, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, options JSONB NOT NULL, nudges JSONB NOT NULL DEFAULT '{}'::jsonb, storage_key TEXT NOT NULL, glb_url TEXT NOT NULL, triangles INTEGER NOT NULL, plot JSONB NOT NULL, "offset" JSONB NOT NULL, scene_element_id UUID REFERENCES scene_elements(id) ON DELETE SET NULL, asset_item_id UUID REFERENCES asset_library_items(id) ON DELETE SET NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        await sql\`CREATE INDEX IF NOT EXISTS room_sets_scan_idx ON room_sets (scan_id)\`;
+        await sql\`CREATE INDEX IF NOT EXISTS room_sets_scene_element_idx ON room_sets (scene_element_id)\`;
+        console.log('[virvi-server] room_scans / room_sets tables ensured');
+      } catch(e) { console.log('[virvi-server] room_scans / room_sets:', e.message); }
+
       // Hyperfy HUD pairings; matches hyperfyPairings in src/db/schema.ts
       try {
         await sql\`CREATE TABLE IF NOT EXISTS hyperfy_pairings (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), world_id UUID NOT NULL REFERENCES hyperfy_worlds(id) ON DELETE CASCADE, user_id UUID REFERENCES users(id) ON DELETE CASCADE, code_hash TEXT UNIQUE, secret_hash TEXT, hyperfy_player_id TEXT, player_name TEXT, status TEXT NOT NULL DEFAULT 'pending', code_expires_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ, last_used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;

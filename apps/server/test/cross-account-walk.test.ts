@@ -6,7 +6,7 @@ import {
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
   sceneDeployments, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
-  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, apiKeys, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, roomScans, arDevices,
   dclWorldDestinations, adSpaceSettings, adSpaceApprovals,
   studioDesigns, studioPieces, studioRevisions, studioJobs, studioMessages, studioRenders, studioUsageDays,
   studioPayments, studioEntitlements, studioMistakeReports, studioPromptCredits, studioUploads,
@@ -103,11 +103,12 @@ async function fixtures() {
   await db.insert(studioPromptCredits).values({ userId: b.id, balance: 3 })
   const [designUpload] = await db.insert(studioUploads).values({ designId: design.id, name: 'b-logo.png', kind: 'image', contentType: 'image/png', size: 4 }).returning()
 
+  const [roomScan] = await db.insert(roomScans).values({ userId: b.id, name: 'B scan', source: 'quest-mruk', layout: { version: 1, rooms: [] } }).returning()
   const aScene = (await createScene(a, 'A scene')).scene
   const [aEvent] = await db.insert(events).values({ ownerId: a.id, name: 'A event' }).returning()
   return {
     a, b, collaborator, scene, preset, element, adSpace, instance, roleWallet, dcl, hyperfy, stream, event, giveaway, item,
-    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, destination, signDeploy, world, pairing, arSpace, arFloor, arMarker, arDevice, design, designUpload, aScene, aEvent,
+    asset, media, libraryItem, org, venue, booking, grant, hook, location, bKey, destination, signDeploy, world, pairing, arSpace, arFloor, arMarker, arDevice, roomScan, design, designUpload, aScene, aEvent,
   }
 }
 type F = Awaited<ReturnType<typeof fixtures>>
@@ -144,6 +145,9 @@ const CASES: Case[] = [
   { route: 'DELETE /api/scenes/:sceneId/library/:id', url: (f) => `/api/scenes/${f.scene.id}/library/${f.libraryItem.id}` },
   { route: 'PATCH /api/scenes/:sceneId/library/:id', url: (f) => `/api/scenes/${f.scene.id}/library/${f.libraryItem.id}`, body: () => ({ name: 'renamed' }) },
   { route: 'POST /api/scenes/:sceneId/library/upload', url: (f) => `/api/scenes/${f.scene.id}/library/upload`, body: () => ({ filename: 'x.png', contentType: 'image/png', data: 'iVBORw0KGgo=' }) },
+  // room scans
+  { route: 'GET /api/room-scans/:id', url: (f) => `/api/room-scans/${f.roomScan.id}` },
+  { route: 'DELETE /api/room-scans/:id', url: (f) => `/api/room-scans/${f.roomScan.id}` },
   // AR spaces
   { route: 'GET /api/scenes/:sceneId/ar/spaces', url: (f) => `/api/scenes/${f.scene.id}/ar/spaces` },
   { route: 'POST /api/scenes/:sceneId/ar/spaces', url: (f) => `/api/scenes/${f.scene.id}/ar/spaces`, body: () => ({ name: 'pwned' }) },
@@ -313,7 +317,7 @@ const TABLES = [
   users, scenes, scenePresets, sceneElements, sceneElementInstances, sceneCollaborators, sceneRoles, sceneLibrary,
   sceneDeployments, streamingServers, events, eventSceneLinks, eventGiveawayLinks, giveaways,
   giveawayItems, assetLibraryItems, mediaAssets, organizations, orgMembers, orgInvites, venues, bookings, accessGrants,
-  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices,
+  uploadTokens, platformCallbacks, analyticsScenes, locationSetups, hyperfyWorlds, hyperfyPairings, arSpaces, arFloors, arMarkers, arAdjustments, arDevices, roomScans,
   dclWorldDestinations,
   studioDesigns, studioPieces, studioRevisions, studioJobs, studioMessages, studioRenders, studioUsageDays,
   studioPayments, studioEntitlements, studioMistakeReports, studioPromptCredits, studioUploads,

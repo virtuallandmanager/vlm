@@ -20,7 +20,7 @@ import {
   bigint,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
-import type { VenueRules, Vec3 } from '@virvixr/shared'
+import type { VenueRules, Vec3, RoomScanLayout } from '@virvixr/shared'
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 
@@ -1418,6 +1418,42 @@ export const advertiserLeads = pgTable('advertiser_leads', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+// ── Room Scan ────────────────────────────────────────────────────────────────
+/** A room scan a personal headset uploaded: the normalised layout only (metres, Y up), never images or raw device output. Owner-readable only. */
+export const roomScans = pgTable('room_scans', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  orgId: uuid('org_id'),
+  name: text('name').notNull(),
+  source: text('source').notNull(), // the first room's anchor.source
+  layout: jsonb('layout').$type<RoomScanLayout>().notNull(),
+  capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  userIdx: index('room_scans_user_idx').on(t.userId),
+}))
+
+/** A generated 3D set built from a scan. Deleting the scan keeps the set (scan_id goes null). */
+export const roomSets = pgTable('room_sets', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  scanId: uuid('scan_id').references(() => roomScans.id, { onDelete: 'set null' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  options: jsonb('options').notNull(),
+  nudges: jsonb('nudges').notNull().default({}),
+  storageKey: text('storage_key').notNull(),
+  glbUrl: text('glb_url').notNull(),
+  triangles: integer('triangles').notNull(),
+  plot: jsonb('plot').notNull(),
+  offset: jsonb('offset').notNull(),
+  sceneElementId: uuid('scene_element_id').references(() => sceneElements.id, { onDelete: 'set null' }),
+  assetItemId: uuid('asset_item_id').references(() => assetLibraryItems.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  scanIdx: index('room_sets_scan_idx').on(t.scanId),
+  elementIdx: index('room_sets_scene_element_idx').on(t.sceneElementId),
+}))
 
 // ── Design Studio ────────────────────────────────────────────────────────────
 // A design is one conversation that builds wearable pieces (or one emote) through an agent on a Fly worker machine.
