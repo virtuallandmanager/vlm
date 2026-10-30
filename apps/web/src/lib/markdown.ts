@@ -12,16 +12,59 @@ export type Inline =
   | { type: 'code'; text: string }
   | { type: 'link'; href: string; children: Inline[] }
 
+export type ListItem = { inlines: Inline[]; children: Block[] }
+
 export type Block =
   | { type: 'p'; inlines: Inline[] }
   | { type: 'h'; level: 1 | 2 | 3; inlines: Inline[] }
-  | { type: 'ul' | 'ol'; items: Inline[][] }
+  | { type: 'ul'; items: ListItem[] }
+  | { type: 'ol'; start: number; items: ListItem[] }
   | { type: 'code'; text: string }
 
 const FENCE = /^\s*```/
 const HEADING = /^(#{1,6})\s+(.*)$/
-const BULLET = /^\s*[-*+]\s+(.*)$/
-const NUMBERED = /^\s*\d+[.)]\s+(.*)$/
+const BULLET = /^(\s*)[-*+]\s+(.*)$/
+const NUMBERED = /^(\s*)(\d+)[.)]\s+(.*)$/
+
+const indentOf = (line: string) => /^\s*/.exec(line)![0].replace(/\t/g, '    ').length
+const listKindOf = (line: string) => (BULLET.test(line) ? 'ul' : NUMBERED.test(line) ? 'ol' : null)
+
+/**
+ * A list starting at lines[i]: items at its indent, each with its wrapped lines and anything indented under it (a
+ * nested list). Blank lines between items keep the list going, so a loose list keeps its numbers. Returns the block
+ * and the index after it.
+ */
+function parseList(lines: string[], i: number): [Block, number] {
+  const kind = listKindOf(lines[i])!
+  const indent = indentOf(lines[i])
+  const items: ListItem[] = []
+  const first = NUMBERED.exec(lines[i])
+  while (i < lines.length) {
+    const line = lines[i]
+    if (indentOf(line) !== indent || listKindOf(line) !== kind) break
+    const text = kind === 'ul' ? BULLET.exec(line)![2] : NUMBERED.exec(line)![3]
+    const own: string[] = [text.trim()]
+    const under: string[] = []
+    i++
+    for (; i < lines.length; i++) {
+      const next = lines[i]
+      if (!next.trim()) {
+        // A blank line ends the item unless more of it, or the next item, follows
+        const after = lines.slice(i + 1).find((l) => l.trim())
+        if (after === undefined || indentOf(after) < indent || (indentOf(after) === indent && listKindOf(after) !== kind)) break
+        if (indentOf(after) === indent) { i++; break }
+        under.push('')
+        continue
+      }
+      if (indentOf(next) <= indent) break
+      if (!under.length && !listKindOf(next) && !FENCE.test(next)) own.push(next.trim()) // a wrapped line
+      else under.push(next.slice(Math.min(indentOf(next), indent + 2)))
+    }
+    items.push({ inlines: inlinesOfLines(own), children: under.length ? parseMarkdown(under.join('\n')) : [] })
+  }
+  const block: Block = kind === 'ul' ? { type: 'ul', items } : { type: 'ol', start: Number(first![2]), items }
+  return [block, i]
+}
 
 export function parseMarkdown(src: string): Block[] {
   const lines = src.replace(/\r\n?/g, '\n').split('\n')
@@ -47,14 +90,11 @@ export function parseMarkdown(src: string): Block[] {
       blocks.push({ type: 'h', level: Math.min(h[1].length, 3) as 1 | 2 | 3, inlines: parseInline(h[2].trim()) })
       continue
     }
-    const listKind = BULLET.test(line) ? 'ul' : NUMBERED.test(line) ? 'ol' : null
-    if (listKind) {
+    if (listKindOf(line)) {
       flush()
-      const re = listKind === 'ul' ? BULLET : NUMBERED
-      const items: Inline[][] = []
-      for (; i < lines.length && re.test(lines[i]); i++) items.push(parseInline(re.exec(lines[i])![1].trim()))
-      i--
-      blocks.push({ type: listKind, items })
+      const [list, next] = parseList(lines, i)
+      blocks.push(list)
+      i = next - 1
       continue
     }
     if (!line.trim()) flush()
@@ -92,6 +132,15 @@ export function parseInline(s: string): Inline[] {
         continue
       }
     }
+    if (s.startsWith('***', i)) {
+      const end = s.indexOf('***', i + 3)
+      if (end > i + 3) {
+        flush()
+        out.push({ type: 'strong', children: [{ type: 'em', children: parseInline(s.slice(i + 3, end)) }] })
+        i = end + 3
+        continue
+      }
+    }
     if (c === '*' && s[i + 1] === '*') {
       const end = s.indexOf('**', i + 2)
       if (end > i + 2) {
@@ -113,11 +162,11 @@ export function parseInline(s: string): Inline[] {
       }
     }
     if (c === '[') {
-      const m = /^\[([^\]]+)\]\(([^)\s]+)\)/.exec(s.slice(i))
-      if (m && SAFE_HREF.test(m[2])) {
+      const link = linkAt(s, i)
+      if (link && SAFE_HREF.test(link.href)) {
         flush()
-        out.push({ type: 'link', href: m[2], children: parseInline(m[1]) })
-        i += m[0].length
+        out.push({ type: 'link', href: link.href, children: parseInline(link.label) })
+        i = link.end
         continue
       }
     }
@@ -128,10 +177,27 @@ export function parseInline(s: string): Inline[] {
   return out
 }
 
-/** The closing single `*` or `_`: not doubled, not after a space, and (for `_`) at a word's end. */
+/** `[label](href)` at i, with balanced parentheses inside the address (Wikipedia's `Foo_(bar)`). */
+function linkAt(s: string, i: number): { label: string; href: string; end: number } | null {
+  const m = /^\[([^\]]+)\]\(/.exec(s.slice(i))
+  if (!m) return null
+  let depth = 0
+  for (let j = i + m[0].length; j < s.length; j++) {
+    const ch = s[j]
+    if (/\s/.test(ch)) return null
+    if (ch === '(') depth++
+    else if (ch === ')') {
+      if (depth === 0) return { label: m[1], href: s.slice(i + m[0].length, j), end: j + 1 }
+      depth--
+    }
+  }
+  return null
+}
+
+/** The closing single `*` or `_`: not part of a doubled marker, not after a space, and (for `_`) at a word's end. */
 function findClose(s: string, c: string, from: number): number {
   for (let j = from; j < s.length; j++) {
-    if (s[j] !== c || s[j - 1] === ' ' || s[j + 1] === c) continue
+    if (s[j] !== c || s[j - 1] === ' ' || s[j + 1] === c || s[j - 1] === c) continue
     if (c === '_' && s[j + 1] !== undefined && /\w/.test(s[j + 1])) continue
     return j
   }

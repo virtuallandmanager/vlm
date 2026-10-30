@@ -110,6 +110,52 @@ describe('studio uploads', () => {
     expect((await upload(u, d.id, 'notes.obj', Buffer.from('hello there\nthis is not a mesh\n'))).statusCode).toBe(400)
   })
 
+  it('shrinks big images to texture size, keeps the stored file under the limit, and refuses absurd ones', async () => {
+    const u = await createUser()
+    const d = await createDesign(u)
+    const big = await sharp({ create: { width: 6000, height: 3000, channels: 3, background: '#808080' } }).tiff({ compression: 'jpeg' }).toBuffer()
+    const res = await upload(u, d.id, 'scan.tiff', big)
+    expect(res.statusCode).toBe(201)
+    const stored = (await store.get(uploadKey(d.id, res.json().id)))!.body
+    const meta = await sharp(stored).metadata()
+    expect([meta.width, meta.height]).toEqual([4096, 2048])
+    expect(res.json().size).toBe(stored.length)
+    // a kept format that is too big on its long side is shrunk too, in its own format
+    const wide = await sharp({ create: { width: 5000, height: 100, channels: 3, background: '#fff' } }).jpeg().toBuffer()
+    const kept = await upload(u, d.id, 'wide.jpg', wide)
+    expect(kept.json()).toMatchObject({ contentType: 'image/jpeg' })
+    expect((await sharp((await store.get(uploadKey(d.id, kept.json().id)))!.body).metadata()).width).toBe(4096)
+    // more pixels than any texture needs (a decompression bomb) is refused without decoding it
+    const bomb = await sharp({ create: { width: 12000, height: 12000, channels: 3, background: '#000' } }).png({ compressionLevel: 9 }).toBuffer()
+    const refused = await upload(u, d.id, 'bomb.png', bomb)
+    expect(refused.statusCode).toBe(413)
+    expect(refused.json().code).toBe('image_too_large')
+  })
+
+  it('draws a small vector logo at full texture size', async () => {
+    const u = await createUser()
+    const d = await createDesign(u)
+    const icon = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#f0f"/></svg>')
+    const res = await upload(u, d.id, 'icon.svg', icon)
+    expect(res.statusCode).toBe(201)
+    expect((await sharp((await store.get(uploadKey(d.id, res.json().id)))!.body).metadata()).width).toBe(2048)
+  })
+
+  it('keeps no row when storing the file fails', async () => {
+    const u = await createUser()
+    const d = await createDesign(u)
+    const put = store.put
+    store.put = async () => { throw new Error('bucket down') }
+    try {
+      const res = await upload(u, d.id, 'logo.png', PNG)
+      expect(res.statusCode).toBe(500)
+    } finally {
+      store.put = put
+    }
+    expect(await db.select().from(studioUploads)).toHaveLength(0)
+    expect((await upload(u, d.id, 'logo.png', PNG)).json().name).toBe('logo.png')
+  })
+
   it('judges a file by its bytes, not its name', async () => {
     const u = await createUser()
     const d = await createDesign(u)
@@ -141,6 +187,10 @@ describe('studio uploads', () => {
     expect((await upload(u, d.id, '../../My Logo (final).PNG', PNG)).json().name).toBe('My-Logo-final.png')
     expect((await upload(u, d.id, 'My Logo final.png', PNG)).json().name).toBe('My-Logo-final-2.png')
     expect((await upload(u, d.id, '', PNG)).json().name).toBe('image.png')
+    // names the worker would refuse never get stored: a camera's leading underscore, doubled dots
+    expect((await upload(u, d.id, '_DSC0042.JPG', JPEG)).json().name).toBe('DSC0042.jpg')
+    expect((await upload(u, d.id, 'logo..final.png', PNG)).json().name).toBe('logo.final.png')
+    expect((await upload(u, d.id, '...', PNG)).json().name).toBe('image-2.png')
   })
 
   it('takes no uploads on an archived design', async () => {

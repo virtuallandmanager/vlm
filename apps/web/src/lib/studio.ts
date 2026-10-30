@@ -166,6 +166,8 @@ export function refusalMessage(
       return { text: UNSUPPORTED_FILE }
     case 'file_too_large':
       return { text: FILE_TOO_LARGE }
+    case 'image_too_large':
+      return { text: 'That image has more pixels than the studio can use (64 megapixels at most). Save a smaller copy and try again.' }
     case 'too_many_uploads':
       return { text: 'A design holds up to 12 files. Remove one to add another.' }
     default:

@@ -81,3 +81,9 @@ def test_uploads_are_not_saved_with_the_workspace(tmp_path):
     names = tarfile.open(fileobj=io.BytesIO(pack(design, state)), mode='r:gz').getnames()
     assert 'design/out/note.txt' in names
     assert not [n for n in names if n.startswith('design/uploads')]
+
+
+def test_the_names_the_server_stores_are_the_names_the_worker_takes():
+    # apps/server/test/studio-uploads.test.ts "cleans names": the server's output must pass the worker's rule
+    for name in ['DSC0042.jpg', 'logo.final.png', 'My-Logo-final-2.png', 'base-cap.glb', 'image-2.png', 'a_b.c-d.png']:
+        assert jobs.UPLOAD_NAME.fullmatch(name) and '..' not in name, name

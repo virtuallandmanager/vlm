@@ -37,32 +37,58 @@ function model(b: Buffer, name: string): Prepared | null {
   return null
 }
 
+/** Pixels sharp will decode at all: a 64-megapixel photo, not a decompression bomb. */
+const MAX_INPUT_PIXELS = 64_000_000
+/** The long side of a stored image: as big as any Decentraland texture needs. */
+const MAX_SIDE = 4096
+
+export class UploadError extends Error {
+  constructor(public status: number, public code: string) {
+    super(code)
+  }
+}
+
 /**
- * The file as it is stored: PNG, JPEG and WebP images as they are; GIF, TIFF, AVIF and SVG (a logo, often) as PNG, so
- * the agent and the page can always open them; 3D files as they are. Null when it is neither.
+ * The file as it is stored: PNG, JPEG and WebP images as they are (shrunk to 4096 px on the long side when bigger);
+ * GIF, TIFF, AVIF and SVG (a logo, often) as PNG, so the agent and the page can always open them; 3D files as they
+ * are. Null when it is neither; UploadError when it is an image too big to decode.
  */
 export async function prepareUpload(b: Buffer, name: string): Promise<Prepared | null> {
   if (!b.length) return null
   const asModel = model(b, name)
   if (asModel) return asModel
+  const opts = { failOn: 'error' as const, limitInputPixels: MAX_INPUT_PIXELS }
   let meta: sharp.Metadata
   try {
-    meta = await sharp(b, { failOn: 'error' }).metadata()
+    meta = await sharp(b, { failOn: 'error' }).metadata() // the header only: nothing is decoded yet
   } catch {
     return null
   }
   const keep: Record<string, [string, string]> = { png: ['image/png', 'png'], jpeg: ['image/jpeg', 'jpg'], webp: ['image/webp', 'webp'] }
-  if (meta.format && keep[meta.format] && !(meta.pages && meta.pages > 1)) {
-    return { kind: 'image', contentType: keep[meta.format][0], ext: keep[meta.format][1], body: b }
-  }
-  if (!meta.format || !['gif', 'tiff', 'heif', 'svg', 'webp', 'png'].includes(meta.format)) return null
+  if (!meta.format || !['png', 'jpeg', 'webp', 'gif', 'tiff', 'heif', 'svg'].includes(meta.format)) return null
+  if (meta.format !== 'svg' && (meta.width ?? 0) * (meta.height ?? 0) > MAX_INPUT_PIXELS) throw new UploadError(413, 'image_too_large')
+  const fit = { width: MAX_SIDE, height: MAX_SIDE, fit: 'inside' as const, withoutEnlargement: true }
   try {
-    const long = Math.max(meta.width ?? 0, meta.height ?? 0) || SVG_PIXELS
-    const img = meta.format === 'svg'
-      ? sharp(b, { density: Math.min(2400, Math.max(1, (72 * SVG_PIXELS) / long)) })
-      : sharp(b, { pages: 1 }) // an animation's first frame
-    return { kind: 'image', contentType: 'image/png', ext: 'png', body: await img.png().toBuffer() }
-  } catch {
+    if (meta.format === 'svg') {
+      // Drawn big enough, then scaled to fill: a 24-unit icon and a 2000-unit drawing both come out 2048 px long
+      const long = Math.max(meta.width ?? 0, meta.height ?? 0) || SVG_PIXELS
+      const drawn = await sharp(b, { ...opts, density: Math.min(2400, Math.max(1, (72 * SVG_PIXELS) / long)) }).png().toBuffer()
+      const body = await sharp(drawn, opts).resize({ width: SVG_PIXELS, height: SVG_PIXELS, fit: 'inside' }).png().toBuffer()
+      return { kind: 'image', contentType: 'image/png', ext: 'png', body }
+    }
+    const single = !(meta.pages && meta.pages > 1)
+    const big = Math.max(meta.width ?? 0, meta.height ?? 0) > MAX_SIDE
+    if (keep[meta.format] && single) {
+      const [contentType, e] = keep[meta.format]
+      if (!big) return { kind: 'image', contentType, ext: e, body: b }
+      const body = await sharp(b, opts).rotate().resize(fit).toFormat(meta.format as keyof sharp.FormatEnum).toBuffer()
+      return { kind: 'image', contentType, ext: e, body }
+    }
+    // An animation's first frame; TIFF, AVIF and the rest as PNG
+    const body = await sharp(b, { ...opts, pages: 1 }).rotate().resize(fit).png().toBuffer()
+    return { kind: 'image', contentType: 'image/png', ext: 'png', body }
+  } catch (err) {
+    if (/pixel limit/i.test(String((err as Error).message))) throw new UploadError(413, 'image_too_large')
     return null // e.g. an HEIC photo: the standard sharp build can't decode it
   }
 }
@@ -70,14 +96,10 @@ export async function prepareUpload(b: Buffer, name: string): Promise<Prepared |
 /** A safe file name for the agent's folder: the base name's letters, digits, dots and dashes, with the real extension. */
 export function cleanName(raw: string, ext: string): string {
   const base = (raw.split(/[\\/]/).pop() ?? '').replace(/\.[^.]*$/, '')
-  const stem = base.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 60)
+  // The worker's rule (jobs.py UPLOAD_NAME): starts with a letter or digit, no doubled dots
+  const stem = base.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/\.{2,}/g, '.').replace(/-+/g, '-')
+    .replace(/^[-._]+|[-._]+$/g, '').slice(0, 60).replace(/[-._]+$/, '')
   return `${stem || (ext === 'glb' ? 'model' : 'image')}.${ext}`
-}
-
-export class UploadError extends Error {
-  constructor(public status: number, public code: string) {
-    super(code)
-  }
 }
 
 export const publicUpload = (u: typeof studioUploads.$inferSelect) =>
@@ -88,7 +110,8 @@ export async function addUpload(design: Design, rawName: string, body: Buffer) {
   if (body.length > Math.max(UPLOAD_LIMITS.imageBytes, UPLOAD_LIMITS.modelBytes)) throw new UploadError(413, 'file_too_large')
   const sniffed = await prepareUpload(body, rawName)
   if (!sniffed) throw new UploadError(400, 'unsupported_file')
-  if (body.length > (sniffed.kind === 'model' ? UPLOAD_LIMITS.modelBytes : UPLOAD_LIMITS.imageBytes)) throw new UploadError(413, 'file_too_large')
+  // Checked on what is stored, which for a converted image is the converted file
+  if (sniffed.body.length > (sniffed.kind === 'model' ? UPLOAD_LIMITS.modelBytes : UPLOAD_LIMITS.imageBytes)) throw new UploadError(413, 'file_too_large')
 
   const row = await db.transaction(async (tx) => {
     // Serialize a design's uploads so the count and the name stay right under concurrent requests
@@ -102,10 +125,15 @@ export async function addUpload(design: Design, rawName: string, body: Buffer) {
     const [u] = await tx.insert(studioUploads).values({
       designId: design.id, name, kind: sniffed.kind, contentType: sniffed.contentType, size: sniffed.body.length,
     }).returning()
-    // Stored inside the transaction: a failed put leaves no row pointing at nothing
-    await getStudioStore().put(uploadKey(design.id, u.id), sniffed.body, sniffed.contentType)
     return u
   })
+  // Stored after the commit, so no connection waits on the bucket; a failed put takes its row back out
+  try {
+    await getStudioStore().put(uploadKey(design.id, row.id), sniffed.body, sniffed.contentType)
+  } catch (err) {
+    await db.delete(studioUploads).where(eq(studioUploads.id, row.id))
+    throw err
+  }
   return publicUpload(row)
 }
 

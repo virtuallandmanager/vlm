@@ -419,6 +419,7 @@ describe('uploads', () => {
     // the server's own body-size refusal carries no code
     expect(refusalMessage({ status: 413, body: {} }, NOW).text).toBe('That file is too big: images can be up to 20 MB, 3D files up to 25 MB.')
     expect(refusalMessage({ status: 409, body: { code: 'too_many_uploads' } }, NOW).text).toBe('A design holds up to 12 files. Remove one to add another.')
+    expect(refusalMessage({ status: 413, body: { code: 'image_too_large' } }, NOW).text).toBe('That image has more pixels than the studio can use (64 megapixels at most). Save a smaller copy and try again.')
   })
 
   it('checks a file before sending it', () => {

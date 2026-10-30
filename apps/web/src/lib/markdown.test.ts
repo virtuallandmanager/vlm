@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { parseMarkdown } from './markdown'
 
 const t = (text: string) => ({ type: 'text', text })
+const item = (...inlines: unknown[]) => ({ inlines, children: [] })
 
 describe('parseMarkdown', () => {
   it('splits paragraphs on blank lines and keeps single line breaks', () => {
@@ -27,8 +28,8 @@ describe('parseMarkdown', () => {
   it('reads headings and lists', () => {
     expect(parseMarkdown('## What changed\n- the **visor**\n- the brim\n\n1. first\n2. second')).toEqual([
       { type: 'h', level: 2, inlines: [t('What changed')] },
-      { type: 'ul', items: [[t('the '), { type: 'strong', children: [t('visor')] }], [t('the brim')]] },
-      { type: 'ol', items: [[t('first')], [t('second')]] },
+      { type: 'ul', items: [item(t('the '), { type: 'strong', children: [t('visor')] }), item(t('the brim'))] },
+      { type: 'ol', start: 1, items: [item(t('first')), item(t('second'))] },
     ])
   })
 
@@ -54,5 +55,35 @@ describe('parseMarkdown', () => {
   it('closes an unterminated fence at the end and leaves a lone marker as text', () => {
     expect(parseMarkdown('```\ncode')).toEqual([{ type: 'code', text: 'code' }])
     expect(parseMarkdown('2 * 3 is **six')).toEqual([{ type: 'p', inlines: [t('2 * 3 is **six')] }])
+  })
+
+  it('keeps a numbered list’s numbers across blank lines and sub-bullets', () => {
+    expect(parseMarkdown('1. a\n\n2. b\n\n3. c')).toEqual([{ type: 'ol', start: 1, items: [item(t('a')), item(t('b')), item(t('c'))] }])
+    expect(parseMarkdown('1. build\n   - the brim\n   - the visor\n2. check')).toEqual([{ type: 'ol', start: 1, items: [
+      { inlines: [t('build')], children: [{ type: 'ul', items: [item(t('the brim')), item(t('the visor'))] }] },
+      item(t('check')),
+    ] }])
+    expect(parseMarkdown('3. third\n4. fourth')).toEqual([{ type: 'ol', start: 3, items: [item(t('third')), item(t('fourth'))] }])
+  })
+
+  it('keeps a wrapped list line in its item', () => {
+    expect(parseMarkdown('- a long point\n  that wraps\n- next')).toEqual([{ type: 'ul', items: [
+      item(t('a long point'), { type: 'br' }, t('that wraps')), item(t('next')),
+    ] }])
+  })
+
+  it('nests bold inside italics and the other way round', () => {
+    expect(parseMarkdown('*italic with **bold** inside*')).toEqual([{ type: 'p', inlines: [
+      { type: 'em', children: [t('italic with '), { type: 'strong', children: [t('bold')] }, t(' inside')] },
+    ] }])
+    expect(parseMarkdown('***both***')).toEqual([{ type: 'p', inlines: [
+      { type: 'strong', children: [{ type: 'em', children: [t('both')] }] },
+    ] }])
+  })
+
+  it('keeps balanced parentheses in a link', () => {
+    expect(parseMarkdown('[Foo](https://en.wikipedia.org/wiki/Foo_(bar)).')).toEqual([{ type: 'p', inlines: [
+      { type: 'link', href: 'https://en.wikipedia.org/wiki/Foo_(bar)', children: [t('Foo')] }, t('.'),
+    ] }])
   })
 })
