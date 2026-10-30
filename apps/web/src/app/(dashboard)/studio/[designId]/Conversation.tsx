@@ -93,11 +93,14 @@ export default function Conversation({ designId, detail, usage, events, onChange
             )}
           </Message>
         ))}
+        {/* What the agent is doing, not a reply: no bubble, a dashed rule and muted italics, so it can't pass for its answer */}
         {active && (
-          <div className="max-w-[85%] self-start rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm" aria-live="polite">
-            <p className="mb-1 text-xs text-gray-500">{agentLabel(detail.design.agent)}</p>
-            <div className="flex items-start gap-2 text-gray-300">
-              <span className="mt-1.5 inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-blue-400" aria-hidden="true" />
+          <div className="max-w-[85%] self-start border-l-2 border-dashed border-gray-700 py-1 pl-3 text-sm" aria-live="polite">
+            <p className="mb-1 flex items-center gap-2 text-xs text-gray-500">
+              <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-blue-400" aria-hidden="true" />
+              {agentLabel(detail.design.agent)} is working
+            </p>
+            <div className="italic text-gray-400">
               <Markdown text={progressFor(events, active.id) ?? (active.status === 'queued' ? 'Starting the studio…' : 'Working…')} />
             </div>
           </div>
