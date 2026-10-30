@@ -69,7 +69,8 @@ describe('outerShellBounds parity with the generator', () => {
       const b = outerShellBounds(layout)
       expect(max[0] - min[0]).toBeCloseTo(b.maxX - b.minX, 3)
       expect(max[2] - min[2]).toBeCloseTo(b.maxZ - b.minZ, 3)
-      expect(min[0]).toBeCloseTo(0.5, 3)
+      // The GLB is in model space (plot x written as glTF -x): the west outer face is glTF max x
+      expect(-max[0]).toBeCloseTo(0.5, 3)
       expect(min[2]).toBeCloseTo(0.5, 3)
     })
   }

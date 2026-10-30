@@ -7,6 +7,9 @@
 // and the default camera sits south of the plot looking north, the way players arrive.
 // rotationY is Decentraland's Euler degrees (positive turns clockwise seen from above), which is a
 // negative three.js rotation about Y.
+// Decentraland shows a glTF x-mirrored (glTF (x, y, z) at (-x, y, z)); with the z-mirror above that is a half
+// turn about Y, so every model gets MODEL_TURN (the Hyperfy app does the same).
+// A room set's GLB is written that way too: plot point (x, z) at glTF (-x, z), so it draws at the plot origin.
 import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber'
 import { OrbitControls, useGLTF } from '@react-three/drei'
@@ -268,29 +271,31 @@ function Item({ item, selected, editable, onSelect, onMove }: {
   )
 }
 
+/** The half turn about Y that shows a glTF the way Decentraland does (see the note at the top). */
+const MODEL_TURN = Math.PI
+
+/** A GLB as Decentraland shows it; `_collider` meshes stay hidden. */
 function Model({ url }: { url: string }) {
   const { scene } = useGLTF(url)
-  const object = useMemo(() => scene.clone(true), [scene])
-  return <primitive object={object} />
-}
-
-/**
- * The room set, in plot coordinates (metres from the south-west corner, z north). Plot z is three.js -Z, so the
- * model is mirrored along Z to land on the plot. Collision meshes are hidden.
- */
-function RoomModel({ url }: { url: string }) {
-  const { scene } = useGLTF(url)
-  const invalidate = useThree((s) => s.invalidate)
   const object = useMemo(() => {
     const o = scene.clone(true)
     o.traverse((c) => { if (c.name.includes('_collider')) c.visible = false })
     return o
   }, [scene])
+  return <primitive object={object} rotation-y={MODEL_TURN} />
+}
+
+/**
+ * The room set: an ordinary model at the plot origin, drawn like every item. Each preview is a new blob URL, so
+ * the old one is dropped from the loader's cache.
+ */
+function RoomModel({ url }: { url: string }) {
+  const invalidate = useThree((s) => s.invalidate)
   useEffect(() => {
     invalidate()
     return () => useGLTF.clear(url)
   }, [url, invalidate])
-  return <primitive object={object} scale={[1, 1, -1]} />
+  return <Model url={url} />
 }
 
 /** A translucent box the size of the item's footprint × height, shown while its GLB loads or when it can't. */

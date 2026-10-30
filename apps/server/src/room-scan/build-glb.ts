@@ -95,7 +95,25 @@ function roofEdgeOffsets(poly: V2[], roomIndex: number, walls: GeometryWall[]): 
   })
 }
 
-/** Write named parts into a glTF document, every vertex shifted by (dx, dy, dz). */
+/**
+ * One primitive's buffers in Decentraland/Virvi model space, from plot coordinates (metres, x east, z north) shifted
+ * by (dx, dy, dz). Decentraland shows a glTF x-mirrored (glTF (x, y, z) at (-x, y, z); see the Hyperfy app's
+ * MODEL_TURN), so a plot point (x, z) is written at glTF (-x, z): positions and normals have x negated, and each
+ * triangle's winding is reversed so faces still point outward. Everything before this stays in plot coordinates.
+ */
+export function toModelSpace(mesh: MeshData, dx: number, dy: number, dz: number) {
+  const positions = new Float32Array(mesh.positions)
+  const normals = new Float32Array(mesh.normals)
+  for (let i = 0; i < positions.length; i += 3) {
+    positions[i] = -(positions[i] + dx); positions[i + 1] += dy; positions[i + 2] += dz
+    normals[i] = -normals[i]
+  }
+  const indices = mesh.vertexCount < 65536 ? new Uint16Array(mesh.indices) : new Uint32Array(mesh.indices)
+  for (let i = 0; i + 2 < indices.length; i += 3) { const b = indices[i + 1]; indices[i + 1] = indices[i + 2]; indices[i + 2] = b }
+  return { positions, normals, indices }
+}
+
+/** Write named parts into a glTF document, every vertex shifted by (dx, dy, dz) and then put in model space. */
 function writeGlb(nodes: Array<{ name: string; prims: Array<{ material: MaterialSpec; mesh: MeshData }> }>, dx: number, dy: number, dz: number): Promise<Uint8Array> {
   const doc = new Document()
   const buffer = doc.createBuffer()
@@ -124,12 +142,10 @@ function writeGlb(nodes: Array<{ name: string; prims: Array<{ material: Material
     if (!parts.length) continue
     const mesh = doc.createMesh(name)
     for (const { material: spec, mesh: data } of parts) {
-      const pos = new Float32Array(data.positions)
-      for (let i = 0; i < pos.length; i += 3) { pos[i] += dx; pos[i + 1] += dy; pos[i + 2] += dz }
-      const indices = data.vertexCount < 65536 ? new Uint16Array(data.indices) : new Uint32Array(data.indices)
+      const { positions, normals, indices } = toModelSpace(data, dx, dy, dz)
       mesh.addPrimitive(doc.createPrimitive()
-        .setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(pos).setBuffer(buffer))
-        .setAttribute('NORMAL', doc.createAccessor().setType('VEC3').setArray(new Float32Array(data.normals)).setBuffer(buffer))
+        .setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(positions).setBuffer(buffer))
+        .setAttribute('NORMAL', doc.createAccessor().setType('VEC3').setArray(normals).setBuffer(buffer))
         .setIndices(doc.createAccessor().setType('SCALAR').setArray(indices).setBuffer(buffer))
         .setMaterial(material(spec)))
     }
@@ -143,7 +159,7 @@ function writeGlb(nodes: Array<{ name: string; prims: Array<{ material: Material
  * Build the room set's GLB. Rooms are nudged first; rooms with no scanned
  * walls get walls along their floor outline. The set is translated so the
  * outer wall faces' minimum corner sits at the 0.5 m plot margin and the
- * lowest room floor at y = 0; `offset` is that translation.
+ * lowest room floor at y = 0; `offset` is that translation, in plot coordinates (the GLB itself is in model space: see toModelSpace).
  */
 export async function buildRoomSetGlb(
   layout: RoomScanLayout,

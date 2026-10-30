@@ -3,7 +3,8 @@ import { NodeIO, type Document, type Node, type Primitive } from '@gltf-transfor
 import { getBounds } from '@gltf-transform/functions'
 import type { RoomOpening, RoomScanLayout, RoomWall, ScannedRoom } from '@virvixr/shared'
 import { glbStats } from '../src/catalog/glb-stats.js'
-import { buildRoomSetGlb, DEFAULT_ROOM_SET_OPTIONS, type RoomSetOptions, type RoomStyle } from '../src/room-scan/build-glb.js'
+import { buildRoomSetGlb, DEFAULT_ROOM_SET_OPTIONS, toModelSpace, type RoomSetOptions, type RoomStyle } from '../src/room-scan/build-glb.js'
+import { MeshData } from '../src/room-scan/mesh.js'
 import { wallsFromOutline } from '../src/room-scan/geometry.js'
 
 const ANCHOR: ScannedRoom['anchor'] = { source: 'quest-mruk', roomId: 'r', floorAnchorId: null, floorPose: { position: [0, 0, 0], yaw: 0 } }
@@ -75,17 +76,18 @@ describe('buildRoomSetGlb', () => {
 
   it('closes the outer corners: wall geometry reaches every outer corner exactly, with no overshoot', async () => {
     const doc = await read((await buildRoomSetGlb(room43(), opts({ style: 'dollhouse' }))).glb)
+    // Model space: plot x is written as glTF -x, z unchanged
     const { min, max } = getBounds(node(doc, 'walls')!)
-    expect(min[0]).toBeCloseTo(0.5, 5); expect(min[2]).toBeCloseTo(0.5, 5)
-    expect(max[0]).toBeCloseTo(4.74, 5); expect(max[2]).toBeCloseTo(3.74, 5)
-    // every outer corner of the 4.24 x 3.24 shell has exterior geometry on it
+    expect(min[0]).toBeCloseTo(-4.74, 5); expect(min[2]).toBeCloseTo(0.5, 5)
+    expect(max[0]).toBeCloseTo(-0.5, 5); expect(max[2]).toBeCloseTo(3.74, 5)
+    // every outer corner of the 4.24 x 3.24 shell has exterior geometry on it (plot (x, z) at glTF (-x, z))
     const outer = prims(doc, 'exterior-dollhouse')
     const pts: number[][] = outer.flatMap(p => {
       const a = p.getAttribute('POSITION')!
       return Array.from({ length: a.getCount() }, (_, i) => a.getElement(i, [0, 0, 0]))
     })
     for (const [x, z] of [[0.5, 0.5], [4.74, 0.5], [4.74, 3.74], [0.5, 3.74]]) {
-      expect(pts.some(p => Math.abs(p[0] - x) < 1e-4 && Math.abs(p[2] - z) < 1e-4)).toBe(true)
+      expect(pts.some(p => Math.abs(p[0] + x) < 1e-4 && Math.abs(p[2] - z) < 1e-4)).toBe(true)
     }
   })
 
@@ -232,5 +234,24 @@ describe('buildRoomSetGlb', () => {
     expect(await colour({ wallColor: '#e8e6e1' }, 'interior-wall')).toEqual(fallback)
     expect(await colour({ floorColor: '#12345' }, 'floor')).toEqual(await colour({}, 'floor'))
     expect(await colour({ wallColor: '#FF0000' }, 'interior-wall')).not.toEqual(fallback)
+  })
+})
+
+describe('toModelSpace (the GLB write boundary)', () => {
+  it('writes plot point (x, z), shifted, at glTF (-x, z), with x-mirrored normals and outward winding', () => {
+    const m = new MeshData()
+    // A wall face at plot x = 1 facing east (+x)
+    m.face([[1, 0, 0], [1, 0, 2], [1, 2, 2], [1, 2, 0]], [1, 0, 0])
+    const { positions, normals, indices } = toModelSpace(m, 0.5, 0, 0.25)
+    const corners = Array.from({ length: positions.length / 3 }, (_, i) => Array.from(positions.slice(3 * i, 3 * i + 3)).join(','))
+    expect(corners.sort()).toEqual(['-1.5,0,0.25', '-1.5,0,2.25', '-1.5,2,0.25', '-1.5,2,2.25'])
+    for (let i = 0; i < normals.length; i += 3) expect(Array.from(normals.slice(i, i + 3)).map((v) => v + 0)).toEqual([-1, 0, 0])
+    // Every triangle's geometric normal (counter-clockwise winding) agrees with the written normal
+    const P = (i: number) => [positions[3 * i], positions[3 * i + 1], positions[3 * i + 2]]
+    for (let t = 0; t < indices.length; t += 3) {
+      const [a, b, c] = [P(indices[t]), P(indices[t + 1]), P(indices[t + 2])]
+      const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]
+      expect(u[1] * v[2] - u[2] * v[1]).toBeLessThan(0) // x of u × v points along -x, like the normal
+    }
   })
 })
