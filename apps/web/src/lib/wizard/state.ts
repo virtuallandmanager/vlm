@@ -1,4 +1,4 @@
-import { plotSizeM, type Plot } from '@virvixr/shared'
+import { DEFAULT_ROOM_SET_OPTIONS, plotSizeM, type Plot, type RoomSetOptions } from '@virvixr/shared'
 import type { DclWorld, WizardAsset } from '../api'
 import { budgetStatus, fitToBudget } from './budget'
 import { clampToPlot, layoutTheme, suggestPosition, type PlacedItem } from './placement'
@@ -16,6 +16,11 @@ export interface WizardState {
     ar: null | { name: string }
   }
   plot: Plot | null
+  /**
+   * The room scan the scene starts from: its plot is fixed by the scan. `triangles` is the generated set's count,
+   * from the last preview (null until one has loaded).
+   */
+  roomSet: { scanId: string; plot: Plot; options: RoomSetOptions; triangles: number | null } | null
   themeId: string | null
   items: PlacedItem[]
   spawn: { x: number; z: number }
@@ -35,7 +40,13 @@ export type WizardAction =
   | { type: 'setDcl'; dcl: WizardState['destinations']['dcl'] }
   | { type: 'setHyperfy'; hyperfy: WizardState['destinations']['hyperfy'] }
   | { type: 'setAr'; ar: WizardState['destinations']['ar'] }
+  /** Ignored while a room set is chosen: the scan fixes the plot. */
   | { type: 'setPlot'; plot: Plot }
+  | { type: 'setRoomSet'; scanId: string; plot: Plot; options?: RoomSetOptions }
+  | { type: 'setRoomSetOptions'; options: Partial<RoomSetOptions> }
+  /** The preview's triangle count for `scanId`; ignored once another scan is chosen. */
+  | { type: 'setRoomSetTriangles'; scanId: string; triangles: number }
+  | { type: 'clearRoomSet' }
   | { type: 'applyTheme'; themeId: string | null; items: Array<{ asset: WizardAsset; x: number; z: number; rotationY: number }> }
   | { type: 'addAsset'; asset: WizardAsset }
   | { type: 'removeItem'; key: string }
@@ -62,6 +73,7 @@ export const initialState: WizardState = {
   step: 'where',
   destinations: { dcl: null, hyperfy: null, ar: null },
   plot: null,
+  roomSet: null,
   themeId: null,
   items: [],
   spawn: defaultSpawn(GUIDE_PLOT),
@@ -81,7 +93,7 @@ export function effectivePlot(state: WizardState): Plot {
 /** Budget for the current items; hard limits apply only with a Decentraland destination. */
 export function stateBudget(state: WizardState, items = state.items) {
   const dcl = state.destinations.dcl
-  return budgetStatus(items, dcl ? state.plot : null, dcl?.storage ?? null)
+  return budgetStatus(items, dcl ? state.plot : null, dcl?.storage ?? null, state.roomSet && { triangles: state.roomSet.triangles })
 }
 
 function clampSpawn(plot: Plot, s: { x: number; z: number }) {
@@ -91,7 +103,24 @@ function clampSpawn(plot: Plot, s: { x: number; z: number }) {
 
 /** Decentraland limits apply only with a dcl destination and a chosen plot; otherwise every item stays. */
 function fitIfLimited(state: WizardState, items: PlacedItem[], plot: Plot | null) {
-  return state.destinations.dcl && plot ? fitToBudget(items, plot) : { items, dropped: 0 }
+  const room = state.roomSet && { triangles: state.roomSet.triangles }
+  return state.destinations.dcl && plot ? fitToBudget(items, plot, room) : { items, dropped: 0 }
+}
+
+/** Moves to `plot`: items are clamped inside it and fitted to its budget, and a default spawn follows it. */
+function withPlot(state: WizardState, plot: Plot): WizardState {
+  const clamped = state.items.map((i) => clampToPlot(plot, i))
+  const fit = fitIfLimited(state, clamped, plot)
+  const old = effectivePlot(state)
+  const wasDefault = state.spawn.x === defaultSpawn(old).x && state.spawn.z === defaultSpawn(old).z
+  return {
+    ...state,
+    plot,
+    items: fit.items,
+    lastDropped: fit.dropped,
+    spawn: wasDefault ? defaultSpawn(plot) : clampSpawn(plot, state.spawn),
+    notice: null,
+  }
 }
 
 export function wizardReducer(state: WizardState, action: WizardAction): WizardState {
@@ -121,21 +150,22 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
       if (!a) return state
       return { ...state, destinations: { ...state.destinations, ar: { ...a, name: action.name } }, touched: { ...state.touched, ar: true } }
     }
-    case 'setPlot': {
-      const plot = action.plot
-      const clamped = state.items.map((i) => clampToPlot(plot, i))
-      const fit = fitIfLimited(state, clamped, plot)
-      const old = effectivePlot(state)
-      const wasDefault = state.spawn.x === defaultSpawn(old).x && state.spawn.z === defaultSpawn(old).z
-      return {
-        ...state,
-        plot,
-        items: fit.items,
-        lastDropped: fit.dropped,
-        spawn: wasDefault ? defaultSpawn(plot) : clampSpawn(plot, state.spawn),
-        notice: null,
-      }
+    case 'setPlot':
+      return state.roomSet ? state : withPlot(state, action.plot)
+    case 'setRoomSet': {
+      const same = state.roomSet?.scanId === action.scanId
+      const options = action.options ?? state.roomSet?.options ?? DEFAULT_ROOM_SET_OPTIONS
+      // Only the size comes from the scan: the plot keeps the base the wizard already uses.
+      const plot: Plot = { width: action.plot.width, depth: action.plot.depth, base: state.plot?.base ?? action.plot.base }
+      const roomSet = { scanId: action.scanId, plot, options, triangles: same ? state.roomSet!.triangles : null }
+      return withPlot({ ...state, roomSet }, plot)
     }
+    case 'setRoomSetOptions':
+      return state.roomSet ? { ...state, roomSet: { ...state.roomSet, options: { ...state.roomSet.options, ...action.options } } } : state
+    case 'setRoomSetTriangles':
+      return state.roomSet?.scanId === action.scanId ? { ...state, roomSet: { ...state.roomSet, triangles: action.triangles } } : state
+    case 'clearRoomSet':
+      return { ...state, roomSet: null, notice: null }
     case 'applyTheme': {
       const plot = effectivePlot(state)
       const fit = fitIfLimited(state, layoutTheme(action.items, plot), state.plot)
@@ -192,7 +222,7 @@ export function canAdvance(state: WizardState): boolean {
     case 'where':
       return !!state.name.trim() && !!(dcl || hyperfy || ar)
     case 'size':
-      return dcl ? state.plot !== null : true
+      return dcl ? !!state.roomSet || state.plot !== null : true
     case 'assets':
     case 'arrange':
       return stateBudget(state).over === null

@@ -15,6 +15,7 @@ import { SizeStep } from '@/components/wizard/steps/SizeStep'
 import { AssetsStep } from '@/components/wizard/steps/AssetsStep'
 import { ArrangeStep } from '@/components/wizard/steps/ArrangeStep'
 import { DeployStep } from '@/components/wizard/steps/DeployStep'
+import { useRoomSetPreview } from '@/components/wizard/useRoomSetPreview'
 
 const Preview3D = dynamic(() => import('@/components/wizard/Preview3D'), {
   ssr: false,
@@ -32,9 +33,9 @@ const STEPS: Array<{ id: WizardStep; title: string }> = [
 function summary(step: WizardStep, s: WizardState): string {
   switch (step) {
     case 'where':
-      return [s.name.trim(), s.destinations.dcl?.world, s.destinations.hyperfy && 'Hyperfy', s.destinations.ar && 'Virvi AR'].filter(Boolean).join(' · ')
+      return [s.name.trim(), s.roomSet && 'Room scan', s.destinations.dcl?.world, s.destinations.hyperfy && 'Hyperfy', s.destinations.ar && 'Virvi AR'].filter(Boolean).join(' · ')
     case 'size':
-      return s.plot ? plotLabel(s.plot) : 'Guide plot'
+      return s.plot ? `${plotLabel(s.plot)}${s.roomSet ? ', fits your scan' : ''}` : 'Guide plot'
     case 'assets':
       return `${s.items.length} ${s.items.length === 1 ? 'item' : 'items'}`
     case 'arrange':
@@ -60,6 +61,7 @@ export default function NewScenePage() {
   // what was made. A run that failed before the scene existed leaves them open to fix what was refused.
   const [running, setRunning] = useState(false)
   const memory = useRef<RunMemory>(emptyMemory())
+  const roomPreview = useRoomSetPreview(state.roomSet, dispatch)
   const locked = running || !!memory.current.sceneId
 
   const loadNames = useCallback(() => {
@@ -95,7 +97,7 @@ export default function NewScenePage() {
     ),
     size: <SizeStep state={state} dispatch={dispatch} />,
     assets: <AssetsStep state={state} dispatch={dispatch} catalog={catalog} />,
-    arrange: <ArrangeStep state={state} dispatch={dispatch} selectedKey={selectedKey} setSelectedKey={setSelectedKey} moveSpawn={moveSpawn} setMoveSpawn={setMoveSpawn} />,
+    arrange: <ArrangeStep state={state} dispatch={dispatch} roomPreview={roomPreview} selectedKey={selectedKey} setSelectedKey={setSelectedKey} moveSpawn={moveSpawn} setMoveSpawn={setMoveSpawn} />,
     deploy: <DeployStep state={state} dispatch={dispatch} options={options} memory={memory.current} onRunning={setRunning} />,
   }
 
@@ -149,6 +151,7 @@ export default function NewScenePage() {
           <Preview3D
             plot={state.plot}
             items={state.items}
+            room={state.roomSet ? roomPreview.url : null}
             spawn={state.spawn}
             selectedKey={selectedKey}
             editable={state.step === 'arrange'}

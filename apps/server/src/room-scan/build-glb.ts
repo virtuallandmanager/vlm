@@ -5,7 +5,7 @@
  * blocks, and invisible `_collider` meshes for Decentraland collisions.
  */
 import { Document, NodeIO, type Material, type Node } from '@gltf-transform/core'
-import { type RoomScanLayout } from '@virvixr/shared'
+import { DEFAULT_ROOM_SET_OPTIONS, type RoomScanLayout, type RoomSetOptions } from '@virvixr/shared'
 import { glbStats } from '../catalog/glb-stats.js'
 import { MERGE_MAX_ANGLE_DEG, MERGE_MAX_GAP_M, MERGE_MIN_OVERLAP_M, type GeometryWall, type Nudge } from './geometry.js'
 import { add, buildWallShell, dot, PLOT_MARGIN_M, prepareScan, scale, shellBounds, sub, unit, WALL_THICKNESS_M } from './shell.js'
@@ -15,9 +15,7 @@ import { ROOM_STYLES, STYLE_KITS, type DoorSpot, type RoomStyle, type StyleKit }
 export type { RoomStyle, StyleKit, StyleContext } from './styles/index.js'
 export type { MeshPart } from './mesh.js'
 
-export interface RoomSetOptions { style: RoomStyle; wallColor: string; floorColor: string; ceiling: boolean; furniture: boolean; signText?: string }
-
-export const DEFAULT_ROOM_SET_OPTIONS: RoomSetOptions = { style: 'plain', wallColor: '#E8E6E1', floorColor: '#B9A68C', ceiling: false, furniture: false }
+export { DEFAULT_ROOM_SET_OPTIONS, type RoomSetOptions }
 
 export { PLOT_MARGIN_M, WALL_THICKNESS_M }
 const ROOF_SLAB_M = 0.1

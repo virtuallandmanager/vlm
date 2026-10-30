@@ -19,6 +19,8 @@ export interface Preview3DProps {
   /** Null when there is no Decentraland plot: the 2×2 guide plot is drawn instead. */
   plot: Plot | null
   items: PlacedItem[]
+  /** The room set's preview GLB (a blob URL), drawn at the plot's origin; not selectable or draggable. */
+  room?: string | null
   spawn: { x: number; z: number }
   selectedKey: string | null
   editable: boolean
@@ -98,7 +100,7 @@ class Fallback extends Component<{ fallback: ReactNode; children: ReactNode }, {
   }
 }
 
-function Scene({ plot, items, spawn, selectedKey, editable, spawnEditable = true, onMove, onSelect, onMoveSpawn }: Preview3DProps) {
+function Scene({ plot, items, room, spawn, selectedKey, editable, spawnEditable = true, onMove, onSelect, onMoveSpawn }: Preview3DProps) {
   const p = plot ?? GUIDE_PLOT
   const size = plotSizeM(p)
   return (
@@ -112,6 +114,13 @@ function Scene({ plot, items, spawn, selectedKey, editable, spawnEditable = true
       <hemisphereLight args={['#ffffff', '#30353d', 1.2]} />
       <directionalLight position={[size.x * 0.3, 40, size.z * 0.2]} intensity={1.6} />
       <Ground size={size} guide={!plot} />
+      {room && (
+        <Fallback key={room} fallback={null}>
+          <Suspense fallback={null}>
+            <RoomModel url={room} />
+          </Suspense>
+        </Fallback>
+      )}
       {items.map((item) => (
         <Item
           key={item.key}
@@ -263,6 +272,25 @@ function Model({ url }: { url: string }) {
   const { scene } = useGLTF(url)
   const object = useMemo(() => scene.clone(true), [scene])
   return <primitive object={object} />
+}
+
+/**
+ * The room set, in plot coordinates (metres from the south-west corner, z north). Plot z is three.js -Z, so the
+ * model is mirrored along Z to land on the plot. Collision meshes are hidden.
+ */
+function RoomModel({ url }: { url: string }) {
+  const { scene } = useGLTF(url)
+  const invalidate = useThree((s) => s.invalidate)
+  const object = useMemo(() => {
+    const o = scene.clone(true)
+    o.traverse((c) => { if (c.name.includes('_collider')) c.visible = false })
+    return o
+  }, [scene])
+  useEffect(() => {
+    invalidate()
+    return () => useGLTF.clear(url)
+  }, [url, invalidate])
+  return <primitive object={object} scale={[1, 1, -1]} />
 }
 
 /** A translucent box the size of the item's footprint × height, shown while its GLB loads or when it can't. */

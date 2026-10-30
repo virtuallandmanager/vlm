@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { WizardAsset } from '../api'
-import { canAdvance, initialState, wizardReducer, type WizardState } from './state'
+import { canAdvance, initialState, stateBudget, wizardReducer, type WizardState } from './state'
 
 const asset = (id: string, tris = 100, dim = 1): WizardAsset => ({
   id, name: id, thumbnailUrl: null, cdnUrl: null, dimensions: { x: dim, y: 1, z: dim }, triangleCount: tris, fileSizeBytes: 10,
@@ -187,5 +187,55 @@ describe('scene name longer than a Hyperfy name may be', () => {
     let s = wizardReducer(initialState, { type: 'setHyperfy', hyperfy: { kind: 'self', name: '' } })
     s = wizardReducer(s, { type: 'setName', name: 'x'.repeat(120) })
     expect(s.destinations.hyperfy?.name).toHaveLength(100)
+  })
+})
+
+describe('room set', () => {
+  const scanPlot = { width: 2, depth: 1, base: { x: 0, y: 0 } }
+  const chosen = (s: WizardState = wizardReducer(initialState, { type: 'setDcl', dcl })) =>
+    wizardReducer(s, { type: 'setRoomSet', scanId: 'scan-1', plot: scanPlot })
+
+  it('setRoomSet sets the plot to the scan plot, with default options', () => {
+    const s = chosen()
+    expect(s.plot).toEqual(scanPlot)
+    expect(s.roomSet).toMatchObject({ scanId: 'scan-1', plot: scanPlot, options: { style: 'plain', wallColor: '#E8E6E1', floorColor: '#B9A68C', ceiling: false, furniture: false } })
+    expect(s.spawn).toEqual({ x: 16, z: 1 })
+  })
+  it('ignores setPlot while a room set is chosen', () => {
+    const s = wizardReducer(chosen(), { type: 'setPlot', plot: { width: 3, depth: 3, base: { x: 0, y: 0 } } })
+    expect(s.plot).toEqual(scanPlot)
+  })
+  it('clearRoomSet restores free plot choice', () => {
+    let s = wizardReducer(chosen(), { type: 'clearRoomSet' })
+    expect(s.roomSet).toBeNull()
+    s = wizardReducer(s, { type: 'setPlot', plot: { width: 3, depth: 3, base: { x: 0, y: 0 } } })
+    expect(s.plot).toEqual({ width: 3, depth: 3, base: { x: 0, y: 0 } })
+  })
+  it('stateBudget includes the set\'s triangles once the preview has counted them', () => {
+    let s = wizardReducer(chosen(), { type: 'addAsset', asset: asset('a', 100) })
+    expect(stateBudget(s).triangles.used).toBe(100)
+    s = wizardReducer(s, { type: 'setRoomSetTriangles', scanId: 'scan-1', triangles: 1_234 })
+    expect(stateBudget(s).triangles.used).toBe(1_334)
+    // A count for a scan no longer chosen is ignored
+    s = wizardReducer(s, { type: 'setRoomSetTriangles', scanId: 'other', triangles: 9 })
+    expect(stateBudget(s).triangles.used).toBe(1_334)
+  })
+  it('stateBudget counts the room as one entity', () => {
+    const s = wizardReducer(chosen(), { type: 'addAsset', asset: asset('a', 100) })
+    expect(stateBudget(s).entities.used).toBe(2)
+  })
+  it('refuses an item that would take the room past the triangle budget', () => {
+    let s = wizardReducer(chosen(), { type: 'setRoomSetTriangles', scanId: 'scan-1', triangles: 19_950 })
+    s = wizardReducer(s, { type: 'addAsset', asset: asset('a', 100) })
+    expect(s.items).toEqual([])
+    expect(s.notice).toBe('This plot fits about 20,000 triangles; that would make it 20,050')
+  })
+  it('changing options keeps the scan and its plot', () => {
+    const s = wizardReducer(chosen(), { type: 'setRoomSetOptions', options: { style: 'house', ceiling: true } })
+    expect(s.roomSet?.options).toMatchObject({ style: 'house', ceiling: true, wallColor: '#E8E6E1' })
+    expect(s.plot).toEqual(scanPlot)
+  })
+  it('canAdvance at the size step is true with a room set and no manual plot', () => {
+    expect(canAdvance({ ...chosen(), step: 'size' })).toBe(true)
   })
 })

@@ -47,3 +47,24 @@ describe('fitToBudget', () => {
     expect(r.dropped).toBe(6)
   })
 })
+
+describe('a room set', () => {
+  it('counts the room as one more item and its triangles', () => {
+    const items = Array.from({ length: 180 }, (_, i) => item(asset('a', 1), i))
+    expect(budgetStatus(items, plot, null).over).toBeNull()
+    const s = budgetStatus(items, plot, null, { triangles: 500 })
+    expect(s.entities).toEqual({ used: 181, limit: 180 })
+    expect(s.triangles.used).toBe(680)
+    expect(s.over).toBe('This plot fits about 180 items; that would make it 181')
+  })
+  it('a room with no count yet still takes an entity', () => {
+    expect(budgetStatus([], plot, null, { triangles: null }).entities.used).toBe(1)
+  })
+  it('fitToBudget leaves room for the set', () => {
+    const a = asset('a', 1500)
+    const items = Array.from({ length: 12 }, (_, i) => item(a, i))
+    expect(fitToBudget(items, plot, { triangles: 3000 }).items).toHaveLength(4)
+    const tiny = Array.from({ length: 180 }, (_, i) => item(asset('t', 1), i))
+    expect(fitToBudget(tiny, plot, { triangles: null }).items).toHaveLength(179)
+  })
+})

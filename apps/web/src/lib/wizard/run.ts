@@ -1,7 +1,7 @@
 // The wizard's "Create and deploy" run: scene, World destination, permission or signature, the extra
 // destinations, then polling until Decentraland has accepted the deployment. Everything it has created
 // is kept in `RunMemory`, so "Try again" picks up where it stopped and never makes a second scene.
-import type { Plot } from '@virvixr/shared'
+import type { Plot, RoomSetOptions } from '@virvixr/shared'
 import type { Eip1193Provider } from '../auth'
 import type { AuthChain, SignSession } from '../dcl-sign'
 import { hyperfyErrorMessage } from '../hyperfy'
@@ -40,6 +40,9 @@ const CODE_MESSAGES: Record<string, string> = {
   over_budget: "The scene is past Decentraland's limits for this plot. Remove some models, then deploy again.",
   nothing_to_deploy: 'Your World already has everything in this scene, so there was nothing to deploy.',
   deploy_failed: 'Something went wrong on our side while deploying. Try again in a few minutes.',
+  plot_mismatch: "The plot no longer matches your room scan. Go back to Size, then try again.",
+  too_big: 'That room scan is too big for a Decentraland plot.',
+  invalid_options: "Those room options weren't accepted. Pick them again, then try again.",
   unmeasured_asset: "One of the items can't be measured yet, so it can't be placed. Remove it and try again.",
   invalid_plot: 'That plot size is not allowed. Pick a size up to 10 × 10 parcels.',
   invalid_spawn: 'The arrival point has to be inside the plot.',
@@ -121,6 +124,8 @@ export interface RunPlan {
   dcl: null | { world: string; wallet: string; mode: DclDestinationMode }
   hyperfy: null | { kind: 'self' | 'hosted'; name: string }
   ar: null | { name: string }
+  /** The room scan the scene starts from, and the set's options. */
+  roomSet?: null | { scanId: string; options: RoomSetOptions }
 }
 
 export type HyperfyResult =
@@ -212,7 +217,10 @@ export async function runWizard(plan: RunPlan, mem: RunMemory, deps: RunDeps, on
   try {
     on({ phase: 'packing', models: null })
     if (!mem.sceneId) {
-      const { sceneId } = await api.bootstrapWizardScene({ name: plan.name, plot: plan.plot, spawn: plan.spawn, items: plan.items, dcl: !!plan.dcl })
+      const { sceneId } = await api.bootstrapWizardScene({
+        name: plan.name, plot: plan.plot, spawn: plan.spawn, items: plan.items, dcl: !!plan.dcl,
+        ...(plan.roomSet ? { roomSet: plan.roomSet } : {}),
+      })
       mem.sceneId = sceneId
     }
     const sceneId = mem.sceneId

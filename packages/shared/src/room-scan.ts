@@ -23,6 +23,12 @@ export const MIN_WALL_LENGTH_M = 0.1
 export const MIN_CEILING_M = 1.8
 export const MAX_CEILING_M = 8
 
+/** A room set's exterior style. */
+export type RoomStyle = 'house' | 'storefront' | 'plain' | 'dollhouse'
+/** A room set's look: exterior style, interior finishes, ceiling and furniture blocks. */
+export interface RoomSetOptions { style: RoomStyle; wallColor: string; floorColor: string; ceiling: boolean; furniture: boolean; signText?: string }
+export const DEFAULT_ROOM_SET_OPTIONS: RoomSetOptions = { style: 'plain', wallColor: '#E8E6E1', floorColor: '#B9A68C', ceiling: false, furniture: false }
+
 const OPENING_KINDS: RoomOpening['kind'][] = ['door', 'window', 'opening']
 const ANCHOR_SOURCES: RoomAnchor['source'][] = ['quest-mruk', 'ios-roomplan']
 

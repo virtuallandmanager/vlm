@@ -10,6 +10,11 @@ import { effectivePlot, type WizardAction, type WizardState } from '@/lib/wizard
 import { PrimaryButton } from '@/components/ui'
 import { ProgressLines, useShownPhase } from '../ProgressLines'
 
+/** Shown once, before a scene built from a room scan goes to a public World or Hyperfy world. */
+export const ROOM_LAYOUT_NOTICE = "This World will show your room's layout to anyone who visits."
+/** The server keeps a storefront sign to this many characters. */
+const SIGN_TEXT_MAX = 80
+
 const MODE_COPY = {
   virvi: {
     title: 'Let Virvi deploy for me (recommended)',
@@ -85,6 +90,13 @@ export function DeployStep({ state, dispatch, options, memory, onRunning }: {
       dcl: dcl ? { world: dcl.world, wallet: dcl.wallet, mode: state.mode } : null,
       hyperfy: hyperfy ? { kind: hyperfy.kind, name: hyperfy.name.trim() } : null,
       ar: ar ? { name: ar.name.trim() } : null,
+      // A storefront's sign shows the scene's name.
+      roomSet: state.roomSet && {
+        scanId: state.roomSet.scanId,
+        options: state.roomSet.options.style === 'storefront'
+          ? { ...state.roomSet.options, signText: state.name.trim().slice(0, SIGN_TEXT_MAX) }
+          : state.roomSet.options,
+      },
   })
   const update = (u: RunUpdate) => {
     if (!alive.current) return
@@ -201,6 +213,10 @@ export function DeployStep({ state, dispatch, options, memory, onRunning }: {
             ? 'Check your wallet: sign once to let Virvi deploy to this World.'
             : 'Check your wallet: sign once to authorise this deploy.'}
         </p>
+      )}
+
+      {!done && state.roomSet && (dcl || hyperfy) && (
+        <p className="rounded-md border border-yellow-700/60 bg-yellow-950/30 px-3 py-2 text-yellow-100">{ROOM_LAYOUT_NOTICE}</p>
       )}
 
       {view.error && <p className="rounded-md border border-red-900/60 bg-red-950/40 px-3 py-2 text-red-300" role="alert">{view.error}</p>}

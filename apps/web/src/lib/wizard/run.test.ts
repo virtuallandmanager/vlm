@@ -225,6 +225,16 @@ describe('runWizard, other destinations', () => {
     expect(bodies.map((b) => b.dcl)).toEqual([false, true])
   })
 
+  it('sends the room set with the scene', async () => {
+    const bodies: any[] = []
+    const { api } = fakeApi({ bootstrapWizardScene: async (b: any) => { bodies.push(b); return { sceneId: 's' } } })
+    const options = { style: 'house' as const, wallColor: '#E8E6E1', floorColor: '#B9A68C', ceiling: false, furniture: true }
+    await runWizard(plan({ dcl: null, ar: { name: 'A' }, roomSet: { scanId: 'scan-1', options } }), emptyMemory(), deps(api).deps, () => {})
+    await runWizard(plan({ dcl: null, ar: { name: 'A' } }), emptyMemory(), deps(api).deps, () => {})
+    expect(bodies[0].roomSet).toEqual({ scanId: 'scan-1', options })
+    expect('roomSet' in bodies[1]).toBe(false)
+  })
+
   it('Hyperfy and AR only: no wallet, no deploy', async () => {
     const { api, calls } = fakeApi()
     const mem = emptyMemory()

@@ -3,13 +3,14 @@
  * wall material, a roof kind, the height outer walls are built to, and any
  * extra parts (canopy, awning, sign). Add a style by adding a kit here.
  */
+import type { RoomStyle } from '@virvixr/shared'
 import type { MaterialSpec, MeshPart, V2 } from '../mesh.js'
 import { house } from './house.js'
 import { storefront } from './storefront.js'
 import { plain } from './plain.js'
 import { dollhouse } from './dollhouse.js'
 
-export type RoomStyle = 'house' | 'storefront' | 'plain' | 'dollhouse'
+export type { RoomStyle }
 
 /** Where the set's front door is: the first door in an outer wall. Floor-plan points are in the layout frame. */
 export interface DoorSpot {

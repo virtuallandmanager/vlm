@@ -1,10 +1,10 @@
 'use client'
 import { useEffect, useState, type Dispatch } from 'react'
 import Link from 'next/link'
-import { useApi, type DclWorld, type WizardOptions } from '@/lib/api'
+import { useApi, type DclWorld, type RoomScanSummary, type WizardOptions } from '@/lib/api'
 import { getBrowserWallet, signWalletChallenge } from '@/lib/auth'
 import { wizardErrorMessage } from '@/lib/wizard/run'
-import { normalizeWorldName, shortAddress } from '@/lib/wizard/helpers'
+import { normalizeWorldName, plotLabel, shortAddress } from '@/lib/wizard/helpers'
 import type { WizardAction, WizardState } from '@/lib/wizard/state'
 import { Badge } from '@/components/ui'
 
@@ -37,6 +37,10 @@ export function WhereStep({ state, dispatch, names, reloadNames, options, replac
   const [typedError, setTypedError] = useState('')
   const [checking, setChecking] = useState<string | null>(null)
   const [slots, setSlots] = useState<{ used: number; limit: number | null; hostingAvailable: boolean } | null>(null)
+  const [scans, setScans] = useState<RoomScanSummary[] | null | 'error'>(null)
+  useEffect(() => {
+    api.getRoomScans().then((r) => setScans(r.scans)).catch(() => setScans('error'))
+  }, [])
   const { dcl, hyperfy, ar } = state.destinations
   const wallets = names.status === 'ready' ? names.wallets : []
 
@@ -112,6 +116,8 @@ export function WhereStep({ state, dispatch, names, reloadNames, options, replac
         <input value={state.name} onChange={(e) => dispatch({ type: 'setName', name: e.target.value })}
           placeholder="Name your scene" aria-label="Scene name" required maxLength={120} autoFocus className={inputClass} />
       </label>
+
+      <RoomScanPicker scans={scans} chosen={state.roomSet?.scanId ?? null} dispatch={dispatch} />
 
       <section className="space-y-3 border-t border-gray-800 pt-4">
         <h3 className="text-sm font-medium text-gray-200">Your Decentraland World</h3>
@@ -232,5 +238,44 @@ export function WhereStep({ state, dispatch, names, reloadNames, options, replac
         </div>
       </section>
     </div>
+  )
+}
+
+const metres = (v: number) => `${v.toFixed(1)} m`
+
+/** "Start from a room scan": one of the person's scans fixes the plot and becomes the scene's room. */
+function RoomScanPicker({ scans, chosen, dispatch }: { scans: RoomScanSummary[] | null | 'error'; chosen: string | null; dispatch: Dispatch<WizardAction> }) {
+  if (scans === null) return null
+  return (
+    <section className="space-y-3 border-t border-gray-800 pt-4">
+      <h3 className="text-sm font-medium text-gray-200">Start from a room scan</h3>
+      {scans === 'error' && <p className="text-sm text-gray-500">Your room scans couldn&apos;t be loaded just now.</p>}
+      {scans !== 'error' && scans.length === 0 && (
+        <p className="text-sm text-gray-400">Scanning a room needs the Virvi AR app on a personal Quest.</p>
+      )}
+      {scans !== 'error' && scans.length > 0 && (
+        <ul className="space-y-2" role="radiogroup" aria-label="Your room scans">
+          {scans.map((scan) => {
+            const on = chosen === scan.id
+            const plot = scan.plot
+            const size = `${metres(scan.footprint.maxX - scan.footprint.minX)} × ${metres(scan.footprint.maxZ - scan.footprint.minZ)}`
+            const rooms = `${scan.roomCount} ${scan.roomCount === 1 ? 'room' : 'rooms'}`
+            return (
+              <li key={scan.id}>
+                <button type="button" role="radio" aria-checked={on} disabled={!plot}
+                  onClick={() => (on ? dispatch({ type: 'clearRoomSet' }) : plot && dispatch({ type: 'setRoomSet', scanId: scan.id, plot }))}
+                  className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left text-sm disabled:cursor-not-allowed disabled:opacity-60 ${on ? 'border-blue-400 bg-blue-400/10' : 'border-gray-800 bg-gray-950 hover:border-gray-700'}`}>
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-white">{scan.name}</span>
+                    <span className="block text-xs text-gray-500">{rooms} · {size}</span>
+                  </span>
+                  <span className="shrink-0 text-xs text-gray-400">{plot ? plotLabel(plot) : 'Too big for a plot'}</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
   )
 }

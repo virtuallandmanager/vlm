@@ -3,7 +3,7 @@ import { useCallback } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
 import { requestHeaders } from './request-headers'
-import type { Plot } from '@virvixr/shared'
+import type { Plot, RoomSetOptions } from '@virvixr/shared'
 import type { AuthChain } from '@dcl/crypto'
 import type { ArFileFormat, ArMounting } from './ar'
 import type { Quote, RenderView, StudioDesign, StudioDetail, StudioKind, StudioUpload, StudioUsage } from './studio'
@@ -40,6 +40,31 @@ export interface WizardSceneBody {
   items: Array<{ assetId: string; x: number; z: number; rotationY: number }>
   /** True with a Decentraland destination; false (Hyperfy/AR only) skips the per-parcel budget. */
   dcl: boolean
+  /** Start from one of the caller's room scans; `plot` must be the scan's size. */
+  roomSet?: { scanId: string; options: RoomSetOptions }
+}
+
+/** One of the caller's room scans. `plot` is the smallest plot that holds it, null when none does. */
+export interface RoomScanSummary {
+  id: string
+  name: string
+  source: 'quest-mruk' | 'ios-roomplan'
+  roomCount: number
+  footprint: { minX: number; minZ: number; maxX: number; maxZ: number }
+  plot: Plot | null
+  createdAt: string
+}
+
+/** The preview GLB of a scan with these options (the route needs the bearer header: fetch it, don't link it). */
+export function roomScanPreviewUrl(id: string, options: RoomSetOptions): string {
+  const q = new URLSearchParams({
+    style: options.style,
+    wallColor: options.wallColor,
+    floorColor: options.floorColor,
+    ceiling: String(options.ceiling),
+    furniture: String(options.furniture),
+  })
+  return `${API_URL}/api/room-scans/${encodeURIComponent(id)}/preview.glb?${q}`
 }
 
 /** A World as the server describes it; `footprint` is the parcels of its live scene(s), null when it has none. */
@@ -386,6 +411,24 @@ export function useApi() {
     /** 400 (incl. `unmeasured_asset`, `invalid_plot`), 403 `scene_limit_reached`, 422 `over_budget` ({ message, triangles, limit } on err.body). */
     bootstrapWizardScene: (data: WizardSceneBody) =>
       apiFetch<{ sceneId: string }>('/api/wizard/scenes', { method: 'POST', body: JSON.stringify(data) }),
+
+    // Room scans and room sets
+    getRoomScans: () => apiFetch<{ scans: RoomScanSummary[] }>('/api/room-scans'),
+    roomScanPreviewUrl,
+    /** The preview GLB and its triangle count (`X-Triangles`). 422 `too_big`. */
+    getRoomScanPreview: async (id: string, options: RoomSetOptions, signal?: AbortSignal): Promise<{ blob: Blob; triangles: number | null }> => {
+      const res = await fetch(roomScanPreviewUrl(id, options), { headers: requestHeaders(token, {}), signal })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        dropDeadSession(res.status, err)
+        throw Object.assign(new Error(err.error || `API error ${res.status}`), { status: res.status, body: err })
+      }
+      const triangles = Number(res.headers.get('x-triangles'))
+      return { blob: await res.blob(), triangles: res.headers.has('x-triangles') && Number.isFinite(triangles) ? triangles : null }
+    },
+    /** A private library asset made from a scan. 422 `too_big`. */
+    createRoomSetAsset: (data: { scanId: string; name: string; options: RoomSetOptions }) =>
+      apiFetch<{ asset: any; set: any }>('/api/room-sets/asset', { method: 'POST', body: JSON.stringify(data) }),
 
     // Decentraland Worlds
     getDclNames: () => apiFetch<{ wallets: Array<{ address: string; names: DclWorld[] }> }>('/api/dcl/names'),
