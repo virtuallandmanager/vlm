@@ -2,6 +2,7 @@ package io.virvi.ar.roomscan
 
 import io.virvi.ar.Vec3
 import io.virvi.ar.api.BuilderCall
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.JsonObject
@@ -16,7 +17,11 @@ import org.junit.Test
 class RoomScanFlowTest {
   private var ui = RoomScanUi()
   private var rooms = listOf(room("a"))
-  private var answer: BuilderCall<RoomScanUpload> = BuilderCall.Ok(RoomScanUpload.Uploaded("scan-1", "My room"))
+  /** The server's answer; null echoes the sent name back as uploaded. */
+  private var answer: BuilderCall<RoomScanUpload>? = null
+  /** When set, the upload waits for it (an answer that comes later). */
+  private var pending: CompletableDeferred<BuilderCall<RoomScanUpload>>? = null
+  private var mapFails = false
   private val uploads = ArrayList<Triple<String, String, JsonObject>>()
   private var setUps = 0
 
@@ -29,7 +34,7 @@ class RoomScanFlowTest {
           read = { RoomScanInput(rooms) },
           upload = { spaceId, name, layout ->
             uploads += Triple(spaceId, name, layout)
-            answer
+            pending?.await() ?: answer ?: BuilderCall.Ok(RoomScanUpload.Uploaded("scan-1", name))
           },
           spaceId = { "sp1" },
           setUpSpace = { done ->
@@ -37,6 +42,7 @@ class RoomScanFlowTest {
             done()
           },
           show = { ui = it },
+          map = { if (mapFails) error("bad reading") else RoomScanMapper.toLayoutJson(it) },
       )
 
   @Test
@@ -64,7 +70,7 @@ class RoomScanFlowTest {
     assertEquals("sp1", spaceId)
     assertEquals("Studio", name)
     assertEquals(1, layout["version"]!!.jsonPrimitive.int)
-    assertEquals(RoomScanCopy.uploaded("My room"), ui.status)
+    assertEquals(RoomScanCopy.uploaded("Studio"), ui.status)
     assertFalse(ui.canUpload)
   }
 
@@ -110,9 +116,27 @@ class RoomScanFlowTest {
 
   @Test
   fun `closing hides the panel and drops a late answer`() {
+    val late = CompletableDeferred<BuilderCall<RoomScanUpload>>()
+    pending = late
     flow.open()
+    flow.upload()
+    assertEquals(RoomScanCopy.UPLOADING, ui.status)
     flow.close()
     assertFalse(ui.open)
+    late.complete(BuilderCall.Ok(RoomScanUpload.Uploaded("scan-1", "My room")))
+    assertEquals(1, uploads.size) // the upload did go out and was answered
+    assertFalse(ui.open)
     assertNull(ui.status)
+    assertFalse(ui.uploaded)
+  }
+
+  @Test
+  fun `a scan the mapper can't map shows the invalid-scan line instead of throwing`() {
+    mapFails = true
+    flow.open()
+    flow.upload()
+    assertEquals(RoomScanCopy.INVALID_SCAN, ui.status)
+    assertTrue(uploads.isEmpty())
+    assertFalse(ui.uploading)
   }
 }

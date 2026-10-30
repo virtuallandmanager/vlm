@@ -34,6 +34,7 @@ class RoomScanFlow(
     private val spaceId: () -> String?,
     private val setUpSpace: (done: () -> Unit) -> Unit,
     private val show: (RoomScanUi) -> Unit,
+    private val map: (RoomScanInput) -> JsonObject = RoomScanMapper::toLayoutJson,
 ) {
   private var ui = RoomScanUi()
   private var scan: RoomScanInput? = null
@@ -62,9 +63,17 @@ class RoomScanFlow(
     if (!ui.canUpload || space == null) return
     val name = ui.name.trim()
     val g = generation
+    // The mapper drops non-finite readings; anything else it can't map is shown, never thrown.
+    val layout =
+        try {
+          map(input)
+        } catch (e: RuntimeException) {
+          set(ui.copy(status = RoomScanCopy.INVALID_SCAN))
+          return
+        }
     set(ui.copy(uploading = true, status = RoomScanCopy.UPLOADING))
     scope.launch {
-      val r = upload(space, name, RoomScanMapper.toLayoutJson(input))
+      val r = upload(space, name, layout)
       if (g != generation) return@launch
       set(
           when (r) {

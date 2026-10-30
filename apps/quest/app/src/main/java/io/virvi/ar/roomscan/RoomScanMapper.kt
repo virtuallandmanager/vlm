@@ -88,10 +88,31 @@ object RoomScanMapper {
   const val MIN_CEILING_M = 1.8
   const val MAX_CEILING_M = 8.0
 
+  /**
+   * The layout. A bad MRUK reading (NaN or infinite) never reaches it: a wall, opening or volume with one is left out,
+   * and a room whose floor, ceiling or floor pose has one is dropped (the rest are labelled in order).
+   */
   fun toLayoutJson(input: RoomScanInput): JsonObject = buildJsonObject {
     put("version", 1)
-    put("rooms", JsonArray(input.rooms.mapIndexed { i, r -> room(i, r) }))
+    put("rooms", JsonArray(input.rooms.mapNotNull(::finiteRoom).mapIndexed { i, r -> room(i, r) }))
   }
+
+  /** [r] with its non-finite walls, openings and volumes left out, or null when the room itself isn't finite. */
+  private fun finiteRoom(r: ScanRoom): ScanRoom? {
+    val roomOk =
+        fin(r.floorY, r.ceilingY) && fin(r.floorPose.position) && r.floorPose.yaw.isFinite() &&
+            r.floorPolygon.all { fin(it.first, it.second) }
+    if (!roomOk) return null
+    return r.copy(
+        walls = r.walls.filter { fin(it.a.first, it.a.second, it.b.first, it.b.second, it.bottom, it.top) },
+        openings = r.openings.filter { fin(it.center) && fin(it.width, it.height, it.bottom) },
+        volumes = r.volumes.filter { fin(it.center) && fin(it.size) && it.yaw.isFinite() },
+    )
+  }
+
+  private fun fin(vararg v: Float) = v.all { it.isFinite() }
+
+  private fun fin(v: Vec3) = v.x.isFinite() && v.y.isFinite() && v.z.isFinite()
 
   private fun room(index: Int, r: ScanRoom): JsonObject {
     val openings = r.walls.associate { it.id to ArrayList<JsonObject>() }
@@ -198,6 +219,8 @@ object RoomScanMapper {
   private fun m(v: Double) = round(v, 1e4)
 
   private fun round(v: Double, scale: Double): Double {
+    // Inputs are finite (see [finiteRoom]); roundToLong would throw on NaN and clip infinities.
+    require(v.isFinite()) { "non-finite value in a room scan" }
     val r = (v * scale).roundToLong() / scale
     return if (r == 0.0) 0.0 else r
   }

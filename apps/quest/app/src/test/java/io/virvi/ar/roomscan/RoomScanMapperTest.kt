@@ -122,6 +122,45 @@ class RoomScanMapperTest {
   }
 
   @Test
+  fun `a volume with a NaN reading is dropped, the rest kept`() {
+    val bad = ScanVolume("TABLE", Vec3(Double.NaN, 0.4, 2.0), Vec3(1.0, 0.8, 1.0), yaw = 0.0)
+    val badYaw = ScanVolume("BED", Vec3(1.0, 0.4, 2.0), Vec3(2.0, 0.6, 1.6), yaw = Double.POSITIVE_INFINITY)
+    val good = ScanVolume("COUCH", Vec3(1.0, 0.4, 2.0), Vec3(2.0, 0.8, 0.9), yaw = 0.0)
+    val objects = RoomScanMapper.toLayoutJson(RoomScanInput(listOf(room(volumes = listOf(bad, badYaw, good))))).rooms().single()["objects"]!!.jsonArray
+    assertEquals(listOf("couch"), objects.map { it.jsonObject["label"]!!.jsonPrimitive.content })
+  }
+
+  @Test
+  fun `non-finite walls and openings are dropped`() {
+    val r = room(openings = listOf(ScanOpening(OpeningKind.DOOR, "room-1-w0", Vec3(1.45, 1.05, 0.0), width = Float.NaN, height = 2.1f, bottom = 0f)))
+    val walls = r.walls.toMutableList().also { it[2] = it[2].copy(top = Float.NaN) }
+    val out = RoomScanMapper.toLayoutJson(RoomScanInput(listOf(r.copy(walls = walls)))).rooms().single()["walls"]!!.jsonArray
+    assertEquals(3, out.size)
+    assertTrue(out.all { it.jsonObject["openings"]!!.jsonArray.isEmpty() })
+  }
+
+  @Test
+  fun `a room with a NaN floor height, ceiling, pose or outline is dropped`() {
+    val good = room(uuid = "good")
+    val rooms =
+        RoomScanMapper.toLayoutJson(
+                RoomScanInput(
+                    listOf(
+                        room(uuid = "nan-floor").copy(floorY = Float.NaN),
+                        good,
+                        room(uuid = "inf-ceiling").copy(ceilingY = Float.POSITIVE_INFINITY),
+                        room(uuid = "nan-pose").copy(floorPose = ScanPose(Vec3(Double.NaN, 0.0, 0.0), 0.0)),
+                        room(uuid = "nan-yaw").copy(floorPose = ScanPose(Vec3(0.0, 0.0, 0.0), Double.NaN)),
+                        room(uuid = "nan-outline").copy(floorPolygon = listOf(0f to 0f, Float.NaN to 0f, 1f to 1f)),
+                    ),
+                ),
+            )
+            .rooms()
+    assertEquals(listOf("good"), rooms.map { it["anchor"]!!.jsonObject["roomId"]!!.jsonPrimitive.content })
+    assertEquals("Room 1", rooms.single()["label"]!!.jsonPrimitive.content)
+  }
+
+  @Test
   fun `ceiling height is the ceiling above the floor, kept within 1_8 to 8 m`() {
     val base = room(y = 0.3f)
     val rooms =
