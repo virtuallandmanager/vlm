@@ -4,7 +4,7 @@ import {
   type FinalizedRevision, type Quote, type QuoteLine, type StudioDetail, type StudioPiece, type StudioEvent, type StudioProposal,
 } from './studio'
 import { formatBytesShort, uploadProblem } from './studio'
-import { HELD_REPORT_COPY, PAUSED_NOTE, reportCopy } from './studio'
+import { HELD_REPORT_COPY, PAUSED_NOTE, flagSummary, reportCopy, type AdminStudioFlag } from './studio'
 import { AGENTS, designBadge, designIdFromPath, formatCents, refreshDue, refusalMessage, relativeTime, untilReset, usageLine, type StudioDesign, type StudioUsage } from './studio'
 
 const NOW = new Date('2026-10-29T21:55:00Z')
@@ -459,5 +459,18 @@ describe('the scope guard on the page', () => {
     const f = (report: FinalizedRevision['report']): FinalizedRevision => ({ revision: 2, kind: 'revision', status: 'ready', amountCents: 1500, paymentId: 'p', paidAt: NOW.toISOString(), report, reportableUntil: null })
     expect(revisionActions(f({ status: 'in_review', createdAt: NOW.toISOString() }), NOW).report).toBe('done')
     expect(revisionActions(f({ status: 'declined', createdAt: NOW.toISOString() }), NOW).report).toBe('done')
+  })
+})
+
+describe('flagSummary', () => {
+  const event = (category: string, createdAt: string) => ({ by: 'check' as const, category, note: 'n', message: 'm', designId: 'd', createdAt })
+  it('counts the turn-downs and names their kinds', () => {
+    const flag: AdminStudioFlag = {
+      id: 'f', status: 'open', openedAt: NOW.toISOString(), closedAt: null, paused: false,
+      user: { id: 'u', email: 'a@b.test', plan: 'free' },
+      events: [event('chat', at(0)), event('coding', at(-MIN)), event('coding', '2026-10-28T10:00:00Z')],
+    }
+    expect(flagSummary(flag)).toBe('3 turn-downs since Oct 28 · general chat, coding help')
+    expect(flagSummary({ ...flag, events: [event('other', at(0))] })).toBe('1 turn-down since Oct 29 · other work')
   })
 })

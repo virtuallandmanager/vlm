@@ -6,7 +6,7 @@ import { requestHeaders } from './request-headers'
 import type { Plot } from '@virvixr/shared'
 import type { AuthChain } from '@dcl/crypto'
 import type { ArFileFormat, ArMounting } from './ar'
-import type { Quote, RenderView, StudioDesign, StudioDetail, StudioKind, StudioUpload, StudioUsage } from './studio'
+import type { AdminMistakeReport, AdminStudioFlag, Quote, RenderView, StudioDesign, StudioDetail, StudioKind, StudioUpload, StudioUsage } from './studio'
 import type { ArDeviceKind, ArDeviceSummary, ArPairApprovalInfo, ArFloorView, ArMarkerView, ArSpaceView, AdContent, AdAudience, AdminAd, AdminAdSpace, OwnerAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyPairingSummary, HyperfyWorldSummary } from '@virvixr/shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
@@ -498,6 +498,16 @@ export function useApi() {
     getAdminCatalogPacks: () => apiFetch<{ packs: CatalogPack[] }>('/api/admin/catalog/packs'),
     setCatalogPackEnabled: (id: string, enabled: boolean) =>
       apiFetch<{ pack: CatalogPack }>(`/api/admin/catalog/packs/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+
+    // Studio flags (admin)
+    getAdminStudioFlags: (status: 'open' | 'closed') => apiFetch<{ flags: AdminStudioFlag[] }>(`/api/admin/studio/flags?status=${status}`),
+    dismissAdminStudioFlag: (id: string) => apiFetch<void>(`/api/admin/studio/flags/${id}/dismiss`, { method: 'POST' }),
+    pauseStudioUser: (userId: string) => apiFetch<void>(`/api/admin/studio/users/${userId}/pause`, { method: 'POST' }),
+    resumeStudioUser: (userId: string) => apiFetch<void>(`/api/admin/studio/users/${userId}/pause`, { method: 'DELETE' }),
+    getAdminStudioReports: () => apiFetch<{ reports: AdminMistakeReport[] }>('/api/admin/studio/reports'),
+    approveAdminStudioReport: (id: string) =>
+      apiFetch<{ status: 'refunded'; refundCents: number }>(`/api/admin/studio/reports/${id}/approve`, { method: 'POST' }),
+    declineAdminStudioReport: (id: string) => apiFetch<void>(`/api/admin/studio/reports/${id}/decline`, { method: 'POST' }),
 
     // Ads (admin)
     getAdminAdvertiserLeads: () => apiFetch<{ leads: AdminAdvertiserLead[] }>('/api/admin/advertiser-leads'),

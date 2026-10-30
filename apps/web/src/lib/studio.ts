@@ -414,3 +414,44 @@ export function formatBytesShort(n: number): string {
   if (n < MB) return `${Math.round(n / 1024)} KB`
   return `${(n / MB).toFixed(1)} MB`
 }
+
+/** A flagged account on the admin Studio flags page (the server's `listFlags`). */
+export type AdminStudioFlag = {
+  id: string
+  status: 'open' | 'dismissed' | string
+  openedAt: string
+  closedAt: string | null
+  user: { id: string; email: string | null; plan: string }
+  paused: boolean
+  events: { by: 'check' | 'agent' | string; category: string; note: string; message: string; designId: string | null; createdAt: string }[]
+}
+
+/** A mistake report past the piece's instant refunds, waiting for the owner (the server's `heldReports`). */
+export type AdminMistakeReport = {
+  id: string
+  text: string
+  refundCents: number
+  createdAt: string
+  user: { id: string; email: string | null }
+  designId: string
+  piece: { category: string; name: string }
+  revisionNumber: number
+  request: string
+  before: string | null // a signed frame of the revision before, and of this one
+  after: string | null
+}
+
+/** The words the user sees for each kind of turn-down (apps/server/src/studio/scope.ts CATEGORY_WORDS). */
+export const SCOPE_CATEGORY_WORDS: Record<string, string> = {
+  coding: 'coding help', writing: 'writing', research: 'research', chat: 'general chat', other: 'other work',
+}
+
+const dayFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+
+/** "3 turn-downs since Oct 28 · general chat, coding help": its events, the oldest one's day, and their kinds. */
+export function flagSummary(flag: AdminStudioFlag): string {
+  const n = flag.events.length
+  const oldest = flag.events.reduce((min, e) => (e.createdAt < min ? e.createdAt : min), flag.events[0]?.createdAt ?? flag.openedAt)
+  const kinds = [...new Set(flag.events.map((e) => SCOPE_CATEGORY_WORDS[e.category] ?? e.category))]
+  return `${n} turn-down${n === 1 ? '' : 's'} since ${dayFmt.format(new Date(oldest))}${kinds.length ? ` · ${kinds.join(', ')}` : ''}`
+}
