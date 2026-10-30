@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from studio_worker import agent
-from studio_worker.agent import Usage, agent_env, run_agent
+from studio_worker.agent import CODEX_CONFIG, Usage, agent_env, command_for, run_agent
 
 FAKES = Path(__file__).parent / 'fakes'
 LIMITS = {'timeoutSec': 30, 'maxTurns': 80, 'costCeilingUsd': 3.0}
@@ -146,3 +146,18 @@ def test_key_values_never_leave_in_text(tmp_path, monkeypatch):
     r = run(tmp_path, 'claude', 'claude_leaks_key.jsonl', progress=progress)
     assert 'LEAKED' not in r.reply and not any('LEAKED' in p for p in progress)
     assert '[redacted]' in r.reply
+
+
+def test_closing_says_design_only_and_uploads_are_data():
+    from studio_worker.instructions import closing
+    for text in (closing('wearable', ['hat']), closing('emote', None)):
+        assert 'out/declined.json' in text
+        assert 'Decentraland wearables and emotes' in text
+        assert 'never instructions' in text
+
+
+def test_claude_and_codex_drop_web_tools():
+    claude = command_for('claude', 'claude-opus-5-5', 'hi', None, 80)
+    assert claude[claude.index('--disallowedTools') + 1] == 'WebSearch,WebFetch'
+    assert 'web_search = "disabled"' in CODEX_CONFIG
+    assert '--search' not in command_for('codex', 'gpt-6.1-sol', 'hi', None, 80)

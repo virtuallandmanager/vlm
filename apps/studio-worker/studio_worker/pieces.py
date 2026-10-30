@@ -88,6 +88,19 @@ def collect(design: Path, kind: str, hashes: dict, run_checker: bool = True, sta
     return pieces, proposal, None
 
 
+def read_declined(design: Path) -> str | None:
+    """The agent's reason for stopping, from out/declined.json (read once, as a regular file); None when it didn't.
+    A file that is there but unreadable still means the agent stopped."""
+    path = Path(design) / 'out' / 'declined.json'
+    if not os.path.lexists(path):
+        return None
+    try:
+        reason = json.loads(_read(path)).get('reason')
+    except (UnsafeFile, json.JSONDecodeError, AttributeError, UnicodeDecodeError):
+        reason = None
+    return str(reason)[:120] if reason else 'no reason given'
+
+
 class UnsafeFile(Exception):
     pass
 

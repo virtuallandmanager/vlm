@@ -93,6 +93,7 @@ def prices() -> dict:
 KEY_PLACEHOLDER = 'studio-proxy'
 ANTHROPIC_BASE_URL = 'http://127.0.0.1:8890'
 CODEX_CONFIG = """model_provider = "studio"
+web_search = "disabled"
 
 [model_providers.studio]
 name = "studio"
@@ -115,7 +116,8 @@ def agent_env(agent: str, base: Mapping[str, str], design: Path = DESIGN) -> dic
 def command_for(agent: str, model: str, prompt: str, session: str | None, max_turns: int) -> list[str]:
     if agent == 'claude':
         return ['claude', '-p', prompt, '--output-format', 'stream-json', '--verbose', '--max-turns', str(max_turns),
-                '--model', model, '--dangerously-skip-permissions'] + (['--resume', session] if session else [])
+                '--model', model, '--dangerously-skip-permissions', '--disallowedTools', 'WebSearch,WebFetch'] + \
+            (['--resume', session] if session else [])
     return ['codex', 'exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox',
             '-m', model] + (['resume', session, prompt] if session else [prompt])
 

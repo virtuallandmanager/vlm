@@ -96,6 +96,9 @@ Render frames are the only files the browser ever receives. A `viewKey` is `<mod
   formats into PNG); models are GLB, VRM, FBX, OBJ, STL or .blend. The worker reads each through `inputs` into the
   workspace's `uploads/<name>` before the agent runs, replacing what was there, and the prompt names them. The folder
   is never saved with the workspace.
+- `check`, on a prompt job: true when `prompt` is the user's own words. The worker then runs the scope check (Claude
+  Haiku, `studio_worker/scope.py`) before anything else, and an off-topic message ends the job as `off_topic` without
+  running the agent. False or missing for the server's own text (Continue, fixing the checks), which is never checked.
 - `render`, on a render job: `{"categories": ["hat"], "bodyShape": "male"|"female", "outfit": "default"|"outfit-2"|
   "outfit-3", "emote": null|"idle"|"wave"|"dance"|"clap"|"walk"}`. A wearable view is a 36-frame spin; an emote
   design's view is 36 frames through its animation.
@@ -145,7 +148,8 @@ effort: one that fails to send is dropped.
       "renders": {"spin-male-default": 36}
     }
   ],
-  "error": null
+  "error": null,
+  "scope": null
 }
 ```
 
@@ -156,6 +160,8 @@ effort: one that fails to send is dropped.
 | `ok` | at least one piece changed, and every changed piece rendered |
 | `needs_input` | the agent wrote a slot proposal (`proposal` is set); nothing was rendered |
 | `no_change` | the agent finished without changing any piece's GLBs |
+| `off_topic` | the scope check turned the message down: the agent didn't run and nothing was saved. `scope` is set; `costUsd` is the check's |
+| `declined` | the agent wrote `out/declined.json` and changed no piece: it stopped on a request that isn't design work. `scope` is set |
 | `ceiling` | Claude was stopped at the cost ceiling |
 | `timeout` | the agent was stopped at the time limit |
 | `error` | anything else; `error` says what. Includes a wrong output layout (GLBs outside `out/<category>/`, a piece file that is a link), a failed render, and a workspace that couldn't be saved. |
@@ -166,6 +172,9 @@ effort: one that fails to send is dropped.
   the files Virvi already has for it stand. A changed piece is uploaded only once it has rendered and no proposal is
   pending; until then it stays "changed", so a later prompt uploads it. Files are never uploaded by a job whose
   result is not `ok`, apart from a render failure on another piece of the same job.
+- `scope`: `{"by": "check" | "agent", "category": "coding" | "writing" | "research" | "chat" | "other", "note": str}`
+  on `off_topic` and `declined`, null otherwise. `note` (at most 120 characters) is for the owner's log only, never
+  shown to the user. `costUsd` on any checked prompt includes the check's cost.
 - `changeKind`, from the agent: `"new"`, `"fix"` (a fix to a published piece) or `"design"` (a design change).
 - `checker.pass` false means the skills checker found a FAIL. The piece is still reported.
 - `costUsd` and `tokens` are this prompt's share only, even when the agent resumed a session. They are null for a

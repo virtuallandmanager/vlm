@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"sess-no","model":"claude-opus-5-5"}
+{"write": "out/declined.json", "text": "{\"reason\": \"not a design\"}"}
+{"type":"assistant","message":{"id":"msg_1","model":"claude-opus-5-5","content":[{"type":"text","text":"I only build wearables and emotes."}],"usage":{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":100,"output_tokens":10}},"session_id":"sess-no"}
+{"type":"result","subtype":"success","is_error":false,"num_turns":1,"result":"I only build wearables and emotes.","session_id":"sess-no","total_cost_usd":0.002,"modelUsage":{"claude-opus-5-5":{"inputTokens":10,"outputTokens":10,"cacheReadInputTokens":0,"cacheCreationInputTokens":100,"costUSD":0.002}}}
