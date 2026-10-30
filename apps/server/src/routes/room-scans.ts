@@ -1,4 +1,3 @@
-import { plotForLayout } from '../room-scan/plot.js'
 import type { FastifyInstance } from 'fastify'
 import { and, desc, eq } from 'drizzle-orm'
 import { layoutFootprint, validateLayout } from '@virvixr/shared'
@@ -6,6 +5,7 @@ import { db } from '../db/connection.js'
 import { arDevices, roomScans } from '../db/schema.js'
 import { authenticate } from '../middleware/auth.js'
 import { boundScene, isUuid } from '../auth/scene-from.js'
+import { plotForLayout } from '../room-scan/plot.js'
 
 /**
  * Room scans: a personal headset uploads its scanned layout (layout JSON only, never images); the owner lists, reads

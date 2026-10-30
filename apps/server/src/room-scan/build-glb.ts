@@ -7,8 +7,8 @@
 import { Document, NodeIO, type Material, type Node } from '@gltf-transform/core'
 import { type RoomScanLayout } from '@virvixr/shared'
 import { glbStats } from '../catalog/glb-stats.js'
-import { applyNudges, mergeSharedWalls, MERGE_MAX_ANGLE_DEG, MERGE_MAX_GAP_M, MERGE_MIN_OVERLAP_M, wallPieces, wallsFromOutline, type GeometryWall, type Nudge } from './geometry.js'
-import { add, addPiece, dot, joinWalls, outerShellBounds, PLOT_MARGIN_M, prepareScan, scale, sub, unit, WALL_THICKNESS_M, type WallMeshes } from './shell.js'
+import { MERGE_MAX_ANGLE_DEG, MERGE_MAX_GAP_M, MERGE_MIN_OVERLAP_M, type GeometryWall, type Nudge } from './geometry.js'
+import { add, buildWallShell, dot, PLOT_MARGIN_M, prepareScan, scale, shellBounds, sub, unit, WALL_THICKNESS_M } from './shell.js'
 import { MeshData, at, cleanPolygon, edgeNormal, horizontalPolygon, offsetPolygonEdges, prism, yawBox, type MaterialSpec, type MeshPart, type V2, type V3 } from './mesh.js'
 import { ROOM_STYLES, STYLE_KITS, type DoorSpot, type RoomStyle, type StyleKit } from './styles/index.js'
 
@@ -158,47 +158,25 @@ export async function buildRoomSetGlb(
   const rooms = scan.rooms
   const floorYOf = (i: number) => rooms[i].floorY
   const outerHeightOf = (i: number) => Math.min(rooms[i].ceilingHeight, kit.outerWallHeight(rooms[i].ceilingHeight))
-  const walls = mergeSharedWalls(scan)
+  const wallShell = buildWallShell(scan, kit)
+  const { walls, doorWall, meshes: wm } = wallShell
 
   // The front door: the first door in an outer wall.
   let door: DoorSpot | undefined
-  let doorWall = -1
-  walls.forEach((w, k) => {
-    if (door || w.shared) return
-    const o = w.openings.find(op => op.kind === 'door')
-    if (!o) return
+  if (doorWall >= 0) {
+    const w = walls[doorWall]
+    const o = w.openings.find(op => op.kind === 'door')!
     const { dir } = unit(w.a, w.b)
-    doorWall = k
     door = {
       center: add(add(w.a, scale(dir, o.offset + o.width / 2)), scale(w.normal, T)),
       along: dir, normal: w.normal, width: o.width,
       top: floorYOf(w.roomIndex) + o.sill + o.height,
       wallTop: floorYOf(w.roomIndex) + outerHeightOf(w.roomIndex),
     }
-  })
-
-  // Walls, cut around openings, with closed corners.
-  const wm: WallMeshes = { interior: new MeshData(), outer: new MeshData(), doorWall: new MeshData(), collider: new MeshData() }
-  const { ends, posts } = joinWalls(walls)
-  walls.forEach((w, k) => {
-    const pieces = wallPieces([w], i => (w.shared ? rooms[i].ceilingHeight : outerHeightOf(i)), floorYOf)
-    const { dir, len } = unit(w.a, w.b)
-    const floorBase = Math.min(floorYOf(w.roomIndex), w.otherRoomIndex === undefined ? Infinity : floorYOf(w.otherRoomIndex))
-    const outer = k === doorWall && kit.doorWallMaterial ? wm.doorWall : wm.outer
-    for (const p of pieces) {
-      const atStart = Math.abs(dot(sub(p.a, w.a), dir)) < EPS
-      const atEnd = Math.abs(dot(sub(p.b, w.a), dir) - len) < EPS
-      addPiece(wm, p, w, atStart ? ends[k][0] : null, atEnd ? ends[k][1] : null, floorBase, outer)
-    }
-  })
-  for (const post of posts) {
-    const y0 = floorYOf(post.roomIndex), y1 = y0 + outerHeightOf(post.roomIndex)
-    prism(wm.outer, post.poly, y0, y1, { bottom: false, side: i => i === 1 || i === 2 })
-    prism(wm.collider, post.poly, y0, y1)
   }
 
   // Where the outer shell starts, for the plot offset and the pitched roof.
-  const shell = outerShellBounds(layout, nudges)
+  const shell = shellBounds(wallShell, scan)
 
   // Floors, ceiling, roof.
   const floor = new MeshData(), floorCollider = new MeshData(), ceiling = new MeshData(), roof = new MeshData(), gables = new MeshData()

@@ -7,7 +7,7 @@
 import { layoutFootprint, type RoomScanLayout } from '@virvixr/shared'
 import { applyNudges, mergeSharedWalls, MERGE_MAX_GAP_M, wallPieces, wallsFromOutline, type GeometryWall, type Nudge, type WallPiece } from './geometry.js'
 import { MeshData, at, prism, type V2, type V3 } from './mesh.js'
-import { STYLE_KITS } from './styles/index.js'
+import { STYLE_KITS, type StyleKit } from './styles/index.js'
 
 /** Wall thickness, metres. */
 export const WALL_THICKNESS_M = 0.12
@@ -118,38 +118,62 @@ export function addPiece(m: WallMeshes, p: WallPiece, wall: GeometryWall, startE
   prism(m.collider, [A0, B0, B1, A1], y0, y1)
 }
 
-
 export interface ShellBounds { minX: number; minZ: number; maxX: number; maxZ: number }
 
+export interface WallShell {
+  /** The merged walls the meshes were built from. */
+  walls: GeometryWall[]
+  /** Index into `walls` of the front-door wall (the first outer wall with a door), or -1. */
+  doorWall: number
+  meshes: WallMeshes
+}
+
 /**
- * Outer bounds (x, z) of the wall shell the generator builds: every wall
- * vertex and corner post, so rotated or angled rooms count their mitred
- * outer corners. Pure and synchronous; independent of the style.
+ * Builds every wall of a prepared scan as boxes with closed corners, cut
+ * around openings, plus the convex corner posts. The one place walls are
+ * built: the generator adds its style parts on top, and the plot fitter
+ * reads the bounds.
  */
-export function outerShellBounds(layout: RoomScanLayout, nudges?: Nudge[]): ShellBounds {
-  const scan = prepareScan(layout, nudges)
+export function buildWallShell(scan: RoomScanLayout, kit: StyleKit): WallShell {
   const rooms = scan.rooms
-  const kit = STYLE_KITS.plain
   const outerHeightOf = (i: number) => Math.min(rooms[i].ceilingHeight, kit.outerWallHeight(rooms[i].ceilingHeight))
   const floorYOf = (i: number) => rooms[i].floorY
   const walls = mergeSharedWalls(scan)
-  const wm: WallMeshes = { interior: new MeshData(), outer: new MeshData(), doorWall: new MeshData(), collider: new MeshData() }
+  const doorWall = walls.findIndex(w => !w.shared && w.openings.some(op => op.kind === 'door'))
+  const meshes: WallMeshes = { interior: new MeshData(), outer: new MeshData(), doorWall: new MeshData(), collider: new MeshData() }
   const { ends, posts } = joinWalls(walls)
   walls.forEach((w, k) => {
     const pieces = wallPieces([w], i => (w.shared ? rooms[i].ceilingHeight : outerHeightOf(i)), floorYOf)
     const { dir, len } = unit(w.a, w.b)
     const floorBase = Math.min(floorYOf(w.roomIndex), w.otherRoomIndex === undefined ? Infinity : floorYOf(w.otherRoomIndex))
+    const outer = k === doorWall && kit.doorWallMaterial ? meshes.doorWall : meshes.outer
     for (const p of pieces) {
       const atStart = Math.abs(dot(sub(p.a, w.a), dir)) < EPS
       const atEnd = Math.abs(dot(sub(p.b, w.a), dir) - len) < EPS
-      addPiece(wm, p, w, atStart ? ends[k][0] : null, atEnd ? ends[k][1] : null, floorBase, wm.outer)
+      addPiece(meshes, p, w, atStart ? ends[k][0] : null, atEnd ? ends[k][1] : null, floorBase, outer)
     }
   })
   for (const post of posts) {
-    const y0 = floorYOf(post.roomIndex)
-    prism(wm.outer, post.poly, y0, y0 + outerHeightOf(post.roomIndex), { bottom: false, side: i => i === 1 || i === 2 })
+    const y0 = floorYOf(post.roomIndex), y1 = y0 + outerHeightOf(post.roomIndex)
+    prism(meshes.outer, post.poly, y0, y1, { bottom: false, side: i => i === 1 || i === 2 })
+    prism(meshes.collider, post.poly, y0, y1)
   }
-  return boundsOf([wm.interior, wm.outer, wm.doorWall], scan)
+  return { walls, doorWall, meshes }
+}
+
+/** Outer bounds (x, z) of a built wall shell; the footprint plus the wall thickness when there are no walls. */
+export function shellBounds(shell: WallShell, scan: RoomScanLayout): ShellBounds {
+  return boundsOf([shell.meshes.interior, shell.meshes.outer, shell.meshes.doorWall], scan)
+}
+
+/**
+ * Outer bounds of the shell the generator builds, mitred corners included.
+ * Pure and synchronous; the same walls and corners as every style, at the
+ * plain style's heights.
+ */
+export function outerShellBounds(layout: RoomScanLayout, nudges?: Nudge[]): ShellBounds {
+  const scan = prepareScan(layout, nudges)
+  return shellBounds(buildWallShell(scan, STYLE_KITS.plain), scan)
 }
 
 function boundsOf(meshes: MeshData[], scan: RoomScanLayout): ShellBounds {

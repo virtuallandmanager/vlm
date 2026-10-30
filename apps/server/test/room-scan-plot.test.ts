@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
+import { NodeIO } from '@gltf-transform/core'
+import { getBounds } from '@gltf-transform/functions'
 import type { RoomScanLayout, ScannedRoom } from '@virvixr/shared'
-import { buildRoomSetGlb, DEFAULT_ROOM_SET_OPTIONS } from '../src/room-scan/build-glb.js'
+import { buildRoomSetGlb, DEFAULT_ROOM_SET_OPTIONS, type RoomStyle } from '../src/room-scan/build-glb.js'
 import { wallsFromOutline } from '../src/room-scan/geometry.js'
 import { plotForLayout } from '../src/room-scan/plot.js'
 import { outerShellBounds } from '../src/room-scan/shell.js'
@@ -42,4 +44,33 @@ describe('plotForLayout', () => {
     expect(outerShellBounds(wide).maxX - outerShellBounds(wide).minX).toBeGreaterThan(15.0)
     expect(plotForLayout(wide)?.width).toBe(2)
   })
+})
+
+describe('outerShellBounds parity with the generator', () => {
+  /** Two 4 x 3 rooms sharing a wall, with a front door on the first room. */
+  function twoRooms(): RoomScanLayout {
+    const a: Array<[number, number]> = [[0, 0], [4, 0], [4, 3], [0, 3]]
+    const b: Array<[number, number]> = [[4.1, 0], [8, 0], [8, 3], [4.1, 3]]
+    const wa = wallsFromOutline(a)
+    wa[0].openings = [{ kind: 'door', offset: 1, width: 0.9, sill: 0, height: 2.1 }]
+    return { version: 1, rooms: [
+      { label: 'A', floor: a, floorY: 0, ceilingHeight: 2.5, walls: wa, objects: [], anchor: ANCHOR },
+      { label: 'B', floor: b, floorY: 0, ceilingHeight: 2.5, walls: wallsFromOutline(b), objects: [], anchor: ANCHOR },
+    ] }
+  }
+
+  for (const style of ['plain', 'house', 'storefront', 'dollhouse'] as RoomStyle[]) {
+    it(`${style}: the wall shell extents equal the plot's shell bounds within 1 mm`, async () => {
+      const layout = twoRooms()
+      const out = await buildRoomSetGlb(layout, { ...DEFAULT_ROOM_SET_OPTIONS, style })
+      const doc = await new NodeIO().readBinary(new Uint8Array(out.glb))
+      const walls = doc.getRoot().listNodes().find(n => n.getName() === 'walls')!
+      const { min, max } = getBounds(walls)
+      const b = outerShellBounds(layout)
+      expect(max[0] - min[0]).toBeCloseTo(b.maxX - b.minX, 3)
+      expect(max[2] - min[2]).toBeCloseTo(b.maxZ - b.minZ, 3)
+      expect(min[0]).toBeCloseTo(0.5, 3)
+      expect(min[2]).toBeCloseTo(0.5, 3)
+    })
+  }
 })
