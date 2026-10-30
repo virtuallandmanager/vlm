@@ -69,3 +69,15 @@ def test_eval_fails_when_the_check_never_works(monkeypatch):
 
 def test_the_check_treats_small_talk_in_a_design_as_design():
     assert 'thanks' in scope.SYSTEM and 'greeting' in scope.SYSTEM
+
+
+def test_schema_enums_match_their_declared_type():
+    # The API rejects an enum value outside the property's type (a null in a string-or-null enum came back as a 400)
+    for prop in scope.SCHEMA['properties'].values():
+        if 'enum' in prop:
+            assert prop['type'] == 'string' and all(isinstance(v, str) for v in prop['enum'])
+
+
+def test_design_answer_with_none_category_has_no_category():
+    v = scope.check('a neon cap', 'wearable', [], [], ask=asks({'verdict': 'design', 'category': 'none', 'note': ''}))
+    assert v.category is None
