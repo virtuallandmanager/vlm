@@ -6,7 +6,7 @@
  * `commitRoomSet` runs a transaction and deletes the uploaded object if it fails.
  */
 import { randomUUID } from 'node:crypto'
-import { and, eq, inArray, isNotNull } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import { dclBudget, plotParcels, type Plot, type RoomScanLayout } from '@virvixr/shared'
 import { db } from '../db/connection.js'
 import { assetLibraryItems, roomScans, roomSets, sceneElements, sceneLibrary } from '../db/schema.js'
@@ -141,6 +141,41 @@ export async function discardRoomSet(prepared: Pick<PreparedRoomSet, 'storageKey
   }
 }
 
+/**
+ * Whether a room-set GLB is still used by something that doesn't own it: a scene element pointing at it by URL
+ * (a duplicate, a venue booking's copy, a pasted URL) or an asset other than `except.assetItemId`.
+ */
+async function roomSetObjectInUse(glbUrl: string, except: { assetItemId?: string }): Promise<boolean> {
+  const [element] = await db
+    .select({ id: sceneElements.id })
+    .from(sceneElements)
+    .where(sql`${sceneElements.properties}->>'modelSrc' = ${glbUrl}`)
+    .limit(1)
+  if (element) return true
+  const [asset] = await db
+    .select({ id: assetLibraryItems.id })
+    .from(assetLibraryItems)
+    .where(except.assetItemId ? and(eq(assetLibraryItems.cdnUrl, glbUrl), ne(assetLibraryItems.id, except.assetItemId)) : eq(assetLibraryItems.cdnUrl, glbUrl))
+    .limit(1)
+  return !!asset
+}
+
+/**
+ * Delete a superseded room-set object, unless something still uses it (see roomSetObjectInUse): then it is kept, so
+ * those models don't break. Call it once the set's own element and asset point elsewhere (or, deleting an asset,
+ * with that asset as `except`). Never throws.
+ */
+export async function releaseRoomSetObject(object: { storageKey: string; glbUrl: string }, except: { assetItemId?: string } = {}): Promise<void> {
+  try {
+    if (await roomSetObjectInUse(object.glbUrl, except)) return
+  } catch (err) {
+    // Unsure whether it's in use: keep it
+    console.error('[room-sets] failed to check', object.storageKey, err)
+    return
+  }
+  await discardRoomSet(object)
+}
+
 /** Run `work` in a transaction; if it fails, the prepared upload is deleted and the error rethrown. */
 export async function commitRoomSet<T>(prepared: PreparedRoomSet, work: (tx: Tx) => Promise<T>): Promise<T> {
   try {
@@ -229,7 +264,7 @@ export async function createRoomSetAsset(
 
 /**
  * Regenerate one set with new options and/or nudges (snapping doors first when asked), under a new key. Its scene
- * element's modelSrc or library asset follows; the old object is deleted once the rows are updated.
+ * element's modelSrc or library asset follows; the old object is deleted once the rows are updated, unless something else still uses it.
  * 404 unless `userId` owns the set; 409 scan_deleted when its scan is gone; 400 invalid_options / invalid_nudges.
  */
 export async function updateRoomSet(
@@ -274,7 +309,7 @@ export async function updateRoomSet(
     }
     return { set, sceneElement }
   })
-  await discardRoomSet(row)
+  await releaseRoomSetObject(row)
   if (out.sceneElement) {
     await publishElementChanged({ ...out.sceneElement, deleted: false })
     await publishSceneTouched(out.sceneElement.sceneId)
@@ -320,7 +355,7 @@ export async function prepareRoomSetForPlacement(modelSrc: unknown, sceneId: str
       .select({ id: sceneLibrary.id })
       .from(sceneLibrary)
       .where(and(eq(sceneLibrary.sceneId, sceneId), eq(sceneLibrary.assetItemId, source.assetItemId!)))
-    if (!linked) throw new RoomSetError(403, 'forbidden')
+    if (!linked) throw new RoomSetError(403, 'Forbidden')
   }
   try {
     return await prepareRoomSetCopy(source.assetItemId!, source.userId)

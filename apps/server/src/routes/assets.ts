@@ -13,7 +13,7 @@ import { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
 import { eq, ilike, and, or, sql, arrayContains, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { assetLibraryItems, catalogPacks } from '../db/schema.js'
+import { assetLibraryItems, catalogPacks, roomSets } from '../db/schema.js'
 import { browsableAsset } from '../catalog/visibility.js'
 import { authenticate } from '../middleware/auth.js'
 import { createStorage } from '../storage/index.js'
@@ -22,6 +22,7 @@ import { assertStorageQuota } from '../media/quota.js'
 import { StoreMediaError } from '../media/store.js'
 import { verifySessionToken } from '../auth/tokens.js'
 import { generateThumbnail } from '../services/thumbnails.js'
+import { releaseRoomSetObject } from '../room-scan/sets.js'
 
 const CATALOG_MODEL = { error: 'catalog_model', message: "Catalog models can't be changed or deleted; switch the pack off in Admin → Catalog packs instead" }
 
@@ -30,6 +31,13 @@ function optionalAccount(authorization: string | undefined) {
   const bearer = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null
   const claims = bearer && !bearer.startsWith('virvi_') ? verifySessionToken(bearer) : null
   return claims?.kind === 'account' ? claims : null
+}
+
+/** Made from a room scan: category `room`, or backed by a room set. */
+async function isRoomAsset(asset: { id: string; category: string | null }): Promise<boolean> {
+  if (asset.category === 'room') return true
+  const [set] = await db.select({ id: roomSets.id }).from(roomSets).where(eq(roomSets.assetItemId, asset.id)).limit(1)
+  return !!set
 }
 
 export default async function assetRoutes(app: FastifyInstance) {
@@ -258,6 +266,8 @@ export default async function assetRoutes(app: FastifyInstance) {
       }
       // Catalog models are shared by every scene that uses them: they change only through the importer
       if (existing.packId) return reply.status(409).send(CATALOG_MODEL)
+      // A room set is the layout of someone's home: it never becomes public
+      if (body.isPublic === true && (await isRoomAsset(existing))) return reply.status(400).send({ error: 'room_assets_private' })
 
       const updates: Record<string, unknown> = {}
       if (body.name !== undefined) updates.name = body.name
@@ -299,7 +309,12 @@ export default async function assetRoutes(app: FastifyInstance) {
       // Deleting would break every scene that placed it; switch its pack off instead
       if (existing.packId) return reply.status(409).send(CATALOG_MODEL)
 
-      await storage.delete(existing.storageKey)
+      // A room set's GLB may still be placed by URL somewhere (a scene that placed it after its scan was deleted)
+      if (await isRoomAsset(existing)) {
+        await releaseRoomSetObject({ storageKey: existing.storageKey, glbUrl: existing.cdnUrl ?? '' }, { assetItemId: id })
+      } else {
+        await storage.delete(existing.storageKey)
+      }
       await db.delete(assetLibraryItems).where(eq(assetLibraryItems.id, id))
 
       return reply.send({ deleted: true })

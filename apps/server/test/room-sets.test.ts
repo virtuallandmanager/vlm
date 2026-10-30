@@ -365,6 +365,69 @@ describe('room sets', () => {
     })
   })
 
+  describe('superseded room-set objects', () => {
+    it('keeps the old GLB while a duplicated element still uses it, and deletes it when nothing does', async () => {
+      const owner = await createUser()
+      const scan = await scanFor(owner)
+      const { preset } = await createScene(owner)
+      const element = await createElement(preset.id, { type: 'model', name: 'Room', properties: { modelSrc: 'x' } })
+      const prepared = await prepareRoomSet(owner.id, scan, DEFAULT_ROOM_SET_OPTIONS, [])
+      const row = await insertRoomSet(prepared, { sceneElementId: element.id })
+      await db.update(sceneElements).set({ properties: { modelSrc: row.glbUrl } }).where(eq(sceneElements.id, element.id))
+      const duplicate = await createElement(preset.id, { type: 'model', name: 'Room copy', properties: { modelSrc: row.glbUrl } })
+
+      const first = await put(owner, row.id, { options: { style: 'house' } })
+      expect(first.statusCode).toBe(200)
+      expect(files.has(row.storageKey)).toBe(true)
+      const [dup] = await db.select().from(sceneElements).where(eq(sceneElements.id, duplicate.id))
+      expect((dup.properties as any).modelSrc).toBe(row.glbUrl)
+
+      // Nothing else uses the GLB the first restyle made: the next restyle deletes it
+      const second = await put(owner, row.id, { options: { style: 'plain' } })
+      expect(second.statusCode).toBe(200)
+      expect(files.has(first.json().set.storageKey)).toBe(false)
+      expect(files.has(second.json().set.storageKey)).toBe(true)
+    })
+
+    it("keeps a deleted room asset's GLB while a scene still places it by URL", async () => {
+      const owner = await createUser()
+      const scan = await scanFor(owner)
+      const asset = (await makeAsset(owner, { scanId: scan.id, name: 'Lounge', options: {} })).json().asset
+      const lonely = (await makeAsset(owner, { scanId: scan.id, name: 'Unused', options: {} })).json().asset
+      await db.delete(roomScans).where(eq(roomScans.id, scan.id))
+      const { preset } = await createScene(owner)
+      expect((await app.inject({ method: 'POST', url: `/api/presets/${preset.id}/elements`, headers: bearer(owner), payload: { type: 'model', name: 'Room', properties: { modelSrc: asset.cdnUrl } } })).statusCode).toBe(201)
+
+      const del = (id: string) => app.inject({ method: 'DELETE', url: `/api/assets/${id}`, headers: bearer(owner) })
+      expect((await del(asset.id)).statusCode).toBe(200)
+      expect(files.has(asset.storageKey)).toBe(true)
+      expect((await del(lonely.id)).statusCode).toBe(200)
+      expect(files.has(lonely.storageKey)).toBe(false)
+    })
+  })
+
+  describe('PUT /api/assets/:id on a room asset', () => {
+    it('refuses to make it public and still takes other changes', async () => {
+      const owner = await createUser()
+      const scan = await scanFor(owner)
+      const asset = (await makeAsset(owner, { scanId: scan.id, name: 'Lounge', options: {} })).json().asset
+      const update = (body: Record<string, unknown>) => app.inject({ method: 'PUT', url: `/api/assets/${asset.id}`, headers: bearer(owner), payload: body })
+
+      const refused = await update({ isPublic: true, name: 'Public lounge' })
+      expect(refused.statusCode).toBe(400)
+      expect(refused.json()).toEqual({ error: 'room_assets_private' })
+      // Moving it out of the room category first doesn't help: it's still backed by a room set
+      expect((await update({ category: 'furniture' })).statusCode).toBe(200)
+      expect((await update({ isPublic: true })).statusCode).toBe(400)
+
+      const renamed = await update({ name: 'Front room', isPublic: false })
+      expect(renamed.statusCode).toBe(200)
+      expect(renamed.json().asset).toMatchObject({ name: 'Front room', isPublic: false })
+      const [row] = await db.select().from(assetLibraryItems).where(eq(assetLibraryItems.id, asset.id))
+      expect(row.isPublic).toBe(false)
+    })
+  })
+
   describe('GET /api/room-scans/:id/preview.glb', () => {
     it('returns the GLB buildRoomSetGlb makes, with its triangle count, storing nothing', async () => {
       const owner = await createUser()
