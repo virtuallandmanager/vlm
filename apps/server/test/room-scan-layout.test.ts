@@ -91,6 +91,29 @@ describe('validateLayout', () => {
     expect(errorsOf({ rooms: [] }).some(e => e.includes('empty_scan'))).toBe(true)
   })
 
+  it('rejects a wall with missing or non-array openings', () => {
+    const f = fixture(); delete f.rooms[0].walls[0].openings
+    expect(errorsOf(f).some(e => e.includes('rooms[0].walls[0].openings'))).toBe(true)
+    const g = fixture(); g.rooms[0].walls[1].openings = 'x'
+    expect(errorsOf(g).some(e => e.includes('rooms[0].walls[1].openings'))).toBe(true)
+  })
+
+  it('rejects an invalid opening kind', () => {
+    const f = fixture(); f.rooms[0].walls[0].openings[0].kind = 'portal'
+    expect(errorsOf(f).some(e => e.includes('rooms[0].walls[0].openings[0].kind'))).toBe(true)
+  })
+
+  it('rejects invalid anchor fields', () => {
+    const a = fixture(); a.rooms[0].anchor.source = 'hololens'
+    expect(errorsOf(a).some(e => e.includes('rooms[0].anchor.source'))).toBe(true)
+    const b = fixture(); delete b.rooms[0].anchor.roomId
+    expect(errorsOf(b).some(e => e.includes('rooms[0].anchor.roomId'))).toBe(true)
+    const c = fixture(); c.rooms[0].anchor.floorPose.yaw = NaN
+    expect(errorsOf(c).some(e => e.includes('rooms[0].anchor.floorPose.yaw'))).toBe(true)
+    const d = fixture(); d.rooms[0].anchor.floorPose.position = [0, Infinity, 0]
+    expect(errorsOf(d).some(e => e.includes('rooms[0].anchor.floorPose.position[1]'))).toBe(true)
+  })
+
   it('rejects non-object input', () => {
     expect(validateLayout(null).ok).toBe(false)
     expect(validateLayout('x').ok).toBe(false)

@@ -23,8 +23,8 @@ export const MIN_WALL_LENGTH_M = 0.1
 export const MIN_CEILING_M = 1.8
 export const MAX_CEILING_M = 8
 
-const OPENING_KINDS = ['door', 'window', 'opening']
-const ANCHOR_SOURCES = ['quest-mruk', 'ios-roomplan']
+const OPENING_KINDS: RoomOpening['kind'][] = ['door', 'window', 'opening']
+const ANCHOR_SOURCES: RoomAnchor['source'][] = ['quest-mruk', 'ios-roomplan']
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -58,14 +58,16 @@ function str(v: unknown, path: string, errors: string[]): string {
 
 function parseOpening(v: unknown, path: string, wallLen: number, errors: string[]): RoomOpening | null {
   if (!isObj(v)) { errors.push(`${path} must be an object`); return null }
-  if (typeof v.kind !== 'string' || !OPENING_KINDS.includes(v.kind)) errors.push(`${path}.kind must be door, window or opening`)
+  const kind = OPENING_KINDS.find(k => k === v.kind)
+  if (!kind) errors.push(`${path}.kind must be door, window or opening`)
   const offset = num(v.offset, `${path}.offset`, errors)
   const width = num(v.width, `${path}.width`, errors)
   const sill = num(v.sill, `${path}.sill`, errors)
   const height = num(v.height, `${path}.height`, errors)
+  if (!kind) return null
   const clampedOffset = Math.min(Math.max(offset, 0), wallLen)
   const clampedWidth = Math.min(Math.max(width, 0), wallLen - clampedOffset)
-  return { kind: v.kind as RoomOpening['kind'], offset: clampedOffset, width: clampedWidth, sill, height }
+  return { kind, offset: clampedOffset, width: clampedWidth, sill, height }
 }
 
 function parseWall(v: unknown, path: string, errors: string[]): RoomWall | null {
@@ -97,12 +99,13 @@ function parseObject(v: unknown, path: string, errors: string[]): RoomObject | n
 function parseAnchor(v: unknown, path: string, errors: string[]): RoomAnchor {
   const fallback: RoomAnchor = { source: 'quest-mruk', roomId: '', floorAnchorId: null, floorPose: { position: [0, 0, 0], yaw: 0 } }
   if (!isObj(v)) { errors.push(`${path} must be an object`); return fallback }
-  if (typeof v.source !== 'string' || !ANCHOR_SOURCES.includes(v.source)) errors.push(`${path}.source must be quest-mruk or ios-roomplan`)
+  const source = ANCHOR_SOURCES.find(k => k === v.source)
+  if (!source) errors.push(`${path}.source must be quest-mruk or ios-roomplan`)
   const roomId = str(v.roomId, `${path}.roomId`, errors)
   if (v.floorAnchorId !== null && typeof v.floorAnchorId !== 'string') errors.push(`${path}.floorAnchorId must be a string or null`)
   const pose = isObj(v.floorPose) ? v.floorPose : (errors.push(`${path}.floorPose must be an object`), {})
   return {
-    source: v.source as RoomAnchor['source'],
+    source: source ?? fallback.source, // only reached with errors recorded; result is discarded
     roomId,
     floorAnchorId: typeof v.floorAnchorId === 'string' ? v.floorAnchorId : null,
     floorPose: { position: tuple(pose.position, 3, `${path}.floorPose.position`, errors), yaw: num(pose.yaw, `${path}.floorPose.yaw`, errors) },
