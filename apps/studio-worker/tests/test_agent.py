@@ -161,3 +161,8 @@ def test_claude_and_codex_drop_web_tools():
     assert claude[claude.index('--disallowedTools') + 1] == 'WebSearch,WebFetch'
     assert 'web_search = "disabled"' in CODEX_CONFIG
     assert '--search' not in command_for('codex', 'gpt-6.1-sol', 'hi', None, 80)
+
+
+def test_claude_max_turns_is_turns(tmp_path):
+    r = run(tmp_path, 'claude', 'claude_max_turns.jsonl')
+    assert r.outcome == 'turns' and r.error == 'stopped at the step limit' and r.cost_usd == 0.4

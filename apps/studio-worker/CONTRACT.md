@@ -164,10 +164,11 @@ effort: one that fails to send is dropped.
 | `declined` | the agent wrote `out/declined.json` and changed no piece: it stopped on a request that isn't design work. `scope` is set |
 | `ceiling` | Claude was stopped at the cost ceiling |
 | `timeout` | the agent was stopped at the time limit |
+| `turns` | the agent reached the prompt's turn limit (`limits.maxTurns`); Continue resumes it |
 | `error` | anything else; `error` says what. Includes a wrong output layout (GLBs outside `out/<category>/`, a piece file that is a link), a failed render, and a workspace that couldn't be saved. |
 
 - **Pieces are keyed by category.** A design holds at most one piece per category, and an emote design has the one
-  category `emote`. `pieces` lists every piece in the design (none on `ceiling`, `timeout`, a wrong layout or a failed save).
+  category `emote`. `pieces` lists every piece in the design (none on `ceiling`, `timeout`, `turns`, a wrong layout or a failed save).
 - **A piece's `files` and `renders` are set only when this job uploaded it.** An unchanged piece has empty lists, and
   the files Virvi already has for it stand. A changed piece is uploaded only once it has rendered and no proposal is
   pending; until then it stays "changed", so a later prompt uploads it. Files are never uploaded by a job whose

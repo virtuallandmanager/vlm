@@ -39,7 +39,7 @@ class Usage:
 
 @dataclass
 class AgentRun:
-    outcome: str  # 'ok' | 'timeout' | 'ceiling' | 'error'
+    outcome: str  # 'ok' | 'timeout' | 'ceiling' | 'turns' | 'error'
     reply: str
     session: str | None
     usage: Usage | None  # this prompt's share only
@@ -254,16 +254,22 @@ def run_agent(agent: str, model: str, prompt: str, session: str | None, before: 
         total = _add(before, usage) if before else usage
     failed = proc.returncode not in (0, None) or bool((stream.result or {}).get('is_error')) or \
         any(e.get('type') == 'turn.failed' for e in stream.events)
+    if not stopped and _hit_max_turns(agent, stream):  # Continue resumes it: not a failure
+        stopped = 'turns'
     outcome = stopped or ('error' if failed or total is None else 'ok')
     error = None
     if outcome == 'error':
         error = stream.redact((''.join(stderr) or (stream.result or {}).get('result') or
                                'the agent reported no usage')[-2000:])
     elif stopped:
-        error = f'stopped at the {"time limit" if stopped == "timeout" else "cost ceiling"}'
+        error = 'stopped at the ' + {'timeout': 'time limit', 'ceiling': 'cost ceiling', 'turns': 'step limit'}[stopped]
     return AgentRun(outcome=outcome, reply=stream.redact(stream.reply or ''), session=stream.session or session,
                     usage=usage, session_total=total, cost_usd=usage.cost_usd if usage else None, wall_sec=wall,
                     error=error)
+
+
+def _hit_max_turns(agent: str, stream: '_Stream') -> bool:
+    return agent == 'claude' and (stream.result or {}).get('subtype') == 'error_max_turns'
 
 
 def _deliver(progress: queue.Queue, on_progress: Callable[[str], None]) -> None:

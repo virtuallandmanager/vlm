@@ -242,3 +242,8 @@ def test_agent_decline_is_declined(api, tmp_path):
 def test_declined_with_a_changed_piece_is_ok(api, tmp_path, skills):
     result = run_checked(api, tmp_path, prompt_job(check=True), 'claude_declines_but_builds.jsonl', verdict('design'))
     assert result['outcome'] == 'ok' and result['scope'] is None
+
+
+def test_turns_outcome_collects_no_pieces(api, tmp_path, skills):
+    result = run(api, tmp_path, prompt_job(), 'claude_max_turns.jsonl')
+    assert result['outcome'] == 'turns' and result['pieces'] == []
