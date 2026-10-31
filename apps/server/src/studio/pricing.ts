@@ -25,7 +25,9 @@ export type QuotePiece = {
   checker: unknown
 }
 
-export type Quote = { pieces: QuotePiece[]; lines: PaymentLine[]; totalCents: number; blocked: string[]; reportsHeld: string[]; notes: string[] }
+export type Quote = {
+  pieces: QuotePiece[]; lines: PaymentLine[]; totalCents: number; giftsUsed: number; blocked: string[]; reportsHeld: string[]; notes: string[]
+}
 
 export class QuoteError extends Error {
   constructor(public code: 'checks_failed' | 'nothing_to_pay' | 'unknown_piece' | 'not_waivable', public categories: string[] = []) {
@@ -77,11 +79,15 @@ export async function instantReportsUsed(designId: string, category: string, exe
   return rows.length
 }
 
-export async function quoteFinalize(design: Design, categories: string[] | null, waived: string[]): Promise<Quote> {
-  const pieceRows = await db.select().from(studioPieces).where(eq(studioPieces.designId, design.id)).orderBy(asc(studioPieces.category))
+/**
+ * `gifts` free-finalize credits each make one first-finalize line free, the most expensive first (ties in piece order);
+ * revision lines are never free this way.
+ */
+export async function quoteFinalize(design: Design, categories: string[] | null, waived: string[], gifts = 0, exec: Exec = db): Promise<Quote> {
+  const pieceRows = await exec.select().from(studioPieces).where(eq(studioPieces.designId, design.id)).orderBy(asc(studioPieces.category))
   const revIds = pieceRows.map((p) => p.latestRevisionId).filter((x): x is string => !!x)
-  const revs = revIds.length ? await db.select().from(studioRevisions).where(inArray(studioRevisions.id, revIds)) : []
-  const ents = await db.select().from(studioEntitlements).where(eq(studioEntitlements.designId, design.id))
+  const revs = revIds.length ? await exec.select().from(studioRevisions).where(inArray(studioRevisions.id, revIds)) : []
+  const ents = await exec.select().from(studioEntitlements).where(eq(studioEntitlements.designId, design.id))
   const pieces: QuotePiece[] = pieceRows.map((p) => {
     const rev = revs.find((r) => r.id === p.latestRevisionId)
     const kind = ents.some((e) => e.category === p.category) ? 'revision' as const : 'first' as const
@@ -111,17 +117,22 @@ export async function quoteFinalize(design: Design, categories: string[] | null,
   // Revision lines whose mistake report would wait for the owner rather than be waived
   const overLimit = new Set<string>()
   for (const p of chosen.filter((p) => p.kind === 'revision')) {
-    if ((await instantReportsUsed(design.id, p.category)) >= config.studioFlag.instantReports) overLimit.add(p.category)
+    if ((await instantReportsUsed(design.id, p.category, exec)) >= config.studioFlag.instantReports) overLimit.add(p.category)
   }
+  const giftIdx = new Set(chosen.map((p, i) => ({ p, i })).filter(({ p }) => p.kind === 'first')
+    .sort((a, b) => prices[b.i].amountCents - prices[a.i].amountCents || a.i - b.i)
+    .slice(0, Math.max(0, gifts)).map(({ i }) => i))
   const lines: PaymentLine[] = chosen.map((p, i) => ({
     category: p.category, revisionId: p.revisionId, revisionNumber: p.revisionNumber, pieceName: p.name,
     ...prices[i], waived: waived.includes(p.category) && !overLimit.has(p.category),
     ...(waived.includes(p.category) && overLimit.has(p.category) ? { held: true } : {}),
+    ...(giftIdx.has(i) ? { gift: true } : {}),
   }))
   return {
     pieces,
     lines,
-    totalCents: lines.reduce((sum, l) => sum + (l.waived ? 0 : l.amountCents), 0),
+    totalCents: lines.reduce((sum, l) => sum + (l.waived || l.gift ? 0 : l.amountCents), 0),
+    giftsUsed: giftIdx.size,
     blocked,
     reportsHeld: [...overLimit],
     notes: lines.some((l) => l.priceKind.startsWith('revision')) ? [RECURATION_NOTE] : [],

@@ -163,7 +163,7 @@ export async function applyResult(jobId: string, result: ContractResult, now: Da
         }
       }
       if (design) await recordCost(design.ownerId, day, result.costUsd ?? 0, tx)
-      const refunded = job.counted && !!design && (result.outcome === 'error'
+      const refunded = (job.counted || job.countedFrom === 'gift') && !!design && (result.outcome === 'error'
         || (result.outcome === 'off_topic' && await offTopicIsFree(tx, design.ownerId, now)))
       if (refunded) await refundPrompt(design!.ownerId, day, job.countedFrom as PromptSource | null, tx)
       const note = systemNote(result, refunded)
@@ -232,7 +232,7 @@ export async function failJobs(
       if (!job) return null
       const [design] = await tx.select().from(studioDesigns).where(eq(studioDesigns.id, job.designId))
       if (job.type === 'prompt') {
-        if (job.counted && design) await refundPrompt(design.ownerId, job.countedDay ?? utcDay(now), job.countedFrom as PromptSource | null, tx)
+        if ((job.counted || job.countedFrom === 'gift') && design) await refundPrompt(design.ownerId, job.countedDay ?? utcDay(now), job.countedFrom as PromptSource | null, tx)
         await tx.insert(studioMessages).values({
           designId: job.designId, role: 'system', jobId: job.id,
           text: `${error}${job.counted ? ' Your prompt was not counted.' : ''}`,

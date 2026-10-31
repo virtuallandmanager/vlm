@@ -1517,7 +1517,7 @@ export const studioJobs = pgTable('studio_jobs', {
   // Whether the prompt used the owner's allowance, and on which UTC day (refunds and cost go to that day)
   counted: boolean('counted').notNull().default(false),
   countedDay: date('counted_day', { mode: 'string' }),
-  countedFrom: text('counted_from'), // allowance | credit: where a counted prompt is given back to
+  countedFrom: text('counted_from'), // allowance | gift | credit: where a counted prompt is given back to
   takenAt: timestamp('taken_at', { withTimezone: true }),
   finishedAt: timestamp('finished_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1620,6 +1620,7 @@ export type PaymentLine = {
   priceKind: 'first' | 'first_extra' | 'revision' | 'revision_extra'
   amountCents: number
   waived: boolean
+  gift?: boolean // a first-finalize line paid by a free-finalize credit
   held?: boolean // a mistake report past the instant limit: charged, and its report waits for the owner
   reportText?: string // a waived or held line's mistake report, stored as a report at grant time
 }
@@ -1634,6 +1635,7 @@ export const studioPayments = pgTable('studio_payments', {
   amountCents: integer('amount_cents').notNull(),
   lines: jsonb('lines').$type<PaymentLine[]>().notNull().default([]),
   prompts: integer('prompts').notNull().default(0), // a top-up's prompts
+  giftsHeld: integer('gifts_held').notNull().default(0), // free-finalize credits held for this checkout's gift lines
   stripeSessionId: text('stripe_session_id').unique(),
   stripeSessionUrl: text('stripe_session_url'),
   stripePaymentIntent: text('stripe_payment_intent'),
@@ -1685,5 +1687,38 @@ export const studioMistakeReports = pgTable('studio_mistake_reports', {
 export const studioPromptCredits = pgTable('studio_prompt_credits', {
   userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   balance: integer('balance').notNull().default(0),
+  gifted: integer('gifted').notNull().default(0), // prompts from gift codes, spent before purchased ones
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+// Free first-finalizes from gift codes
+export const studioFinalizeCredits = pgTable('studio_finalize_credits', {
+  userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  balance: integer('balance').notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// An admin-made code that gives a user gifted prompts and free first-finalizes; stored hashed
+export const studioGiftCodes = pgTable('studio_gift_codes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  codeHash: text('code_hash').notNull().unique(),
+  codeHint: text('code_hint').notNull(), // last 4 characters of the normalized code
+  note: text('note'),
+  prompts: integer('prompts').notNull(),
+  finalizes: integer('finalizes').notNull(),
+  maxUses: integer('max_uses').notNull(),
+  uses: integer('uses').notNull().default(0),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const studioGiftRedemptions = pgTable('studio_gift_redemptions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  codeId: uuid('code_id').notNull().references(() => studioGiftCodes.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  codeUserUnique: uniqueIndex('studio_gift_redemptions_code_user_idx').on(t.codeId, t.userId),
+}))

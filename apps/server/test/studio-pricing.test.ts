@@ -100,6 +100,36 @@ describe('studio finalize pricing', () => {
     expect((await caught(quoteFinalize(d, null, ['hat']))).code).toBe('not_waivable')
   })
 
+  it('a free finalize goes to the most expensive first-finalize line', async () => {
+    const emote = await createDesign(await createUser(), { kind: 'emote' })
+    await addRevision(emote, 'emote')
+    const e = await quoteFinalize(emote, null, [], 1)
+    expect(e.lines.map((l) => [l.amountCents, !!l.gift])).toEqual([[3900, true]])
+    expect(e).toMatchObject({ totalCents: 0, giftsUsed: 1 })
+
+    const set = await createDesign(await createUser())
+    for (const c of ['feet', 'hat', 'upper_body']) await addRevision(set, c)
+    const one = await quoteFinalize(set, null, [], 1)
+    expect(one.lines.map((l) => [l.category, l.amountCents, !!l.gift])).toEqual([
+      ['feet', 2900, true], ['hat', 1900, false], ['upper_body', 1900, false],
+    ])
+    expect(one).toMatchObject({ totalCents: 3800, giftsUsed: 1 })
+    const two = await quoteFinalize(set, null, [], 2)
+    expect(two.lines.map((l) => [l.category, !!l.gift])).toEqual([['feet', true], ['hat', true], ['upper_body', false]])
+    expect(two).toMatchObject({ totalCents: 1900, giftsUsed: 2 })
+    expect(await quoteFinalize(set, null, [])).toMatchObject({ totalCents: 6700, giftsUsed: 0 })
+  })
+
+  it('revision lines are never gift lines', async () => {
+    const d = await createDesign(await createUser())
+    await entitle(d, await addRevision(d, 'hat'))
+    await addRevision(d, 'hat')
+    await addRevision(d, 'feet')
+    const q = await quoteFinalize(d, null, [], 3)
+    expect(q.lines.map((l) => [l.category, l.priceKind, !!l.gift])).toEqual([['feet', 'first_extra', true], ['hat', 'revision', false]])
+    expect(q).toMatchObject({ totalCents: 1500, giftsUsed: 1 })
+  })
+
   it("GET /finalize on someone else's design is 404; with the studio off it is 404", async () => {
     const app = await testApp()
     const owner = await createUser()

@@ -7,7 +7,7 @@ import type { Plot, RoomSetOptions } from '@virvixr/shared'
 import type { RoomNudge } from './room-set'
 import type { AuthChain } from '@dcl/crypto'
 import type { ArFileFormat, ArMounting } from './ar'
-import type { AdminMistakeReport, AdminStudioFlag, Quote, RenderView, StudioDesign, StudioDetail, StudioKind, StudioUpload, StudioUsage } from './studio'
+import type { AdminGiftCode, AdminMistakeReport, AdminStudioFlag, Quote, RenderView, StudioDesign, StudioDetail, StudioKind, StudioUpload, StudioUsage } from './studio'
 import type { ArDeviceKind, ArDeviceSummary, ArPairApprovalInfo, ArFloorView, ArMarkerView, ArSpaceView, AdContent, AdAudience, AdminAd, AdminAdSpace, OwnerAdSpace, AdminAdvertiserLead, AdReport, AdShape, CatalogPack, HyperfyPairingSummary, HyperfyWorldSummary } from '@virvixr/shared'
 import type { AnalyticsLocation, AnalyticsRangeQuery, AnalyticsSession, AnalyticsSummary, HeatCell, LiveData, TimeseriesPoint } from './analytics/types'
 
@@ -572,6 +572,10 @@ export function useApi() {
     dismissAdminStudioFlag: (id: string) => apiFetch<void>(`/api/admin/studio/flags/${id}/dismiss`, { method: 'POST' }),
     pauseStudioUser: (userId: string) => apiFetch<void>(`/api/admin/studio/users/${userId}/pause`, { method: 'POST' }),
     resumeStudioUser: (userId: string) => apiFetch<void>(`/api/admin/studio/users/${userId}/pause`, { method: 'DELETE' }),
+    createGiftCode: (body: { prompts: number; finalizes: number; maxUses: number; expiresAt?: string | null; note?: string | null }) =>
+      apiFetch<{ id: string; code: string }>('/api/admin/studio/gift-codes', { method: 'POST', body: JSON.stringify(body) }),
+    listGiftCodes: () => apiFetch<{ codes: AdminGiftCode[] }>('/api/admin/studio/gift-codes'),
+    disableGiftCode: (id: string) => apiFetch<void>(`/api/admin/studio/gift-codes/${id}/off`, { method: 'POST' }),
     getAdminStudioReports: () => apiFetch<{ reports: AdminMistakeReport[] }>('/api/admin/studio/reports'),
     approveAdminStudioReport: (id: string) =>
       apiFetch<{ status: 'refunded'; refundCents: number }>(`/api/admin/studio/reports/${id}/approve`, { method: 'POST' }),
@@ -666,6 +670,8 @@ export function useApi() {
     getStudioQuote: (id: string) => apiFetch<Quote>(`/api/studio/designs/${id}/finalize`),
     finalizeStudio: (id: string, body: { categories?: string[]; reports?: Record<string, string> }) =>
       apiFetch<{ url: string } | { granted: true; paymentId: string }>(`/api/studio/designs/${id}/finalize`, { method: 'POST', body: JSON.stringify(body) }),
+    redeemGiftCode: (code: string) =>
+      apiFetch<{ prompts: number; finalizes: number }>('/api/studio/gift-codes/redeem', { method: 'POST', body: JSON.stringify({ code }) }),
     buyStudioPrompts: (packs = 1) => apiFetch<{ url: string }>('/api/studio/topups', { method: 'POST', body: JSON.stringify({ packs }) }),
     reportStudioMistake: (id: string, category: string, n: number, text: string) =>
       apiFetch<{ status: 'refunded'; refundCents: number } | { status: 'in_review' }>(`/api/studio/designs/${id}/pieces/${category}/revisions/${n}/report`, { method: 'POST', body: JSON.stringify({ text }) }),

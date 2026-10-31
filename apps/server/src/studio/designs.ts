@@ -1,7 +1,7 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
 import { listUploads, publicUpload, uploadPaths } from './uploads.js'
 import { db } from '../db/connection.js'
-import { studioDesigns, studioJobs, studioMessages, studioPieces, studioRenders, studioRevisions } from '../db/schema.js'
+import { studioDesigns, studioFinalizeCredits, studioJobs, studioPayments, studioMessages, studioPieces, studioRenders, studioRevisions } from '../db/schema.js'
 import { config } from '../config.js'
 import { reservePrompt, promptStatus } from './quota.js'
 import { ensureWorker } from './machines.js'
@@ -45,12 +45,24 @@ export async function openDesignCount(userId: string): Promise<number> {
   return n
 }
 
+/** Free-finalize credits left, and how many are held by checkouts still open. */
+async function freeFinalizes(userId: string, now: Date) {
+  const [bal] = await db.select({ balance: studioFinalizeCredits.balance }).from(studioFinalizeCredits)
+    .where(eq(studioFinalizeCredits.userId, userId))
+  const [held] = await db.select({ n: sql<number>`coalesce(sum(${studioPayments.giftsHeld}), 0)::int` }).from(studioPayments)
+    .where(and(eq(studioPayments.userId, userId), eq(studioPayments.kind, 'finalize'), eq(studioPayments.status, 'pending'),
+      gt(studioPayments.expiresAt, now)))
+  return { available: bal?.balance ?? 0, held: held.n }
+}
+
 export async function usage(userId: string, limit: number, now: Date) {
   const s = await promptStatus(userId, now)
   return {
     plan: s.plan,
     promptsLeft: s.left,
     credits: s.credits,
+    giftedPrompts: s.gifted,
+    freeFinalizes: await freeFinalizes(userId, now),
     allowance: s.allowance,
     resetsAt: s.resetsAt,
     openDesigns: await openDesignCount(userId),

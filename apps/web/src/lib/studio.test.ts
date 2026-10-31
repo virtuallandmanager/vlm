@@ -5,7 +5,8 @@ import {
 } from './studio'
 import { formatBytesShort, uploadProblem } from './studio'
 import { HELD_REPORT_COPY, PAUSED_NOTE, flagSummary, reportCopy, type AdminStudioFlag } from './studio'
-import { AGENTS, designBadge, designIdFromPath, formatCents, refreshDue, refusalMessage, relativeTime, untilReset, usageLine, type StudioDesign, type StudioUsage } from './studio'
+import { giftCodeStatus } from './studio'
+import { AGENTS, designBadge, designIdFromPath, formatCents, refreshDue, giftRedeemMessage, giftRedeemSuccess, refusalMessage, relativeTime, untilReset, usageLine, type StudioDesign, type StudioUsage } from './studio'
 
 const NOW = new Date('2026-10-29T21:55:00Z')
 const at = (ms: number) => new Date(NOW.getTime() + ms).toISOString()
@@ -55,6 +56,7 @@ describe('refusalMessage', () => {
   it('explains payments being off and Stripe not answering', () => {
     expect(r('payments_unavailable', {}, 503).text).toBe('Payments aren’t available right now.')
     expect(r('stripe_error', {}, 502).text).toBe('Stripe didn’t answer. Try again in a moment.')
+    expect(r('free_finalize_busy').text).toBe('Your free finalize is held by another checkout. Try again in a few minutes.')
   })
   it('falls back to plain words for anything else', () => {
     expect(r('who_knows')).toEqual({ text: 'Something went wrong. Try again.' })
@@ -129,16 +131,22 @@ describe('relativeTime', () => {
 })
 
 describe('usageLine', () => {
-  const u: StudioUsage = { plan: 'free', promptsLeft: 3, credits: 0, allowance: 3, resetsAt: NOW.toISOString(), openDesigns: 0, openDesignLimit: 1, topup: { cents: 500, prompts: 10 }, paused: false }
+  const u: StudioUsage = { plan: 'free', promptsLeft: 3, credits: 0, allowance: 3, resetsAt: NOW.toISOString(), openDesigns: 0, openDesignLimit: 1, topup: { cents: 500, prompts: 10 }, paused: false, giftedPrompts: 0, freeFinalizes: { available: 0, held: 0 } }
   it('names the plan and the prompts left, and bought prompts when there are any', () => {
     expect(usageLine(u)).toBe('free plan · 3 prompts left today')
     expect(usageLine({ ...u, credits: 7 })).toBe('free plan · 3 prompts left today · 7 bought')
+  })
+  it('adds free finalizes when there are any, and those held by an open checkout', () => {
+    expect(usageLine({ ...u, freeFinalizes: { available: 1, held: 0 } })).toBe('free plan · 3 prompts left today · 1 free finalize')
+    expect(usageLine({ ...u, freeFinalizes: { available: 2, held: 0 } })).toBe('free plan · 3 prompts left today · 2 free finalizes')
+    expect(usageLine({ ...u, freeFinalizes: { available: 0, held: 1 } })).toBe('free plan · 3 prompts left today · 1 free finalize held by an open checkout')
+    expect(usageLine({ ...u, freeFinalizes: { available: 2, held: 2 } })).toBe('free plan · 3 prompts left today · 2 free finalizes · 2 free finalizes held by an open checkout')
   })
 })
 
 const usage = (over: Partial<StudioUsage> = {}): StudioUsage => ({
   plan: 'free', promptsLeft: 3, credits: 0, allowance: 3, resetsAt: at(125 * MIN), openDesigns: 1, openDesignLimit: 1,
-  topup: { cents: 500, prompts: 10 }, paused: false, ...over,
+  topup: { cents: 500, prompts: 10 }, paused: false, giftedPrompts: 0, freeFinalizes: { available: 0, held: 0 }, ...over,
 })
 const detail = (over: Partial<StudioDetail> = {}): StudioDetail => ({
   design: { id: 'd1', name: 'Cap', kind: 'wearable', agent: 'claude', status: 'idle', archivedAt: null, lastJobAt: null, finalizedAt: null, createdAt: NOW.toISOString() },
@@ -286,7 +294,7 @@ const line = (over: Partial<QuoteLine>): QuoteLine => ({
   category: 'hat', revisionId: 'r1', revisionNumber: 1, pieceName: 'Neon Cap', priceKind: 'first', amountCents: 2900, waived: false, ...over,
 })
 const quote = (lines: QuoteLine[], over: Partial<Quote> = {}): Quote => ({
-  pieces: [], lines, totalCents: lines.reduce((n, l) => n + (l.waived ? 0 : l.amountCents), 0), blocked: [], reportsHeld: [], notes: [], ...over,
+  pieces: [], lines, totalCents: lines.reduce((n, l) => n + (l.waived ? 0 : l.amountCents), 0), blocked: [], giftsUsed: 0, reportsHeld: [], notes: [], ...over,
 })
 
 describe('finalizeStrip', () => {
@@ -322,6 +330,40 @@ describe('dialogTotal', () => {
     const q = quote([line({ priceKind: 'revision', amountCents: 1500 }), line({ category: 'feet', priceKind: 'revision_extra', amountCents: 1000 })])
     expect(dialogTotal(q, ['hat'])).toBe(1000)
     expect(dialogTotal(q, [])).toBe(2500)
+  })
+})
+
+describe('dialogTotal with gift lines', () => {
+  it('counts a gift line as 0, reported or not', () => {
+    const q = quote([line({ priceKind: 'revision', amountCents: 1500, gift: true }), line({ category: 'feet', priceKind: 'revision_extra', amountCents: 1000 })])
+    expect(dialogTotal(q, [])).toBe(1000)
+    expect(dialogTotal(q, ['hat'])).toBe(1000)
+    expect(dialogTotal(q, ['feet'])).toBe(0)
+  })
+})
+
+describe('giftRedeemMessage', () => {
+  const refused = (status: number, error: string) => ({ status, body: { error } })
+  it('says why a code was refused', () => {
+    expect(giftRedeemMessage(refused(404, 'unknown_code'))).toBe("That code isn't right. Check it and try again.")
+    expect(giftRedeemMessage(refused(410, 'code_off'))).toBe('That code has been turned off.')
+    expect(giftRedeemMessage(refused(410, 'code_expired'))).toBe('That code has expired.')
+    expect(giftRedeemMessage(refused(410, 'code_used_up'))).toBe('That code has been used up.')
+    expect(giftRedeemMessage(refused(409, 'already_redeemed'))).toBe("You've already used that code.")
+  })
+  it('says to wait when rate-limited, and falls back otherwise', () => {
+    expect(giftRedeemMessage({ status: 429, body: { error: 'rate_limited' } })).toBe('Too many tries. Try again in an hour.')
+    expect(giftRedeemMessage({ status: 400 })).toBe("That code isn't right. Check it and try again.")
+    expect(giftRedeemMessage({ status: 500 })).toBe('Something went wrong. Try again.')
+  })
+})
+
+describe('giftRedeemSuccess', () => {
+  it('lists what was added, leaving out a zero part', () => {
+    expect(giftRedeemSuccess({ prompts: 20, finalizes: 1 })).toBe('Added 20 prompts and 1 free finalize.')
+    expect(giftRedeemSuccess({ prompts: 1, finalizes: 2 })).toBe('Added 1 prompt and 2 free finalizes.')
+    expect(giftRedeemSuccess({ prompts: 20, finalizes: 0 })).toBe('Added 20 prompts.')
+    expect(giftRedeemSuccess({ prompts: 0, finalizes: 3 })).toBe('Added 3 free finalizes.')
   })
 })
 
@@ -473,5 +515,16 @@ describe('flagSummary', () => {
     }
     expect(flagSummary(flag)).toBe('3 turn-downs since Oct 28 · general chat, coding help')
     expect(flagSummary({ ...flag, events: [event('other', at(0))] })).toBe('1 turn-down since Oct 29 · other work')
+  })
+})
+
+describe('giftCodeStatus', () => {
+  const c = { disabledAt: null, expiresAt: null, uses: 0, maxUses: 2 }
+  it('reads off, expired, used up, else active', () => {
+    expect(giftCodeStatus(c, NOW)).toBe('Active')
+    expect(giftCodeStatus({ ...c, uses: 2 }, NOW)).toBe('Used up')
+    expect(giftCodeStatus({ ...c, expiresAt: at(-MIN) }, NOW)).toBe('Expired')
+    expect(giftCodeStatus({ ...c, expiresAt: at(MIN) }, NOW)).toBe('Active')
+    expect(giftCodeStatus({ ...c, disabledAt: at(-MIN), uses: 2 }, NOW)).toBe('Off')
   })
 })

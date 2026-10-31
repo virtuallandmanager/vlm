@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/lib/api'
 import { Badge, ConfirmAction, PageHeader, PrimaryButton, Skeleton } from '@/components/ui'
@@ -58,6 +59,7 @@ export default function AdminStudioPage() {
         crumbs={['System', { label: 'Admin', href: '/admin' }, 'Studio flags']}
         title="Studio flags"
         subtitle="Accounts whose studio messages keep getting turned down as work that isn't a wearable or emote, and mistake reports waiting for a decision."
+        actions={<Link href="/admin/studio/gift-codes" className="rounded-md border border-gray-800 bg-gray-900 px-3 py-2 text-sm hover:border-gray-700">Gift codes</Link>}
       />
       {error && <p className="mb-4 text-sm text-red-400" role="alert">{error}</p>}
 

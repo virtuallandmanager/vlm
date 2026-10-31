@@ -91,8 +91,8 @@ function FinalizeDialog({ designId, quote, onClose, onChanged }: { designId: str
                     <p className="text-xs text-gray-500">{PRICE_LABEL[l.priceKind]} · revision {l.revisionNumber}</p>
                   </div>
                   <p className="shrink-0 text-right">
-                    <span className={waived ? 'text-gray-500 line-through' : ''}>{formatCents(l.amountCents)}</span>
-                    {waived && <span className="block text-xs text-emerald-300">not charged</span>}
+                    <span className={waived || l.gift ? 'text-gray-500 line-through' : ''}>{formatCents(l.amountCents)}</span>
+                    {l.gift ? <span className="block text-xs text-emerald-300">free (gift code)</span> : waived && <span className="block text-xs text-emerald-300">not charged</span>}
                   </p>
                 </div>
                 {revision && (

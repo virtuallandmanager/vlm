@@ -8,7 +8,7 @@ import { PlusIcon, SparkleIcon } from '@/components/icons'
 import { countLabel } from '@/lib/format'
 import { AgentPicker } from './AgentPicker'
 import {
-  agentLabel, designBadge, refusalMessage, relativeTime, usageLine,
+  agentLabel, designBadge, giftRedeemMessage, giftRedeemSuccess, refusalMessage, relativeTime, usageLine,
   type Refusal, type StudioDesign, type StudioKind, type StudioUsage,
 } from '@/lib/studio'
 
@@ -23,6 +23,7 @@ export default function StudioPage() {
   const [designs, setDesigns] = useState<StudioDesign[] | null>(null)
   const [usage, setUsage] = useState<StudioUsage | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [showRedeem, setShowRedeem] = useState(false)
 
   // Back from buying prompts (?payment=): the webhook adds them, so re-read usage a few times
   const [toppedUp, setToppedUp] = useState(false)
@@ -54,7 +55,13 @@ export default function StudioPage() {
         title="Design Studio"
         count={designs ? countLabel(designs.length) : undefined}
         subtitle={usage ? usageLine(usage) : 'Design Decentraland wearables and emotes with an agent.'}
-        actions={<PrimaryButton onClick={() => setShowCreate((v) => !v)}><PlusIcon size={16} /> New design</PrimaryButton>}
+        actions={
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setShowRedeem((v) => !v)} aria-expanded={showRedeem}
+              className="rounded-md border border-gray-800 bg-gray-900 px-3 py-2 text-sm hover:border-gray-700">Have a code?</button>
+            <PrimaryButton onClick={() => setShowCreate((v) => !v)}><PlusIcon size={16} /> New design</PrimaryButton>
+          </div>
+        }
       />
 
       {toppedUp && (
@@ -62,6 +69,8 @@ export default function StudioPage() {
           Payment received. Your prompts show up here in a moment.
         </p>
       )}
+
+      {showRedeem && <RedeemCode onRedeemed={() => api.getStudioUsage().then(setUsage).catch(() => {})} onClose={() => setShowRedeem(false)} />}
 
       {showCreate && <NewDesign onCancel={() => setShowCreate(false)} />}
 
@@ -104,6 +113,45 @@ function DesignCard({ d }: { d: StudioDesign }) {
       <p className="mt-2 text-sm text-gray-400">{d.kind === 'emote' ? 'Emote' : 'Wearable'} · {agentLabel(d.agent)}</p>
       <p className="mt-1 text-xs text-gray-600">{d.lastJobAt ? `Last worked on ${relativeTime(d.lastJobAt, new Date())}` : `Started ${relativeTime(d.createdAt, new Date())}`}</p>
     </a>
+  )
+}
+
+function RedeemCode({ onRedeemed, onClose }: { onRedeemed: () => void; onClose: () => void }) {
+  const api = useApi()
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const redeem = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!code.trim()) return
+    setBusy(true)
+    setResult(null)
+    try {
+      const r = await api.redeemGiftCode(code.trim())
+      setResult({ ok: true, text: giftRedeemSuccess(r) })
+      setCode('')
+      onRedeemed()
+    } catch (err) {
+      setResult({ ok: false, text: giftRedeemMessage(err as never) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={redeem} className="mb-6 space-y-3 rounded-lg border border-gray-800 bg-gray-900 p-4">
+      <label className="block">
+        <span className="mb-2 block text-sm text-gray-400">Gift code</span>
+        <input type="text" value={code} onChange={(e) => setCode(e.target.value)} maxLength={64} autoComplete="off" spellCheck={false}
+          className="w-full max-w-md rounded-md border border-gray-800 bg-gray-950 px-4 py-2 font-mono text-white outline-none focus:border-blue-400" />
+      </label>
+      {result && <p className={`text-sm ${result.ok ? 'text-emerald-300' : 'text-amber-300'}`} role={result.ok ? 'status' : 'alert'}>{result.text}</p>}
+      <div className="flex gap-2">
+        <PrimaryButton type="submit" disabled={busy || !code.trim()}>{busy ? 'Redeeming…' : 'Redeem'}</PrimaryButton>
+        <button type="button" onClick={onClose} className="rounded-md bg-gray-800 px-4 py-2 text-sm hover:bg-gray-700">Close</button>
+      </div>
+    </form>
   )
 }
 

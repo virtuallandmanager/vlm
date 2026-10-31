@@ -9,8 +9,9 @@ import { getStudioStore, jobFileKey, uploadKey } from '../studio/store.js'
 import { verifyRenderFrame, framePath } from '../studio/render-urls.js'
 import { quoteFinalize, QuoteError } from '../studio/pricing.js'
 import { addUpload, deleteUpload, findUpload, UploadError, UPLOAD_LIMITS } from '../studio/uploads.js'
+import { GiftCodeError, redeemGiftCode } from '../studio/gift-codes.js'
 import { isPaused } from '../studio/scope.js'
-import { createFinalizeCheckout, createTopupCheckout, entitlementFor, queueFinalize, reportMistake, PaymentError } from '../studio/payments.js'
+import { createFinalizeCheckout, createTopupCheckout, entitlementFor, giftsFor, queueFinalize, reportMistake, PaymentError } from '../studio/payments.js'
 import {
   BASE_EMOTES, BODY_SHAPES, OUTFITS, WEARABLE_CATEGORIES,
   designDetail, openDesignCount, publicDesign, queuePrompt, requestRender, usage, type Design, type View,
@@ -77,6 +78,21 @@ async function openLimit(userId: string) {
 export default async function studioRoutes(app: FastifyInstance) {
   const auth = { preHandler: [authenticate, studioOn] }
   const work = { preHandler: [authenticate, studioOn, notPaused] }
+
+  // Not behind notPaused: a paused account may still redeem. Guessing is slow: 10 tries an hour per account.
+  app.post('/api/studio/gift-codes/redeem', {
+    ...auth,
+    config: { rateLimit: { max: 10, timeWindow: '1 hour', hook: 'preHandler', keyGenerator: (r: FastifyRequest) => r.user.id } },
+  }, async (request, reply) => {
+    const b = (request.body ?? {}) as { code?: unknown }
+    if (typeof b.code !== 'string' || b.code.length > 100) return reply.status(400).send({ error: 'code must be text' })
+    try {
+      return await redeemGiftCode(request.user.id, b.code, new Date())
+    } catch (err) {
+      if (err instanceof GiftCodeError) return reply.status(err.status).send({ error: err.code })
+      throw err
+    }
+  })
 
   app.get('/api/studio/usage', auth, async (request) => {
     return { ...await usage(request.user.id, await openLimit(request.user.id), new Date()), paused: await isPaused(request.user.id) }
@@ -175,7 +191,7 @@ export default async function studioRoutes(app: FastifyInstance) {
     const d = await ownDesign(request)
     if (!d) return notFound(reply)
     try {
-      return await quoteFinalize(d, null, [])
+      return await quoteFinalize(d, null, [], await giftsFor(request.user.id, d.id, new Date()))
     } catch (err) {
       if (err instanceof QuoteError) return quoteRefusal(reply, err)
       throw err

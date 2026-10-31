@@ -49,7 +49,8 @@ The studio is on when `VIRVI_MODE=cloud` and both `STUDIO_WORKER_IMAGE` and `STU
    vlm-studio-worker`), never Railway variables or machine env.
 5. **Spend limits** on the Anthropic and OpenAI keys: the daily cost ceilings are a backstop, not a budget.
 6. **Stripe.** On the existing webhook endpoint (`/api/billing/webhook`), also enable `checkout.session.completed`
-   (already on for subscriptions), `checkout.session.async_payment_succeeded` and `checkout.session.expired`. Nothing
+   (already on for subscriptions), `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`
+   and `checkout.session.expired`. Nothing
    needs creating in Stripe: prices are sent with each checkout. They are settings, in US cents:
    `STUDIO_PRICE_WEARABLE_CENTS` (2900), `STUDIO_PRICE_EXTRA_PIECE_CENTS` (1900), `STUDIO_PRICE_EMOTE_CENTS` (3900),
    `STUDIO_REVISION_WEARABLE_CENTS` (1500), `STUDIO_REVISION_EXTRA_PIECE_CENTS` (1000), `STUDIO_REVISION_EMOTE_CENTS`
