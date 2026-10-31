@@ -1517,7 +1517,7 @@ export const studioJobs = pgTable('studio_jobs', {
   // Whether the prompt used the owner's allowance, and on which UTC day (refunds and cost go to that day)
   counted: boolean('counted').notNull().default(false),
   countedDay: date('counted_day', { mode: 'string' }),
-  countedFrom: text('counted_from'), // allowance | credit: where a counted prompt is given back to
+  countedFrom: text('counted_from'), // allowance | gift | credit: where a counted prompt is given back to
   takenAt: timestamp('taken_at', { withTimezone: true }),
   finishedAt: timestamp('finished_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
