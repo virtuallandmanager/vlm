@@ -1,5 +1,5 @@
-# Design Studio worker: headless Blender 4.4, Chrome for Decentraland's wearable-preview, the Claude Code and Codex
-# CLIs at the versions the spike measured, dcl-avatar-skills at a pinned commit, ffmpeg for promo clips, and the
+# Design Studio worker: headless Blender 4.4, Chrome for Decentraland's wearable-preview, the Claude Code, Codex and
+# Grok Build CLIs at the versions the spikes measured, dcl-avatar-skills at a pinned commit, ffmpeg for promo clips, and the
 # studio_worker package.
 # Build: docker build --platform linux/amd64 -t vlm-studio-worker:dev apps/studio-worker
 FROM debian:bookworm-slim
@@ -38,6 +38,12 @@ RUN pip3 install --no-cache-dir numpy pillow playwright anthropic==2.2.0 && play
 ARG CLAUDE_CODE_VERSION=2.1.310
 ARG CODEX_VERSION=0.164.0
 RUN npm install -g @anthropic-ai/claude-code@$CLAUDE_CODE_VERSION @openai/codex@$CODEX_VERSION && npm cache clean --force
+# Grok Build is one static binary; the checksum pins it
+ARG GROK_VERSION=1.0.70
+ARG GROK_SHA256=22d281c5964c5444147328096ba2a221f3f0874c6858e27c825656a80f6e58e9
+RUN curl -fsSL -o /usr/local/bin/grok "https://x.ai/cli/grok-$GROK_VERSION-linux-x86_64" \
+    && echo "$GROK_SHA256  /usr/local/bin/grok" | sha256sum -c - \
+    && chmod 755 /usr/local/bin/grok
 
 # The agents run as an ordinary user (Claude Code refuses to skip its permission prompts as root); the worker is root
 # Only the design folder is the agent's: the worker's state for it (/work/design-state) is root's alone

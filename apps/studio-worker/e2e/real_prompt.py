@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Runs the worker against real agents: the spike's brief 01 (build a hat) then brief 02 (tweak it), each on a fresh
-worker start that restores the workspace, with tests/fake_api.py standing in for Virvi's API. Spends about $1 per agent.
+worker start that restores the workspace, with tests/fake_api.py standing in for Virvi's API. Spends about $1 per agent
+(about $2 for Grok).
 
     python3 /opt/e2e/real_prompt.py --agent claude [--then codex] [--out /out]
 
@@ -27,7 +28,10 @@ from studio_worker.config import DESIGN  # noqa: E402
 from studio_worker.render import is_blank  # noqa: E402
 from studio_worker.workspace import state_dir  # noqa: E402
 
-MODELS = {'claude': 'claude-opus-5-5', 'codex': 'gpt-6.1-sol'}
+MODELS = {'claude': 'claude-opus-5-5', 'codex': 'gpt-6.1-sol', 'grok': 'grok-build-0.1'}
+# Grok counts each tool call as a turn and costs more per tweak (apps/server/src/studio/designs.ts promptLimits)
+MAX_TURNS = {'claude': 80, 'codex': 80, 'grok': 150}
+TWEAK_BUDGET = {'claude': 0.5, 'codex': 0.5, 'grok': 1.5}
 BRIEFS = ['A rounded cyberpunk cap with a glowing neon visor strip across the front. Make it for both body shapes.',
           'Make the visor strip pink and the cap matte black.']
 
@@ -55,7 +59,8 @@ def main() -> int:
             job_id = f'job-{n}-{agent}'
             api.jobs.append({'jobId': job_id, 'type': 'prompt', 'kind': 'wearable', 'agent': agent,
                              'model': MODELS[agent], 'prompt': words, 'selectedSlots': ['hat'],
-                             'limits': {'timeoutSec': 1500, 'maxTurns': 80, 'costCeilingUsd': 3.0}, 'render': None})
+                             'limits': {'timeoutSec': 1500, 'maxTurns': MAX_TURNS[agent], 'costCeilingUsd': 3.0},
+                             'render': None})
             print(f'--- {job_id}: {words}', flush=True)
             jobs.main({**env})  # a fresh worker start each time: the workspace comes back from the API
             r = api.results[-1]
@@ -70,7 +75,9 @@ def main() -> int:
             blank = sum(is_blank(Image.open(io.BytesIO(api.files[k]))) for k in frames)
             expect(len(frames) == 36 and blank == 0, f'{job_id} 36 non-blank spin frames ({len(frames)}, {blank} blank)')
             if n == 2:
-                expect(r['costUsd'] is not None and r['costUsd'] < 0.5, f'{job_id} tweak under $0.50 (${r["costUsd"]})')
+                budget = TWEAK_BUDGET[agent]
+                expect(r['costUsd'] is not None and r['costUsd'] < budget,
+                       f'{job_id} tweak under ${budget:.2f} (${r["costUsd"]})')
             out = a.out / job_id
             out.mkdir(parents=True, exist_ok=True)
             for k in frames[::9]:
