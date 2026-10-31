@@ -66,7 +66,8 @@ export async function promptStatus(userId: string, now: Date) {
  * Takes one prompt from today's allowance (when counted) in a single statement, so concurrent reservations never pass
  * it; once the allowance is spent, one gifted prompt, then one credit, each also in a single statement. Every
  * reservation, counted or not, is refused once today's spend reaches the cost ceiling, unless the user has gifted
- * prompts: a counted one takes a gifted prompt, an uncounted one takes nothing.
+ * prompts: past the ceiling an uncounted reservation (otherwise free) also takes one gifted prompt, so gifts cannot
+ * fund unlimited runs; the job records `from: 'gift'` and the prompt is given back if the job errors.
  */
 export async function reservePrompt(
   userId: string,
@@ -86,14 +87,12 @@ export async function reservePrompt(
     RETURNING prompts`)
   if ((rows as unknown as unknown[]).length) return { ok: true, day, from: opts.counted ? 'allowance' : null }
   const { costUsd } = await usage(userId, day, exec)
-  if (opts.counted) {
+  if (opts.counted || costUsd >= ceiling) {
     const gift = await exec.execute(sql`
       UPDATE studio_prompt_credits SET gifted = gifted - 1, updated_at = now()
       WHERE user_id = ${userId} AND gifted > 0
       RETURNING gifted`)
     if ((gift as unknown as unknown[]).length) return { ok: true, day, from: 'gift' }
-  } else if (costUsd >= ceiling && (await giftedBalance(userId, exec)) > 0) {
-    return { ok: true, day, from: null }
   }
   if (costUsd >= ceiling) return { ok: false, reason: 'cost_ceiling' }
   const credit = await exec.execute(sql`

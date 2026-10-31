@@ -6,6 +6,8 @@ import { utcDay, promptStatus, reservePrompt, refundPrompt, recordCost } from '.
 import { resetDb } from './helpers/db.js'
 import { createUser } from './helpers/factories.js'
 import { usage } from '../src/studio/designs.js'
+import { applyResult } from '../src/studio/results.js'
+import { createDesign, queueJob, okResult } from './helpers/studio.js'
 
 const NOW = new Date('2026-10-25T12:00:00Z')
 
@@ -140,8 +142,6 @@ describe('studio quota', () => {
     await recordCost(u.id, '2026-10-25', 6)
     expect((await promptStatus(u.id, NOW)).overCostCeiling).toBe(false)
     expect(await reservePrompt(u.id, NOW, { counted: true })).toEqual({ ok: true, day: '2026-10-25', from: 'gift' })
-    // an uncounted reservation also passes while gifted prompts remain, and takes nothing
-    expect(await reservePrompt(u.id, NOW, { counted: false })).toEqual({ ok: true, day: '2026-10-25', from: null })
     expect(await gifted(u.id)).toBe(1)
     expect(await reservePrompt(u.id, NOW, { counted: true })).toEqual({ ok: true, day: '2026-10-25', from: 'gift' })
     expect(await reservePrompt(u.id, NOW, { counted: true })).toEqual({ ok: false, reason: 'cost_ceiling' })
@@ -194,5 +194,41 @@ describe('studio quota', () => {
     })
     const other = await createUser()
     expect(await usage(other.id, 5, new Date())).toMatchObject({ giftedPrompts: 0, freeFinalizes: { available: 0, held: 0 } })
+  })
+
+  it('past the ceiling an uncounted run takes one gifted prompt, and is refused once they are gone', async () => {
+    const u = await createUser()
+    await db.insert(studioPromptCredits).values({ userId: u.id, balance: 5, gifted: 2 })
+    await recordCost(u.id, '2026-10-25', 6)
+    expect(await reservePrompt(u.id, NOW, { counted: false })).toEqual({ ok: true, day: '2026-10-25', from: 'gift' })
+    expect(await gifted(u.id)).toBe(1)
+    expect(await reservePrompt(u.id, NOW, { counted: false })).toEqual({ ok: true, day: '2026-10-25', from: 'gift' })
+    expect(await gifted(u.id)).toBe(0)
+    expect(await reservePrompt(u.id, NOW, { counted: false })).toEqual({ ok: false, reason: 'cost_ceiling' })
+    expect(await credits(u.id)).toBe(5)
+  })
+
+  it('under the ceiling an uncounted run is still free and leaves gifted prompts alone', async () => {
+    const u = await createUser()
+    await db.insert(studioPromptCredits).values({ userId: u.id, gifted: 2 })
+    expect(await reservePrompt(u.id, NOW, { counted: false })).toEqual({ ok: true, day: '2026-10-25', from: null })
+    expect(await gifted(u.id)).toBe(2)
+  })
+
+  it('an errored uncounted run past the ceiling gives its gifted prompt back; a free one refunds nothing', async () => {
+    const u = await createUser()
+    const design = await createDesign(u, { status: 'building', machineId: 'm1' })
+    await db.insert(studioPromptCredits).values({ userId: u.id, gifted: 1 })
+    await recordCost(u.id, '2026-10-25', 6)
+    const r = await reservePrompt(u.id, NOW, { counted: false }) as { day: string; from: 'gift' }
+    expect(await gifted(u.id)).toBe(0)
+    const job = await queueJob(design, undefined, { counted: false, countedDay: r.day, countedFrom: r.from, status: 'taken' })
+    await applyResult(job.id, okResult(job.id, { outcome: 'error', error: 'boom', pieces: [], costUsd: 0 }) as any, NOW)
+    expect(await gifted(u.id)).toBe(1)
+
+    const free = await queueJob(design, undefined, { counted: false, countedDay: '2026-10-25', countedFrom: null, status: 'taken' })
+    await applyResult(free.id, okResult(free.id, { outcome: 'error', error: 'boom', pieces: [], costUsd: 0 }) as any, NOW)
+    expect(await gifted(u.id)).toBe(1)
+    expect(await credits(u.id)).toBe(0)
   })
 })
