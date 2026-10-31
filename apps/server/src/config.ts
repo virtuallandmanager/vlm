@@ -211,6 +211,7 @@ export const config = {
   studioMachines: (env('STUDIO_MACHINES') === 'external' ? 'external' : 'fly') as 'fly' | 'external',
   studioClaudeModel: env('STUDIO_CLAUDE_MODEL') || 'claude-opus-5-5',
   studioCodexModel: env('STUDIO_CODEX_MODEL') || 'gpt-6.1-sol',
+  studioGrokModel: env('STUDIO_GROK_MODEL') || 'grok-build-0.1',
   studioPrices: studioPricesFrom(process.env),
   // Turn-downs: who hears about an account that keeps sending off-topic work, after how many in how long, and how many
   // mistake refunds per piece are instant before the rest wait for review (src/studio/scope.ts)

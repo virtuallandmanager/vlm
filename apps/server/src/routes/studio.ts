@@ -24,7 +24,7 @@ import {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MAX_PROMPT = 4000
 const MAX_NAME = 120
-const AGENTS = ['claude', 'codex']
+const AGENTS = ['claude', 'codex', 'grok']
 const REPORT_MIN = 10
 const REPORT_MAX = 2000
 const MAX_PACKS = 10
@@ -51,11 +51,9 @@ async function ownDesign(request: FastifyRequest): Promise<Design | null> {
   return d ?? null
 }
 
-/** Agent check shared by create and update: grok is announced but not offered yet. */
+/** Agent check shared by create and update. */
 function agentError(agent: unknown): string | null {
-  if (agent === 'grok') return 'Grok is coming soon'
-  if (!AGENTS.includes(agent as string)) return 'agent must be claude or codex'
-  return null
+  return AGENTS.includes(agent as string) ? null : 'agent must be claude, codex or grok'
 }
 
 /** A quote refusal as the page sees it: an unknown piece is the caller's mistake, the rest are the design's state. */
