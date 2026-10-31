@@ -16,6 +16,7 @@ import io
 import json
 import re
 import secrets
+import shutil
 import sys
 from pathlib import Path
 
@@ -36,6 +37,14 @@ BRIEFS = ['A rounded cyberpunk cap with a glowing neon visor strip across the fr
           'Make the visor strip pink and the cap matte black.']
 
 
+def fresh_design() -> None:
+    """A new design, as on a new machine: fly.sh runs one agent after another on the same one."""
+    shutil.rmtree(state_dir(DESIGN), ignore_errors=True)
+    for f in DESIGN.iterdir():
+        if f.name not in ('.claude', '.agents'):  # the image's skills
+            shutil.rmtree(f) if f.is_dir() and not f.is_symlink() else f.unlink()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--agent', required=True, choices=list(MODELS))
@@ -50,6 +59,7 @@ def main() -> int:
         if not ok:
             failures.append(what)
 
+    fresh_design()
     token = secrets.token_urlsafe(24)
     with fake_api.serve(token=token, design='real-design') as api:
         api.on_event = lambda job, e: print(f"  [{job}] {e.get('phase') or e.get('text')}", flush=True)
