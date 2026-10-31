@@ -580,6 +580,25 @@ describe('studio payments', () => {
       expect(await balanceOf(u)).toBe(1)
     })
 
+    it('a failed delayed payment gives its free finalize back', async () => {
+      const u = await createUser()
+      const { d } = await hatAndMask(u)
+      await giveFinalizes(u, 1)
+      await finalize(u, d.id)
+      const [pay] = await paymentOf(d.id)
+      expect([pay.giftsHeld, await balanceOf(u)]).toEqual([1, 0])
+      // a bank debit: the session completes unpaid, then the payment fails
+      const session = { id: 'cs_x', object: 'checkout.session', mode: 'payment', payment_status: 'unpaid', metadata: { vlm_studio_payment_id: pay.id } }
+      await webhook('checkout.session.completed', session)
+      expect((await paymentOf(d.id))[0]).toMatchObject({ status: 'pending', giftsHeld: 1 })
+      await webhook('checkout.session.async_payment_failed', session)
+      expect((await paymentOf(d.id))[0]).toMatchObject({ status: 'expired', giftsHeld: 0 })
+      expect(await balanceOf(u)).toBe(1)
+      await webhook('checkout.session.async_payment_failed', session)
+      expect(await balanceOf(u)).toBe(1)
+      expect(await db.select().from(studioEntitlements)).toHaveLength(0)
+    })
+
     it('a failed Stripe session gives its free finalize back', async () => {
       const u = await createUser()
       const { d } = await hatAndMask(u)

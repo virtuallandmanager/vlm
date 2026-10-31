@@ -365,7 +365,8 @@ export async function handleStudioSession(event: { type: string; data?: { object
   if (typeof id !== 'string' || !UUID.test(id)) return true
   if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
     if (s.payment_status === 'paid') await grantPayment(id, typeof s.payment_intent === 'string' ? s.payment_intent : null, new Date())
-  } else if (event.type === 'checkout.session.expired') {
+  } else if (event.type === 'checkout.session.expired' || event.type === 'checkout.session.async_payment_failed') {
+    // A delayed payment (a bank debit) that fails ends the checkout as an expiry does: Stripe won't expire it later
     await expirePayment(id, new Date())
   }
   return true
