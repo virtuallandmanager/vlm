@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useEffect, useCallback, ReactNode 
 import { API_URL } from './config'
 import { readSession, type ScenePass } from './session'
 import { AUTH_KEY, readStoredAuth } from './auth-storage'
+import { refreshStoredSession } from './session-refresh'
 
 interface User {
   id: string
@@ -20,8 +21,13 @@ interface AuthState {
   register: (email: string, password: string, displayName: string) => Promise<void>
   loginWithWallet: () => Promise<void>
   logout: () => void
+  /** Swaps the stored refresh token for a new access token: the new token, or null (signed out when refused). */
+  renew: () => Promise<string | null>
   updateUser: (updates: Partial<User>) => void
 }
+
+const postRefresh = (refreshToken: string) =>
+  fetch(`${API_URL}/api/auth/refresh`, { method: 'POST', headers: { Authorization: `Bearer ${refreshToken}` } })
 
 const AuthContext = createContext<AuthState | null>(null)
 
@@ -79,19 +85,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Load from localStorage on mount
   useEffect(() => {
-    const data = readStoredAuth(localStorage)
-    if (data) {
+    const restore = async () => {
+      const data = readStoredAuth(localStorage)
+      if (!data) return
+      let token = data.token
+      // An access token that ran out is renewed with the stored refresh token before giving up on the session
+      if (!readSession(token, Date.now()).ok && data.refresh) {
+        const r = await refreshStoredSession(localStorage, postRefresh)
+        if ('token' in r) token = r.token
+      }
       // Drop expired, kind-less (pre-scene-pass) and visitor sessions: the user signs in again once.
-      const session = readSession(data.token, Date.now())
+      const session = readSession(token, Date.now())
       if (session.ok) {
-        setToken(data.token)
+        setToken(token)
         setUser(data.user as User)
         setScenePass(session.scenePass)
       } else {
         localStorage.removeItem(AUTH_KEY)
       }
     }
-    setLoading(false)
+    restore().finally(() => setLoading(false))
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {
@@ -150,6 +163,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(AUTH_KEY)
   }, [])
 
+  const renew = useCallback(async () => {
+    const r = await refreshStoredSession(localStorage, postRefresh)
+    if ('token' in r) {
+      setToken(r.token)
+      return r.token
+    }
+    if ('refused' in r) logout()
+    return null
+  }, [logout])
+
   const updateUser = useCallback((updates: Partial<User>) => {
     setUser(prev => {
       if (!prev) return prev
@@ -168,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, scenePass, login, register, loginWithWallet, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, token, loading, scenePass, login, register, loginWithWallet, logout, renew, updateUser }}>
       {children}
     </AuthContext.Provider>
   )

@@ -214,7 +214,7 @@ export function isGlbAsset(asset: { contentType?: string; filename?: string }): 
 }
 
 export function useApi() {
-  const { token, logout } = useAuth()
+  const { token, logout, renew } = useAuth()
 
   /** A kind-less (pre-scene-pass) session, or a scene pass used outside its scope: drop it so the
    *  dashboard layout sends the user to sign-in once (with `next`), instead of showing an error. */
@@ -223,8 +223,12 @@ export function useApi() {
   }, [logout])
 
   const apiFetch = useCallback(async <T = any>(path: string, options: RequestInit = {}): Promise<T> => {
-    const headers = requestHeaders(token, options)
-    const res = await fetch(`${API_URL}${path}`, { ...options, headers })
+    let res = await fetch(`${API_URL}${path}`, { ...options, headers: requestHeaders(token, options) })
+    // The access token ran out: renew it with the stored refresh token and send the request once more
+    if (res.status === 401 && token) {
+      const fresh = await renew()
+      if (fresh) res = await fetch(`${API_URL}${path}`, { ...options, headers: requestHeaders(fresh, options) })
+    }
     if (!res.ok) {
       // Non-JSON error bodies (proxy pages, e.g. a 413 from the edge) become `HTTP <status>`.
       const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
@@ -233,7 +237,7 @@ export function useApi() {
     }
     if (res.status === 204) return undefined as T
     return res.json()
-  }, [token, dropDeadSession])
+  }, [token, dropDeadSession, renew])
 
   // One object per session: effects and callbacks that depend on `api` (or one of its functions) run once, not on
   // every render, which would refetch in a loop

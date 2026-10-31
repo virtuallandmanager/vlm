@@ -17,8 +17,9 @@ vi.mock('react', () => ({
   useMemo: (make: () => unknown, deps: unknown[]) => memo(make, deps),
 }))
 let token = 't1'
-const logout = () => {}
-vi.mock('./auth', () => ({ useAuth: () => ({ token, logout }) }))
+const logout = vi.fn()
+const renew = vi.fn(async (): Promise<string | null> => 'fresh')
+vi.mock('./auth', () => ({ useAuth: () => ({ token, logout, renew }) }))
 
 const { useApi } = await import('./api')
 const render = () => { cursor = 0; return useApi() }
@@ -37,5 +38,32 @@ describe('useApi', () => {
     const first = render()
     token = 't2'
     expect(render()).not.toBe(first)
+  })
+})
+
+describe('apiFetch', () => {
+  beforeEach(() => { slots.length = 0; token = 't1'; renew.mockClear(); logout.mockClear() })
+  const respond = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+  const authOf = (call: unknown[]) => new Headers((call[1] as RequestInit).headers).get('Authorization')
+
+  it('renews an expired session once and sends the request again with the new token', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(respond(401, { error: 'Unauthorized', message: 'Authorization token expired' }))
+      .mockResolvedValueOnce(respond(200, { scenes: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await render().getScenes()).toEqual({ scenes: [] })
+    expect(renew).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls.map(authOf)).toEqual(['Bearer t1', 'Bearer fresh'])
+  })
+
+  it('gives up after one renewal, and does not renew when the refresh is refused', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => respond(401, { error: 'Unauthorized' })))
+    await expect(render().getScenes()).rejects.toMatchObject({ status: 401 })
+    expect(renew).toHaveBeenCalledTimes(1)
+    renew.mockResolvedValueOnce(null)
+    const fetchMock = vi.fn(async () => respond(401, { error: 'Unauthorized' }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(render().getScenes()).rejects.toMatchObject({ status: 401 })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
