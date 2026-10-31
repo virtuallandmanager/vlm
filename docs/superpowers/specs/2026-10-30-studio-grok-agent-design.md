@@ -46,6 +46,21 @@ buttons and Grok Build greyed out as "Coming soon". The server refuses `grok` (`
 
 ## Decisions (mine, for the owner to check)
 
+- **Turn-limit stops (the owner approved this):**
+  - Today a Claude run that hits `--max-turns` comes back as `error`. The prompt is refunded, the person sees
+    "Something went wrong: …" with the CLI's raw text, and finished pieces aren't collected.
+  - From now on, a turn-limit stop by Claude or Grok is handled like a cost-ceiling stop:
+    - The prompt stays counted, and pieces aren't collected, as with `ceiling` today.
+    - The note reads: "The agent stopped at this prompt's step limit. Press Continue to carry on where it stopped:
+      it doesn't use a prompt."
+    - Continue resumes the same session.
+  - The builder picks the shape: a new `turns` outcome in the contract, or `ceiling` with a reason. The web's
+    Continue button must appear for it either way.
+  - Detecting it:
+    - Claude: a `result` event with subtype `error_max_turns`. The builder verifies this against the pinned CLI.
+    - Grok: an `end` event with `stopReason` `max_turn_requests`, exit code 1.
+  - Codex has no turn limit, so nothing changes for it.
+  - Repeated Continues stay free, and the daily cost ceiling remains what eventually stops them.
 - **Turns:** Grok counts each tool call as a turn, and the test build hit the 80-turn limit. Grok prompts get 150
   turns. The server sends `maxTurns` per job, so this is a per-agent value there. The other agents keep 80.
 - **Cost ceiling:** Grok gets the same $3 per-prompt ceiling and stops on cost while running, like Claude.
@@ -112,8 +127,7 @@ buttons and Grok Build greyed out as "Coming soon". The server refuses `grok` (`
   - `usage` per model call.
   - `end` with `stopReason`, `sessionId`, `num_turns`, `total_cost_usd` and `modelUsage`.
   - At max turns: exit code 1, "Error: max turns reached" on stderr, and `stopReason` `max_turn_requests`.
-  - The builder decides how that maps to an outcome, consistently with how the other agents' max-turn stops are
-    treated today.
+  - That is a turn-limit stop (see Decisions).
 - **To verify:**
   - Whether `total_cost_usd` on a resumed run is that run's cost or the session's running total. The spike's tweak,
     $0.98 after a $0.95 build, suggests per run. `agent.py` charges each prompt its share (`_share`) and must do the
