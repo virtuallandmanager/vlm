@@ -1,7 +1,7 @@
 import { createHash, randomInt } from 'node:crypto'
-import { asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { studioGiftCodes, studioGiftRedemptions, users } from '../db/schema.js'
+import { studioFinalizeCredits, studioGiftCodes, studioGiftRedemptions, studioPromptCredits, users } from '../db/schema.js'
 
 // Read-aloud alphabet: no 0/O, 1/I/L, so a code survives being said over a call
 const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
@@ -79,4 +79,35 @@ export async function disableGiftCode(id: string, now: Date): Promise<boolean> {
     .where(eq(studioGiftCodes.id, id))
     .returning({ id: studioGiftCodes.id })
   return rows.length > 0
+}
+
+/**
+ * Redeems a code for a user: gifted prompts and free first-finalizes. The code row is locked for the whole
+ * transaction, so the last use goes to one redeemer; the unique (code, user) index backs the one-per-account rule.
+ */
+export async function redeemGiftCode(userId: string, raw: string, now: Date): Promise<{ prompts: number; finalizes: number }> {
+  try {
+    return await db.transaction(async (tx) => {
+      const [code] = await tx.select().from(studioGiftCodes).where(eq(studioGiftCodes.codeHash, hashGiftCode(raw))).for('update')
+      if (!code) throw new GiftCodeError(404, 'unknown_code')
+      if (code.disabledAt) throw new GiftCodeError(410, 'code_off')
+      if (code.expiresAt && code.expiresAt.getTime() <= now.getTime()) throw new GiftCodeError(410, 'code_expired')
+      if (code.uses >= code.maxUses) throw new GiftCodeError(410, 'code_used_up')
+      const [had] = await tx.select({ id: studioGiftRedemptions.id }).from(studioGiftRedemptions)
+        .where(and(eq(studioGiftRedemptions.codeId, code.id), eq(studioGiftRedemptions.userId, userId)))
+      if (had) throw new GiftCodeError(409, 'already_redeemed')
+      await tx.insert(studioGiftRedemptions).values({ codeId: code.id, userId, createdAt: now })
+      await tx.update(studioGiftCodes).set({ uses: sql`${studioGiftCodes.uses} + 1` }).where(eq(studioGiftCodes.id, code.id))
+      await tx.insert(studioPromptCredits).values({ userId, balance: 0, gifted: code.prompts, updatedAt: now })
+        .onConflictDoUpdate({ target: studioPromptCredits.userId, set: { gifted: sql`${studioPromptCredits.gifted} + ${code.prompts}`, updatedAt: now } })
+      await tx.insert(studioFinalizeCredits).values({ userId, balance: code.finalizes, updatedAt: now })
+        .onConflictDoUpdate({ target: studioFinalizeCredits.userId, set: { balance: sql`${studioFinalizeCredits.balance} + ${code.finalizes}`, updatedAt: now } })
+      return { prompts: code.prompts, finalizes: code.finalizes }
+    })
+  } catch (err) {
+    if ((err as { code?: string }).code === '23505' || (err as { cause?: { code?: string } }).cause?.code === '23505') {
+      throw new GiftCodeError(409, 'already_redeemed')
+    }
+    throw err
+  }
 }
