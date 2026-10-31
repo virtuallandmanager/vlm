@@ -16,6 +16,17 @@ export type Design = typeof studioDesigns.$inferSelect
 export type View = { bodyShape: 'male' | 'female'; outfit: 'default' | 'outfit-2' | 'outfit-3'; emote: null | 'idle' | 'wave' | 'dance' | 'clap' | 'walk' }
 
 export const PROMPT_LIMITS = { timeoutSec: 1500, maxTurns: 80, costCeilingUsd: 3 }
+/** The outcomes a free Continue may follow: the agent stopped at a limit with its work in hand. */
+export const CONTINUABLE = ['ceiling', 'turns']
+
+export function modelFor(agent: string): string {
+  return agent === 'codex' ? config.studioCodexModel : agent === 'grok' ? config.studioGrokModel : config.studioClaudeModel
+}
+
+/** Grok counts each tool call as a turn, so it gets more of them. */
+export function promptLimits(agent: string): typeof PROMPT_LIMITS {
+  return agent === 'grok' ? { ...PROMPT_LIMITS, maxTurns: 150 } : PROMPT_LIMITS
+}
 export const RENDER_LIMITS = { timeoutSec: 300, maxTurns: 80, costCeilingUsd: 3 }
 export const CONTINUE_TEXT = 'Continue where you stopped.'
 export const START_FAILED = 'The studio machine could not start.'
@@ -155,7 +166,7 @@ export async function queuePrompt(
         const [last] = await tx.select({ result: studioJobs.result }).from(studioJobs)
           .where(and(eq(studioJobs.designId, d.id), eq(studioJobs.type, 'prompt')))
           .orderBy(desc(studioJobs.createdAt)).limit(1)
-        if ((last?.result as { outcome?: string } | null)?.outcome !== 'ceiling') {
+        if (!CONTINUABLE.includes((last?.result as { outcome?: string } | null)?.outcome ?? '')) {
           throw new Refused({ status: 409, body: { error: 'nothing_to_continue', code: 'nothing_to_continue' } })
         }
       }
@@ -185,10 +196,10 @@ export async function queuePrompt(
           type: 'prompt',
           kind: d.kind,
           agent: d.agent,
-          model: d.agent === 'codex' ? config.studioCodexModel : config.studioClaudeModel,
+          model: modelFor(d.agent),
           prompt: text,
           selectedSlots: input.selectedSlots,
-          limits: PROMPT_LIMITS,
+          limits: promptLimits(d.agent),
           render: null,
           uploads: await uploadPaths(d.id, tx),
           check: counted, // the user's own words; Continue and fixing the checks are the server's

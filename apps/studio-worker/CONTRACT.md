@@ -15,7 +15,7 @@ the machine.
 | `VIRVI_API_URL` | Virvi's API origin, such as `https://api.virvi.io`. Its host is added to the proxy allowlist. |
 | `STUDIO_WORKER_TOKEN` | Bearer token scoped to this one design. Never handed to an agent, never logged. |
 | `STUDIO_DESIGN_ID` | The design this machine works on. |
-| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | Fly secrets. Each agent gets only its own (Codex as `CODEX_API_KEY`). |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY` | Fly secrets, held by the key proxy alone. The agents get a placeholder and talk to it on loopback. |
 | `STUDIO_IDLE_EXIT_SEC` | Seconds with no job before the worker exits. Default 600. |
 
 ## Endpoints
@@ -41,7 +41,7 @@ The worker retries a call 3 times on a 5xx or connection error. It retries the r
 
 A gzip tar with two top-level folders:
 
-- `design/`: the agent's working files, `out/`, and the agents' session homes (`.claude-home/`, `.codex-home/`). The
+- `design/`: the agent's working files, `out/`, and the agents' session homes (`.claude-home/`, `.codex-home/`, `.grok-home/`). The
   agent owns this folder and can write anything in it.
 - `state/`: the worker's own records, `state.json` (the conversation, sessions, running usage and the hashes of the
   pieces Virvi has). It lives outside the agent's reach, so an agent can't change what it's charged or what counts as
@@ -85,12 +85,13 @@ Render frames are the only files the browser ever receives. A `viewKey` is `<mod
   package of a paid revision of each listed piece, from that revision's own files (read with `inputs`, never the
   workspace), and saves no workspace.
 - `kind`: `"wearable"` or `"emote"`.
-- `agent`: `"claude"` or `"codex"`; `model`: the model id the agent runs (`claude-opus-5-5`, `gpt-6.1-sol`). Both
-  are null on a render or finalize job.
+- `agent`: `"claude"`, `"codex"` or `"grok"`; `model`: the model id the agent runs (`claude-opus-5-5`, `gpt-6.1-sol`,
+  `grok-build-0.1`). Both are null on a render or finalize job.
 - `selectedSlots`: the categories to build, or null when the user hasn't chosen yet. With null, the agent may answer
   with a slot proposal instead of building.
-- `limits`: defaults `timeoutSec` 1500, `maxTurns` 80, `costCeilingUsd` 3.0. Claude is stopped once its running cost
-  passes the ceiling; Codex reports usage only at the end of a turn, so time alone caps it.
+- `limits`: defaults `timeoutSec` 1500, `maxTurns` 80 (Virvi sends 150 for Grok, which counts each tool call as a
+  turn), `costCeilingUsd` 3.0. Claude and Grok are stopped once their running cost passes the ceiling; Codex reports
+  usage only at the end of a turn, so time alone caps it. Codex has no turn limit.
 - `uploads`, on a prompt job: the files the owner uploaded for the design, `[{"path": "uploads/<id>/<name>", "name":
   str, "kind": "image" | "model"}]` (empty when there are none). Images are PNG, JPEG or WebP (Virvi turns other
   formats into PNG); models are GLB, VRM, FBX, OBJ, STL or .blend. The worker reads each through `inputs` into the
@@ -164,10 +165,11 @@ effort: one that fails to send is dropped.
 | `declined` | the agent wrote `out/declined.json` and changed no piece: it stopped on a request that isn't design work. `scope` is set |
 | `ceiling` | Claude was stopped at the cost ceiling |
 | `timeout` | the agent was stopped at the time limit |
+| `turns` | the agent reached the prompt's turn limit (`limits.maxTurns`); Continue resumes it |
 | `error` | anything else; `error` says what. Includes a wrong output layout (GLBs outside `out/<category>/`, a piece file that is a link), a failed render, and a workspace that couldn't be saved. |
 
 - **Pieces are keyed by category.** A design holds at most one piece per category, and an emote design has the one
-  category `emote`. `pieces` lists every piece in the design (none on `ceiling`, `timeout`, a wrong layout or a failed save).
+  category `emote`. `pieces` lists every piece in the design (none on `ceiling`, `timeout`, `turns`, a wrong layout or a failed save).
 - **A piece's `files` and `renders` are set only when this job uploaded it.** An unchanged piece has empty lists, and
   the files Virvi already has for it stand. A changed piece is uploaded only once it has rendered and no proposal is
   pending; until then it stays "changed", so a later prompt uploads it. Files are never uploaded by a job whose

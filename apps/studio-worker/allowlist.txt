@@ -3,6 +3,7 @@
 # t.contentsquare.net (analytics) and Chrome's own Google hosts, and works with them denied.
 api.anthropic.com  # Claude Code's model API
 api.openai.com  # Codex's model API
+api.x.ai  # Grok Build's model API
 wearable-preview.decentraland.org  # the preview page the renders come from
 peer.decentraland.org  # the preview's catalyst: base avatar wearables and profiles
 cdn.decentraland.org  # the preview's static assets

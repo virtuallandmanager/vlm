@@ -242,3 +242,23 @@ def test_agent_decline_is_declined(api, tmp_path):
 def test_declined_with_a_changed_piece_is_ok(api, tmp_path, skills):
     result = run_checked(api, tmp_path, prompt_job(check=True), 'claude_declines_but_builds.jsonl', verdict('design'))
     assert result['outcome'] == 'ok' and result['scope'] is None
+
+
+def test_turns_outcome_collects_no_pieces(api, tmp_path, skills):
+    result = run(api, tmp_path, prompt_job(), 'claude_max_turns.jsonl')
+    assert result['outcome'] == 'turns' and result['pieces'] == []
+
+
+def test_switch_to_grok_carries_the_conversation(api, tmp_path, skills, monkeypatch):
+    run(api, tmp_path, prompt_job(), 'claude_builds_hat.jsonl')
+    seen = {}
+    real = jobs.run_agent
+
+    def spy(agent, model, prompt, session, *a, **kw):
+        seen.update(agent=agent, prompt=prompt, session=session)
+        return real(agent, model, prompt, session, *a, **kw)
+    monkeypatch.setattr(jobs, 'run_agent', spy)
+    run(api, tmp_path, prompt_job(jobId='job-2', agent='grok', model='grok-build-0.1', prompt='make it pink'),
+        'grok_builds_hat.jsonl')
+    assert seen['agent'] == 'grok' and seen['session'] is None
+    assert seen['prompt'].startswith('Conversation so far:') and 'The user now says:\nmake it pink' in seen['prompt']

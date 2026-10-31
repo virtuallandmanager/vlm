@@ -134,3 +134,68 @@ def test_proxy_forwards_only_the_agents_endpoints(upstream):
     assert not keyproxy.allowed_path('/v1/messages/batches', keyproxy.ANTHROPIC_PATHS)
     assert not keyproxy.allowed_path('/v1/files', keyproxy.ANTHROPIC_PATHS)
     srv.shutdown()
+
+
+def xai(upstream):
+    srv = keyproxy.serve(0, upstream, 'authorization', 'xai-real', None, allowed=keyproxy.XAI_PATHS,
+                         refuse_body=keyproxy.refused_xai_body)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def test_proxy_forwards_only_xais_agent_endpoints(upstream):
+    srv = xai(upstream)
+    for path in ('/v1/images/generations', '/v1/files'):
+        _, r = post(srv, {'authorization': 'Bearer studio-proxy'}, path=path)
+        assert r.status == 403, path
+        r.read()
+    assert Upstream.seen == []
+    for path in ('/v1/responses', '/v1/chat/completions', '/v1/models'):
+        _, r = post(srv, {'authorization': 'Bearer studio-proxy'}, path=path)
+        assert r.status == 200, path
+        r.read()
+    srv.shutdown()
+
+
+def test_xai_search_tool_is_refused(upstream):
+    srv = xai(upstream)
+    for body in (b'{"tools":[{"type":"web_search"}]}', b'{"search_parameters":{"mode":"on"}}'):
+        _, r = post(srv, {'authorization': 'Bearer studio-proxy'}, path='/v1/responses', body=body)
+        assert r.status == 403, body
+        r.read()
+    assert Upstream.seen == []
+    srv.shutdown()
+
+
+def test_xai_function_tool_named_search_is_forwarded(upstream):
+    srv = xai(upstream)
+    body = b'{"tools":[{"type":"function","function":{"name":"search_tool"}}]}'
+    _, r = post(srv, {'authorization': 'Bearer studio-proxy'}, path='/v1/chat/completions', body=body)
+    assert r.status == 200
+    r.read()
+    srv.shutdown()
+
+
+def test_compressed_search_body_is_still_refused(upstream):
+    import gzip
+    srv = xai(upstream)
+    for enc, body in (('gzip', gzip.compress(b'{"search_parameters":{"mode":"on"}}')), ('zstd', b'\x28\xb5\x2f\xfd')):
+        _, r = post(srv, {'authorization': 'Bearer studio-proxy', 'content-encoding': enc}, path='/v1/responses',
+                    body=body)
+        assert r.status == 403, enc
+        r.read()
+    assert Upstream.seen == []
+    srv.shutdown()
+
+
+def test_xai_only_function_tools_and_readable_bodies_pass(upstream):
+    srv = xai(upstream)
+    for body in (b'{"tools":[{"type":"mcp","server_url":"https://example.com"}]}',
+                 b'{"tools":[{"type":"code_interpreter"}]}',
+                 b'{"tools":[{"type":"web_search"}],"x":"\xff"}',
+                 b'not json', b'[1, 2]'):
+        _, r = post(srv, {'authorization': 'Bearer studio-proxy'}, path='/v1/responses', body=body)
+        assert r.status == 403, body
+        r.read()
+    assert Upstream.seen == []
+    srv.shutdown()

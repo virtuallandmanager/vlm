@@ -41,7 +41,8 @@ The studio is on when `VIRVI_MODE=cloud` and both `STUDIO_WORKER_IMAGE` and `STU
    - `STUDIO_S3_URI=s3://<access key id>:<secret>@<account id>.r2.cloudflarestorage.com/vlm-studio`
    - `STUDIO_WORKER_IMAGE=registry.fly.io/vlm-studio-worker:<tag>`, the image deployed from `apps/studio-worker`
    - `STUDIO_FLY_APP` only if the worker app isn't `vlm-studio-worker`
-   - optional: `STUDIO_CLAUDE_MODEL` (default `claude-opus-5-5`), `STUDIO_CODEX_MODEL` (default `gpt-6.1-sol`)
+   - optional: `STUDIO_CLAUDE_MODEL` (default `claude-opus-5-5`), `STUDIO_CODEX_MODEL` (default `gpt-6.1-sol`),
+     `STUDIO_GROK_MODEL` (default `grok-build-0.1`)
 3. **The schema.** Run `drizzle-kit push` against production: the eleven `studio_*` tables (four of them for payments)
    and two new columns (`studio_designs.finalized_at`, `studio_jobs.counted_from`).
 4. **Fly.** Confirm that the server's `FLY_API_TOKEN` can manage machines in `vlm-studio-worker`, in the

@@ -96,9 +96,9 @@ describe('studio dashboard routes', () => {
 
   it('creating designs respects the agent list and the open-design limit', async () => {
     const u = await createUser()
-    const grok = await create(u, { kind: 'wearable', agent: 'grok' })
-    expect(grok.statusCode).toBe(400)
-    expect(grok.json().error).toBe('Grok is coming soon')
+    const gpt = await create(u, { kind: 'wearable', agent: 'gpt' })
+    expect(gpt.statusCode).toBe(400)
+    expect(gpt.json().error).toBe('agent must be claude, codex or grok')
     expect((await create(u, { kind: 'cape', agent: 'claude' })).statusCode).toBe(400)
     const first = await create(u, { kind: 'wearable', agent: 'claude', name: 'Cap' })
     expect(first.statusCode).toBe(201)
@@ -195,6 +195,37 @@ describe('studio dashboard routes', () => {
     expect(job.payload).toMatchObject({ prompt: 'Continue where you stopped.' })
     expect(job.counted).toBe(false)
     expect((await promptStatus(u.id, new Date())).used).toBe(used)
+  })
+
+  it('a Grok design runs grok-build-0.1 with more turns', async () => {
+    const u = await createUser()
+    const g = await create(u, { kind: 'wearable', agent: 'grok' })
+    expect(g.statusCode).toBe(201)
+    const [job] = await db.select().from(studioJobs).where(eq(studioJobs.id, (await prompt(u, g.json().id)).json().jobId))
+    expect(job.payload).toMatchObject({ agent: 'grok', model: 'grok-build-0.1', limits: { timeoutSec: 1500, maxTurns: 150, costCeilingUsd: 3 } })
+    const v = await createUser()
+    const c = (await create(v, { kind: 'wearable', agent: 'codex' })).json()
+    const [cj] = await db.select().from(studioJobs).where(eq(studioJobs.id, (await prompt(v, c.id)).json().jobId))
+    expect(cj.payload).toMatchObject({ model: 'gpt-6.1-sol', limits: { maxTurns: 80 } })
+  })
+
+  it('a turn-limit stop keeps the prompt counted and offers Continue', async () => {
+    const u = await createUser()
+    const d = (await create(u)).json()
+    const first = (await prompt(u, d.id)).json().jobId
+    const used = (await promptStatus(u.id, new Date())).used
+    await finish(first, okResult(first, { outcome: 'turns', pieces: [], reply: null, error: 'stopped at the step limit' }))
+    const [done] = await db.select().from(studioJobs).where(eq(studioJobs.id, first))
+    expect(done.status).toBe('done')
+    expect((await promptStatus(u.id, new Date())).used).toBe(used)
+    const note = (await db.select().from(studioMessages)).find((m) => m.role === 'system' && m.jobId === first)
+    expect(note?.text).toBe('The agent stopped at this prompt’s step limit. Press Continue to carry on where it stopped: it doesn’t use a prompt.')
+    const res = await prompt(u, d.id, { continue: true })
+    expect(res.statusCode).toBe(202)
+    const [job] = await db.select().from(studioJobs).where(eq(studioJobs.id, res.json().jobId))
+    expect(job.counted).toBe(false)
+    await finish(job.id, okResult(job.id))
+    expect((await prompt(u, d.id, { continue: true })).json().code).toBe('nothing_to_continue')
   })
 
   it('an error refund returns a credit', async () => {

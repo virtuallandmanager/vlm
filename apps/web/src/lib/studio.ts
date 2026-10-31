@@ -5,7 +5,7 @@
 import type { Tone } from '@/components/ui'
 
 export type StudioKind = 'wearable' | 'emote'
-export type StudioAgent = 'claude' | 'codex'
+export type StudioAgent = 'claude' | 'codex' | 'grok'
 
 export type StudioUsage = {
   plan: string
@@ -111,11 +111,17 @@ export type StudioEvent =
 
 export type RenderView = { bodyShape: 'male' | 'female'; outfit: 'default' | 'outfit-2' | 'outfit-3'; emote: string | null }
 
-export const AGENTS: { id: string; label: string; soon?: true }[] = [
+export const AGENTS: { id: StudioAgent; label: string }[] = [
   { id: 'claude', label: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
-  { id: 'grok', label: 'Grok Build', soon: true },
+  { id: 'grok', label: 'Grok Build' },
 ]
+
+/** Preselected on a new design: the cheapest agent to run. */
+export const DEFAULT_AGENT: StudioAgent = 'codex'
+
+/** The agents a "Change agent" menu offers: all but the selected one. */
+export const otherAgents = (value: string) => AGENTS.filter((a) => a.id !== value)
 
 export const agentLabel = (id: string | null | undefined) => AGENTS.find((a) => a.id === id)?.label ?? id ?? 'Agent'
 
@@ -292,7 +298,7 @@ export type ComposerMode = 'send' | 'busy' | 'continue' | 'out' | 'archived' | '
 
 export const PAUSED_NOTE = 'Your studio access is paused, so you can’t send new messages. You can still finalize and download your designs. Contact support@virvi.io.'
 
-/** After a cost stop the person may press Continue (free) or send something new instead. */
+/** After a cost or step-limit stop the person may press Continue (free) or send something new instead. */
 export const canSend = (mode: ComposerMode) => mode === 'send' || mode === 'continue'
 
 /** A job starting (maybe from another tab) or ending changes the design: re-read it. Progress doesn't. */
@@ -304,7 +310,7 @@ export function composerState(detail: StudioDetail, usage: StudioUsage | null, n
   if (detail.design.archivedAt) return { mode: 'archived', note: 'This design is archived. Unarchive it to keep working on it.' }
   if (usage?.paused) return { mode: 'paused', note: PAUSED_NOTE }
   if (detail.activeJob?.type === 'prompt') return { mode: 'busy', note: 'The agent is still working on your last message.' }
-  if (detail.lastPrompt?.outcome === 'ceiling') return { mode: 'continue', note }
+  if (detail.lastPrompt?.outcome === 'ceiling' || detail.lastPrompt?.outcome === 'turns') return { mode: 'continue', note }
   if (usage && usage.promptsLeft <= 0) return { mode: 'out', note: refusalMessage({ body: { code: 'allowance', resetsAt: usage.resetsAt } }, now).text }
   return { mode: 'send', note }
 }

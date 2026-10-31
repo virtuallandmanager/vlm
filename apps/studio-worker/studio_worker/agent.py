@@ -1,8 +1,8 @@
-"""Runs one prompt through Claude Code or Codex, streaming its progress, and charges it its share of the session.
+"""Runs one prompt through Claude Code, Codex or Grok Build, streaming its progress, and charges it its share of the session.
 
 Each agent runs as the unprivileged `agent` user in its own process group, holding no real key (keyproxy.py adds it): the group is
-killed at the prompt's timeout, or once Claude's running cost passes the prompt's ceiling (Codex reports usage only
-at the end of a turn, so time alone caps it).
+killed at the prompt's timeout, or once Claude's or Grok's running cost passes the prompt's ceiling (Codex reports
+usage only at the end of a turn, so time alone caps it).
 """
 import json
 import os
@@ -39,7 +39,7 @@ class Usage:
 
 @dataclass
 class AgentRun:
-    outcome: str  # 'ok' | 'timeout' | 'ceiling' | 'error'
+    outcome: str  # 'ok' | 'timeout' | 'ceiling' | 'turns' | 'error'
     reply: str
     session: str | None
     usage: Usage | None  # this prompt's share only
@@ -101,6 +101,9 @@ base_url = "http://127.0.0.1:8891/v1"
 env_key = "CODEX_API_KEY"
 wire_api = "responses"
 """
+GROK_BASE_URL = 'http://127.0.0.1:8892/v1'
+# Grok's image tools invent renders, and search would leave the studio: neither is ever offered
+GROK_DISALLOWED = 'image_gen,image_edit,image_to_video,reference_to_video,web_search'
 
 
 def agent_env(agent: str, base: Mapping[str, str], design: Path = DESIGN) -> dict[str, str]:
@@ -108,8 +111,13 @@ def agent_env(agent: str, base: Mapping[str, str], design: Path = DESIGN) -> dic
     if agent == 'claude':
         env.update(ANTHROPIC_API_KEY=KEY_PLACEHOLDER, ANTHROPIC_BASE_URL=ANTHROPIC_BASE_URL,
                    CLAUDE_CONFIG_DIR=str(design / '.claude-home'), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1')
-    else:  # codex exec reads its key from CODEX_API_KEY, and its provider from CODEX_HOME/config.toml
+    elif agent == 'codex':  # codex exec reads its key from CODEX_API_KEY, and its provider from CODEX_HOME/config.toml
         env.update(CODEX_API_KEY=KEY_PLACEHOLDER, CODEX_HOME=str(design / '.codex-home'))
+    elif agent == 'grok':
+        env.update(XAI_API_KEY=KEY_PLACEHOLDER, GROK_XAI_API_BASE_URL=GROK_BASE_URL, GROK_HOME=str(design / '.grok-home'),
+                   GROK_DISABLE_AUTOUPDATER='1', DISABLE_TELEMETRY='1', GROK_TELEMETRY_ENABLED='0')
+    else:
+        raise ValueError(f'unknown agent: {agent}')
     return env
 
 
@@ -118,12 +126,16 @@ def command_for(agent: str, model: str, prompt: str, session: str | None, max_tu
         return ['claude', '-p', prompt, '--output-format', 'stream-json', '--verbose', '--max-turns', str(max_turns),
                 '--model', model, '--dangerously-skip-permissions', '--disallowedTools', 'WebSearch,WebFetch'] + \
             (['--resume', session] if session else [])
+    if agent == 'grok':  # --trust loads the skills in .claude/skills and .agents/skills; without it none load
+        return ['grok', '-p', prompt, '--output-format', 'streaming-json', '--permission-mode', 'bypassPermissions',
+                '--max-turns', str(max_turns), '-m', model, '--trust', '--disable-web-search',
+                '--disallowed-tools', GROK_DISALLOWED] + (['-r', session] if session else [])
     return ['codex', 'exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox',
             '-m', model] + (['resume', session, prompt] if session else [prompt])
 
 
 class _Stream:
-    """Reads the CLI's JSONL as it arrives: progress lines, the session, the reply and Claude's running cost."""
+    """Reads the CLI's JSONL as it arrives: progress lines, the session, the reply and Claude's or Grok's running cost."""
 
     def __init__(self, agent: str, on_progress: Callable[[str], None], secrets: list[str] = ()):
         self.agent, self.secrets = agent, [x for x in secrets if len(x) >= 8]
@@ -133,6 +145,7 @@ class _Stream:
         self.session = self.reply = None
         self.result: dict | None = None
         self._claude_usage: dict[str, dict] = {}  # message id -> usage; a message streams once per content block
+        self._text: list[str] = []  # Grok's text tokens since its last tool call
         self._lock = threading.Lock()  # the reader thread adds usage while the main thread prices it
 
     def feed(self, line: str) -> None:
@@ -144,7 +157,7 @@ class _Stream:
             return
         self.events.append(e)
         try:
-            (self._claude if self.agent == 'claude' else self._codex)(e)
+            {'claude': self._claude, 'codex': self._codex, 'grok': self._grok}[self.agent](e)
         except (AttributeError, TypeError, KeyError):  # an event of an unexpected shape is skipped, not fatal
             pass
 
@@ -183,13 +196,38 @@ class _Stream:
             cmd = re.sub(r"^/bin/(ba)?sh -lc '(.*)'$", r'\2', item.get('command', ''), flags=re.S)
             self.on_progress('Running: ' + cmd[:80])
 
+    def _grok(self, e: dict) -> None:
+        kind = e.get('type')
+        if kind == 'text':
+            self._text.append(e.get('data') or '')
+        elif kind == 'tool_call':
+            self._flush_text()
+            self._text = []
+            i = e.get('rawInput') or {}
+            what = i.get('command') or ' '.join(filter(None, [e.get('toolName'), i.get('path') or i.get('pattern')]))
+            self.on_progress('Running: ' + str(what)[:80])
+        elif kind == 'usage' and e.get('usage'):
+            with self._lock:  # one event per model call
+                self._claude_usage[str(len(self._claude_usage))] = e['usage']
+        elif kind == 'end':
+            self.result = e
+            self.session = e.get('sessionId') or self.session
+            self._flush_text()
+
+    def _flush_text(self) -> None:
+        """Grok streams its text a token at a time: what it said since its last tool call is one progress line."""
+        text = ''.join(self._text).strip()
+        if text:
+            self.reply = text
+            self.on_progress(text)
+
     def redact(self, text: str) -> str:
         for secret in self.secrets:
             text = text.replace(secret, '[redacted]')
         return text
 
     def streamed_usage(self) -> Usage:
-        """Claude's usage so far, summed over its assistant messages."""
+        """Claude's or Grok's usage so far, summed over its model calls."""
         with self._lock:
             us = list(self._claude_usage.values())
         total = lambda k: sum(u.get(k, 0) for u in us)
@@ -205,7 +243,7 @@ def run_agent(agent: str, model: str, prompt: str, session: str | None, before: 
     ceiling = limits.get('costCeilingUsd') or DEFAULT_CEILING_USD
     table = prices()
     env = agent_env(agent, os.environ, cwd)
-    for home in ('.claude-home', '.codex-home'):
+    for home in ('.claude-home', '.codex-home', '.grok-home'):
         (cwd / home).mkdir(exist_ok=True)
         if home == '.codex-home':  # rewritten every run: the agent can edit its own home
             (cwd / home / 'config.toml').write_text(CODEX_CONFIG)
@@ -219,7 +257,7 @@ def run_agent(agent: str, model: str, prompt: str, session: str | None, before: 
     stream, stderr = _Stream(agent, on_progress, secrets), []
     sender = threading.Thread(target=_deliver, args=(stream.progress, on_progress), daemon=True)
     sender.start()
-    start = time.monotonic()
+    start, start_wall = time.monotonic(), time.time()
     proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, start_new_session=True)
     readers = [threading.Thread(target=lambda: [stream.feed(l) for l in proc.stdout], daemon=True),
@@ -231,7 +269,7 @@ def run_agent(agent: str, model: str, prompt: str, session: str | None, before: 
         while proc.poll() is None:
             if time.monotonic() - start > timeout:
                 stopped = 'timeout'
-            elif agent == 'claude' and (cost_usd(stream.streamed_usage(), table, CLAUDE_PRICE_ROW) or 0) > ceiling:
+            elif agent in ('claude', 'grok') and (_running_cost(agent, stream, table, model) or 0) > ceiling:
                 stopped = 'ceiling'
             if stopped:
                 break
@@ -246,24 +284,51 @@ def run_agent(agent: str, model: str, prompt: str, session: str | None, before: 
         sender.join(timeout=PROGRESS_DRAIN_SEC)
     wall = round(time.monotonic() - start, 1)
 
-    total = _session_total(agent, stream, table, model)
+    total = _session_total(agent, stream, table, model, before)
     usage = _share(total, before) if total else None
-    if total is None and agent == 'claude' and stream.streamed_usage().turns:  # stopped before its result line
+    if total is None and agent in ('claude', 'grok') and stream.streamed_usage().turns:  # stopped before its last line
         usage = stream.streamed_usage()
-        usage.cost_usd = cost_usd(usage, table, model) or cost_usd(usage, table, CLAUDE_PRICE_ROW)
+        usage.cost_usd = _running_cost(agent, stream, table, model)
         total = _add(before, usage) if before else usage
     failed = proc.returncode not in (0, None) or bool((stream.result or {}).get('is_error')) or \
         any(e.get('type') == 'turn.failed' for e in stream.events)
+    if not stopped and _hit_max_turns(agent, stream):  # Continue resumes it: not a failure
+        stopped = 'turns'
     outcome = stopped or ('error' if failed or total is None else 'ok')
     error = None
     if outcome == 'error':
         error = stream.redact((''.join(stderr) or (stream.result or {}).get('result') or
                                'the agent reported no usage')[-2000:])
     elif stopped:
-        error = f'stopped at the {"time limit" if stopped == "timeout" else "cost ceiling"}'
+        error = 'stopped at the ' + {'timeout': 'time limit', 'ceiling': 'cost ceiling', 'turns': 'step limit'}[stopped]
+    if agent == 'grok' and not stream.session:  # stopped before its end event, which is what names the session
+        stream.session = _grok_disk_session(cwd, since=start_wall)
     return AgentRun(outcome=outcome, reply=stream.redact(stream.reply or ''), session=stream.session or session,
                     usage=usage, session_total=total, cost_usd=usage.cost_usd if usage else None, wall_sec=wall,
                     error=error)
+
+
+def _hit_max_turns(agent: str, stream: '_Stream') -> bool:
+    result = stream.result or {}
+    if agent == 'grok':  # Grok also exits 1 here
+        return result.get('stopReason') == 'max_turn_requests'
+    return agent == 'claude' and result.get('subtype') == 'error_max_turns'
+
+
+def _grok_disk_session(cwd: Path, since: float) -> str | None:
+    """The session Grok started in this run, from its home ($GROK_HOME/sessions/<cwd>/<id>/), so a Continue after a
+    stop resumes it instead of starting blank."""
+    found = [d for d in (cwd / '.grok-home' / 'sessions').glob('*/*')
+             if d.is_dir() and not d.is_symlink() and d.stat().st_mtime >= since - 1]
+    return max(found, key=lambda d: d.stat().st_mtime).name if found else None
+
+
+def _running_cost(agent: str, stream: '_Stream', table: dict, model: str) -> float | None:
+    """The cost so far from the streamed usage: Claude's by its price row whatever the model, Grok's by its model's."""
+    usage = stream.streamed_usage()
+    if agent == 'claude':
+        return cost_usd(usage, table, model) or cost_usd(usage, table, CLAUDE_PRICE_ROW)
+    return cost_usd(usage, table, model)
 
 
 def _deliver(progress: queue.Queue, on_progress: Callable[[str], None]) -> None:
@@ -275,11 +340,26 @@ def _deliver(progress: queue.Queue, on_progress: Callable[[str], None]) -> None:
             pass
 
 
-def _session_total(agent: str, stream: _Stream, table: dict, model: str) -> Usage | None:
+def parse_grok_end(e: dict) -> Usage:
+    """Grok's end event covers this run alone, not the session: a resumed run starts its count again."""
+    u = e.get('usage') or {}
+    return Usage(input=u.get('input_tokens', 0), cached_input=u.get('cache_read_input_tokens', 0),
+                 cache_write=u.get('cache_creation_input_tokens', 0), output=u.get('output_tokens', 0),
+                 turns=e.get('num_turns', 0), cost_usd=e.get('total_cost_usd'))
+
+
+def _session_total(agent: str, stream: _Stream, table: dict, model: str, before: Usage | None = None) -> Usage | None:
     if agent == 'claude':
         if not stream.result:
             return None
         total = parse_claude_result(stream.result)
+    elif agent == 'grok':
+        if not stream.result:
+            return None
+        run = parse_grok_end(stream.result)
+        if run.cost_usd is None:
+            run.cost_usd = cost_usd(run, table, model)
+        total = _add(before, run) if before else run  # so that _share gives back this run
     else:
         total = parse_codex_events(stream.events)
     if total and total.cost_usd is None:
@@ -288,7 +368,8 @@ def _session_total(agent: str, stream: _Stream, table: dict, model: str) -> Usag
 
 
 def _share(total: Usage, before: Usage | None) -> Usage:
-    """Both CLIs report the whole session's usage, so a resumed prompt is charged the total less `before`."""
+    """Claude and Codex report the whole session's usage (Grok's is made so), so a resumed prompt is charged the
+    total less `before`."""
     if not before:
         return Usage(**vars(total))
     cost = None if total.cost_usd is None or before.cost_usd is None else round(total.cost_usd - before.cost_usd, 6)

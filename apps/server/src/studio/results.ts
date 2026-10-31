@@ -9,7 +9,7 @@ import { DECLINED_NOTE, SCOPE_CATEGORIES, logScopeEvent, maybeFlag, offTopicIsFr
 /** A worker's Result, as apps/studio-worker/CONTRACT.md defines it (only the fields Virvi reads are typed). */
 export type ContractResult = {
   jobId?: string
-  outcome: 'ok' | 'needs_input' | 'no_change' | 'off_topic' | 'declined' | 'ceiling' | 'timeout' | 'error'
+  outcome: 'ok' | 'needs_input' | 'no_change' | 'off_topic' | 'declined' | 'ceiling' | 'turns' | 'timeout' | 'error'
   agent?: string | null
   model?: string | null
   skillsSha?: string | null
@@ -34,7 +34,7 @@ export type ContractPiece = {
   finalize?: Record<string, unknown> | null // a finalize job's check summary for the piece
 }
 
-const OUTCOMES = ['ok', 'needs_input', 'no_change', 'off_topic', 'declined', 'ceiling', 'timeout', 'error'] as const
+const OUTCOMES = ['ok', 'needs_input', 'no_change', 'off_topic', 'declined', 'ceiling', 'turns', 'timeout', 'error'] as const
 const CATEGORY = /^[a-z_]+$/
 const VIEW_KEY = /^[a-z0-9-]+$/
 
@@ -96,6 +96,8 @@ function systemNote(r: ContractResult, refunded: boolean): string | null {
       return `Something went wrong: ${r.error || 'the worker gave no reason'}.${refunded ? ' Your prompt was not counted.' : ''}`
     case 'ceiling':
       return 'The agent stopped at this prompt’s cost limit. Press Continue to carry on where it stopped: it doesn’t use a prompt.'
+    case 'turns':
+      return 'The agent stopped at this prompt’s step limit. Press Continue to carry on where it stopped: it doesn’t use a prompt.'
     case 'timeout':
       return 'The agent ran out of time on this prompt.'
     case 'off_topic': // the fixed words only: the model's note is never shown
