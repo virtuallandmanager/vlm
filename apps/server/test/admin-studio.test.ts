@@ -2,12 +2,13 @@ import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest'
 import Stripe from 'stripe'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
-import { studioEntitlements, studioFlags, studioMistakeReports, studioPauses, studioPayments, studioScopeEvents } from '../src/db/schema.js'
+import { studioEntitlements, studioGiftCodes, studioGiftRedemptions, studioFlags, studioMistakeReports, studioPauses, studioPayments, studioScopeEvents } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { setStripe } from '../src/integrations/stripe.js'
 import { memoryStudioStore, setStudioStore } from '../src/studio/store.js'
 import { setMachineDeps } from '../src/studio/machines.js'
 import { setFlagMailer } from '../src/studio/scope.js'
+import { hashGiftCode } from '../src/studio/gift-codes.js'
 import { resetDb } from './helpers/db.js'
 import { testApp, createUser, tokenFor, type TestUser } from './helpers/factories.js'
 import { addRevision, createDesign, entitle, fakeFly, fakeStripe } from './helpers/studio.js'
@@ -263,5 +264,90 @@ describe('studio admin: flags and pauses', () => {
       ;(config as any).studioFlag = { ...config.studioFlag, instantReports: 2 }
       expect((await report(u, d.id, 5)).json()).toEqual({ status: 'in_review' }) // the approved one counts
     })
+  })
+})
+
+describe('studio admin: gift codes', () => {
+  let app: Awaited<ReturnType<typeof testApp>>
+  let admin: TestUser
+  beforeEach(async () => {
+    await resetDb()
+    app = await testApp()
+    admin = await createUser({ role: 'admin' })
+  })
+
+  const as = (u: TestUser) => ({ authorization: `Bearer ${tokenFor(u)}` })
+  const make = (payload: unknown, by = admin) => app.inject({ method: 'POST', url: '/api/admin/studio/gift-codes', headers: as(by), payload: payload as object })
+  const list = (by = admin) => app.inject({ method: 'GET', url: '/api/admin/studio/gift-codes', headers: as(by) })
+  const off = (id: string, by = admin) => app.inject({ method: 'POST', url: `/api/admin/studio/gift-codes/${id}/off`, headers: as(by) })
+  const body = { prompts: 50, finalizes: 2, maxUses: 5 }
+
+  it('a non-admin gets 403 on all three', async () => {
+    const u = await createUser()
+    expect((await make(body, u)).statusCode).toBe(403)
+    expect((await list(u)).statusCode).toBe(403)
+    expect((await off('00000000-0000-4000-8000-000000000000', u)).statusCode).toBe(403)
+  })
+
+  it('creates a code and stores only its hash', async () => {
+    const res = await make({ ...body, note: 'launch', expiresAt: new Date(Date.now() + 86400000).toISOString() })
+    expect(res.statusCode).toBe(201)
+    const { id, code } = res.json()
+    expect(code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/)
+    const [row] = await db.select().from(studioGiftCodes).where(eq(studioGiftCodes.id, id))
+    expect(row.codeHash).toBe(hashGiftCode(code))
+    expect(row).toMatchObject({ prompts: 50, finalizes: 2, maxUses: 5, uses: 0, note: 'launch', createdBy: admin.id })
+    expect(JSON.stringify(row)).not.toContain(code)
+    expect(JSON.stringify(row)).not.toContain(code.replace(/-/g, ''))
+  })
+
+  it('refuses bad input with 400 invalid', async () => {
+    const bad = [
+      { prompts: 0, finalizes: 0, maxUses: 1 },
+      { ...body, expiresAt: new Date(Date.now() - 1000).toISOString() },
+      { ...body, expiresAt: 'soon' },
+      { ...body, prompts: 1001 },
+      { ...body, finalizes: 21 },
+      { ...body, maxUses: 0 },
+      { ...body, prompts: '5' },
+      { ...body, prompts: 1.5 },
+      { ...body, note: 'x'.repeat(201) },
+      { ...body, note: 5 },
+    ]
+    for (const b of bad) {
+      const res = await make(b)
+      expect(res.statusCode, JSON.stringify(b)).toBe(400)
+      expect(res.json()).toEqual({ error: 'invalid' })
+    }
+    expect(await db.select().from(studioGiftCodes)).toHaveLength(0)
+  })
+
+  it('lists newest first with hint and redemptions', async () => {
+    const first = (await make(body)).json()
+    const second = (await make({ ...body, note: 'second' })).json()
+    const a = await createUser({ email: 'a@test.dev', name: 'Ann' })
+    const b = await createUser({ email: 'b@test.dev', name: 'Bob' })
+    await db.insert(studioGiftRedemptions).values({ codeId: first.id, userId: b.id, createdAt: new Date('2026-01-02') })
+    await db.insert(studioGiftRedemptions).values({ codeId: first.id, userId: a.id, createdAt: new Date('2026-01-01') })
+    const { codes } = (await list()).json()
+    expect(codes.map((c: any) => c.id)).toEqual([second.id, first.id])
+    const c = codes[1]
+    expect(c.hint).toBe(first.code.replace(/-/g, '').slice(-4))
+    expect(c).toMatchObject({ prompts: 50, finalizes: 2, maxUses: 5, uses: 0, disabledAt: null, expiresAt: null })
+    expect(c.redemptions).toEqual([
+      { email: 'a@test.dev', name: 'Ann', at: '2026-01-01T00:00:00.000Z' },
+      { email: 'b@test.dev', name: 'Bob', at: '2026-01-02T00:00:00.000Z' },
+    ])
+    expect(codes[0].redemptions).toEqual([])
+    expect(JSON.stringify(codes)).not.toContain(first.code)
+  })
+
+  it('turns a code off, 404 for an unknown one', async () => {
+    const { id } = (await make(body)).json()
+    expect((await off(id)).statusCode).toBe(204)
+    const [row] = await db.select().from(studioGiftCodes).where(eq(studioGiftCodes.id, id))
+    expect(row.disabledAt).toBeInstanceOf(Date)
+    expect((await off('00000000-0000-4000-8000-000000000000')).statusCode).toBe(404)
+    expect((await off('nope')).statusCode).toBe(404)
   })
 })
