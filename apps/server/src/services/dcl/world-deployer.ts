@@ -189,8 +189,8 @@ function defaultSpawn(parcels: string[]) {
 async function assembleFor(dest: Destination, timestamp: number, fetch?: ModelFetcher) {
   const live = await liveBaseFor(dest)
   const models = await modelsInScene(dest.sceneId)
+  const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, dest.sceneId), columns: { name: true } })
   if (dest.lastEntityId == null && !dest.adopted) {
-    const scene = await db.query.scenes.findFirst({ where: eq(scenes.id, dest.sceneId), columns: { name: true } })
     const metadata = wizardSceneJson({
       title: scene?.name ?? dest.worldName, world: dest.worldName, base: dest.base, parcels: dest.parcels,
       spawn: dest.spawn ?? defaultSpawn(dest.parcels),
@@ -198,7 +198,7 @@ async function assembleFor(dest: Destination, timestamp: number, fetch?: ModelFe
     return { assembled: await assembleFresh({ metadata, models, timestamp, fetch }), baseEntityId: live?.id ?? null }
   }
   if (!live) throw new DeployerError(409, 'no_live_scene', 'Your World has no scene to add models to')
-  return { assembled: await assembleRedeploy({ live, adopted: dest.adopted, models, timestamp, fetch }), baseEntityId: live.id }
+  return { assembled: await assembleRedeploy({ live, adopted: dest.adopted, models, timestamp, fetch, title: scene?.name }), baseEntityId: live.id }
 }
 
 /** Path to hash for every file in the entity, read from the entity file itself. */

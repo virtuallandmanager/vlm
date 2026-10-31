@@ -340,6 +340,19 @@ describe('every deploy path checks first', () => {
     await expect(prepareSignedDeploy(dest.id, user.id, { fetch: fetcher })).rejects.toMatchObject({ status: 409, code: 'nothing_to_deploy' })
   })
 
+  it('a redeploy after renaming the scene deploys the new title', async () => {
+    const { user, dest } = await setup()
+    await whenSettled((await startVirviDeploy(dest.id, user.id, { fetch: fetcher })).id)
+    goLive()
+    await db.update(scenes).set({ name: 'Renamed scene' }).where(eq(scenes.id, dest.sceneId))
+    const dep = await startVirviDeploy(dest.id, user.id, { fetch: fetcher })
+    await whenSettled(dep.id)
+    expect(fake.deployed).toHaveLength(2)
+    expect((await depRow(dep.id)).status).toBe('deployed')
+    const sent = fake.deployed[1]
+    expect(JSON.parse(dec(sent.files.get(sent.entityId)!)).metadata.display.title).toBe('Renamed scene')
+  })
+
   it('a redeploy whose only new model is refused says which and why, and needs a look', async () => {
     const { user, preset, dest } = await setup()
     await whenSettled((await startVirviDeploy(dest.id, user.id, { fetch: fetcher })).id)

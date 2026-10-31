@@ -300,6 +300,9 @@ export async function assembleRedeploy(input: {
   models: ModelNeed[]
   timestamp: number
   fetch?: ModelFetcher
+  /** The scene's name: a World Virvi built is redeployed under it when it differs from the live title. An adopted
+   *  World keeps its own title, from the owner's scene.json. */
+  title?: string
 }): Promise<Assembled> {
   const { live } = input
   const have = new Set(live.content.map((c) => c.file.toLowerCase()))
@@ -332,6 +335,8 @@ export async function assembleRedeploy(input: {
       },
     }
   }
+  const renamed = !input.adopted && !!input.title && input.title !== metadata.display?.title
+  if (renamed) metadata = { ...metadata, display: { ...metadata.display, title: input.title! } }
   return finish({
     pointers: live.pointers,
     metadata,
@@ -342,6 +347,6 @@ export async function assembleRedeploy(input: {
     sources,
     refused,
     models: input.models,
-    changed: got.size > 0 || upgrade,
+    changed: got.size > 0 || upgrade || renamed,
   })
 }
