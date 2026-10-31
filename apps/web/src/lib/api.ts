@@ -1,5 +1,5 @@
 'use client'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useAuth } from './auth'
 import { API_URL } from './config'
 import { requestHeaders } from './request-headers'
@@ -235,7 +235,9 @@ export function useApi() {
     return res.json()
   }, [token, dropDeadSession])
 
-  return {
+  // One object per session: effects and callbacks that depend on `api` (or one of its functions) run once, not on
+  // every render, which would refetch in a loop
+  return useMemo(() => ({
     // Linked wallets
     getWallets: () => apiFetch<{ wallets: { address: string; linkedAt: string }[] }>('/api/auth/wallets'),
     linkWallet: (proof: { address: string; nonce: string; signature: string }) =>
@@ -699,5 +701,5 @@ export function useApi() {
       const m = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')
       return { blob: await res.blob(), filename: m?.[1] ?? `${category}-r${n}.zip` }
     },
-  }
+  }), [apiFetch, token, dropDeadSession])
 }
