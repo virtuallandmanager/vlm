@@ -17,6 +17,8 @@ export type StudioUsage = {
   openDesignLimit: number | null
   topup: { cents: number; prompts: number }
   paused: boolean
+  giftedPrompts: number
+  freeFinalizes: { available: number; held: number }
 }
 
 export type StudioDesign = {
@@ -88,6 +90,7 @@ export type QuoteLine = {
   amountCents: number
   waived: boolean
   held?: boolean
+  gift?: boolean // free through a gift code
 }
 
 export type Quote = {
@@ -95,6 +98,7 @@ export type Quote = {
   lines: QuoteLine[]
   totalCents: number
   blocked: string[]
+  giftsUsed: number
   reportsHeld: string[] // pieces whose mistake report would wait for the team rather than be waived
   notes: string[]
 }
@@ -210,9 +214,36 @@ export function relativeTime(iso: string, now: Date): string {
   return `${days} ${days === 1 ? 'day' : 'days'} ago`
 }
 
-/** `free plan · 3 prompts left today`, plus `· 7 bought` with bought prompts. */
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+/** `free plan · 3 prompts left today`, plus `· 7 bought` with bought prompts and `· 1 free finalize` with gifted ones. */
 export function usageLine(u: StudioUsage): string {
+  const { available, held } = u.freeFinalizes
   return `${u.plan} plan · ${u.promptsLeft} prompts left today${u.credits > 0 ? ` · ${u.credits} bought` : ''}`
+    + (available > 0 ? ` · ${plural(available, 'free finalize', 'free finalizes')}` : '')
+    + (held > 0 ? ` · ${plural(held, 'free finalize', 'free finalizes')} held by an open checkout` : '')
+}
+
+/** A refused gift-code redemption in the page's words (the server answers `{ error: code }`, 429 when rate-limited). */
+export function giftRedeemMessage(err: { status?: number; body?: { error?: string } }): string {
+  if (err.status === 429) return 'Too many tries. Try again in an hour.'
+  switch (err.body?.error) {
+    case 'unknown_code': return "That code isn't right. Check it and try again."
+    case 'code_off': return 'That code has been turned off.'
+    case 'code_expired': return 'That code has expired.'
+    case 'code_used_up': return 'That code has been used up.'
+    case 'already_redeemed': return "You've already used that code."
+  }
+  return err.status === 400 ? "That code isn't right. Check it and try again." : 'Something went wrong. Try again.'
+}
+
+/** `Added 20 prompts and 1 free finalize.`; a zero part is left out. */
+export function giftRedeemSuccess(g: { prompts: number; finalizes: number }): string {
+  const parts = [
+    ...(g.prompts > 0 ? [plural(g.prompts, 'prompt', 'prompts')] : []),
+    ...(g.finalizes > 0 ? [plural(g.finalizes, 'free finalize', 'free finalizes')] : []),
+  ]
+  return `Added ${parts.join(' and ')}.`
 }
 
 const PHASES: Record<string, string> = {
@@ -336,11 +367,11 @@ export function checkoutBody(reports: Record<string, string>): { reports?: Recor
 }
 
 /**
- * The dialog's total: a reported line is waived, and waiving one changes no other line's price. A report on a piece
+ * The dialog's total: a gift line is free, a reported line is waived, and waiving one changes no other line's price. A report on a piece
  * past its instant refunds (`reportsHeld`) is charged, and goes to the team.
  */
 export const dialogTotal = (quote: Quote, reported: string[]) =>
-  quote.lines.reduce((n, l) => n + (reported.includes(l.category) && !quote.reportsHeld?.includes(l.category) ? 0 : l.amountCents), 0)
+  quote.lines.reduce((n, l) => n + (l.gift || (reported.includes(l.category) && !quote.reportsHeld?.includes(l.category)) ? 0 : l.amountCents), 0)
 
 export const HELD_REPORT_COPY = 'Your report is with our team. If it’s approved, this revision is refunded in full.'
 
@@ -454,4 +485,27 @@ export function flagSummary(flag: AdminStudioFlag): string {
   const oldest = flag.events.reduce((min, e) => (e.createdAt < min ? e.createdAt : min), flag.events[0]?.createdAt ?? flag.openedAt)
   const kinds = [...new Set(flag.events.map((e) => SCOPE_CATEGORY_WORDS[e.category] ?? e.category))]
   return `${n} turn-down${n === 1 ? '' : 's'} since ${dayFmt.format(new Date(oldest))}${kinds.length ? ` · ${kinds.join(', ')}` : ''}`
+}
+
+/** One gift code in the admin list (the server's `listGiftCodes`); the full code is shown only when it's made. */
+export type AdminGiftCode = {
+  id: string
+  hint: string
+  note: string | null
+  prompts: number
+  finalizes: number
+  maxUses: number
+  uses: number
+  expiresAt: string | null
+  disabledAt: string | null
+  createdAt: string
+  redemptions: { email: string | null; name: string | null; at: string }[]
+}
+
+/** Where a gift code stands, in the order that matters to the admin. */
+export function giftCodeStatus(c: Pick<AdminGiftCode, 'disabledAt' | 'expiresAt' | 'uses' | 'maxUses'>, now: Date): 'Off' | 'Expired' | 'Used up' | 'Active' {
+  if (c.disabledAt) return 'Off'
+  if (c.expiresAt && new Date(c.expiresAt) <= now) return 'Expired'
+  if (c.uses >= c.maxUses) return 'Used up'
+  return 'Active'
 }
