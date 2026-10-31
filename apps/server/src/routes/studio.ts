@@ -11,7 +11,7 @@ import { quoteFinalize, QuoteError } from '../studio/pricing.js'
 import { addUpload, deleteUpload, findUpload, UploadError, UPLOAD_LIMITS } from '../studio/uploads.js'
 import { GiftCodeError, redeemGiftCode } from '../studio/gift-codes.js'
 import { isPaused } from '../studio/scope.js'
-import { createFinalizeCheckout, createTopupCheckout, entitlementFor, queueFinalize, reportMistake, PaymentError } from '../studio/payments.js'
+import { createFinalizeCheckout, createTopupCheckout, entitlementFor, giftsFor, queueFinalize, reportMistake, PaymentError } from '../studio/payments.js'
 import {
   BASE_EMOTES, BODY_SHAPES, OUTFITS, WEARABLE_CATEGORIES,
   designDetail, openDesignCount, publicDesign, queuePrompt, requestRender, usage, type Design, type View,
@@ -191,7 +191,7 @@ export default async function studioRoutes(app: FastifyInstance) {
     const d = await ownDesign(request)
     if (!d) return notFound(reply)
     try {
-      return await quoteFinalize(d, null, [])
+      return await quoteFinalize(d, null, [], await giftsFor(request.user.id, d.id, new Date()))
     } catch (err) {
       if (err instanceof QuoteError) return quoteRefusal(reply, err)
       throw err

@@ -162,6 +162,7 @@ export function fakeStripe() {
   let n = 0
   const calls = {
     sessions: [] as any[],
+    expired: [] as string[],
     refunds: [] as { params: any; opts: any }[],
     customers: [] as any[],
   }
@@ -169,6 +170,8 @@ export function fakeStripe() {
     calls,
     failRefunds: false,
     failSessions: false,
+    // Sessions the customer has paid: Stripe refuses to expire them
+    completedSessions: new Set<string>(),
     customers: {
       async create(params: any) { calls.customers.push(params); return { id: `cus_${++n}` } },
     },
@@ -179,6 +182,11 @@ export function fakeStripe() {
           calls.sessions.push(params)
           const id = ++n
           return { id: `cs_test_${id}`, url: `https://checkout.stripe.test/${id}` }
+        },
+        async expire(id: string) {
+          calls.expired.push(id)
+          if (stripe.completedSessions.has(id)) throw new Error(`Only Checkout Sessions with a status in [open] can be expired: ${id} is complete`)
+          return { id, object: 'checkout.session', status: 'expired' }
         },
       },
     },

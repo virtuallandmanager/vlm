@@ -3,7 +3,8 @@ import Stripe from 'stripe'
 import { eq } from 'drizzle-orm'
 import { db } from '../src/db/connection.js'
 import {
-  studioDesigns, studioEntitlements, studioJobs, studioMistakeReports, studioPayments, studioPromptCredits, subscriptions,
+  studioDesigns, studioEntitlements, studioFinalizeCredits, studioJobs, studioMistakeReports, studioPayments, studioPromptCredits,
+  subscriptions,
 } from '../src/db/schema.js'
 import { config } from '../src/config.js'
 import { setStripe } from '../src/integrations/stripe.js'
@@ -505,6 +506,180 @@ describe('studio payments', () => {
       expect(new Set(ents.map((e) => e.jobId)).size).toBe(2)
       const jobs = await db.select().from(studioJobs).where(eq(studioJobs.type, 'finalize'))
       expect(jobs.map((j) => (j.payload as any).finalize.pieces.length)).toEqual([1, 1])
+    })
+  })
+
+  describe('free finalizes', () => {
+    const giveFinalizes = (u: TestUser, n: number) => db.insert(studioFinalizeCredits).values({ userId: u.id, balance: n })
+    const balanceOf = async (u: TestUser) =>
+      (await db.select().from(studioFinalizeCredits).where(eq(studioFinalizeCredits.userId, u.id)))[0]?.balance ?? 0
+    const heldBy = async (designId: string) =>
+      (await paymentOf(designId)).filter((p) => p.status === 'pending').reduce((sum, p) => sum + p.giftsHeld, 0)
+    const expired = (paymentId: string) => webhook('checkout.session.expired', {
+      id: 'cs_x', object: 'checkout.session', mode: 'payment', payment_status: 'unpaid', metadata: { vlm_studio_payment_id: paymentId },
+    })
+    /** A new set of a hat and a mask: with one free finalize the $29 hat is free and the $19 mask is paid. */
+    async function hatAndMask(u: TestUser) {
+      const d = await createDesign(u)
+      const hat = await addRevision(d, 'hat')
+      await addRevision(d, 'mask')
+      return { d, hat }
+    }
+
+    it('a free finalize alone grants without Stripe and uses the credit', async () => {
+      const u = await createUser()
+      const d = await createDesign(u)
+      await addRevision(d, 'hat')
+      await giveFinalizes(u, 1)
+      const quote = await app.inject({ method: 'GET', url: `/api/studio/designs/${d.id}/finalize`, headers: as(u) })
+      expect(quote.json()).toMatchObject({ totalCents: 0, giftsUsed: 1, lines: [{ category: 'hat', amountCents: 2900, gift: true }] })
+      const res = await finalize(u, d.id)
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toMatchObject({ granted: true })
+      expect(stripe.calls.sessions).toHaveLength(0)
+      expect(await balanceOf(u)).toBe(0)
+      const [ent] = await db.select().from(studioEntitlements)
+      expect(ent).toMatchObject({ category: 'hat', kind: 'first', amountCents: 0, status: 'packaging' })
+      const [pay] = await paymentOf(d.id)
+      expect(pay).toMatchObject({ status: 'paid', amountCents: 0, giftsHeld: 1, refundDueCents: 0 })
+    })
+
+    it('a mixed checkout sends only paid lines to Stripe and holds the credit', async () => {
+      const u = await createUser()
+      const { d } = await hatAndMask(u)
+      await giveFinalizes(u, 1)
+      const res = await finalize(u, d.id)
+      expect(res.statusCode).toBe(200)
+      expect(stripe.calls.sessions[0].line_items.map((l: any) => [l.price_data.product_data.name, l.price_data.unit_amount]))
+        .toEqual([['Neon mask: finalize', 1900]])
+      const [pay] = await paymentOf(d.id)
+      expect(pay).toMatchObject({ status: 'pending', amountCents: 1900, giftsHeld: 1 })
+      expect(pay.lines.map((l) => [l.category, !!l.gift])).toEqual([['hat', true], ['mask', false]])
+      expect(await balanceOf(u)).toBe(0)
+      // paid: the hat is free, the mask charged, the credit used once
+      await paid(pay.id)
+      const ents = await db.select().from(studioEntitlements)
+      expect(ents.map((e) => [e.category, e.amountCents]).sort()).toEqual([['hat', 0], ['mask', 1900]])
+      expect(stripe.calls.refunds).toHaveLength(0)
+      expect(await balanceOf(u)).toBe(0)
+      expect((await paymentOf(d.id))[0]).toMatchObject({ status: 'paid', giftsHeld: 1, refundDueCents: 0 })
+    })
+
+    it('an expired checkout gives its free finalize back', async () => {
+      const u = await createUser()
+      const { d } = await hatAndMask(u)
+      await giveFinalizes(u, 1)
+      await finalize(u, d.id)
+      const [pay] = await paymentOf(d.id)
+      expect([pay.giftsHeld, await balanceOf(u)]).toEqual([1, 0])
+      await expired(pay.id)
+      expect(await balanceOf(u)).toBe(1)
+      expect((await paymentOf(d.id))[0]).toMatchObject({ status: 'expired', giftsHeld: 0 })
+      // the same event again gives nothing more
+      await expired(pay.id)
+      expect(await balanceOf(u)).toBe(1)
+    })
+
+    it('a failed Stripe session gives its free finalize back', async () => {
+      const u = await createUser()
+      const { d } = await hatAndMask(u)
+      await giveFinalizes(u, 1)
+      stripe.failSessions = true
+      const res = await finalize(u, d.id)
+      expect(res.statusCode).toBe(502)
+      expect(await paymentOf(d.id)).toHaveLength(0)
+      expect(await balanceOf(u)).toBe(1)
+      // still there to use
+      stripe.failSessions = false
+      expect((await finalize(u, d.id)).statusCode).toBe(200)
+      expect([(await paymentOf(d.id))[0].giftsHeld, await balanceOf(u)]).toEqual([1, 0])
+    })
+
+    it('a new checkout replaces the open one and takes over its free finalize', async () => {
+      const u = await createUser()
+      const { d } = await hatAndMask(u)
+      await addRevision(d, 'feet')
+      await giveFinalizes(u, 1)
+      await finalize(u, d.id, { categories: ['hat', 'mask'] })
+      const [first] = await paymentOf(d.id)
+      expect(first.giftsHeld).toBe(1)
+      const res = await finalize(u, d.id, { categories: ['feet', 'mask'] })
+      expect(res.statusCode).toBe(200)
+      expect(stripe.calls.expired).toEqual([first.stripeSessionId])
+      const second = (await paymentOf(d.id)).find((p) => p.id !== first.id)!
+      expect(second).toMatchObject({ status: 'pending', giftsHeld: 1, amountCents: 1900 })
+      expect(second.lines.map((l) => [l.category, !!l.gift])).toEqual([['feet', true], ['mask', false]])
+      expect((await paymentOf(d.id)).find((p) => p.id === first.id)).toMatchObject({ status: 'expired', giftsHeld: 0 })
+      expect((await balanceOf(u)) + (await heldBy(d.id))).toBe(1)
+      // Stripe's own expired event for the replaced session changes nothing
+      await expired(first.id)
+      expect((await balanceOf(u)) + (await heldBy(d.id))).toBe(1)
+    })
+
+    it("an open checkout Stripe says is complete keeps its free finalize", async () => {
+      const u = await createUser()
+      const { d } = await hatAndMask(u)
+      await addRevision(d, 'feet')
+      await giveFinalizes(u, 1)
+      await finalize(u, d.id, { categories: ['hat', 'mask'] })
+      const [first] = await paymentOf(d.id)
+      stripe.completedSessions.add(first.stripeSessionId!)
+      const res = await finalize(u, d.id, { categories: ['feet', 'mask'] })
+      expect(res.statusCode).toBe(200)
+      const second = (await paymentOf(d.id)).find((p) => p.id !== first.id)!
+      expect(second).toMatchObject({ giftsHeld: 0, amountCents: 4800 })
+      expect((await paymentOf(d.id)).find((p) => p.id === first.id)).toMatchObject({ status: 'pending', giftsHeld: 1 })
+      expect(await balanceOf(u)).toBe(0)
+      // its payment lands: the credit is used by it, once
+      await paid(first.id)
+      expect(await balanceOf(u)).toBe(0)
+      expect(await db.select().from(studioEntitlements).where(eq(studioEntitlements.category, 'hat')))
+        .toEqual([expect.objectContaining({ amountCents: 0 })])
+    })
+
+    it('reopening the same checkout reuses it', async () => {
+      const u = await createUser()
+      const { d } = await hatAndMask(u)
+      await giveFinalizes(u, 1)
+      const a = (await finalize(u, d.id)).json().url
+      const b = (await finalize(u, d.id)).json().url
+      expect(b).toBe(a)
+      expect(stripe.calls.sessions).toHaveLength(1)
+      expect(stripe.calls.expired).toHaveLength(0)
+      expect(await paymentOf(d.id)).toHaveLength(1)
+      expect(await balanceOf(u)).toBe(0)
+      expect(await heldBy(d.id)).toBe(1)
+    })
+
+    it('a gift line already paid elsewhere gives its credit back', async () => {
+      const u = await createUser()
+      const { d, hat } = await hatAndMask(u)
+      await giveFinalizes(u, 1)
+      await finalize(u, d.id)
+      const [pay] = await paymentOf(d.id)
+      // the hat's revision is paid for by another checkout first
+      await entitle(d, hat)
+      await paid(pay.id)
+      expect(await balanceOf(u)).toBe(1)
+      const [after] = await db.select().from(studioPayments).where(eq(studioPayments.id, pay.id))
+      expect(after).toMatchObject({ status: 'paid', giftsHeld: 0, refundDueCents: 0 })
+      expect(stripe.calls.refunds).toHaveLength(0)
+      const [mask] = await db.select().from(studioEntitlements).where(eq(studioEntitlements.category, 'mask'))
+      expect(mask).toMatchObject({ amountCents: 1900 })
+    })
+
+    it('two checkouts at once never use one credit twice', async () => {
+      const u = await createUser()
+      const { d } = await hatAndMask(u)
+      await giveFinalizes(u, 1)
+      // six at once, so their transactions overlap
+      const res = await Promise.all(Array.from({ length: 6 }, () => finalize(u, d.id)))
+      expect(res.map((r) => r.statusCode)).toEqual(Array(6).fill(200))
+      const pays = await paymentOf(d.id)
+      // exactly one checkout holds the credit, however many were opened
+      expect(pays.filter((p) => p.giftsHeld === 1)).toHaveLength(1)
+      expect(pays.reduce((sum, p) => sum + p.giftsHeld, 0)).toBe(1)
+      expect(await balanceOf(u)).toBe(0)
     })
   })
 })
