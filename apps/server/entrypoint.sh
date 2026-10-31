@@ -145,6 +145,17 @@ if [ -n "$DATABASE_URL" ]; then
         console.log('[virvi-server] room_scans / room_sets tables ensured');
       } catch(e) { console.log('[virvi-server] room_scans / room_sets:', e.message); }
 
+      // Studio gift codes; matches studioGiftCodes / studioGiftRedemptions / studioFinalizeCredits in src/db/schema.ts
+      try {
+        await sql\`CREATE TABLE IF NOT EXISTS studio_gift_codes (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), code_hash TEXT NOT NULL UNIQUE, code_hint TEXT NOT NULL, note TEXT, prompts INTEGER NOT NULL, finalizes INTEGER NOT NULL, max_uses INTEGER NOT NULL, uses INTEGER NOT NULL DEFAULT 0, expires_at TIMESTAMPTZ, disabled_at TIMESTAMPTZ, created_by UUID REFERENCES users(id) ON DELETE SET NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        await sql\`CREATE TABLE IF NOT EXISTS studio_gift_redemptions (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), code_id UUID NOT NULL REFERENCES studio_gift_codes(id) ON DELETE CASCADE, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        await sql\`CREATE UNIQUE INDEX IF NOT EXISTS studio_gift_redemptions_code_user_idx ON studio_gift_redemptions (code_id, user_id)\`;
+        await sql\`CREATE TABLE IF NOT EXISTS studio_finalize_credits (user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, balance INTEGER NOT NULL DEFAULT 0, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
+        await sql\`ALTER TABLE studio_prompt_credits ADD COLUMN IF NOT EXISTS gifted INTEGER NOT NULL DEFAULT 0\`;
+        await sql\`ALTER TABLE studio_payments ADD COLUMN IF NOT EXISTS gifts_held INTEGER NOT NULL DEFAULT 0\`;
+        console.log('[virvi-server] studio gift code tables ensured');
+      } catch(e) { console.log('[virvi-server] studio gift codes:', e.message); }
+
       // Hyperfy HUD pairings; matches hyperfyPairings in src/db/schema.ts
       try {
         await sql\`CREATE TABLE IF NOT EXISTS hyperfy_pairings (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), world_id UUID NOT NULL REFERENCES hyperfy_worlds(id) ON DELETE CASCADE, user_id UUID REFERENCES users(id) ON DELETE CASCADE, code_hash TEXT UNIQUE, secret_hash TEXT, hyperfy_player_id TEXT, player_name TEXT, status TEXT NOT NULL DEFAULT 'pending', code_expires_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ, last_used_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
