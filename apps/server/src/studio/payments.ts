@@ -95,7 +95,8 @@ export async function giftsFor(userId: string, designId: string, now: Date, exec
 /**
  * A checkout for a design's pieces. An open session with exactly the same lines is reused. Otherwise, when the new
  * quote has a free line, this design's open sessions that hold free finalizes are expired through Stripe first, so
- * their credits come back for the new quote; one Stripe won't expire (already paid) keeps its credits. The new
+ * their credits come back for the new quote; one Stripe won't expire (already paid) keeps its credits, and a checkout
+ * that would then lose a free line it was quoted is refused (free_finalize_busy). The new
  * checkout then takes its free finalizes from the balance under a lock on the user's credit row, so two checkouts at
  * once never use one credit twice. A checkout that never reaches Stripe gives them back; an expired one gives them
  * back from the webhook.
@@ -137,6 +138,9 @@ export async function createFinalizeCheckout(
     const [credits] = await tx.select().from(studioFinalizeCredits).where(eq(studioFinalizeCredits.userId, user.id)).for('update')
     const q = await quoteFinalize(design, categories, waived, credits.balance, tx)
     if (!q.lines.length) throw new QuoteError('nothing_to_pay', categories ?? [])
+    // The quote the customer saw counted a credit an older checkout still holds (Stripe didn't expire it, or it is
+    // still opening): refuse rather than charge that line in full
+    if (q.giftsUsed < quote.giftsUsed) throw new PaymentError(409, 'free_finalize_busy')
     const lines = withReports(q.lines)
     const [pay] = await tx.insert(studioPayments).values({
       userId: user.id, designId: design.id, kind: 'finalize', amountCents: q.totalCents, lines, giftsHeld: q.giftsUsed,

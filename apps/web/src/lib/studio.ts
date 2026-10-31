@@ -169,6 +169,8 @@ export function refusalMessage(
       return { text: 'Payments aren’t available right now.' }
     case 'stripe_error':
       return { text: 'Stripe didn’t answer. Try again in a moment.' }
+    case 'free_finalize_busy':
+      return { text: 'Your free finalize is held by another checkout. Try again in a few minutes.' }
     case 'unsupported_file':
       return { text: UNSUPPORTED_FILE }
     case 'file_too_large':

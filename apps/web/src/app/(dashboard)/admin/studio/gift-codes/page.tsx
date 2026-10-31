@@ -29,7 +29,7 @@ export default function AdminGiftCodesPage() {
   const [expires, setExpires] = useState('')
   const [note, setNote] = useState('')
 
-  // useApi gives a new object each render, so the effect keys on the role, not on load itself
+  // load isn't memoized (it is a new function each render), so the effect keys on the role, not on load itself
   const load = async () => {
     try {
       setCodes((await api.listGiftCodes()).codes)

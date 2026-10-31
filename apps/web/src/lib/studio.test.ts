@@ -56,6 +56,7 @@ describe('refusalMessage', () => {
   it('explains payments being off and Stripe not answering', () => {
     expect(r('payments_unavailable', {}, 503).text).toBe('Payments aren’t available right now.')
     expect(r('stripe_error', {}, 502).text).toBe('Stripe didn’t answer. Try again in a moment.')
+    expect(r('free_finalize_busy').text).toBe('Your free finalize is held by another checkout. Try again in a few minutes.')
   })
   it('falls back to plain words for anything else', () => {
     expect(r('who_knows')).toEqual({ text: 'Something went wrong. Try again.' })

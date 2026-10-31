@@ -151,10 +151,17 @@ if [ -n "$DATABASE_URL" ]; then
         await sql\`CREATE TABLE IF NOT EXISTS studio_gift_redemptions (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), code_id UUID NOT NULL REFERENCES studio_gift_codes(id) ON DELETE CASCADE, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
         await sql\`CREATE UNIQUE INDEX IF NOT EXISTS studio_gift_redemptions_code_user_idx ON studio_gift_redemptions (code_id, user_id)\`;
         await sql\`CREATE TABLE IF NOT EXISTS studio_finalize_credits (user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, balance INTEGER NOT NULL DEFAULT 0, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())\`;
-        await sql\`ALTER TABLE studio_prompt_credits ADD COLUMN IF NOT EXISTS gifted INTEGER NOT NULL DEFAULT 0\`;
-        await sql\`ALTER TABLE studio_payments ADD COLUMN IF NOT EXISTS gifts_held INTEGER NOT NULL DEFAULT 0\`;
         console.log('[virvi-server] studio gift code tables ensured');
       } catch(e) { console.log('[virvi-server] studio gift codes:', e.message); }
+      // Gift columns on existing tables, each on its own so a failure above can't skip them (usage reads both)
+      try {
+        await sql\`ALTER TABLE studio_prompt_credits ADD COLUMN IF NOT EXISTS gifted INTEGER NOT NULL DEFAULT 0\`;
+        console.log('[virvi-server] studio_prompt_credits.gifted ensured');
+      } catch(e) { console.log('[virvi-server] studio_prompt_credits.gifted:', e.message); }
+      try {
+        await sql\`ALTER TABLE studio_payments ADD COLUMN IF NOT EXISTS gifts_held INTEGER NOT NULL DEFAULT 0\`;
+        console.log('[virvi-server] studio_payments.gifts_held ensured');
+      } catch(e) { console.log('[virvi-server] studio_payments.gifts_held:', e.message); }
 
       // Hyperfy HUD pairings; matches hyperfyPairings in src/db/schema.ts
       try {

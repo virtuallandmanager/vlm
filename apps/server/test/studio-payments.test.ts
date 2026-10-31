@@ -643,17 +643,39 @@ describe('studio payments', () => {
       await finalize(u, d.id, { categories: ['hat', 'mask'] })
       const [first] = await paymentOf(d.id)
       stripe.completedSessions.add(first.stripeSessionId!)
+      // the quote counted its credit, so a full-price checkout is refused rather than opened
       const res = await finalize(u, d.id, { categories: ['feet', 'mask'] })
-      expect(res.statusCode).toBe(200)
-      const second = (await paymentOf(d.id)).find((p) => p.id !== first.id)!
-      expect(second).toMatchObject({ giftsHeld: 0, amountCents: 4800 })
-      expect((await paymentOf(d.id)).find((p) => p.id === first.id)).toMatchObject({ status: 'pending', giftsHeld: 1 })
+      expect(res.statusCode).toBe(409)
+      expect(res.json()).toMatchObject({ code: 'free_finalize_busy' })
+      expect(await paymentOf(d.id)).toEqual([expect.objectContaining({ id: first.id, status: 'pending', giftsHeld: 1 })])
       expect(await balanceOf(u)).toBe(0)
       // its payment lands: the credit is used by it, once
       await paid(first.id)
       expect(await balanceOf(u)).toBe(0)
       expect(await db.select().from(studioEntitlements).where(eq(studioEntitlements.category, 'hat')))
         .toEqual([expect.objectContaining({ amountCents: 0 })])
+    })
+
+    it('a checkout whose free finalize is held elsewhere is refused, not charged in full', async () => {
+      const u = await createUser()
+      const { d } = await hatAndMask(u)
+      await addRevision(d, 'feet')
+      await giveFinalizes(u, 1)
+      await finalize(u, d.id, { categories: ['hat', 'mask'] })
+      const [first] = await paymentOf(d.id)
+      stripe.failExpire = true
+      const res = await finalize(u, d.id, { categories: ['feet', 'mask'] })
+      expect(res.statusCode).toBe(409)
+      expect(res.json()).toMatchObject({ error: 'free_finalize_busy', code: 'free_finalize_busy' })
+      expect(stripe.calls.expired).toEqual([first.stripeSessionId])
+      expect(stripe.calls.sessions).toHaveLength(1)
+      expect(await paymentOf(d.id)).toEqual([expect.objectContaining({ id: first.id, status: 'pending', giftsHeld: 1 })])
+      expect((await balanceOf(u)) + (await heldBy(d.id))).toBe(1)
+      // once Stripe answers, the retry takes the credit over
+      stripe.failExpire = false
+      expect((await finalize(u, d.id, { categories: ['feet', 'mask'] })).statusCode).toBe(200)
+      expect((await balanceOf(u)) + (await heldBy(d.id))).toBe(1)
+      expect((await paymentOf(d.id)).find((p) => p.id !== first.id)).toMatchObject({ giftsHeld: 1, amountCents: 1900 })
     })
 
     it('reopening the same checkout reuses it', async () => {
@@ -693,7 +715,9 @@ describe('studio payments', () => {
       await giveFinalizes(u, 1)
       // six at once, so their transactions overlap
       const res = await Promise.all(Array.from({ length: 6 }, () => finalize(u, d.id)))
-      expect(res.map((r) => r.statusCode)).toEqual(Array(6).fill(200))
+      // the others reuse its session, or are told the credit is held while it is still opening
+      for (const r of res) expect(r.statusCode === 200 || r.json().code === 'free_finalize_busy').toBe(true)
+      expect(res.some((r) => r.statusCode === 200)).toBe(true)
       const pays = await paymentOf(d.id)
       // exactly one checkout holds the credit, however many were opened
       expect(pays.filter((p) => p.giftsHeld === 1)).toHaveLength(1)

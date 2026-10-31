@@ -172,6 +172,7 @@ export function fakeStripe() {
     failSessions: false,
     // Sessions the customer has paid: Stripe refuses to expire them
     completedSessions: new Set<string>(),
+    failExpire: false,
     customers: {
       async create(params: any) { calls.customers.push(params); return { id: `cus_${++n}` } },
     },
@@ -185,6 +186,7 @@ export function fakeStripe() {
         },
         async expire(id: string) {
           calls.expired.push(id)
+          if (stripe.failExpire) throw new Error('Stripe is down')
           if (stripe.completedSessions.has(id)) throw new Error(`Only Checkout Sessions with a status in [open] can be expired: ${id} is complete`)
           return { id, object: 'checkout.session', status: 'expired' }
         },
