@@ -78,6 +78,22 @@ describe('assembleRedeploy', () => {
     expect(r.added).toEqual(['models/virvi/b.glb'])
   })
 
+  it("a new scene name is a change: a wizard World's title follows it", async () => {
+    const r = await assembleRedeploy({ live: await live(), adopted: false, models: [need('a')], timestamp: 1, fetch: fetcher(), title: 'New name' })
+    expect(r.changed).toBe(true)
+    expect(r.metadata.display.title).toBe('New name')
+    expect(JSON.parse(new TextDecoder().decode(r.files.get(r.entityId)!)).metadata.display.title).toBe('New name')
+    const same = await assembleRedeploy({ live: await live(), adopted: false, models: [need('a')], timestamp: 1, fetch: fetcher(), title: 'T' })
+    expect(same.changed).toBe(false)
+  })
+
+  it("an adopted World keeps its own title when the scene's name differs", async () => {
+    const r = await assembleRedeploy({ live: await live(), adopted: true, models: [need('a'), need('b')], timestamp: 1, fetch: fetcher(), title: 'New name' })
+    expect(r.metadata.display.title).toBe('T')
+    const none = await assembleRedeploy({ live: await live(), adopted: true, models: [need('a')], timestamp: 1, fetch: fetcher(), title: 'New name' })
+    expect(none.changed).toBe(false)
+  })
+
   it('says whether anything would change: a new model or a runtime upgrade', async () => {
     const same = await assembleRedeploy({ live: await live(), adopted: false, models: [need('a')], timestamp: 1, fetch: fetcher() })
     expect(same.changed).toBe(false)

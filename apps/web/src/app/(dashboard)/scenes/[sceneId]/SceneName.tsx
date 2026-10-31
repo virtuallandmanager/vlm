@@ -103,8 +103,9 @@ export const connectedNamesDiffer = (c: Connected | null, sceneName: string) =>
 type Result = { status: 'working' } | { status: 'done' } | { status: 'failed'; message: string }
 type Deployer = () => Promise<{ ok: true } | { ok: false; message: string }>
 
-/** A World can be redeployed from here when its owner signs (sign mode) or Virvi holds the permission. */
-const canRedeploy = (d: DclDestination) => d.mode === 'sign' || !!d.grantedAt
+/** A World can be redeployed from here when its owner signs (sign mode) or Virvi holds the permission. An adopted
+ *  World's title is its own scene.json's, so a redeploy can't change it. */
+const canRedeploy = (d: DclDestination) => !d.adopted && (d.mode === 'sign' || !!d.grantedAt)
 
 export function UseNameEverywhere({ sceneName, oldName, connected, hasRoomSet = false, onDone, onClose }: {
   sceneName: string
@@ -255,7 +256,9 @@ function DclRow({ dest, checked, onToggle, disabled, result, register }: {
         <span>
           <span className="block">Redeploy {dest.worldName} so Decentraland shows the new name</span>
           <span className="block text-xs text-gray-500">
-            {!available ? (
+            {dest.adopted ? (
+              'Its name comes from your own project: change the title in its scene.json and deploy it from Creator Hub.'
+            ) : !available ? (
               <>Virvi&apos;s permission isn&apos;t signed yet. <Link href={`/deploy?scene=${dest.sceneId}`} className="text-blue-400 hover:text-blue-300">Open Deploy</Link></>
             ) : dest.mode === 'sign' ? 'You sign with the wallet that owns it.' : 'Virvi deploys it for you.'}
           </span>
