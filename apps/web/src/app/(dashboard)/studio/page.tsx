@@ -8,7 +8,7 @@ import { PlusIcon, SparkleIcon } from '@/components/icons'
 import { countLabel } from '@/lib/format'
 import { AgentPicker } from './AgentPicker'
 import {
-  agentLabel, designBadge, refusalMessage, relativeTime, usageLine,
+  DEFAULT_AGENT, agentLabel, designBadge, refusalMessage, relativeTime, usageLine,
   type Refusal, type StudioDesign, type StudioKind, type StudioUsage,
 } from '@/lib/studio'
 
@@ -110,7 +110,7 @@ function DesignCard({ d }: { d: StudioDesign }) {
 function NewDesign({ onCancel }: { onCancel: () => void }) {
   const api = useApi()
   const [kind, setKind] = useState<StudioKind>('wearable')
-  const [agent, setAgent] = useState('claude')
+  const [agent, setAgent] = useState<string>(DEFAULT_AGENT)
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [refusal, setRefusal] = useState<Refusal | null>(null)
