@@ -4,7 +4,8 @@ Runs as its own `keyproxy` user (the agent can't read its environment) on 127.0.
 8891, xAI on 8892. Each request is forwarded unchanged to the provider through the allowlisting proxy, with the client's key
 headers replaced by the real one, and the response is streamed back as it arrives (server-sent events included).
 Only the endpoints the agents use are forwarded; a refused one logs its method and path, nothing else. An xAI request
-that asks xAI to search on its side is refused too: the allowlist can't see a search that runs at the provider.
+must be a JSON object whose tools are all the agent's own `function` tools: a tool xAI runs on its side (a search, a
+remote MCP server, code) could leave the studio where the allowlist can't see it.
 """
 import gzip
 import http.client
@@ -37,20 +38,22 @@ def allowed_path(path: str, rules) -> bool:
     return p in exact or any(p.startswith(x) and len(p) > len(x) for x in prefixes)
 
 
-def asks_for_search(body: bytes) -> bool:
-    """A request asking the provider to run a search itself: `search_parameters`, or a tool of a search type. The
-    agent's own tools are `function` tools whatever they're named, so a function called search_tool passes."""
+def refused_xai_body(body: bytes) -> bool:
+    """True unless the body is empty or a JSON object asking for nothing xAI runs itself: no `search_parameters`,
+    and only `function` tools (the agent's own, whatever they're named). An unreadable body is refused, since the
+    provider's parser might read it differently."""
+    if not body:
+        return False
     try:
-        req = json.loads(body)
-    except ValueError:
-        return False
-    if not isinstance(req, dict):
-        return False
-    if 'search_parameters' in req:
+        req = json.loads(body.decode('utf-8'))
+    except (UnicodeDecodeError, ValueError):
         return True
-    tools = req.get('tools') if isinstance(req.get('tools'), list) else []
-    return any(isinstance(t, dict) and str(t.get('type', '')) != 'function' and 'search' in str(t.get('type', ''))
-               for t in tools)
+    if not isinstance(req, dict) or 'search_parameters' in req:
+        return True
+    tools = req.get('tools', [])
+    if not isinstance(tools, list):
+        return True
+    return any(not isinstance(t, dict) or t.get('type') != 'function' for t in tools)
 
 
 def _decoded(body: bytes, encoding: str | None) -> bytes | None:
@@ -177,7 +180,7 @@ def main() -> None:
               ANTHROPIC_PATHS),
         serve(OPENAI_PORT, 'https://api.openai.com', 'authorization', os.environ.get('OPENAI_API_KEY', ''), proxy, OPENAI_PATHS),
         serve(XAI_PORT, 'https://api.x.ai', 'authorization', os.environ.get('XAI_API_KEY', ''), proxy, XAI_PATHS,
-              refuse_body=asks_for_search),
+              refuse_body=refused_xai_body),
     ]
     for k in ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'XAI_API_KEY'):
         os.environ.pop(k, None)

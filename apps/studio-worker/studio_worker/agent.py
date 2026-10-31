@@ -257,7 +257,7 @@ def run_agent(agent: str, model: str, prompt: str, session: str | None, before: 
     stream, stderr = _Stream(agent, on_progress, secrets), []
     sender = threading.Thread(target=_deliver, args=(stream.progress, on_progress), daemon=True)
     sender.start()
-    start = time.monotonic()
+    start, start_wall = time.monotonic(), time.time()
     proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, start_new_session=True)
     readers = [threading.Thread(target=lambda: [stream.feed(l) for l in proc.stdout], daemon=True),
@@ -301,6 +301,8 @@ def run_agent(agent: str, model: str, prompt: str, session: str | None, before: 
                                'the agent reported no usage')[-2000:])
     elif stopped:
         error = 'stopped at the ' + {'timeout': 'time limit', 'ceiling': 'cost ceiling', 'turns': 'step limit'}[stopped]
+    if agent == 'grok' and not stream.session:  # stopped before its end event, which is what names the session
+        stream.session = _grok_disk_session(cwd, since=start_wall)
     return AgentRun(outcome=outcome, reply=stream.redact(stream.reply or ''), session=stream.session or session,
                     usage=usage, session_total=total, cost_usd=usage.cost_usd if usage else None, wall_sec=wall,
                     error=error)
@@ -311,6 +313,14 @@ def _hit_max_turns(agent: str, stream: '_Stream') -> bool:
     if agent == 'grok':  # Grok also exits 1 here
         return result.get('stopReason') == 'max_turn_requests'
     return agent == 'claude' and result.get('subtype') == 'error_max_turns'
+
+
+def _grok_disk_session(cwd: Path, since: float) -> str | None:
+    """The session Grok started in this run, from its home ($GROK_HOME/sessions/<cwd>/<id>/), so a Continue after a
+    stop resumes it instead of starting blank."""
+    found = [d for d in (cwd / '.grok-home' / 'sessions').glob('*/*')
+             if d.is_dir() and not d.is_symlink() and d.stat().st_mtime >= since - 1]
+    return max(found, key=lambda d: d.stat().st_mtime).name if found else None
 
 
 def _running_cost(agent: str, stream: '_Stream', table: dict, model: str) -> float | None:

@@ -209,3 +209,8 @@ def test_grok_resumed_prompt_is_not_double_subtracted(tmp_path):
     before = Usage(input=1, cached_input=0, cache_write=0, output=1, turns=1, cost_usd=0.95)
     r = run(tmp_path, 'grok', 'grok_builds_hat.jsonl', before=before)
     assert r.cost_usd == 0.9 and r.session_total.cost_usd == pytest.approx(1.85)
+
+
+def test_grok_stopped_before_end_keeps_its_session_for_continue(tmp_path):
+    r = run(tmp_path, 'grok', 'grok_runaway.jsonl')
+    assert r.outcome == 'ceiling' and r.session == 'sess-grok-disk'

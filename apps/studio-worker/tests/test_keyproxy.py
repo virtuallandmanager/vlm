@@ -138,7 +138,7 @@ def test_proxy_forwards_only_the_agents_endpoints(upstream):
 
 def xai(upstream):
     srv = keyproxy.serve(0, upstream, 'authorization', 'xai-real', None, allowed=keyproxy.XAI_PATHS,
-                         refuse_body=keyproxy.asks_for_search)
+                         refuse_body=keyproxy.refused_xai_body)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv
 
@@ -176,14 +176,6 @@ def test_xai_function_tool_named_search_is_forwarded(upstream):
     srv.shutdown()
 
 
-def test_non_json_body_is_forwarded(upstream):
-    srv = xai(upstream)
-    _, r = post(srv, {'authorization': 'Bearer studio-proxy'}, path='/v1/responses', body=b'not json')
-    assert r.status == 200
-    r.read()
-    srv.shutdown()
-
-
 def test_compressed_search_body_is_still_refused(upstream):
     import gzip
     srv = xai(upstream)
@@ -191,6 +183,19 @@ def test_compressed_search_body_is_still_refused(upstream):
         _, r = post(srv, {'authorization': 'Bearer studio-proxy', 'content-encoding': enc}, path='/v1/responses',
                     body=body)
         assert r.status == 403, enc
+        r.read()
+    assert Upstream.seen == []
+    srv.shutdown()
+
+
+def test_xai_only_function_tools_and_readable_bodies_pass(upstream):
+    srv = xai(upstream)
+    for body in (b'{"tools":[{"type":"mcp","server_url":"https://example.com"}]}',
+                 b'{"tools":[{"type":"code_interpreter"}]}',
+                 b'{"tools":[{"type":"web_search"}],"x":"\xff"}',
+                 b'not json', b'[1, 2]'):
+        _, r = post(srv, {'authorization': 'Bearer studio-proxy'}, path='/v1/responses', body=body)
+        assert r.status == 403, body
         r.read()
     assert Upstream.seen == []
     srv.shutdown()
