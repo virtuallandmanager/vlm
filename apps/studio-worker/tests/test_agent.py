@@ -17,7 +17,8 @@ def fake(name: str) -> list[str]:
 
 
 def run(tmp_path, agent_name, fixture, limits=LIMITS, before=None, progress=None):
-    return run_agent(agent_name, 'claude-opus-5-5' if agent_name == 'claude' else 'gpt-6.1-sol', 'make a cap',
+    model = {'claude': 'claude-opus-5-5', 'codex': 'gpt-6.1-sol', 'grok': 'grok-build-0.1'}[agent_name]
+    return run_agent(agent_name, model, 'make a cap',
                      None, before, limits, (progress if progress is not None else []).append,
                      command=fake(fixture), as_user=None, cwd=tmp_path)
 
@@ -166,3 +167,45 @@ def test_claude_and_codex_drop_web_tools():
 def test_claude_max_turns_is_turns(tmp_path):
     r = run(tmp_path, 'claude', 'claude_max_turns.jsonl')
     assert r.outcome == 'turns' and r.error == 'stopped at the step limit' and r.cost_usd == 0.4
+
+
+def test_grok_env_holds_no_real_key(tmp_path):
+    env = agent_env('grok', {'XAI_API_KEY': 'xai-real-key', 'ANTHROPIC_API_KEY': 'sk-ant-real', 'PATH': '/usr/bin'})
+    assert env['XAI_API_KEY'] == 'studio-proxy' and 'ANTHROPIC_API_KEY' not in env
+    assert not any('real' in v for v in env.values())
+    assert env['GROK_XAI_API_BASE_URL'] == 'http://127.0.0.1:8892/v1'
+    assert env['GROK_HOME'] == str(agent.DESIGN / '.grok-home')
+    assert (env['GROK_DISABLE_AUTOUPDATER'], env['DISABLE_TELEMETRY'], env['GROK_TELEMETRY_ENABLED']) == ('1', '1', '0')
+
+
+def test_grok_command_turns_off_search_and_images():
+    assert command_for('grok', 'grok-build-0.1', 'make a cap', None, 150) == [
+        'grok', '-p', 'make a cap', '--output-format', 'streaming-json', '--permission-mode', 'bypassPermissions',
+        '--max-turns', '150', '-m', 'grok-build-0.1', '--trust', '--disable-web-search', '--disallowed-tools',
+        'image_gen,image_edit,image_to_video,reference_to_video,web_search']
+    assert command_for('grok', 'grok-build-0.1', 'p', 'sess', 150)[-2:] == ['-r', 'sess']
+
+
+def test_progress_streams_from_grok(tmp_path):
+    progress = []
+    r = run(tmp_path, 'grok', 'grok_builds_hat.jsonl', progress=progress)
+    assert r.outcome == 'ok' and r.reply == 'Built a cap.' and r.session == 'sess-grok-1' and r.cost_usd == 0.9
+    assert 'Let me build the cap.' in progress and 'Running: blender -b -P build_cap.py' in progress
+    assert 'Running: read_file out/hat/piece.json' in progress
+
+
+def test_grok_max_turns_is_turns(tmp_path):
+    r = run(tmp_path, 'grok', 'grok_max_turns.jsonl')
+    assert r.outcome == 'turns' and r.error == 'stopped at the step limit' and r.cost_usd == 0.4
+
+
+def test_grok_stopped_before_end_still_reports_cost(tmp_path):
+    r = run(tmp_path, 'grok', 'grok_runaway.jsonl')
+    assert r.outcome == 'ceiling'
+    assert r.cost_usd == pytest.approx(3.2)
+
+
+def test_grok_resumed_prompt_is_not_double_subtracted(tmp_path):
+    before = Usage(input=1, cached_input=0, cache_write=0, output=1, turns=1, cost_usd=0.95)
+    r = run(tmp_path, 'grok', 'grok_builds_hat.jsonl', before=before)
+    assert r.cost_usd == 0.9 and r.session_total.cost_usd == pytest.approx(1.85)
